@@ -8,7 +8,7 @@ import {
 } from "@/lib/modules";
 import type { AppModuleCode, AppModuleConfig } from "@/lib/types";
 
-const LEGACY_STORAGE_KEYS = ["mext:app-modules:v1", "mext:app-modules:v2"];
+const LEGACY_STORAGE_KEYS = ["mext:app-modules:v2", "mext:app-modules:v1"];
 const STORAGE_KEY = "mext:app-modules:v3";
 
 type ModuleContextValue = {
@@ -28,17 +28,19 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
   const [modules, setModules] = useState<AppModuleConfig[]>(defaultAppModules);
 
   useEffect(() => {
-    LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const storageKey = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS].find((key) => localStorage.getItem(key));
+    const stored = storageKey ? localStorage.getItem(storageKey) : null;
     if (!stored) {
       persist(defaultAppModules);
       return;
     }
     try {
       const parsed = JSON.parse(stored) as AppModuleConfig[];
-      setModules(normalizeAppModules(Array.isArray(parsed) ? parsed : defaultAppModules));
+      const normalized = normalizeAppModules(Array.isArray(parsed) ? parsed : defaultAppModules);
+      setModules(normalized);
+      if (storageKey !== STORAGE_KEY) persist(normalized);
     } catch {
-      localStorage.removeItem(STORAGE_KEY);
+      if (storageKey) localStorage.removeItem(storageKey);
       persist(defaultAppModules);
     }
   }, []);
