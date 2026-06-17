@@ -1,0 +1,17 @@
+{
+  "name": "FieldForce",
+  "short_name": "FieldForce",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#003B83",
+  "description": "MExT FieldForce - Grow. Coach. Perform.",
+  "icons": [
+    {
+      "src": "/assets/fieldforce-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
