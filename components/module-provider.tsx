@@ -8,8 +8,8 @@ import {
 } from "@/lib/modules";
 import type { AppModuleCode, AppModuleConfig } from "@/lib/types";
 
-const LEGACY_STORAGE_KEYS = ["mext:app-modules:v1"];
-const STORAGE_KEY = "mext:app-modules:v2";
+const LEGACY_STORAGE_KEYS = ["mext:app-modules:v1", "mext:app-modules:v2"];
+const STORAGE_KEY = "mext:app-modules:v3";
 
 type ModuleContextValue = {
   modules: AppModuleConfig[];
