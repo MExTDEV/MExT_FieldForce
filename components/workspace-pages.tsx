@@ -71,7 +71,7 @@ import {
   representativeForCoaching,
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
-import type { PersonalCoachingCriterion } from "@/lib/types";
+import type { CoachingAppointment, CoachingDossier, PersonalCoachingCriterion } from "@/lib/types";
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user } = useSession();
@@ -864,6 +864,8 @@ function emptyAppointment() {
   return {
     id: `appointment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     customer: "",
+    customerNumber: "",
+    place: "",
     relationType: "prospect" as const,
     appointmentType: "vast" as const,
     arrivalTime: "",
@@ -887,9 +889,11 @@ function CoachingDossierDetail({
   const readOnly = ["gefinaliseerd", "afgesloten"].includes(intervention.status) || user.role === "REPRESENTATIVE";
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
+  const [openAppointmentId, setOpenAppointmentId] = useState<string>();
 
   const dossier = local.dossier ?? defaultDossierState();
   const appointments = (local.appointments ?? []).filter((item) => !item.isDeleted);
+  const totalCoachingScore = calculateTotalCoachingScore(dossier, appointments);
 
   function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd") {
     const saved = workflowApi.saveCoachingStatus({
@@ -940,6 +944,38 @@ function CoachingDossierDetail({
     }));
   }
 
+  function addAppointment() {
+    const appointment = emptyAppointment();
+    setLocal((current) => ({ ...current, appointments: [...(current.appointments ?? []), appointment] }));
+    setOpenAppointmentId(appointment.id);
+  }
+
+  function updateAppointment(id: string, patch: Partial<CoachingAppointment>) {
+    setLocal((current) => ({
+      ...current,
+      appointments: (current.appointments ?? []).map((item) => item.id === id ? { ...item, ...patch } : item),
+    }));
+  }
+
+  function updateAppointmentScore(id: string, index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) {
+    setLocal((current) => ({
+      ...current,
+      appointments: (current.appointments ?? []).map((item) =>
+        item.id === id
+          ? { ...item, scores: item.scores.map((score, scoreIndex) => scoreIndex === index ? { ...score, ...patch } : score) }
+          : item
+      ),
+    }));
+  }
+
+  function removeAppointment(id: string) {
+    setLocal((current) => ({
+      ...current,
+      appointments: (current.appointments ?? []).map((item) => item.id === id ? { ...item, isDeleted: true } : item),
+    }));
+    setOpenAppointmentId((current) => current === id ? undefined : current);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -952,6 +988,12 @@ function CoachingDossierDetail({
         description={`${formatShortDate(local.plannedDate)} · ${local.startTime ?? ""}-${local.endTime ?? ""} · ${reportingUserName(local.ownerId)}`}
       />
       {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{message}</div>}
+
+      <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
+        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Totale begeleiding</p>
+        <p className="mt-1 text-3xl font-black text-brand-950">{formatPercentage(totalCoachingScore)}</p>
+        <p className="mt-1 text-sm text-brand-800">Automatisch berekend uit 80% afspraken en 20% hoofdformulier.</p>
+      </section>
 
       <section className="card p-5 sm:p-6">
         <h2 className="text-lg font-bold text-slate-950">Algemene gegevens</h2>
@@ -988,17 +1030,38 @@ function CoachingDossierDetail({
       <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-slate-950">Afspraken</h2>
-          {!readOnly && <button type="button" className="btn-secondary" onClick={() => setLocal((current) => ({ ...current, appointments: [...(current.appointments ?? []), emptyAppointment()] }))}><Plus className="h-4 w-4" /> Afspraak toevoegen</button>}
+          {!readOnly && <button type="button" className="btn-secondary" onClick={addAppointment}><Plus className="h-4 w-4" /> Afspraak toevoegen</button>}
         </div>
         <div className="mt-4 space-y-3">
           {appointments.map((appointment, index) => (
             <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Afspraak {index + 1}</p>
+                  <h3 className="mt-1 text-lg font-bold text-slate-950">{appointment.customer || "Nieuwe afspraak"}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{appointment.arrivalTime || "--:--"} - {appointment.departureTime || "--:--"} · Gemiddelde score: {formatAppointmentAverage(appointment)} / 5</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId((current) => current === appointment.id ? undefined : appointment.id)}>
+                    {openAppointmentId === appointment.id ? "Sluiten" : "Openen"}
+                  </button>
+                  {!readOnly && <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId(appointment.id)}>Wijzigen</button>}
+                  {!readOnly && <button type="button" className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50" onClick={() => removeAppointment(appointment.id)}>Verwijderen</button>}
+                </div>
+              </div>
+              {openAppointmentId === appointment.id && (
+                <AppointmentEditor
+                  appointment={appointment}
+                  readOnly={readOnly}
+                  onChange={(patch) => updateAppointment(appointment.id, patch)}
+                  onScoreChange={(scoreIndex, patch) => updateAppointmentScore(appointment.id, scoreIndex, patch)}
+                />
+              )}
+              <div className="hidden">
                 <TextField label="Klant" value={appointment.customer} disabled={readOnly} onChange={(customer) => setLocal((current) => ({ ...current, appointments: current.appointments!.map((item) => item.id === appointment.id ? { ...item, customer } : item) }))} />
                 <ReadOnlyField label="Type" value={`${appointment.relationType} · ${appointment.appointmentType}`} />
                 <TextField label="Activiteit" value={appointment.activity} disabled={readOnly} onChange={(activity) => setLocal((current) => ({ ...current, appointments: current.appointments!.map((item) => item.id === appointment.id ? { ...item, activity } : item) }))} />
               </div>
-              <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-brand-700">Afspraak {index + 1}: scores worden bewaard voor rapportage en latere PDF-export.</p>
             </div>
           ))}
           {appointments.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Nog geen afspraken toegevoegd.</p>}
@@ -1062,6 +1125,89 @@ function ScoreSection({ title, scores, readOnly, onChange }: { title: string; sc
       </div>
     </section>
   );
+}
+
+function AppointmentEditor({
+  appointment,
+  readOnly,
+  onChange,
+  onScoreChange,
+}: {
+  appointment: CoachingAppointment;
+  readOnly: boolean;
+  onChange: (patch: Partial<CoachingAppointment>) => void;
+  onScoreChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void;
+}) {
+  const options = [1, 2, 3, 4, 5, "nvt"] as const;
+  return (
+    <div className="mb-4 rounded-2xl border border-brand-100 bg-white p-4">
+      <div className="grid gap-3 md:grid-cols-5">
+        <TextField label="Klantnaam" value={appointment.customer} disabled={readOnly} onChange={(customer) => onChange({ customer })} />
+        <TextField label="Klantnummer" value={appointment.customerNumber ?? ""} disabled={readOnly} onChange={(customerNumber) => onChange({ customerNumber })} />
+        <TextField label="Plaats" value={appointment.place ?? ""} disabled={readOnly} onChange={(place) => onChange({ place })} />
+        <TextField label="Startuur" type="time" value={appointment.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => onChange({ arrivalTime })} />
+        <TextField label="Einduur" type="time" value={appointment.departureTime} disabled={readOnly} onChange={(departureTime) => onChange({ departureTime })} />
+      </div>
+      <div className="mt-4 grid gap-3">
+        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Beoordeling afspraak</p>
+        {appointment.scores.map((score, index) => (
+          <div key={`${score.criterion}-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(180px,1fr)_260px_minmax(220px,1fr)] lg:items-center">
+            <p className="text-sm font-semibold text-slate-900">{score.criterion}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => onScoreChange(index, { score: option })}
+                  className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${score.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}
+                >
+                  {option === "nvt" ? "NVT" : option}
+                </button>
+              ))}
+            </div>
+            <input className="field" disabled={readOnly} placeholder="Opmerking per criterium" value={score.comment} onChange={(event) => onScoreChange(index, { comment: event.target.value })} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function numericScore(value: 0 | 1 | 2 | 3 | 4 | 5 | "nvt") {
+  return value === "nvt" ? undefined : value;
+}
+
+function averageFive(scores: { score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt" }[]) {
+  const values: number[] = scores.flatMap((item) => {
+    const score = numericScore(item.score);
+    return score === undefined ? [] : [score];
+  });
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
+}
+
+function formatAppointmentAverage(appointment: { scores: { score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt" }[] }) {
+  const average = averageFive(appointment.scores);
+  return average === undefined ? "-" : average.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
+}
+
+function calculateTotalCoachingScore(dossier: CoachingDossier, appointments: CoachingAppointment[]) {
+  const appointmentAverages = appointments.flatMap((appointment) => {
+    const average = averageFive(appointment.scores);
+    return average === undefined ? [] : [average];
+  });
+  const appointmentScore = appointmentAverages.length
+    ? appointmentAverages.reduce((sum, value) => sum + value, 0) / appointmentAverages.length
+    : undefined;
+  const mainScore = averageFive([...dossier.generalScores, ...dossier.personalityScores]);
+  if (appointmentScore === undefined && mainScore === undefined) return undefined;
+  if (appointmentScore === undefined) return (mainScore ?? 0) * 20;
+  if (mainScore === undefined) return appointmentScore * 20;
+  return (appointmentScore * 20 * 0.8) + (mainScore * 20 * 0.2);
+}
+
+function formatPercentage(value?: number) {
+  return value === undefined ? "-" : `${Math.round(value)}%`;
 }
 
 function InterventionList({ kind }: { kind: string }) {
@@ -1220,7 +1366,8 @@ function workflowCoachingAsHistory(
   previous?: HistoricalCoaching
 ): HistoricalCoaching {
   const scoreByFocus = new Map<string, number[]>();
-  for (const score of intervention.scores) {
+  const appointmentCriterionScores = appointmentScoresAsCriterionScores(intervention.appointments ?? []);
+  for (const score of appointmentCriterionScores.length ? [] : intervention.scores) {
     if (score.value === "NVT") continue;
     scoreByFocus.set(score.focus, [...(scoreByFocus.get(score.focus) ?? []), score.value]);
   }
@@ -1242,10 +1389,33 @@ function workflowCoachingAsHistory(
     focusNames: intervention.focusNames,
     phaseScores,
     generalScores: previous?.generalScores ?? [],
-    criterionScores: intervention.scores
-      .filter((score) => score.value !== "NVT")
-      .map((score) => ({ focus: score.focus, criterion: score.criterion, score: score.value as number })),
+    criterionScores: appointmentCriterionScores.length
+      ? appointmentCriterionScores
+      : intervention.scores
+        .filter((score) => score.value !== "NVT")
+        .map((score) => ({ focus: score.focus, criterion: score.criterion, score: score.value as number })),
   };
+}
+
+function appointmentScoresAsCriterionScores(appointments: NonNullable<ReturnType<typeof useWorkflow>["state"]["interventions"][number]["appointments"]>) {
+  const grouped = new Map<string, { focus: string; criterion: string; values: number[] }>();
+  for (const appointment of appointments.filter((item) => !item.isDeleted)) {
+    for (const score of appointment.scores) {
+      const value = numericScore(score.score);
+      if (value === undefined) continue;
+      const [focus, ...criterionParts] = score.criterion.split(" - ");
+      const criterion = criterionParts.join(" - ") || score.criterion;
+      const key = `${focus}::${criterion}`;
+      const current = grouped.get(key) ?? { focus, criterion, values: [] };
+      current.values.push(value * 20);
+      grouped.set(key, current);
+    }
+  }
+  return [...grouped.values()].map((item) => ({
+    focus: item.focus,
+    criterion: item.criterion,
+    score: Math.round(item.values.reduce((sum, value) => sum + value, 0) / item.values.length),
+  }));
 }
 
 function ActionPoints() {

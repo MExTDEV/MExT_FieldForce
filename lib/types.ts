@@ -197,6 +197,8 @@ export type CoachingSimpleScore = {
 export type CoachingAppointment = {
   id: string;
   customer: string;
+  customerNumber?: string;
+  place?: string;
   relationType: "prospect" | "klant";
   appointmentType: "vast" | "rood";
   arrivalTime: string;
