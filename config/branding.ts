@@ -3,7 +3,7 @@ export const branding = {
   fullAppName: "MExT FieldForce",
   slogan: "Grow. Coach. Perform.",
   description: "Sales coaching, opvolging en ontwikkeling in een centrale workflow.",
-  logoPath: "/assets/fieldforce-logo.png",
+  logoPath: "/assets/fieldforce-logo-tight.png",
   logoMarkPath: "/assets/fieldforce-mark.png",
   primaryColor: "#003B83",
 } as const;

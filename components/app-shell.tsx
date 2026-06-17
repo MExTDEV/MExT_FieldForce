@@ -100,14 +100,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         ) : (
           <div className="min-w-0">
-            <div className="flex h-14 w-[212px] items-center justify-center overflow-hidden rounded-xl bg-white px-1.5 py-1 shadow-sm">
+            <div className="flex h-14 w-[220px] items-center justify-center overflow-hidden rounded-xl bg-white px-1.5 py-1 shadow-sm">
               <Image
                 src={branding.logoPath}
                 alt={branding.fullAppName}
                 width={1774}
                 height={887}
                 priority
-                className="h-[52px] w-full object-contain"
+                className="h-full w-full object-contain"
               />
             </div>
             <p className="mt-1.5 text-center text-[11px] font-semibold tracking-[0.14em] text-blue-100">

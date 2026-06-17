@@ -8,7 +8,8 @@ import {
 } from "@/lib/modules";
 import type { AppModuleCode, AppModuleConfig } from "@/lib/types";
 
-const STORAGE_KEY = "mext:app-modules:v1";
+const LEGACY_STORAGE_KEYS = ["mext:app-modules:v1"];
+const STORAGE_KEY = "mext:app-modules:v2";
 
 type ModuleContextValue = {
   modules: AppModuleConfig[];
@@ -27,6 +28,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
   const [modules, setModules] = useState<AppModuleConfig[]>(defaultAppModules);
 
   useEffect(() => {
+    LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) {
       persist(defaultAppModules);
