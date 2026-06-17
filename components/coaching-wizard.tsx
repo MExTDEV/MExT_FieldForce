@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
   CheckCircle2,
   ClipboardCheck,
@@ -18,8 +16,8 @@ import {
 import { ActionPointEditor, type EditableActionPoint } from "@/components/action-point-editor";
 import { PerformanceWheel } from "@/components/charts/PerformanceWheel";
 import { Avatar, EmptyState, PageHeader, Trend } from "@/components/ui";
-import { usePersonalCriteria } from "@/components/personal-criteria-provider";
 import { useModules } from "@/components/module-provider";
+import { usePersonalCriteria } from "@/components/personal-criteria-provider";
 import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import { actionPoints, coachingFramework, representatives } from "@/lib/mock-data";
@@ -54,10 +52,6 @@ type Draft = {
 const steps = [
   "Vertegenwoordiger",
   "Voorbereiding",
-  "Focus",
-  "Criteria",
-  "Scoren",
-  "Actiepunten",
   "Afronden",
 ];
 
@@ -67,7 +61,6 @@ export function CoachingWizard() {
   const editId = searchParams.get("id");
   const { user } = useSession();
   const { state, saveCoachingStatus, finalizeCoaching } = useWorkflow();
-  const personalCriteria = usePersonalCriteria();
   const { isModuleEnabled } = useModules();
   const available = representatives.filter((representative) => canAccessRepresentative(user, representative));
   const existing = editId ? state.interventions.find((item) => {
@@ -88,7 +81,7 @@ export function CoachingWizard() {
   });
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string>();
-  const [completedFor, setCompletedFor] = useState<string>();
+  const [, setCompletedFor] = useState<string>();
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -100,50 +93,16 @@ export function CoachingWizard() {
       startTime: existing.startTime ?? "09:00",
       endTime: existing.endTime ?? "11:00",
       notifyRepresentative: existing.notifyRepresentative ?? false,
-      focusNames: existing.focusNames,
-      scores: Object.fromEntries(existing.scores.map((score) => [scoreKeyFromStoredScore(score), score.value])),
-      actions: existing.actionPoints.map((action) => ({
-        title: action.title,
-        type: action.type,
-        due: action.due,
-      })),
+      focusNames: [],
+      scores: {},
+      actions: [],
     });
     setLoadedId(existing.id);
   }, [existing, loadedId]);
 
   const representative = representatives.find((item) => item.id === draft.representativeId);
-  const selectedFocus = coachingFramework.filter((focus) => draft.focusNames.includes(focus.name));
-  const representativePersonalCriteria = useMemo(
-    () => representative
-      ? personalCriteria.activeForRepresentative(user, representative.id)
-      : [],
-    [personalCriteria, representative, user]
-  );
-  const criteria = useMemo<ScoreCriterion[]>(
-    () => selectedFocus.flatMap((focus) => {
-      const fixed = focus.criteria.map((criterion, index) => ({
-        key: fixedScoreKey(focus.name, criterion),
-        focus: focus.name,
-        criterion,
-        previousScore: [75, 50, 100, 75, 25][index % 5],
-        kind: "fixed" as const,
-      }));
-      const personal = representativePersonalCriteria
-        .filter((criterion) => criterion.focusName === focus.name)
-        .map((criterion, index) => ({
-          key: personalScoreKey(criterion.id),
-          focus: focus.name,
-          criterion: criterion.title,
-          previousScore: [50, 75, 50][index % 3],
-          kind: "personal" as const,
-          criterionId: criterion.id,
-          description: criterion.description,
-        }));
-      return [...fixed, ...personal];
-    }),
-    [selectedFocus, representativePersonalCriteria]
-  );
-  const scoredCount = criteria.filter((item) => draft.scores[item.key] !== undefined).length;
+  const criteria: ScoreCriterion[] = [];
+  const scoredCount = 0;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -161,35 +120,6 @@ export function CoachingWizard() {
     return <EmptyState title="Geen rechten om een begeleiding te maken" description="Een begeleiding kan in deze fase worden aangemaakt door een verkoopleider of Super Admin." />;
   }
 
-  function toggleFocus(name: string) {
-    setDraft((current) => {
-      const focusNames = current.focusNames.includes(name)
-        ? current.focusNames.filter((item) => item !== name)
-        : [...current.focusNames, name];
-      const allowedCriteria = new Set(
-        [
-          ...coachingFramework
-            .filter((focus) => focusNames.includes(focus.name))
-            .flatMap((focus) => focus.criteria.map((criterion) => fixedScoreKey(focus.name, criterion))),
-          ...representativePersonalCriteria
-            .filter((criterion) => focusNames.includes(criterion.focusName))
-            .map((criterion) => personalScoreKey(criterion.id)),
-        ]
-      );
-      return {
-        ...current,
-        focusNames,
-        scores: Object.fromEntries(
-          Object.entries(current.scores).filter(([criterion]) => allowedCriteria.has(criterion))
-        ),
-      };
-    });
-  }
-
-  function setScore(criterion: string, score: ScoreValue) {
-    setDraft((current) => ({ ...current, scores: { ...current.scores, [criterion]: score } }));
-  }
-
   function workflowInput() {
     return {
       id: draft.id,
@@ -199,32 +129,25 @@ export function CoachingWizard() {
       startTime: draft.startTime,
       endTime: draft.endTime,
       notifyRepresentative: draft.notifyRepresentative,
-      focusNames: draft.focusNames,
-      scores: criteria
-        .filter((item) => draft.scores[item.key] !== undefined)
-        .map((item) => ({
-          criterion: item.criterion,
-          focus: item.focus,
-          value: draft.scores[item.key],
-          previousScore: item.previousScore,
-          criterionKind: item.kind,
-          criterionId: item.criterionId,
-          description: item.description,
-        })),
-      actionPoints: draft.actions,
+      focusNames: [],
+      scores: [],
+      actionPoints: [],
     };
   }
 
-  function handleSaveConcept() {
+  function handleSchedule() {
     setError(undefined);
     if (!draft.representativeId) {
       setError("Selecteer eerst een vertegenwoordiger.");
       return;
     }
-    const intervention = saveCoachingStatus(workflowInput(), "gepland");
-    router.push(`/begeleidingen/nieuw?id=${intervention.id}`);
-    setDraft((current) => ({ ...current, id: intervention.id }));
+    saveCoachingStatus(workflowInput(), "gepland");
     setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+    router.push("/begeleidingen");
+  }
+
+  function handleCancel() {
+    router.push("/dashboard");
   }
 
   function handleFinalize() {
@@ -242,34 +165,12 @@ export function CoachingWizard() {
     setCompletedFor(`${representative.firstName} ${representative.lastName}`);
   }
 
-  if (completedFor) {
-    return (
-      <div className="mx-auto max-w-2xl">
-        <div className="card p-8 text-center sm:p-12">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
-            <CheckCircle2 className="h-8 w-8" />
-          </div>
-          <p className="eyebrow mt-6">Begeleiding gefinaliseerd</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-950">De reflectietaak staat klaar</h1>
-          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">
-            Begeleiding gefinaliseerd. De vertegenwoordiger kan nu zijn reflectie invullen.
-          </p>
-          <p className="mt-2 text-sm font-semibold text-slate-700">{completedFor}</p>
-          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/begeleidingen" className="btn-primary">Naar begeleidingen</Link>
-            <Link href="/dashboard" className="btn-secondary">Dashboard</Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow={draft.id ? "Concept verderzetten" : "Nieuwe interventie"}
         title="Nieuwe begeleiding"
-        description="Werk focusgestuurd. Alleen gekozen fasen en criteria verschijnen in het verslag."
+        description="Bereid het coachingsmoment voor, plan het in en vul de evaluatie later in tijdens de effectieve begeleiding."
         actions={
           <span className="flex items-center gap-2 text-xs font-medium text-slate-400">
             <Save className="h-4 w-4" />
@@ -279,7 +180,7 @@ export function CoachingWizard() {
       />
 
       <div className="card overflow-x-auto p-3">
-        <div className="flex min-w-[860px] items-center">
+        <div className="flex min-w-[520px] items-center">
           {steps.map((label, index) => {
             const number = index + 1;
             const done = number < step;
@@ -317,22 +218,12 @@ export function CoachingWizard() {
           />
         )}
         {step === 2 && representative && <PreparationStep representative={representative} />}
-        {step === 3 && <FocusStep selected={draft.focusNames} onToggle={toggleFocus} />}
-        {step === 4 && <CriteriaStep selectedFocus={selectedFocus} personalCriteria={representativePersonalCriteria} />}
-        {step === 5 && <ScoreStep criteria={criteria} scores={draft.scores} onScore={setScore} />}
-        {step === 6 && (
-          <ActionsStep
-            actions={draft.actions}
-            onChange={(actions) => setDraft((current) => ({ ...current, actions }))}
-          />
-        )}
-        {step === 7 && representative && (
+        {step === 3 && representative && (
           <SummaryStep
             representative={representative}
-            selectedFocus={draft.focusNames}
-            scoreCount={scoredCount}
-            totalCriteria={criteria.length}
-            actionCount={draft.actions.filter((item) => item.title.trim()).length}
+            plannedDate={draft.plannedDate}
+            startTime={draft.startTime}
+            endTime={draft.endTime}
           />
         )}
       </div>
@@ -342,29 +233,27 @@ export function CoachingWizard() {
           <ArrowLeft className="h-4 w-4" /> Vorige
         </button>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button type="button" onClick={handleSaveConcept} className="btn-secondary">
-            <Save className="h-4 w-4" /> Inplannen
-          </button>
-          {step < 7 ? (
+          {step < steps.length ? (
             <button
               type="button"
               onClick={() => {
                 setError(undefined);
-                setStep((current) => Math.min(7, current + 1));
+                setStep((current) => Math.min(steps.length, current + 1));
               }}
-              disabled={
-                (step === 1 && !draft.representativeId) ||
-                (step === 3 && draft.focusNames.length === 0) ||
-                (step === 5 && scoredCount !== criteria.length)
-              }
+              disabled={step === 1 && !draft.representativeId}
               className="btn-primary"
             >
-              Volgende <ArrowRight className="h-4 w-4" />
+              Volgende
             </button>
           ) : (
-            <button type="button" onClick={handleFinalize} className="btn-primary">
-              <CheckCircle2 className="h-4 w-4" /> Finaliseren
-            </button>
+            <>
+              <button type="button" onClick={handleCancel} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50">
+                Annuleren
+              </button>
+              <button type="button" onClick={handleSchedule} className="btn-primary">
+                <Save className="h-4 w-4" /> Inplannen
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -447,6 +336,7 @@ function PreparationStep({ representative }: { representative: (typeof represent
   const wheelRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string>();
+  const [activeTab, setActiveTab] = useState<"algemeen" | "prestatiecirkel" | "scoretabellen">("algemeen");
 
   async function handlePreparationExport() {
     setExportError(undefined);
@@ -478,19 +368,37 @@ function PreparationStep({ representative }: { representative: (typeof represent
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <StepHeading icon={ClipboardCheck} title={`Voorbereiding voor ${representative.firstName}`} description="Recente resultaten en afspraken geven richting aan de focus van vandaag." />
+        <StepHeading icon={ClipboardCheck} title="Voorbereiding vertegenwoordiger" description={`Recente resultaten en afspraken geven richting aan de begeleiding van ${representative.firstName}.`} />
         <button type="button" onClick={handlePreparationExport} disabled={isExporting} className="btn-secondary whitespace-nowrap">
           <Save className="h-4 w-4" />
           {isExporting ? "PDF wordt aangemaakt..." : "Voorbereiding exporteren"}
         </button>
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        {[
+          { key: "algemeen", label: "Algemeen" },
+          { key: "prestatiecirkel", label: "Prestatiecirkel" },
+          { key: "scoretabellen", label: "Scoretabellen" },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key as typeof activeTab)}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              activeTab === tab.key ? "bg-brand-700 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-brand-50 hover:text-brand-800"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className={activeTab === "algemeen" ? "mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" : "hidden"}>
         <SummaryCard label="Niveau" value={representative.level} detail="Huidig ontwikkelniveau" />
         <SummaryCard label="Team" value={representative.team} detail={representative.country} />
         <SummaryCard label="Laatste begeleiding" value={representative.lastCoaching} detail="Meest recente coachingmoment" />
         <SummaryCard label="Open actiepunten" value={`${representative.openActions}`} detail="Actief in opvolging" />
       </div>
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className={activeTab === "algemeen" ? "mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4" : "hidden"}>
         {representative.kpis.map((kpi) => (
           <div key={kpi.label} className="rounded-2xl border border-slate-200 p-5">
             <div className="flex justify-between">
@@ -502,7 +410,7 @@ function PreparationStep({ representative }: { representative: (typeof represent
           </div>
         ))}
       </div>
-      <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+      <div className={activeTab === "algemeen" ? "mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5" : "hidden"}>
         <div className="flex items-start gap-3">
           <Target className="mt-0.5 h-5 w-5 text-amber-700" />
           <div>
@@ -515,17 +423,21 @@ function PreparationStep({ representative }: { representative: (typeof represent
           </div>
         </div>
       </div>
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      <section className={activeTab === "algemeen" ? "hidden" : "mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-slate-950">Vorige prestatiecirkel</h3>
-            <p className="mt-1 text-sm text-slate-500">Overzicht van de scores tijdens het vorige coachingmoment.</p>
+            <h3 className="text-lg font-bold text-slate-950">{activeTab === "prestatiecirkel" ? "Prestatiecirkel" : "Scoretabellen"}</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {activeTab === "prestatiecirkel"
+                ? "Huidige meting tegenover de vorige begeleiding, inclusief vergelijkingskleuren en legenda."
+                : "Huidige scores, vorige scores, verschillen en kleurcodering."}
+            </p>
           </div>
           {latestCoaching && <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-700">{formatIsoDate(latestCoaching.date)}</span>}
         </div>
         {previousWheelData && latestCoaching ? (
           <div className="mt-5 space-y-5">
-            <div ref={wheelRef} className="mx-auto max-w-4xl">
+            <div ref={wheelRef} className={activeTab === "prestatiecirkel" ? "mx-auto max-w-4xl" : "hidden"}>
               <PerformanceWheel
                 representativeId={representative.id}
                 currentInterventionId={latestCoaching.id}
@@ -538,7 +450,7 @@ function PreparationStep({ representative }: { representative: (typeof represent
                 Hoe verder een score naar buiten ligt, hoe sterker de prestatie.
               </p>
             </div>
-            <PreparationScoreOverview criteria={previousWheelData.criteria} coachingDate={latestCoaching.date} />
+            {activeTab === "scoretabellen" && <PreparationScoreOverview criteria={previousWheelData.criteria} coachingDate={latestCoaching.date} />}
           </div>
         ) : (
           <EmptyState title="Nog geen vorige prestatiecirkel beschikbaar." description="Zodra er een afgeronde begeleiding is, verschijnt hier de vorige prestatiecirkel met scoredetails." />
@@ -972,28 +884,26 @@ function ActionsStep({
 
 function SummaryStep({
   representative,
-  selectedFocus,
-  scoreCount,
-  totalCriteria,
-  actionCount,
+  plannedDate,
+  startTime,
+  endTime,
 }: {
   representative: (typeof representatives)[number];
-  selectedFocus: string[];
-  scoreCount: number;
-  totalCriteria: number;
-  actionCount: number;
+  plannedDate: string;
+  startTime: string;
+  endTime: string;
 }) {
   return (
     <div>
-      <StepHeading icon={CheckCircle2} title="Controleer en rond af" description="Bewaar als concept of finaliseer en stuur automatisch een reflectietaak naar de vertegenwoordiger." />
+      <StepHeading icon={CheckCircle2} title="Controleer en plan in" description="De begeleiding wordt ingepland. Evaluatie, scores, criteria en actiepunten vul je later in tijdens de effectieve begeleiding." />
       <div className="mt-7 grid gap-4 md:grid-cols-2">
         <SummaryCard label="Vertegenwoordiger" value={`${representative.firstName} ${representative.lastName}`} detail={`${representative.team} · ${representative.country}`} />
-        <SummaryCard label="Focus" value={`${selectedFocus.length} fasen`} detail={selectedFocus.join(", ")} />
-        <SummaryCard label="Scores" value={`${scoreCount} van ${totalCriteria}`} detail="Alle gekozen criteria zijn beoordeeld" />
-        <SummaryCard label="Actiepunten" value={`${actionCount} afspraken`} detail="Direct zichtbaar in de opvolging" />
+        <SummaryCard label="Datum" value={formatIsoDate(plannedDate)} detail={`${startTime} - ${endTime}`} />
+        <SummaryCard label="Status na inplannen" value="Gepland" detail="Zichtbaar in Planning en Begeleidingen" />
+        <SummaryCard label="Volgende stap" value="Begeleiden" detail="Afspraken, scores en actiepunten worden in het dossier geregistreerd" />
       </div>
       <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-900">
-        <strong>Bij finaliseren:</strong> status wordt Wacht op VT en er ontstaat automatisch een reflectie met status Niet gestart.
+        <strong>Flow:</strong> Voorbereiden → Inplannen → Begeleiden → Evalueren.
       </div>
     </div>
   );
