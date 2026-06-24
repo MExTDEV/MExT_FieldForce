@@ -1,6 +1,6 @@
 import type { ReportingDataset, ReportingIntervention } from "@/lib/reporting";
 import { reportingLeaderForTeam } from "@/lib/reporting";
-import type { Representative, WorkflowState } from "@/lib/types";
+import type { ManagedUser, Representative, WorkflowState } from "@/lib/types";
 
 export type RiskLevel = "green" | "orange" | "red";
 
@@ -69,7 +69,8 @@ export type SmartCoachingResult = {
 export function buildSmartCoaching(
   dataset: ReportingDataset,
   state: WorkflowState,
-  referenceDate = currentDateKey()
+  referenceDate = currentDateKey(),
+  users: ManagedUser[] = []
 ): SmartCoachingResult {
   const insights = dataset.representatives
     .map((representative) => analyzeRepresentative(representative, dataset, state, referenceDate))
@@ -77,7 +78,7 @@ export function buildSmartCoaching(
 
   return {
     insights,
-    heatmap: buildTeamHeatmap(dataset, insights),
+    heatmap: buildTeamHeatmap(dataset, insights, users),
     trends: buildCoachingTrends(dataset, state),
     alerts: buildManagementAlerts(dataset, state, insights, referenceDate),
   };
@@ -294,7 +295,8 @@ function buildRecommendations({
 
 function buildTeamHeatmap(
   dataset: ReportingDataset,
-  insights: RepresentativeCoachingInsight[]
+  insights: RepresentativeCoachingInsight[],
+  users: ManagedUser[]
 ): TeamHeatmapRow[] {
   const teams = [...new Map(dataset.representatives.map((item) => [item.teamId, item.team])).entries()];
   return teams.map(([teamId, team]) => {
@@ -322,7 +324,7 @@ function buildTeamHeatmap(
       teamId,
       team,
       country: representatives[0]?.country ?? "",
-      leader: reportingLeaderForTeam(teamId)?.name ?? "Niet toegewezen",
+      leader: reportingLeaderForTeam(teamId, users)?.name ?? "Niet toegewezen",
       openActionCount,
       interventionCount,
       riskUserCount,

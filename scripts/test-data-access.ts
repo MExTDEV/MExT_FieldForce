@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import {
   getVisibleRepresentatives,
   getVisibleWorkflowState,
-  visibleStaticInterventions,
 } from "../lib/data-access";
 import { mockUsers, representatives } from "../lib/mock-data";
 import type { MockUser, WorkflowState } from "../lib/types";
@@ -20,34 +19,24 @@ const countryManagerBe: MockUser = {
 };
 
 assert.deepEqual(
-  getVisibleRepresentatives(jonas).map((item) => item.id),
+  getVisibleRepresentatives(jonas, representatives).map((item) => item.id),
   ["rep-1"],
   "Jonas mag uitsluitend zichzelf zien."
 );
 assert.ok(
-  getVisibleRepresentatives(sophie).every((item) => item.teamId === "be-1"),
+  getVisibleRepresentatives(sophie, representatives).every((item) => item.teamId === "be-1"),
   "Een verkoopleider mag uitsluitend het eigen team zien."
 );
 assert.ok(
-  getVisibleRepresentatives(countryManagerBe).every(
+  getVisibleRepresentatives(countryManagerBe, representatives).every(
     (item) => item.country === "BE"
   ),
   "Een Country Manager mag uitsluitend het eigen land zien."
 );
 assert.equal(
-  getVisibleRepresentatives(superAdmin).length,
+  getVisibleRepresentatives(superAdmin, representatives).length,
   representatives.length,
   "Een Super Admin moet alle vertegenwoordigers zien."
-);
-
-const jonasStaticNames = visibleStaticInterventions(jonas).map(
-  (item) => item.person
-);
-assert.ok(
-  jonasStaticNames.every(
-    (name) => name === "Jonas Peeters" || name === "BE Team 1"
-  ),
-  "Jonas mag in statische dashboardmomenten geen collega bij naam zien."
 );
 
 const state: WorkflowState = {
@@ -83,12 +72,12 @@ const state: WorkflowState = {
 };
 
 assert.deepEqual(
-  getVisibleWorkflowState(jonas, state).salesTrainings[0]?.participantIds,
+  getVisibleWorkflowState(jonas, state, representatives).salesTrainings[0]?.participantIds,
   ["rep-1"],
   "Een vertegenwoordiger mag geen participant-ids van collega's ontvangen."
 );
 assert.deepEqual(
-  getVisibleWorkflowState(sophie, state).salesTrainings[0]?.participantIds,
+  getVisibleWorkflowState(sophie, state, representatives).salesTrainings[0]?.participantIds,
   ["rep-1", "rep-2"],
   "Een verkoopleider mag alleen deelnemers uit het eigen team ontvangen."
 );

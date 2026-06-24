@@ -11,9 +11,9 @@ import {
   Target,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
+import { useRepresentatives } from "@/components/representatives-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui";
-import { representatives } from "@/lib/mock-data";
 import type { ApprovalStatus } from "@/lib/types";
 
 export function MyReflectionsPage({ id }: { id?: string }) {
@@ -266,6 +266,7 @@ function ReportDetail({
 }) {
   const [choice, setChoice] = useState<ApprovalStatus>("gelezen_akkoord");
   const [comment, setComment] = useState("");
+  const { representatives } = useRepresentatives();
   const representative = representatives.find((item) => item.id === intervention.representativeId);
   const valid = choice === "gelezen_akkoord" || comment.trim().length >= 3;
 

@@ -29,7 +29,21 @@ const state: WorkflowState = {
   salesTrainings: [],
 };
 
-const dataset = buildReportingDataset(state);
+const baseDataset = buildReportingDataset(state, representatives);
+const dataset = {
+  ...baseDataset,
+  kpis: [
+    ...baseDataset.kpis,
+    {
+      representativeId: "rep-3",
+      kpi: "PV %",
+      previousValue: "82%",
+      currentValue: "74%",
+      target: "80%",
+      trend: -1,
+    },
+  ],
+};
 const referenceDate = "2026-06-11";
 const result = buildSmartCoaching(dataset, state, referenceDate);
 const starter = analyzeRepresentative(

@@ -15,9 +15,10 @@ import {
   X,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
+import { usePerformance } from "@/components/performance-provider";
+import { useRepresentatives } from "@/components/representatives-provider";
 import { EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { useWorkflow } from "@/components/workflow-provider";
-import { representatives } from "@/lib/mock-data";
 import {
   buildReportingDataset,
   emptyReportingFilters,
@@ -55,17 +56,22 @@ const reportLinks: { section: ReportSection; label: string }[] = [
 ];
 
 export function ReportingDashboard({ section = "overzicht" }: { section?: string }) {
-  const { user } = useSession();
+  const { user, managedUsers } = useSession();
   const { state } = useWorkflow();
+  const { representatives } = useRepresentatives();
+  const { dataset: performanceDataset, error: performanceError } = usePerformance();
   const [filters, setFilters] = useState<ReportingFilters>(emptyReportingFilters);
   const normalizedSection = reportLinks.some((item) => item.section === section)
     ? section as ReportSection
     : "overzicht";
-  const dataset = useMemo(() => buildReportingDataset(state), [state]);
-  const scope = useMemo(() => scopedRepresentatives(user), [user]);
+  const dataset = useMemo(
+    () => buildReportingDataset(state, representatives, performanceDataset, managedUsers),
+    [managedUsers, performanceDataset, representatives, state]
+  );
+  const scope = useMemo(() => scopedRepresentatives(user, representatives), [representatives, user]);
   const filtered = useMemo(
-    () => filterReportingDataset(dataset, scope, filters),
-    [dataset, filters, scope]
+    () => filterReportingDataset(dataset, scope, filters, managedUsers),
+    [dataset, filters, managedUsers, scope]
   );
 
   if (user.role === "REPRESENTATIVE") {
@@ -88,6 +94,7 @@ export function ReportingDashboard({ section = "overzicht" }: { section?: string
         )}
       />
       <ReportNavigation active={normalizedSection} />
+      {performanceError && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
       <ReportFilterBar
         filters={filters}
         onChange={setFilters}
@@ -136,13 +143,14 @@ function ReportFilterBar({
   scope: Representative[];
   userRole: string;
 }) {
+  const { managedUsers } = useSession();
   const countries = [...new Set(scope.map((item) => item.country))];
   const teams = [...new Map(
     scope
       .filter((item) => !filters.country || item.country === filters.country)
       .map((item) => [item.teamId, item.team])
   ).entries()];
-  const leaders = reportingLeaders.filter((leader) =>
+  const leaders = reportingLeaders(managedUsers).filter((leader) =>
     scope.some((representative) => leader.teamIds.includes(representative.teamId))
   );
   const levels = [...new Set(scope.map((item) => item.level))];
@@ -276,7 +284,7 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
             {openActions.filter((item) => isOverdue(item.due, item.status)).slice(0, 5).map((item) => (
               <div key={item.id} className="rounded-xl border border-rose-100 bg-rose-50 p-4">
                 <p className="font-semibold text-slate-900">{item.title}</p>
-                <p className="mt-1 text-xs text-rose-700">{representativeName(item.representativeId)} · deadline {formatDate(item.due)}</p>
+                <p className="mt-1 text-xs text-rose-700">{representativeName(dataset, item.representativeId)} · deadline {formatDate(item.due)}</p>
               </div>
             ))}
             {openActions.filter((item) => isOverdue(item.due, item.status)).length === 0 && <EmptyRow text="Geen achterstallige actiepunten binnen deze filters." />}
@@ -288,7 +296,8 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
 }
 
 function LeaderReport({ dataset }: { dataset: ReportingDataset }) {
-  const leaders = reportingLeaders.filter((leader) =>
+  const { managedUsers } = useSession();
+  const leaders = reportingLeaders(managedUsers).filter((leader) =>
     dataset.representatives.some((representative) => leader.teamIds.includes(representative.teamId))
   );
   return (
@@ -320,6 +329,7 @@ function LeaderReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function TeamReport({ dataset }: { dataset: ReportingDataset }) {
+  const { managedUsers } = useSession();
   const teams = [...new Map(dataset.representatives.map((item) => [item.teamId, item.team])).entries()];
   return (
     <ReportTable title="Rapport teams" subtitle="Capaciteit, interventies, opvolging en niveauverdeling">
@@ -333,7 +343,7 @@ function TeamReport({ dataset }: { dataset: ReportingDataset }) {
           const trend = average(dataset.kpis.filter((item) => ids.has(item.representativeId)).map((item) => item.trend));
           return (
             <tr key={teamId} className="border-t border-slate-100">
-              <Cell strong>{team}<span className="block text-xs font-normal text-slate-400">{reportingLeaderForTeam(teamId)?.name}</span></Cell>
+              <Cell strong>{team}<span className="block text-xs font-normal text-slate-400">{reportingLeaderForTeam(teamId, managedUsers)?.name}</span></Cell>
               <Cell>{reps.length}</Cell><Cell>{rows.length}</Cell><Cell>{actions.filter(isOpenAction).length}</Cell>
               <Cell alert={actions.some((item) => isOverdue(item.due, item.status))}>{actions.filter((item) => isOverdue(item.due, item.status)).length}</Cell>
               <Cell>{countType(rows, "hulpaanvraag")}</Cell>
@@ -381,6 +391,7 @@ function RepresentativeReport({ dataset, state }: { dataset: ReportingDataset; s
 }
 
 function ActionReport({ dataset }: { dataset: ReportingDataset }) {
+  const { managedUsers } = useSession();
   const [local, setLocal] = useState({ type: "", deadline: "", ownerId: "", representativeId: "" });
   const rows = dataset.actions.filter((item) =>
     (!local.type || item.type === local.type) &&
@@ -394,17 +405,17 @@ function ActionReport({ dataset }: { dataset: ReportingDataset }) {
       <LocalFilters>
         <select className="field" value={local.type} onChange={(event) => setLocal({ ...local, type: event.target.value })}><option value="">Alle types</option><option value="kpi">KPI</option><option value="vaardigheid">Vaardigheid</option><option value="gedrag">Gedrag</option></select>
         <input className="field" type="date" value={local.deadline} onChange={(event) => setLocal({ ...local, deadline: event.target.value })} title="Deadline tot en met" />
-        <select className="field" value={local.ownerId} onChange={(event) => setLocal({ ...local, ownerId: event.target.value })}><option value="">Alle eigenaars</option>{owners.map((id) => <option key={id} value={id}>{reportingUserName(id)}</option>)}</select>
+        <select className="field" value={local.ownerId} onChange={(event) => setLocal({ ...local, ownerId: event.target.value })}><option value="">Alle eigenaars</option>{owners.map((id) => <option key={id} value={id}>{reportingUserName(id, managedUsers)}</option>)}</select>
         <select className="field" value={local.representativeId} onChange={(event) => setLocal({ ...local, representativeId: event.target.value })}><option value="">Alle vertegenwoordigers</option>{dataset.representatives.map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select>
       </LocalFilters>
       <ReportTable title="Rapport actiepunten" subtitle={`${rows.length} actiepunten binnen de actieve filters`}>
         <thead><TableRowHead labels={["VT", "Actiepunt", "Type", "Gekoppelde KPI", "Start", "Doel", "Huidig", "Deadline", "Status", "Eigenaar", "Laatste update"]} /></thead>
         <tbody>{rows.map((item) => (
           <tr key={`${item.id}-${item.representativeId}`} className="border-t border-slate-100">
-            <Cell strong>{representativeName(item.representativeId)}</Cell><Cell>{item.title}</Cell><Cell>{item.type}</Cell>
+            <Cell strong>{representativeName(dataset, item.representativeId)}</Cell><Cell>{item.title}</Cell><Cell>{item.type}</Cell>
             <Cell>{item.linkedKpi || "—"}</Cell><Cell>{item.startValue}</Cell><Cell>{item.targetValue}</Cell><Cell>{item.currentValue}</Cell>
             <Cell alert={isOverdue(item.due, item.status)}>{formatDate(item.due)}</Cell><Cell><StatusBadge status={item.status} /></Cell>
-            <Cell>{reportingUserName(item.ownerId)}</Cell><Cell>{formatDate(item.updatedAt.slice(0, 10))}</Cell>
+            <Cell>{reportingUserName(item.ownerId, managedUsers)}</Cell><Cell>{formatDate(item.updatedAt.slice(0, 10))}</Cell>
           </tr>
         ))}</tbody>
       </ReportTable>
@@ -413,15 +424,16 @@ function ActionReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function InterventionReport({ dataset }: { dataset: ReportingDataset }) {
+  const { managedUsers } = useSession();
   return (
     <ReportTable title="Rapport interventies" subtitle={`${dataset.interventions.length} interventies binnen de actieve filters`}>
       <thead><TableRowHead labels={["Type", "Status", "VT / deelnemers", "Initiator", "Uitvoerder", "Land", "Team", "Datum", "Actiepunten", "Akkoordstatus"]} /></thead>
       <tbody>{dataset.interventions.map((item) => (
         <tr key={item.id} className="border-t border-slate-100">
           <Cell strong>{item.type.replaceAll("_", " ")}</Cell><Cell><StatusBadge status={item.status} /></Cell>
-          <Cell>{item.representativeIds.map(representativeName).join(", ")}</Cell>
-          <Cell>{reportingUserName(item.initiatorId)}</Cell><Cell>{reportingUserName(item.ownerId)}</Cell>
-          <Cell>{item.country}</Cell><Cell>{item.teamIds.map(teamName).join(", ")}</Cell><Cell>{formatDate(item.date)}</Cell>
+          <Cell>{item.representativeIds.map((id) => representativeName(dataset, id)).join(", ")}</Cell>
+          <Cell>{reportingUserName(item.initiatorId, managedUsers)}</Cell><Cell>{reportingUserName(item.ownerId, managedUsers)}</Cell>
+          <Cell>{item.country}</Cell><Cell>{item.teamIds.map((id) => teamName(dataset, id)).join(", ")}</Cell><Cell>{formatDate(item.date)}</Cell>
           <Cell>{item.actionCount}</Cell><Cell>{item.approvalStatus ? <StatusBadge status={item.approvalStatus} /> : "—"}</Cell>
         </tr>
       ))}</tbody>
@@ -532,28 +544,13 @@ function isOpenAction(item: ReportingAction) {
   return !["behaald", "niet_behaald", "geannuleerd"].includes(item.status);
 }
 
-function representativeName(id: string) {
-  const representative = buildRepresentativeLookup().get(id);
+function representativeName(dataset: ReportingDataset, id: string) {
+  const representative = dataset.representatives.find((item) => item.id === id);
   return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
 }
 
-function teamName(id: string) {
-  return buildRepresentativeLookupByTeam().get(id) ?? id;
-}
-
-let representativeLookup: Map<string, Representative> | undefined;
-let representativeTeamLookup: Map<string, string> | undefined;
-function buildRepresentativeLookup() {
-  if (!representativeLookup) {
-    representativeLookup = new Map(representatives.map((item) => [item.id, item]));
-  }
-  return representativeLookup;
-}
-function buildRepresentativeLookupByTeam() {
-  if (!representativeTeamLookup) {
-    representativeTeamLookup = new Map(representatives.map((item) => [item.teamId, item.team]));
-  }
-  return representativeTeamLookup;
+function teamName(dataset: ReportingDataset, id: string) {
+  return dataset.representatives.find((item) => item.teamId === id)?.team ?? id;
 }
 
 function formatDate(value: string) {

@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { signOut } from "next-auth/react";
 import {
   canAccessTechnicalManagement,
   canAccessUserManagement,
@@ -34,6 +35,7 @@ import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
 import { useModules } from "@/components/module-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
+import { useWorkflow } from "@/components/workflow-provider";
 import { branding } from "@/config/branding";
 import { appModuleRegistry } from "@/lib/modules";
 
@@ -71,10 +73,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, users, language, setLanguage, setUserId } = useSession();
   const { isModuleEnabled } = useModules();
+  const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const canSeeManagement = canAccessTechnicalManagement(user);
   const canSeeUsers = canAccessUserManagement(user);
+  const entraAuthMode = process.env.NEXT_PUBLIC_AUTH_MODE === "entra";
+  const demoUserSwitcherEnabled =
+    !entraAuthMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
   const activeModuleNav = appModuleRegistry
     .filter((module) => isModuleEnabled(module.code))
     .map((module) => ({
@@ -83,6 +89,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       icon: iconMap[module.icon as keyof typeof iconMap] ?? LayoutDashboard,
     }));
   const mainNav = [dashboardNav, ...activeModuleNav];
+
+  if (pathname === "/login") return <>{children}</>;
 
   const navigation = (
     <>
@@ -224,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </select>
             </label>
 
-            <label className="relative flex max-w-[220px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
+            <div className="relative flex max-w-[220px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
               <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-700 text-xs font-bold text-white">
                 {user.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}
               </div>
@@ -232,10 +240,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
                 <p className="truncate text-xs text-slate-500">{roleLabels[user.role]} · {user.country}</p>
               </div>
-              <select
+              {demoUserSwitcherEnabled && <select
                 value={user.id}
                 onChange={(event) => setUserId(event.target.value)}
-                aria-label="Mock gebruiker wisselen"
+                aria-label="Demo gebruiker wisselen"
                 className="absolute inset-0 cursor-pointer opacity-0"
               >
                 {users.map((mockUser) => (
@@ -243,12 +251,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     {mockUser.name} — {roleLabels[mockUser.role]}
                   </option>
                 ))}
-              </select>
-              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
-            </label>
+              </select>}
+              {demoUserSwitcherEnabled && <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />}
+              {entraAuthMode && (
+                <button
+                  type="button"
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  title="Afmelden"
+                  aria-label="Afmelden"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
         </header>
-        <main className="mx-auto max-w-[1600px] p-4 pb-24 sm:p-6 lg:p-8">{children}</main>
+        <main className="mx-auto max-w-[1600px] p-4 pb-24 sm:p-6 lg:p-8">
+          {saveError && (
+            <div role="alert" className="mb-4 flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+              <span>{saveError}</span>
+              <span className="flex gap-2">
+                <button type="button" onClick={retrySave} className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">
+                  Opnieuw proberen
+                </button>
+                <button type="button" onClick={clearSaveError} className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">
+                  Sluiten
+                </button>
+              </span>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
 
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur lg:hidden">

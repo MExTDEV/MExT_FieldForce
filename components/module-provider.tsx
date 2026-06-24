@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useSession } from "@/components/session-provider";
 import {
   appModuleRegistry,
   defaultAppModules,
@@ -8,61 +9,101 @@ import {
 } from "@/lib/modules";
 import type { AppModuleCode, AppModuleConfig } from "@/lib/types";
 
-const LEGACY_STORAGE_KEYS = ["mext:app-modules:v2", "mext:app-modules:v1"];
-const STORAGE_KEY = "mext:app-modules:v3";
-
 type ModuleContextValue = {
   modules: AppModuleConfig[];
   enabledModules: AppModuleConfig[];
+  error: string | null;
+  loading: boolean;
   isModuleEnabled: (code: AppModuleCode) => boolean;
-  setModuleEnabled: (code: AppModuleCode, enabled: boolean) => void;
+  setModuleEnabled: (code: AppModuleCode, enabled: boolean) => Promise<void>;
 };
 
 const ModuleContext = createContext<ModuleContextValue | null>(null);
 
-function persist(modules: AppModuleConfig[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(modules));
-}
-
 export function ModuleProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useSession();
   const [modules, setModules] = useState<AppModuleConfig[]>(defaultAppModules);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storageKey = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS].find((key) => localStorage.getItem(key));
-    const stored = storageKey ? localStorage.getItem(storageKey) : null;
-    if (!stored) {
-      persist(defaultAppModules);
-      return;
+    let cancelled = false;
+    async function loadModules() {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/modules", { cache: "no-store" });
+        const payload = (await response.json()) as {
+          modules?: AppModuleConfig[];
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Modules konden niet worden geladen.");
+        }
+        if (!cancelled) {
+          setModules(normalizeAppModules(payload.modules ?? defaultAppModules));
+        }
+      } catch (loadError) {
+        console.error("[modules]", loadError);
+        if (!cancelled) {
+          setError("Modules konden niet uit de database worden geladen.");
+          setModules(defaultAppModules);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-    try {
-      const parsed = JSON.parse(stored) as AppModuleConfig[];
-      const normalized = normalizeAppModules(Array.isArray(parsed) ? parsed : defaultAppModules);
-      setModules(normalized);
-      if (storageKey !== STORAGE_KEY) persist(normalized);
-    } catch {
-      if (storageKey) localStorage.removeItem(storageKey);
-      persist(defaultAppModules);
-    }
+    loadModules();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const value = useMemo<ModuleContextValue>(() => ({
     modules,
     enabledModules: modules.filter((module) => module.enabled),
+    error,
+    loading,
     isModuleEnabled: (code) =>
       modules.some((module) => module.code === code && module.enabled),
-    setModuleEnabled: (code, enabled) => {
+    setModuleEnabled: async (code, enabled) => {
       const now = new Date().toISOString();
-      setModules((current) => {
-        const knownCodes = new Set(appModuleRegistry.map((module) => module.code));
-        if (!knownCodes.has(code)) return current;
-        const next = current.map((module) =>
+      const knownCodes = new Set(appModuleRegistry.map((module) => module.code));
+      if (!knownCodes.has(code)) return;
+      const previous = modules;
+      setError(null);
+      setModules((current) =>
+        current.map((module) =>
           module.code === code ? { ...module, enabled, updatedAt: now } : module
+        )
+      );
+      try {
+        const response = await fetch(`/api/modules/${code}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ actorId: user.id, enabled }),
+        });
+        const payload = (await response.json()) as {
+          module?: AppModuleConfig;
+          error?: string;
+        };
+        if (!response.ok || !payload.module) {
+          throw new Error(payload.error ?? "Module kon niet worden opgeslagen.");
+        }
+        setModules((current) =>
+          normalizeAppModules(
+            current.map((module) =>
+              module.code === code ? payload.module! : module
+            )
+          )
         );
-        persist(next);
-        return next;
-      });
+      } catch (saveError) {
+        console.error("[modules]", saveError);
+        setModules(previous);
+        setError("Modulewijziging kon niet worden opgeslagen.");
+      }
     },
-  }), [modules]);
+  }), [error, loading, modules, user.id]);
 
   return <ModuleContext.Provider value={value}>{children}</ModuleContext.Provider>;
 }

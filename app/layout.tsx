@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
+import { AuthSessionProvider } from "@/components/auth-session-provider";
+import { ConfigurationProvider } from "@/components/configuration-provider";
 import { ModuleProvider } from "@/components/module-provider";
 import { PersonalCriteriaProvider } from "@/components/personal-criteria-provider";
+import { PerformanceProvider } from "@/components/performance-provider";
+import { RepresentativesProvider } from "@/components/representatives-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { WorkflowProvider } from "@/components/workflow-provider";
 import { branding } from "@/config/branding";
@@ -31,15 +35,23 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="nl">
       <body>
-        <SessionProvider>
-          <ModuleProvider>
-            <PersonalCriteriaProvider>
-              <WorkflowProvider>
-                <AppShell>{children}</AppShell>
-              </WorkflowProvider>
-            </PersonalCriteriaProvider>
-          </ModuleProvider>
-        </SessionProvider>
+        <AuthSessionProvider>
+          <SessionProvider>
+            <ModuleProvider>
+              <RepresentativesProvider>
+                <ConfigurationProvider>
+                  <PerformanceProvider>
+                    <PersonalCriteriaProvider>
+                      <WorkflowProvider>
+                        <AppShell>{children}</AppShell>
+                      </WorkflowProvider>
+                    </PersonalCriteriaProvider>
+                  </PerformanceProvider>
+                </ConfigurationProvider>
+              </RepresentativesProvider>
+            </ModuleProvider>
+          </SessionProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

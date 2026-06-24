@@ -3,13 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 enum Role {
   REPRESENTATIVE
   SALES_LEADER
+  SERVICE_OPERATOR
   COUNTRY_MANAGER
   GROUP_MANAGER
   ADMIN
@@ -48,7 +49,9 @@ enum InterventionStatus {
   WACHT_OP_VT_INPUT
   WACHT_OP_VT
   WACHT_OP_AKKOORD
+  GEFINALISEERD
   AFGESLOTEN
+  GESLOTEN
   GEANNULEERD
 }
 
@@ -59,8 +62,10 @@ enum ActionPointType {
 }
 
 enum ActionPointStatus {
+  OPEN
   NIEUW
   IN_UITVOERING
+  AFGEROND
   BEHAALD
   NIET_BEHAALD
   GEANNULEERD
@@ -91,64 +96,111 @@ enum HelpRequestStatus {
 }
 
 model User {
-  id                 String          @id @default(cuid())
-  firstName          String
-  lastName           String
-  email              String          @unique
-  entraId            String?         @unique
-  role               Role
-  country            Country
-  language           Language        @default(nl)
-  active             Boolean         @default(true)
-  teamId             String?
-  levelId            String?
-  team               Team?           @relation("TeamMembers", fields: [teamId], references: [id])
-  level              Level?          @relation(fields: [levelId], references: [id])
-  primaryTeams       Team[]          @relation("PrimaryLeader")
-  teamLeaderships    TeamLeader[]
-  representedItems   Intervention[]  @relation("RepresentativeInterventions")
-  initiatedItems     Intervention[]  @relation("InitiatedInterventions")
-  ownedItems         Intervention[]  @relation("OwnedInterventions")
-  kpiSnapshots       KpiSnapshot[]
-  actionPoints       ActionPoint[]   @relation("RepresentativeActions")
-  ownedActionPoints  ActionPoint[]   @relation("OwnedActions")
-  reflections        Reflection[]
-  approvals          Approval[]
-  requestedHelp      HelpRequest[]   @relation("HelpRequester")
-  receivedHelp       HelpRequest[]   @relation("HelpRepresentative")
-  productAnalyses    ProductAnalysis[]
-  auditLogs          AuditLog[]
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  id                       String                      @id @default(cuid())
+  firstName                String
+  lastName                 String
+  email                    String                      @unique
+  mobile                   String?
+  avatarUrl                String?
+  branchNumber             String?
+  representativeId         String?                      @unique
+  entraId                  String?                     @unique
+  role                     Role
+  country                  Country
+  language                 Language                    @default(nl)
+  active                   Boolean                     @default(true)
+  teamSupervisor           Boolean                     @default(false)
+  teamId                   String?
+  levelId                  String?
+  team                     Team?                       @relation("TeamMembers", fields: [teamId], references: [id])
+  level                    Level?                      @relation(fields: [levelId], references: [id])
+  primaryTeams             Team[]                      @relation("PrimaryLeader")
+  teamLeaderships          TeamLeader[]
+  representedItems         Intervention[]              @relation("RepresentativeInterventions")
+  initiatedItems           Intervention[]              @relation("InitiatedInterventions")
+  ownedItems               Intervention[]              @relation("OwnedInterventions")
+  kpiSnapshots             KpiSnapshot[]
+  actionPoints             ActionPoint[]               @relation("RepresentativeActions")
+  ownedActionPoints        ActionPoint[]               @relation("OwnedActions")
+  reflections              Reflection[]
+  approvals                Approval[]
+  requestedHelp            HelpRequest[]               @relation("HelpRequester")
+  receivedHelp             HelpRequest[]               @relation("HelpRepresentative")
+  productAnalyses          ProductAnalysis[]
+  auditLogs                AuditLog[]
+  createdCriteria          PersonalCoachingCriterion[] @relation("CreatedPersonalCriteria")
+  representativeCriteria   PersonalCoachingCriterion[] @relation("RepresentativePersonalCriteria")
+  permissions              UserPermission[]
+  trainingParticipants     TrainingParticipant[]
+  actionAssignments        ActionPointAssignment[]
+  interventionParticipants InterventionParticipant[]
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
 
   @@index([country, role])
   @@index([teamId])
 }
 
 model Team {
-  id              String       @id @default(cuid())
-  name            String
-  country         Country
-  primaryLeaderId String
-  active          Boolean      @default(true)
-  primaryLeader   User         @relation("PrimaryLeader", fields: [primaryLeaderId], references: [id])
-  members         User[]       @relation("TeamMembers")
-  leaders         TeamLeader[]
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id               String                      @id @default(cuid())
+  name             String
+  country          Country
+  primaryLeaderId  String
+  active           Boolean                     @default(true)
+  primaryLeader    User                        @relation("PrimaryLeader", fields: [primaryLeaderId], references: [id])
+  members          User[]                      @relation("TeamMembers")
+  leaders          TeamLeader[]
+  personalCriteria PersonalCoachingCriterion[]
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
 
   @@unique([country, name])
 }
 
 model TeamLeader {
-  id        String         @id @default(cuid())
-  teamId    String
-  userId    String
-  type      TeamLeaderType
-  team      Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String         @id @default(cuid())
+  teamId String
+  userId String
+  type   TeamLeaderType
+  team   Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  label       String
+  group       String
+  description String?          @db.Text
+  roleGrants  RolePermission[]
+  userGrants  UserPermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  role         Role
+  permissionId String
+  enabled      Boolean    @default(true)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@index([permissionId])
+}
+
+model UserPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  permissionId String
+  enabled      Boolean
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([permissionId])
 }
 
 model Level {
@@ -163,17 +215,17 @@ model Level {
 }
 
 model KpiDefinition {
-  id           String          @id @default(cuid())
-  code         String          @unique
+  id           String        @id @default(cuid())
+  code         String        @unique
   name         String
   description  String
   country      Country?
-  active       Boolean         @default(true)
+  active       Boolean       @default(true)
   unit         String
   snapshots    KpiSnapshot[]
   actionPoints ActionPoint[]
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 model KpiSnapshot {
@@ -190,48 +242,63 @@ model KpiSnapshot {
   createdAt       DateTime      @default(now())
 
   @@unique([userId, kpiDefinitionId, periodStart, periodEnd])
+  @@index([userId, periodEnd])
+  @@index([periodStart, periodEnd])
 }
 
 model Intervention {
-  id               String             @id @default(cuid())
-  type             InterventionType
-  status           InterventionStatus @default(CONCEPT)
-  representativeId String
-  initiatorId      String
-  ownerId          String
-  country          Country
-  title            String
-  description      String?
-  plannedAt        DateTime?
-  startedAt        DateTime?
-  completedAt      DateTime?
-  representative   User               @relation("RepresentativeInterventions", fields: [representativeId], references: [id])
-  initiator        User               @relation("InitiatedInterventions", fields: [initiatorId], references: [id])
-  owner            User               @relation("OwnedInterventions", fields: [ownerId], references: [id])
-  focuses          InterventionFocus[]
-  scores           Score[]
-  actionPoints     ActionPoint[]
-  reflection       Reflection?
-  approval         Approval?
-  helpRequest      HelpRequest?
-  contactMoment    ContactMomentDetail?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                   String                    @id @default(cuid())
+  type                 InterventionType
+  status               InterventionStatus        @default(CONCEPT)
+  representativeId     String
+  initiatorId          String
+  ownerId              String
+  teamId               String?
+  country              Country
+  title                String
+  description          String?
+  plannedAt            DateTime?
+  startTime            String?
+  endTime              String?
+  notifyRepresentative Boolean                   @default(false)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  finalizedAt          DateTime?
+  deletedAt            DateTime?
+  representative       User                      @relation("RepresentativeInterventions", fields: [representativeId], references: [id])
+  initiator            User                      @relation("InitiatedInterventions", fields: [initiatorId], references: [id])
+  owner                User                      @relation("OwnedInterventions", fields: [ownerId], references: [id])
+  focuses              InterventionFocus[]
+  scores               Score[]
+  actionPoints         ActionPoint[]
+  reflection           Reflection?
+  approval             Approval?
+  helpRequest          HelpRequest?
+  contactMoment        ContactMomentDetail?
+  coachingDetail       CoachingDetail?
+  trainingDetail       TrainingDetail?
+  participants         InterventionParticipant[]
+  trainingParticipants TrainingParticipant[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 
   @@index([representativeId, type])
   @@index([country, status])
+  @@index([teamId])
+  @@index([type, status, country, updatedAt])
+  @@index([plannedAt])
 }
 
 model ContactMomentDetail {
   id                   String       @id @default(cuid())
   interventionId       String       @unique
   reason               String
-  reportedProblems     String?
-  leaderThemes         Json
-  representativeKpis   Json
-  representativeThemes Json
-  discussedThemes      Json
-  conclusion           String?
+  reportedProblems     String?      @db.Text
+  leaderThemes         String       @db.LongText
+  representativeKpis   String       @db.LongText
+  representativeThemes String       @db.LongText
+  discussedThemes      String       @db.LongText
+  conclusion           String?      @db.Text
   sourceHelpRequestId  String?
   intervention         Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   createdAt            DateTime     @default(now())
@@ -239,15 +306,16 @@ model ContactMomentDetail {
 }
 
 model CoachingFocus {
-  id            String              @id @default(cuid())
-  code          String              @unique
-  name          String
-  active        Boolean             @default(true)
-  sortOrder     Int
-  criteria      CoachingCriterion[]
-  interventions InterventionFocus[]
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id               String                      @id @default(cuid())
+  code             String                      @unique
+  name             String
+  active           Boolean                     @default(true)
+  sortOrder        Int
+  criteria         CoachingCriterion[]
+  personalCriteria PersonalCoachingCriterion[]
+  interventions    InterventionFocus[]
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
 }
 
 model CoachingCriterion {
@@ -264,6 +332,30 @@ model CoachingCriterion {
   @@unique([focusId, name])
 }
 
+model PersonalCoachingCriterion {
+  id               String         @id @default(cuid())
+  title            String
+  description      String         @db.Text
+  focusId          String?
+  focusName        String
+  representativeId String
+  createdByUserId  String
+  teamId           String
+  country          Country
+  active           Boolean        @default(true)
+  focus            CoachingFocus? @relation(fields: [focusId], references: [id], onDelete: SetNull)
+  representative   User           @relation("RepresentativePersonalCriteria", fields: [representativeId], references: [id], onDelete: Cascade)
+  createdBy        User           @relation("CreatedPersonalCriteria", fields: [createdByUserId], references: [id])
+  team             Team           @relation(fields: [teamId], references: [id])
+  scores           Score[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([representativeId, title, active])
+  @@index([teamId])
+  @@index([country])
+}
+
 model InterventionFocus {
   id             String        @id @default(cuid())
   interventionId String
@@ -274,43 +366,162 @@ model InterventionFocus {
   @@unique([interventionId, focusId])
 }
 
+model InterventionParticipant {
+  id               String       @id @default(cuid())
+  interventionId   String
+  representativeId String
+  intervention     Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  representative   User         @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+
+  @@unique([interventionId, representativeId])
+  @@index([representativeId])
+}
+
 model Score {
-  id             String            @id @default(cuid())
-  interventionId String
-  criterionId    String
-  score          Int?
-  notApplicable  Boolean           @default(false)
-  comment        String?
-  previousScore  Int?
-  intervention   Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade)
-  criterion      CoachingCriterion @relation(fields: [criterionId], references: [id])
+  id                  String                     @id @default(cuid())
+  interventionId      String
+  criterionId         String?
+  personalCriterionId String?
+  category            String?
+  label               String?
+  score               Int?
+  notApplicable       Boolean                    @default(false)
+  comment             String?                    @db.Text
+  previousScore       Int?
+  intervention        Intervention               @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  criterion           CoachingCriterion?         @relation(fields: [criterionId], references: [id])
+  personalCriterion   PersonalCoachingCriterion? @relation(fields: [personalCriterionId], references: [id])
 
   @@unique([interventionId, criterionId])
+  @@index([personalCriterionId])
+  @@index([interventionId, category])
+}
+
+model CoachingDetail {
+  id                       String                @id @default(cuid())
+  interventionId           String                @unique
+  arrivalTime              String?
+  departureTime            String?
+  kilometers               Decimal?              @db.Decimal(14, 2)
+  area                     String?
+  sector                   String?
+  groupAttentionPoints     String                @db.LongText
+  individualAttentionPoint String?               @db.Text
+  intervention             Intervention          @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  appointments             CoachingAppointment[]
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+}
+
+model CoachingAppointment {
+  id               String         @id @default(cuid())
+  coachingDetailId String
+  customer         String
+  customerNumber   String?
+  place            String?
+  relationType     String
+  appointmentType  String
+  arrivalTime      String
+  departureTime    String
+  activity         String         @db.Text
+  scores           String         @db.LongText
+  remarks          String         @db.Text
+  deletedAt        DateTime?
+  coachingDetail   CoachingDetail @relation(fields: [coachingDetailId], references: [id], onDelete: Cascade)
+  scoreRows        CoachingAppointmentScore[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([coachingDetailId])
+}
+
+model CoachingAppointmentScore {
+  id            String              @id @default(cuid())
+  appointmentId String
+  criterion     String
+  score         Int?
+  notApplicable Boolean             @default(false)
+  comment       String              @db.Text
+  sortOrder     Int
+  appointment   CoachingAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, criterion])
+  @@index([appointmentId])
+}
+
+model TrainingParticipant {
+  id               String       @id @default(cuid())
+  interventionId   String
+  representativeId String
+  intervention     Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  representative   User         @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+
+  @@unique([interventionId, representativeId])
+  @@index([representativeId])
+}
+
+model TrainingDetail {
+  id                      String       @id @default(cuid())
+  interventionId          String       @unique
+  theme                   String
+  reason                  String       @db.Text
+  desiredImprovement      String?      @db.Text
+  targetAudience          String?
+  kpi                     String?
+  frameworkPhase          String?
+  trainer                 String?
+  result                  String?      @db.Text
+  conclusion              String?      @db.Text
+  followUpAction          String?      @db.Text
+  createIndividualActions Boolean      @default(false)
+  createGroupAction       Boolean      @default(false)
+  actionDue               DateTime?
+  sourceHelpRequestId     String?
+  intervention            Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 }
 
 model ActionPoint {
-  id              String            @id @default(cuid())
+  id               String                  @id @default(cuid())
   representativeId String
-  interventionId  String?
+  interventionId   String?
   ownerId          String
   title            String
   description      String
   type             ActionPointType
-  status           ActionPointStatus @default(NIEUW)
-  priority         Priority          @default(NORMAL)
+  status           ActionPointStatus       @default(NIEUW)
+  priority         Priority                @default(NORMAL)
   kpiDefinitionId  String?
-  startValue       Decimal?          @db.Decimal(14, 2)
-  targetValue      Decimal?          @db.Decimal(14, 2)
-  currentValue     Decimal?          @db.Decimal(14, 2)
+  startValue       Decimal?                @db.Decimal(14, 2)
+  targetValue      Decimal?                @db.Decimal(14, 2)
+  currentValue     Decimal?                @db.Decimal(14, 2)
   dueDate          DateTime?
-  representative   User              @relation("RepresentativeActions", fields: [representativeId], references: [id])
-  intervention     Intervention?     @relation(fields: [interventionId], references: [id], onDelete: SetNull)
-  owner            User              @relation("OwnedActions", fields: [ownerId], references: [id])
-  kpiDefinition    KpiDefinition?    @relation(fields: [kpiDefinitionId], references: [id])
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  representative   User                    @relation("RepresentativeActions", fields: [representativeId], references: [id])
+  intervention     Intervention?           @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  owner            User                    @relation("OwnedActions", fields: [ownerId], references: [id])
+  kpiDefinition    KpiDefinition?          @relation(fields: [kpiDefinitionId], references: [id])
+  assignments      ActionPointAssignment[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 
   @@index([representativeId, status])
+  @@index([ownerId])
+  @@index([dueDate])
+  @@index([status, dueDate])
+  @@index([representativeId, updatedAt])
+}
+
+model ActionPointAssignment {
+  id               String      @id @default(cuid())
+  actionPointId    String
+  representativeId String
+  scope            String      @default("individual")
+  actionPoint      ActionPoint @relation(fields: [actionPointId], references: [id], onDelete: Cascade)
+  representative   User        @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+
+  @@unique([actionPointId, representativeId])
+  @@index([representativeId])
 }
 
 model Reflection {
@@ -332,7 +543,7 @@ model Approval {
   id               String         @id @default(cuid())
   interventionId   String         @unique
   representativeId String
-  status           ApprovalStatus
+  status           ApprovalStatus?
   comment          String?
   openedAt         DateTime?
   confirmedAt      DateTime?
@@ -354,6 +565,7 @@ model HelpRequest {
   urgency          Priority
   status           HelpRequestStatus @default(NIEUW)
   followUpType     InterventionType?
+  linkedInterventionId String?
   intervention     Intervention?     @relation(fields: [interventionId], references: [id], onDelete: SetNull)
   requester        User              @relation("HelpRequester", fields: [requesterId], references: [id])
   representative   User              @relation("HelpRepresentative", fields: [representativeId], references: [id])
@@ -362,22 +574,22 @@ model HelpRequest {
 }
 
 model Product {
-  id       String            @id @default(cuid())
-  name     String            @unique
+  id        String            @id @default(cuid())
+  name      String            @unique
   sortOrder Int
-  active   Boolean           @default(true)
-  analyses ProductAnalysis[]
+  active    Boolean           @default(true)
+  analyses  ProductAnalysis[]
 }
 
 model ProductAnalysis {
-  id                    String  @id @default(cuid())
+  id                    String   @id @default(cuid())
   representativeId      String
   productId             String
   purchaseStatus        String
   afwijkendeHoeveelheid Decimal? @db.Decimal(14, 2)
   lastPurchaseYears     Int?
-  representative        User    @relation(fields: [representativeId], references: [id], onDelete: Cascade)
-  product               Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  representative        User     @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+  product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -390,8 +602,8 @@ model AuditLog {
   entityType String
   entityId   String
   action     String
-  oldValue   Json?
-  newValue   Json?
+  oldValue   String?  @db.LongText
+  newValue   String?  @db.LongText
   user       User     @relation(fields: [userId], references: [id])
   createdAt  DateTime @default(now())
 

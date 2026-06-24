@@ -11,6 +11,7 @@ import {
   submitWorkflowReflection,
   type CoachingWorkflowInput,
 } from "../lib/workflow-engine";
+import { representatives } from "../lib/mock-data";
 import type { WorkflowState } from "../lib/types";
 
 const empty: WorkflowState = {
@@ -44,7 +45,7 @@ const input: CoachingWorkflowInput = {
   ],
 };
 
-const concept = saveCoaching(empty, input, "concept");
+const concept = saveCoaching(empty, input, "concept", representatives);
 assert.equal(concept.intervention.status, "concept");
 assert.equal(concept.intervention.scores.length, 1);
 assert.equal(concept.intervention.actionPoints.length, 1);
@@ -53,7 +54,8 @@ assert.equal(concept.state.reflections.length, 0);
 const finalized = saveCoaching(
   concept.state,
   { ...input, id: concept.intervention.id },
-  "wacht_op_vt"
+  "wacht_op_vt",
+  representatives
 );
 assert.equal(finalized.intervention.status, "wacht_op_vt");
 assert.equal(finalized.state.reflections.length, 1);
@@ -92,7 +94,7 @@ const contactDraft = saveContactMoment(approved, {
   reason: "KPI-opvolging",
   reportedProblems: "PV blijft onder doel",
   leaderThemes: ["KPI-opvolging"],
-}, "wacht_op_vt_input");
+}, "wacht_op_vt_input", representatives);
 assert.equal(contactDraft.contactMoment.status, "wacht_op_vt_input");
 
 const contactWithInput = submitContactMomentInput(
@@ -116,7 +118,7 @@ const contactClosed = saveContactMoment(contactWithInput, {
   discussedThemes: ["KPI-opvolging", "Prijsverdediging"],
   conclusion: "Focus op een consequente prijsverdediging.",
   actionPoints: [{ title: "Vijf prijsbezwaren oefenen", type: "vaardigheid", due: "2026-07-15" }],
-}, "afgesloten");
+}, "afgesloten", representatives);
 assert.equal(contactClosed.contactMoment.actionPoints.length, 1);
 
 const help = createHelpRequest(contactClosed.state, {
@@ -127,14 +129,15 @@ const help = createHelpRequest(contactClosed.state, {
   desiredResult: "Een gericht contactmoment.",
   urgency: "hoog",
   explanation: "Voor de volgende klantafspraak.",
-});
+}, representatives);
 assert.equal(help.helpRequest.status, "nieuw");
 
 const helpPlanned = planHelpRequestFollowUp(
   help.state,
   help.helpRequest.id,
   "user-leader-be",
-  "contactmoment"
+  "contactmoment",
+  representatives
 );
 assert.equal(helpPlanned.helpRequests[0].status, "vervolgactie_gepland");
 assert.equal(helpPlanned.contactMoments.length, 2);
@@ -152,7 +155,7 @@ const retraining = saveRetraining(helpPlanned, {
   trainer: "Sophie Vermeulen",
   result: "Techniek correct toegepast.",
   actionPoints: [{ title: "Vijf bezwaren oefenen", type: "vaardigheid", due: "2026-07-15" }],
-}, "afgerond");
+}, "afgerond", representatives);
 assert.equal(retraining.retraining.status, "afgerond");
 assert.equal(retraining.retraining.actionPoints.length, 1);
 
@@ -169,7 +172,7 @@ const salesTraining = saveSalesTraining(retraining.state, {
   createIndividualActions: true,
   createGroupAction: true,
   actionDue: "2026-07-31",
-}, "afgerond");
+}, "afgerond", representatives);
 assert.equal(salesTraining.salesTraining.participantIds.length, 2);
 assert.equal(salesTraining.salesTraining.actionPoints.length, 3);
 
@@ -181,12 +184,13 @@ const retrainingHelp = createHelpRequest(salesTraining.state, {
   desiredResult: "Productgamma zelfstandig demonstreren",
   urgency: "normaal",
   explanation: "",
-});
+}, representatives);
 const linkedRetraining = planHelpRequestFollowUp(
   retrainingHelp.state,
   retrainingHelp.helpRequest.id,
   "user-leader-be",
-  "retraining"
+  "retraining",
+  representatives
 );
 assert.equal(linkedRetraining.retrainings.at(-1)?.sourceHelpRequestId, retrainingHelp.helpRequest.id);
 assert.equal(linkedRetraining.retrainings.at(-1)?.theme, "Extra productkennis");
@@ -199,12 +203,13 @@ const salesHelp = createHelpRequest(linkedRetraining, {
   desiredResult: "Een gedeelde afsluitstructuur gebruiken.",
   urgency: "normaal",
   explanation: "",
-});
+}, representatives);
 const linkedSalesTraining = planHelpRequestFollowUp(
   salesHelp.state,
   salesHelp.helpRequest.id,
   "user-leader-be",
-  "sales_training"
+  "sales_training",
+  representatives
 );
 assert.equal(linkedSalesTraining.salesTrainings.at(-1)?.sourceHelpRequestId, salesHelp.helpRequest.id);
 assert.deepEqual(linkedSalesTraining.salesTrainings.at(-1)?.participantIds, ["rep-2"]);

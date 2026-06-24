@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:workflow": "tsx scripts/test-workflow.ts",
@@ -14,15 +14,27 @@
     "test:personal-criteria": "tsx scripts/test-personal-criteria.ts",
     "test:modules": "tsx scripts/test-modules.ts",
     "test:data-access": "tsx scripts/test-data-access.ts",
+    "test:api-persistence": "tsx scripts/test-api-persistence.ts",
+    "test:db-verification": "tsx scripts/verify-step10-database.ts",
+    "env:check": "tsx scripts/validate-environment.ts",
+    "env:check:production": "tsx scripts/validate-environment.ts --production",
+    "health:check": "tsx scripts/check-health.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:config": "tsx prisma/seed.ts",
+    "db:seed:dev": "tsx prisma/seed.ts --dev-demo",
+    "deploy:prepare": "npm run env:check:production && npm run db:generate && npm run db:migrate:deploy && npm run db:seed:config && npm run build",
+    "start:production": "npm run env:check:production && node server.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
     "next": "15.5.19",
+    "next-auth": "^5.0.0-beta.31",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "svg2pdf.js": "^2.7.0"
@@ -40,8 +52,5 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   }
 }

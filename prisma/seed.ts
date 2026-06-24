@@ -11,8 +11,31 @@ import {
   TeamLeaderType,
   type User,
 } from "@prisma/client";
+import { loadEnvFile } from "node:process";
+import {
+  fieldForcePermissionGroups,
+  roleTemplates,
+} from "../lib/user-management";
+let developmentManagedUsers: typeof import("../lib/development-seed").developmentManagedUsers;
+let developmentTeamOptions: typeof import("../lib/development-seed").developmentTeamOptions;
+let developmentRepresentatives: typeof import("../lib/mock-data").representatives;
+
+loadEnvFile();
 
 const prisma = new PrismaClient();
+const seedMode = process.argv.includes("--dev-demo") ? "dev-demo" : "config";
+const destructiveSeedAllowed = process.env.SEED_ALLOW_DESTRUCTIVE === "true";
+
+const appModules = [
+  { code: "PLANNING", naam: "Planning", actief: true },
+  { code: "BEGELEIDINGEN", naam: "Begeleidingen", actief: true },
+  { code: "CONTACTMOMENTEN", naam: "Contactmomenten", actief: false },
+  { code: "RETRAININGEN", naam: "Retrainingen", actief: false },
+  { code: "SALESTRAININGEN", naam: "Salestrainingen", actief: false },
+  { code: "HULPAANVRAGEN", naam: "Hulpaanvragen", actief: false },
+  { code: "ACTIEPUNTEN", naam: "Actiepunten", actief: false },
+  { code: "RAPPORTERING", naam: "Rapportering", actief: false },
+] as const;
 
 const countryConfig = {
   BE: { representatives: 30, leaders: 3, teams: 3, language: Language.nl },
@@ -24,6 +47,24 @@ const firstNames = ["Alex", "Sam", "Robin", "Noa", "Lou", "Milan", "Emma", "Lina
 const lastNames = ["Peeters", "Janssen", "Willems", "De Smet", "Bakker", "Visser", "Schneider", "Weber", "Fischer", "Wagner"];
 
 async function main() {
+  if (seedMode === "config") {
+    await seedConfiguration();
+    console.log("Configuration seed complete. No existing business data was deleted.");
+    return;
+  }
+
+  if (process.env.NODE_ENV === "production" || !destructiveSeedAllowed) {
+    throw new Error(
+      "Development demo seed is destructive. Run only outside production with SEED_ALLOW_DESTRUCTIVE=true npm run db:seed:dev."
+    );
+  }
+
+  ({ developmentManagedUsers, developmentTeamOptions } = await import("../lib/development-seed"));
+  ({ representatives: developmentRepresentatives } = await import("../lib/mock-data"));
+
+  await prisma.userPermission.deleteMany();
+  await prisma.rolePermission.deleteMany();
+  await prisma.permission.deleteMany();
   await prisma.appModule.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.productAnalysis.deleteMany();
@@ -31,10 +72,16 @@ async function main() {
   await prisma.helpRequest.deleteMany();
   await prisma.approval.deleteMany();
   await prisma.reflection.deleteMany();
+  await prisma.actionPointAssignment.deleteMany();
   await prisma.actionPoint.deleteMany();
   await prisma.score.deleteMany();
+  await prisma.trainingParticipant.deleteMany();
+  await prisma.interventionParticipant.deleteMany();
   await prisma.interventionFocus.deleteMany();
+  await prisma.coachingAppointment.deleteMany();
+  await prisma.coachingDetail.deleteMany();
   await prisma.intervention.deleteMany();
+  await prisma.personalCoachingCriterion.deleteMany();
   await prisma.coachingCriterion.deleteMany();
   await prisma.coachingFocus.deleteMany();
   await prisma.kpiSnapshot.deleteMany();
@@ -45,17 +92,9 @@ async function main() {
   await prisma.level.deleteMany();
 
   await prisma.appModule.createMany({
-    data: [
-      { code: "PLANNING", naam: "Planning", actief: true },
-      { code: "BEGELEIDINGEN", naam: "Begeleidingen", actief: true },
-      { code: "CONTACTMOMENTEN", naam: "Contactmomenten", actief: false },
-      { code: "RETRAININGEN", naam: "Retrainingen", actief: false },
-      { code: "SALESTRAININGEN", naam: "Salestrainingen", actief: false },
-      { code: "HULPAANVRAGEN", naam: "Hulpaanvragen", actief: false },
-      { code: "ACTIEPUNTEN", naam: "Actiepunten", actief: false },
-      { code: "RAPPORTERING", naam: "Rapportering", actief: false },
-    ],
+    data: [...appModules],
   });
+  await seedPermissions();
 
   const levels = await Promise.all(
     [
@@ -305,11 +344,319 @@ async function main() {
       entityType: "Seed",
       entityId: "initial",
       action: "CREATE",
-      newValue: { representatives: representatives.length, generatedAt: new Date().toISOString() },
+      newValue: JSON.stringify({ representatives: representatives.length, generatedAt: new Date().toISOString() }),
     },
   });
 
   console.log(`Seed complete: ${representatives.length} representatives, ${kpis.length} KPIs, ${focuses.length} coaching phases.`);
+}
+
+async function seedConfiguration() {
+  for (const appModule of appModules) {
+    await prisma.appModule.upsert({
+      where: { code: appModule.code },
+      update: { naam: appModule.naam },
+      create: appModule,
+    });
+  }
+  await seedPermissions();
+
+  const levels = [
+    ["Starter", "Nieuwe vertegenwoordiger in onboarding", "#F59E0B"],
+    ["Vertegenwoordiger", "Zelfstandig in de basisrol", "#0EA5E9"],
+    ["Professional", "Consistent sterke uitvoering", "#6366F1"],
+    ["Expert", "Voorbeeldrol en coachende senior", "#10B981"],
+  ] as const;
+
+  for (const [name, description, color] of levels) {
+    await prisma.level.upsert({
+      where: { name },
+      update: { description, color, active: true },
+      create: { name, description, color },
+    });
+  }
+
+  const kpis = [
+    ["PV_PERCENT", "PV %", "%"],
+    ["KV_PERCENT", "KV %", "%"],
+    ["Q_PERCENT", "Q %", "%"],
+    ["SALES_DAY", "Sales / Day", "EUR"],
+    ["FM_ORDER", "FM / Order", "number"],
+    ["SALES_ORDER", "Sales / Order", "EUR"],
+    ["TOTAL_SALES", "Total Sales", "EUR"],
+    ["LEADS", "Leadgeneratie", "number"],
+    ["PROSPECT_CUSTOMER", "Prospect vs Klant verkoop", "%"],
+    ["CASH_TRANSFER", "Cash vs Overschrijving", "%"],
+  ] as const;
+
+  for (const [code, name, unit] of kpis) {
+    await prisma.kpiDefinition.upsert({
+      where: { code },
+      update: { name, description: `${name} coaching KPI`, unit, active: true },
+      create: { code, name, description: `${name} coaching KPI`, unit },
+    });
+  }
+
+  const framework = [
+    ["INTRO", "Introductie", ["Zichzelf en MExT voorstellen", "Bedanken voor de tijd"]],
+    ["NEED", "Behoefteanalyse", ["IJsbreken", "Goede atmosfeer creeren", "MExT voorstelling", "Service uitleggen", "Praktisch en wettelijk gamma uitleggen", "MExT voordelen uitleggen", "Open vragen stellen", "Gesloten vragen / bevestiging gebruiken"]],
+    ["DEMO", "Demonstratie", ["Pancarte gebruiken", "Showroom gebruiken", "Aantal producten / brede verkoop", "Koppelverkoop", "Voordelen producten uitleggen", "Interactie met klant"]],
+    ["CLOSE", "Afsluiten", ["Herhalen voordelen", "Reactie op bezwaren", "Q en prijs verdedigen", "Tablet gebruiken", "Order noteren"]],
+    ["CASE", "Koffercontrole", ["Controlelijst", "Non-conforme producten", "Tevredenheid bij klant", "Contant innen", "Controle order / levering", "Directe levering / aanvulling koffer", "Repeat atmosfeer"]],
+  ] as const;
+
+  for (const [focusIndex, [code, name, criteria]] of framework.entries()) {
+    const focus = await prisma.coachingFocus.upsert({
+      where: { code },
+      update: { name, sortOrder: focusIndex + 1, active: true },
+      create: { code, name, sortOrder: focusIndex + 1 },
+    });
+    for (const [criterionIndex, criterion] of criteria.entries()) {
+      await prisma.coachingCriterion.upsert({
+        where: { focusId_name: { focusId: focus.id, name: criterion } },
+        update: { sortOrder: criterionIndex + 1, active: true },
+        create: { focusId: focus.id, name: criterion, sortOrder: criterionIndex + 1 },
+      });
+    }
+  }
+}
+
+async function seedPermissions() {
+  for (const group of fieldForcePermissionGroups) {
+    for (const permission of group.permissions) {
+      await prisma.permission.upsert({
+        where: { key: permission.key },
+        update: {
+          label: permission.label,
+          group: group.title,
+          description: group.description,
+        },
+        create: {
+          key: permission.key,
+          label: permission.label,
+          group: group.title,
+          description: group.description,
+        },
+      });
+    }
+  }
+
+  const permissions = await prisma.permission.findMany();
+  const permissionByKey = new Map(
+    permissions.map((permission) => [permission.key, permission])
+  );
+
+  for (const [role, template] of Object.entries(roleTemplates)) {
+    for (const [permissionKey, enabled] of Object.entries(template.permissions)) {
+      const permission = permissionByKey.get(permissionKey);
+      if (!permission) continue;
+      await prisma.rolePermission.upsert({
+        where: {
+          role_permissionId: {
+            role: role as Role,
+            permissionId: permission.id,
+          },
+        },
+        update: { enabled: Boolean(enabled) },
+        create: {
+          role: role as Role,
+          permissionId: permission.id,
+          enabled: Boolean(enabled),
+        },
+      });
+    }
+  }
+}
+
+async function seedPrototypeUsers() {
+  const managedUsers = developmentManagedUsers();
+  for (const profile of managedUsers) {
+    await prisma.user.upsert({
+      where: { email: profile.email },
+      update: {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        mobile: profile.mobile || null,
+        avatarUrl: profile.avatarUrl || null,
+        branchNumber: profile.branchNumber || null,
+        representativeId: profile.representativeId ?? null,
+        role: profile.role as Role,
+        country: profile.country as Country,
+        language: profile.language as Language,
+        active: profile.active,
+        teamSupervisor: profile.teamSupervisor,
+      },
+      create: {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        email: profile.email,
+        mobile: profile.mobile || null,
+        avatarUrl: profile.avatarUrl || null,
+        branchNumber: profile.branchNumber || null,
+        representativeId: profile.representativeId ?? null,
+        role: profile.role as Role,
+        country: profile.country as Country,
+        language: profile.language as Language,
+        active: profile.active,
+        teamSupervisor: profile.teamSupervisor,
+      },
+    });
+  }
+
+  const users = await prisma.user.findMany();
+  const usersByEmail = new Map(users.map((user) => [user.email, user]));
+  const fallbackLeader =
+    users.find((user) => user.role === Role.SUPER_ADMIN) ??
+    users.find((user) => user.role === Role.ADMIN) ??
+    users[0];
+  if (!fallbackLeader) return;
+
+  for (const team of developmentTeamOptions) {
+    const leaderProfile =
+      managedUsers.find(
+        (profile) => profile.teamId === team.id && profile.role === "SALES_LEADER"
+      ) ??
+      managedUsers.find(
+        (profile) => profile.teamId === team.id && profile.teamSupervisor
+      );
+    const leader = leaderProfile
+      ? usersByEmail.get(leaderProfile.email) ?? fallbackLeader
+      : fallbackLeader;
+
+    await prisma.team.upsert({
+      where: { country_name: { country: team.country as Country, name: team.name } },
+      update: {
+        primaryLeaderId: leader.id,
+        active: true,
+      },
+      create: {
+        id: team.id,
+        name: team.name,
+        country: team.country as Country,
+        primaryLeaderId: leader.id,
+      },
+    });
+  }
+
+  const teams = await prisma.team.findMany();
+  const teamById = new Map(teams.map((team) => [team.id, team]));
+  const levels = await prisma.level.findMany();
+  const levelByName = new Map(levels.map((level) => [level.name, level]));
+  const permissions = await prisma.permission.findMany();
+  const permissionByKey = new Map(
+    permissions.map((permission) => [permission.key, permission])
+  );
+
+  for (const profile of managedUsers) {
+    const user = usersByEmail.get(profile.email);
+    if (!user) continue;
+    const team = profile.teamId ? teamById.get(profile.teamId) : undefined;
+    const representative = profile.representativeId
+      ? developmentRepresentatives.find((item) => item.id === profile.representativeId)
+      : undefined;
+    const level = representative ? levelByName.get(representative.level) : undefined;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        teamId: team?.id ?? null,
+        levelId: level?.id ?? null,
+      },
+    });
+
+    for (const [permissionKey, enabled] of Object.entries(profile.permissions)) {
+      const permission = permissionByKey.get(permissionKey);
+      if (!permission) continue;
+      await prisma.userPermission.upsert({
+        where: {
+          userId_permissionId: {
+            userId: user.id,
+            permissionId: permission.id,
+          },
+        },
+        update: { enabled: Boolean(enabled) },
+        create: {
+          userId: user.id,
+          permissionId: permission.id,
+          enabled: Boolean(enabled),
+        },
+      });
+    }
+  }
+
+  await seedRepresentativeKpis();
+}
+
+async function seedRepresentativeKpis() {
+  const kpiDefinitions = await prisma.kpiDefinition.findMany();
+  const byName = new Map(kpiDefinitions.map((kpi) => [kpi.name, kpi]));
+  const users = await prisma.user.findMany({
+    where: { representativeId: { not: null } },
+  });
+  const userByRepresentativeId = new Map(
+    users.flatMap((user) =>
+      user.representativeId ? [[user.representativeId, user] as const] : []
+    )
+  );
+  const periodStart = new Date("2026-06-01T00:00:00.000Z");
+  const periodEnd = new Date("2026-06-30T23:59:59.999Z");
+  const previousPeriodStart = new Date("2026-05-01T00:00:00.000Z");
+  const previousPeriodEnd = new Date("2026-05-31T23:59:59.999Z");
+
+  for (const representative of developmentRepresentatives) {
+    const user = userByRepresentativeId.get(representative.id);
+    if (!user) continue;
+    for (const kpi of representative.kpis) {
+      const definition = byName.get(kpi.label);
+      if (!definition) continue;
+      const current = parseKpiValue(kpi.value);
+      const target = parseKpiValue(kpi.target);
+      const previous = current - kpi.trend * Math.max(1, current * 0.03);
+      await prisma.kpiSnapshot.upsert({
+        where: {
+          userId_kpiDefinitionId_periodStart_periodEnd: {
+            userId: user.id,
+            kpiDefinitionId: definition.id,
+            periodStart,
+            periodEnd,
+          },
+        },
+        update: { value: current, target, source: "config-seed" },
+        create: {
+          userId: user.id,
+          kpiDefinitionId: definition.id,
+          periodStart,
+          periodEnd,
+          value: current,
+          target,
+          source: "config-seed",
+        },
+      });
+      await prisma.kpiSnapshot.upsert({
+        where: {
+          userId_kpiDefinitionId_periodStart_periodEnd: {
+            userId: user.id,
+            kpiDefinitionId: definition.id,
+            periodStart: previousPeriodStart,
+            periodEnd: previousPeriodEnd,
+          },
+        },
+        update: { value: previous, target, source: "config-seed" },
+        create: {
+          userId: user.id,
+          kpiDefinitionId: definition.id,
+          periodStart: previousPeriodStart,
+          periodEnd: previousPeriodEnd,
+          value: previous,
+          target,
+          source: "config-seed",
+        },
+      });
+    }
+  }
+}
+
+function parseKpiValue(value: string) {
+  return Number.parseFloat(value.replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
 }
 
 main()

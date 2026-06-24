@@ -70,6 +70,19 @@ export type AppModuleConfig = {
   updatedAt: string;
 };
 
+export type CoachingFrameworkFocus = {
+  id: string;
+  code: string;
+  name: string;
+  color: string;
+  criteria: string[];
+};
+
+export type FieldForceConfiguration = {
+  coachingFramework: CoachingFrameworkFocus[];
+  kpiDefinitions: string[];
+};
+
 export type ManagedUser = {
   id: string;
   firstName: string;

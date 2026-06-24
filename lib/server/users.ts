@@ -1,0 +1,172 @@
+import { prisma } from "@/lib/server/db";
+import {
+  fieldForcePermissionKeys,
+  normalizeManagedUser,
+  prepareManagedUserSave,
+  roleTemplates,
+} from "@/lib/user-management";
+import type {
+  Country,
+  FieldForcePermissionKey,
+  Language,
+  ManagedUser,
+  MockUser,
+  Role,
+} from "@/lib/types";
+
+type UserWithAccess = Awaited<ReturnType<typeof fetchUsersWithAccess>>[number];
+
+export async function listManagedUsers() {
+  const users = await fetchUsersWithAccess();
+  return users.map(toManagedUser);
+}
+
+export async function createManagedUserInDatabase(
+  actorId: string,
+  draft: ManagedUser
+) {
+  const users = await listManagedUsers();
+  const actor = actorFromManagedUser(users.find((user) => user.id === actorId));
+  if (!actor) throw new Error("Actieve gebruiker niet gevonden.");
+
+  const prepared = prepareManagedUserSave(actor, users, draft);
+  const created = await prisma.user.create({
+    data: userDataFromManagedUser(prepared),
+  });
+  await replaceUserPermissions(created.id, prepared.permissions);
+  return toManagedUser(
+    await fetchUserWithAccess(created.id)
+  );
+}
+
+export async function updateManagedUserInDatabase(
+  actorId: string,
+  userId: string,
+  draft: ManagedUser
+) {
+  const users = await listManagedUsers();
+  const actor = actorFromManagedUser(users.find((user) => user.id === actorId));
+  if (!actor) throw new Error("Actieve gebruiker niet gevonden.");
+  const existing = users.find((user) => user.id === userId);
+  if (!existing) throw new Error("Gebruiker niet gevonden.");
+
+  const prepared = prepareManagedUserSave(actor, users, draft, existing);
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: userDataFromManagedUser(prepared),
+  });
+  await replaceUserPermissions(updated.id, prepared.permissions);
+  return toManagedUser(
+    await fetchUserWithAccess(updated.id)
+  );
+}
+
+async function fetchUsersWithAccess() {
+  return prisma.user.findMany({
+    include: {
+      team: true,
+      permissions: { include: { permission: true } },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+}
+
+async function fetchUserWithAccess(id: string) {
+  return prisma.user.findUniqueOrThrow({
+    where: { id },
+    include: {
+      team: true,
+      permissions: { include: { permission: true } },
+    },
+  });
+}
+
+function toManagedUser(user: UserWithAccess): ManagedUser {
+  const role = user.role as Role;
+  const basePermissions = { ...roleTemplates[role].permissions };
+  for (const grant of user.permissions) {
+    basePermissions[grant.permission.key as FieldForcePermissionKey] =
+      grant.enabled;
+  }
+
+  return normalizeManagedUser({
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    mobile: user.mobile ?? "",
+    language: user.language as Language,
+    country: user.country as Country,
+    teamId: user.teamId ?? "",
+    teamName: user.team?.name ?? "",
+    role,
+    teamSupervisor: user.teamSupervisor,
+    branchNumber: user.branchNumber ?? "",
+    active: user.active,
+    avatarUrl: user.avatarUrl ?? "",
+    permissions: fieldForcePermissionKeys.reduce(
+      (result, key) => ({ ...result, [key]: Boolean(basePermissions[key]) }),
+      {} as Record<FieldForcePermissionKey, boolean>
+    ),
+    representativeId: user.representativeId ?? undefined,
+  });
+}
+
+function actorFromManagedUser(user?: ManagedUser): MockUser | undefined {
+  if (!user || !user.active) return undefined;
+  return {
+    id: user.id,
+    name: `${user.firstName} ${user.lastName}`.trim(),
+    email: user.email,
+    role: user.role,
+    country: user.country,
+    language: user.language,
+    teamId: user.teamId || undefined,
+    representativeId: user.representativeId,
+  };
+}
+
+function userDataFromManagedUser(user: ManagedUser) {
+  return {
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    mobile: user.mobile || null,
+    avatarUrl: user.avatarUrl || null,
+    branchNumber: user.branchNumber || null,
+    representativeId: user.representativeId ?? null,
+    role: user.role,
+    country: user.country,
+    language: user.language,
+    active: user.active,
+    teamSupervisor: user.teamSupervisor,
+    teamId: user.teamId || null,
+  };
+}
+
+async function replaceUserPermissions(
+  userId: string,
+  permissions: Record<FieldForcePermissionKey, boolean>
+) {
+  const permissionRecords = await prisma.permission.findMany();
+  await prisma.$transaction(
+    permissionRecords.map((permission) =>
+      prisma.userPermission.upsert({
+        where: {
+          userId_permissionId: {
+            userId,
+            permissionId: permission.id,
+          },
+        },
+        update: {
+          enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]),
+        },
+        create: {
+          userId,
+          permissionId: permission.id,
+          enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]),
+        },
+      })
+    )
+  );
+}

@@ -1,4 +1,3 @@
-import { mockUsers, representatives } from "@/lib/mock-data";
 import type {
   FieldForcePermissionKey,
   ManagedUser,
@@ -204,28 +203,6 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
   },
 };
 
-export const teamOptions = Array.from(
-  new Map(
-    representatives.map((representative) => [
-      representative.teamId,
-      {
-        id: representative.teamId,
-        name: representative.team,
-        country: representative.country,
-      },
-    ])
-  ).values()
-);
-
-function splitName(name: string) {
-  const [firstName, ...lastNameParts] = name.trim().split(/\s+/);
-  return { firstName, lastName: lastNameParts.join(" ") };
-}
-
-function teamName(teamId?: string) {
-  return teamOptions.find((team) => team.id === teamId)?.name ?? "";
-}
-
 export function createEmptyManagedUser(actor: MockUser): ManagedUser {
   const role: Role = "REPRESENTATIVE";
   return {
@@ -237,7 +214,7 @@ export function createEmptyManagedUser(actor: MockUser): ManagedUser {
     language: actor.language,
     country: actor.country,
     teamId: actor.teamId ?? "",
-    teamName: teamName(actor.teamId),
+    teamName: "",
     role,
     teamSupervisor: false,
     branchNumber: "",
@@ -262,7 +239,7 @@ export function normalizeManagedUser(user: ManagedUser): ManagedUser {
     ...user,
     mobile: user.mobile ?? "",
     teamId: user.teamId ?? "",
-    teamName: user.teamName ?? teamName(user.teamId),
+    teamName: user.teamName ?? "",
     teamSupervisor: Boolean(user.teamSupervisor),
     branchNumber: user.branchNumber ?? "",
     active: user.active !== false,
@@ -276,63 +253,6 @@ export function normalizeManagedUser(user: ManagedUser): ManagedUser {
       ])
     ) as Record<FieldForcePermissionKey, boolean>,
   };
-}
-
-export function seedManagedUsers(): ManagedUser[] {
-  const profiles = representatives.map((representative) => {
-    const account = mockUsers.find(
-      (user) =>
-        user.representativeId === representative.id ||
-        user.email.toLowerCase() === representative.email.toLowerCase()
-    );
-    const role = account?.role ?? "REPRESENTATIVE";
-    return normalizeManagedUser({
-      id: account?.id ?? `managed-${representative.id}`,
-      firstName: representative.firstName,
-      lastName: representative.lastName,
-      email: representative.email,
-      mobile: representative.phone,
-      language:
-        account?.language ?? (representative.country === "DE" ? "de" : "nl"),
-      country: representative.country,
-      teamId: representative.teamId,
-      teamName: representative.team,
-      role,
-      teamSupervisor: false,
-      branchNumber: `${representative.country}-${String(
-        Number(representative.id.replace("rep-", "")) + 100
-      ).padStart(3, "0")}`,
-      active: true,
-      avatarUrl: "",
-      permissions: { ...roleTemplates[role].permissions },
-      representativeId: representative.id,
-    });
-  });
-
-  for (const account of mockUsers) {
-    if (profiles.some((profile) => profile.id === account.id)) continue;
-    const name = splitName(account.name);
-    profiles.push(
-      normalizeManagedUser({
-        id: account.id,
-        ...name,
-        email: account.email,
-        mobile: "",
-        language: account.language,
-        country: account.country,
-        teamId: account.teamId ?? "",
-        teamName: teamName(account.teamId),
-        role: account.role,
-        teamSupervisor: account.role === "SALES_LEADER",
-        branchNumber: `${account.country}-001`,
-        active: true,
-        avatarUrl: "",
-        permissions: { ...roleTemplates[account.role].permissions },
-        representativeId: account.representativeId,
-      })
-    );
-  }
-  return profiles;
 }
 
 export function managedUserToMockUser(profile: ManagedUser): MockUser {
@@ -508,8 +428,6 @@ export function prepareManagedUserSave(
   }
 
   if (actor.role === "ADMIN") next.country = actor.country;
-  next.teamName = teamName(next.teamId);
-
   if (!next.firstName.trim() || !next.lastName.trim() || !next.email.trim()) {
     throw new Error("Voornaam, naam en e-mail zijn verplicht.");
   }

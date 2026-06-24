@@ -13,6 +13,8 @@ import {
   Send,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
+import { useConfiguration } from "@/components/configuration-provider";
+import { useRepresentatives } from "@/components/representatives-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import {
   ActionPointEditor,
@@ -20,12 +22,12 @@ import {
   type EditableActionPoint,
 } from "@/components/action-point-editor";
 import { Avatar, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
-import { kpiDefinitions, representatives } from "@/lib/mock-data";
 import { canAccessRepresentative } from "@/lib/permissions";
 import type {
   ContactMoment,
   FollowUpType,
   HelpRequest,
+  Representative,
 } from "@/lib/types";
 
 const themeOptions = [
@@ -101,6 +103,8 @@ function ContactMomentSection({
   emptyMessage: string;
   historical?: boolean;
 }) {
+  const { representatives } = useRepresentatives();
+
   return (
     <section className={`space-y-4 ${historical ? "border-t border-slate-200 pt-6" : ""}`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -148,6 +152,7 @@ function ContactMomentSection({
 function NewContactMoment() {
   const { user } = useSession();
   const { saveContactMoment } = useWorkflow();
+  const { representatives } = useRepresentatives();
   const [savedId, setSavedId] = useState<string>();
   const available = representatives.filter((item) => canAccessRepresentative(user, item));
   const [form, setForm] = useState({
@@ -191,8 +196,10 @@ function NewContactMoment() {
 
 function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
   const { user } = useSession();
+  const { kpiDefinitions } = useConfiguration();
   const { saveContactMoment, submitContactInput } = useWorkflow();
-  const representative = representatives.find((item) => item.id === contact.representativeId)!;
+  const { representatives } = useRepresentatives();
+  const representative = representatives.find((item) => item.id === contact.representativeId);
   const isOwnerRepresentative = user.role === "REPRESENTATIVE" && user.representativeId === contact.representativeId;
   const canManage = ["SALES_LEADER", "SUPER_ADMIN"].includes(user.role);
   const [kpis, setKpis] = useState(contact.representativeKpis);
@@ -231,7 +238,7 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
       <BackLink href="/contactmomenten" label="Terug naar contactmomenten" />
       <PageHeader
         eyebrow="Contactmoment"
-        title={`${representative.firstName} ${representative.lastName}`}
+        title={representative ? `${representative.firstName} ${representative.lastName}` : "Vertegenwoordiger"}
         description={contact.reason}
         actions={<StatusBadge status={contact.status} />}
       />
@@ -248,7 +255,7 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
             <h2 className="font-bold text-slate-950">Jouw voorbereiding</h2>
             <TagPicker label="Aan welke KPI's besteed je extra aandacht?" options={kpiDefinitions} value={kpis} onChange={setKpis} />
             <TagPicker label="Welke thema's wil je bespreken?" options={themeOptions} value={themes} onChange={setThemes} />
-            <button type="button" onClick={() => submitContactInput(contact.id, representative.id, kpis, themes)} className="btn-primary mt-6">
+            <button type="button" onClick={() => submitContactInput(contact.id, contact.representativeId, kpis, themes)} className="btn-primary mt-6">
               <Send className="h-4 w-4" /> Input indienen
             </button>
           </section>
@@ -291,6 +298,7 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
 export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: boolean }) {
   const { user } = useSession();
   const workflow = useWorkflow();
+  const { representatives } = useRepresentatives();
   const requests = workflow.visibleHelpRequests(user);
   if (isNew) return <NewHelpRequest />;
   if (id) {
@@ -337,6 +345,7 @@ export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: b
 function NewHelpRequest() {
   const { user } = useSession();
   const { createHelpRequest } = useWorkflow();
+  const { representatives } = useRepresentatives();
   const available = representatives.filter((item) => canAccessRepresentative(user, item));
   const lockedRepresentative = user.role === "REPRESENTATIVE" ? user.representativeId : undefined;
   const [createdId, setCreatedId] = useState<string>();
@@ -393,7 +402,8 @@ function NewHelpRequest() {
 function HelpRequestDetail({ request }: { request: HelpRequest }) {
   const { user } = useSession();
   const { planHelpFollowUp, setHelpStatus } = useWorkflow();
-  const representative = representatives.find((item) => item.id === request.representativeId)!;
+  const { representatives } = useRepresentatives();
+  const representative = representatives.find((item) => item.id === request.representativeId);
   const canManage = ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role);
   const [followUp, setFollowUp] = useState<FollowUpType>(request.followUpType ?? "contactmoment");
   const [updated, setUpdated] = useState(false);
@@ -413,7 +423,7 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <BackLink href="/hulpaanvragen" label="Terug naar hulpaanvragen" />
-      <PageHeader eyebrow="Hulpaanvraag" title={request.subject} description={`${representative.firstName} ${representative.lastName} · ${representative.team}`} actions={<StatusBadge status={request.status} />} />
+      <PageHeader eyebrow="Hulpaanvraag" title={request.subject} description={representative ? `${representative.firstName} ${representative.lastName} · ${representative.team}` : "Vertegenwoordiger"} actions={<StatusBadge status={request.status} />} />
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
         <section className="card p-5 sm:p-7">
           <div className="flex items-center gap-3"><CircleHelp className="h-5 w-5 text-brand-700" /><h2 className="font-bold text-slate-950">De hulpvraag</h2></div>
@@ -478,7 +488,7 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
   );
 }
 
-function RepresentativePicker({ available, value, onChange, disabled = false }: { available: typeof representatives; value: string; onChange: (value: string) => void; disabled?: boolean }) {
+function RepresentativePicker({ available, value, onChange, disabled = false }: { available: Representative[]; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return (
     <label className="block">
       <span className="text-sm font-bold text-slate-900">Vertegenwoordiger</span>

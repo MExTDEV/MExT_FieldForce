@@ -11,10 +11,10 @@ import {
 
 import { useModules } from "@/components/module-provider";
 import { PageHeader, StatusBadge } from "@/components/ui";
+import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
-import { representatives } from "@/lib/mock-data";
-import { visibleStaticInterventions } from "@/lib/data-access";
+import type { Representative } from "@/lib/types";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -139,7 +139,7 @@ function durationFromTimes(start?: string, end?: string) {
   return Math.max(1, Math.min(8, endHour - startHour));
 }
 
-function representativeName(id?: string) {
+function representativeName(representatives: Representative[], id?: string) {
   const representative = representatives.find((item) => item.id === id);
   return representative
     ? `${representative.firstName} ${representative.lastName}`
@@ -150,66 +150,21 @@ function eventColor(type: string) {
   return EVENT_COLORS[type] ?? "border-[#003B83] bg-blue-50 text-blue-950";
 }
 
-function staticEventType(type: string) {
-  const labels: Record<string, string> = {
-    begeleiding: "Begeleiding",
-    contactmoment: "Contactmoment",
-    retraining: "Retraining",
-    sales_training: "Sales training",
-    hulpaanvraag: "Hulpaanvraag",
-  };
-  return labels[type] ?? type;
-}
-
-function staticEventHref(type: string, id: string) {
-  const routes: Record<string, string> = {
-    begeleiding: "begeleidingen",
-    contactmoment: "contactmomenten",
-    retraining: "retrainingen",
-    sales_training: "sales-trainingen",
-    hulpaanvraag: "hulpaanvragen",
-  };
-  return `/${routes[type] ?? "planning"}/${id}`;
-}
-
 export function PlanningCalendar() {
   const { user } = useSession();
   const workflow = useWorkflow();
   const { isModuleEnabled } = useModules();
+  const { representatives } = useRepresentatives();
   const [view, setView] = useState<CalendarView>("week");
   const [selectedDate, setSelectedDate] = useState(new Date(REFERENCE_DATE));
 
   const events = useMemo<CalendarEvent[]>(() => {
-    const staticEvents = visibleStaticInterventions(user).filter((item) => {
-      if (item.type === "begeleiding") return isModuleEnabled("BEGELEIDINGEN");
-      if (item.type === "contactmoment") return isModuleEnabled("CONTACTMOMENTEN");
-      if (item.type === "retraining") return isModuleEnabled("RETRAININGEN");
-      if (item.type === "sales_training") return isModuleEnabled("SALESTRAININGEN");
-      if (item.type === "hulpaanvraag") return isModuleEnabled("HULPAANVRAGEN");
-      return true;
-    }).map((item) => {
-      const eventDate = parseDate(item.date);
-      const type = staticEventType(item.type);
-      return {
-        id: `static-${item.id}`,
-        title: type,
-        subtitle: item.person,
-        date: dateKey(eventDate),
-        hour: deterministicHour(item.id),
-        duration: 1,
-        type,
-        status: item.status,
-        href: staticEventHref(item.type, item.id),
-        color: eventColor(type),
-      };
-    });
-
     const coachingEvents = workflow.visibleInterventions(user)
       .filter((item) => user.role !== "REPRESENTATIVE" || ["gefinaliseerd", "wacht_op_akkoord"].includes(item.status))
       .map((item) => ({
         id: `coaching-${item.id}`,
         title: "Begeleiding",
-        subtitle: `${representativeName(item.representativeId)} · ${item.ownerId ? "Verkoopleider" : ""}`,
+        subtitle: `${representativeName(representatives, item.representativeId)} · ${item.ownerId ? "Verkoopleider" : ""}`,
         date: dateKey(parseDate(item.plannedDate ?? item.finalizedAt ?? item.createdAt)),
         hour: hourFromTime(item.startTime) ?? deterministicHour(item.id),
         duration: durationFromTimes(item.startTime, item.endTime),
@@ -222,7 +177,7 @@ export function PlanningCalendar() {
     const contactEvents = isModuleEnabled("CONTACTMOMENTEN") ? workflow.visibleContactMoments(user).map((item) => ({
       id: `contact-${item.id}`,
       title: "Contactmoment",
-      subtitle: representativeName(item.representativeId),
+      subtitle: representativeName(representatives, item.representativeId),
       date: dateKey(parseDate(item.createdAt)),
       hour: deterministicHour(item.id),
       duration: 1,
@@ -235,7 +190,7 @@ export function PlanningCalendar() {
     const retrainingEvents = isModuleEnabled("RETRAININGEN") ? workflow.visibleRetrainings(user).map((item) => ({
       id: `retraining-${item.id}`,
       title: item.theme || "Retraining",
-      subtitle: representativeName(item.representativeId),
+      subtitle: representativeName(representatives, item.representativeId),
       date: dateKey(parseDate(item.date)),
       hour: deterministicHour(item.id),
       duration: 1,
@@ -261,7 +216,7 @@ export function PlanningCalendar() {
     const helpRequestEvents = isModuleEnabled("HULPAANVRAGEN") ? workflow.visibleHelpRequests(user).map((item) => ({
       id: `help-${item.id}`,
       title: item.subject || "Hulpaanvraag",
-      subtitle: representativeName(item.representativeId),
+      subtitle: representativeName(representatives, item.representativeId),
       date: dateKey(parseDate(item.createdAt)),
       hour: deterministicHour(item.id),
       duration: 1,
@@ -272,7 +227,6 @@ export function PlanningCalendar() {
     })) : [];
 
     return [
-      ...staticEvents,
       ...coachingEvents,
       ...contactEvents,
       ...retrainingEvents,
@@ -291,6 +245,7 @@ export function PlanningCalendar() {
     user,
     workflow,
     isModuleEnabled,
+    representatives,
   ]);
 
   const periodLabel = useMemo(() => {

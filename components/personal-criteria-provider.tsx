@@ -10,43 +10,12 @@ import {
   visiblePersonalCriteria,
   type PersonalCriterionInput,
 } from "@/lib/personal-criteria";
-import { representatives } from "@/lib/mock-data";
+import { useRepresentatives } from "@/components/representatives-provider";
 import type {
   MockUser,
   PersonalCoachingCriterion,
   Representative,
 } from "@/lib/types";
-
-const STORAGE_KEY = "mext:personal-kapstok-criteria:v1";
-
-const seedPersonalCriteria: PersonalCoachingCriterion[] = [
-  {
-    id: "personal-criterion-rep-1-1",
-    title: "Doorvragen op verborgen bezwaar",
-    description: "Gericht oefenen op het tweede en derde verdiepende antwoord voordat de demo start.",
-    focusName: "Behoefteanalyse",
-    representativeId: "rep-1",
-    createdByUserId: "user-leader-be",
-    teamId: "be-1",
-    country: "BE",
-    isActive: true,
-    createdAt: "2026-05-20T08:30:00.000Z",
-    updatedAt: "2026-05-20T08:30:00.000Z",
-  },
-  {
-    id: "personal-criterion-rep-1-2",
-    title: "Tablet afsluitflow zelfstandig gebruiken",
-    description: "De volledige afsluiting zonder overname door de verkoopleider uitvoeren.",
-    focusName: "Afsluiten",
-    representativeId: "rep-1",
-    createdByUserId: "user-leader-be",
-    teamId: "be-1",
-    country: "BE",
-    isActive: true,
-    createdAt: "2026-05-27T09:00:00.000Z",
-    updatedAt: "2026-05-27T09:00:00.000Z",
-  },
-];
 
 type PersonalCriteriaContextValue = {
   criteria: PersonalCoachingCriterion[];
@@ -76,38 +45,70 @@ type PersonalCriteriaContextValue = {
 
 const PersonalCriteriaContext = createContext<PersonalCriteriaContextValue | null>(null);
 
-function persist(criteria: PersonalCoachingCriterion[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(criteria));
-}
-
 export function PersonalCriteriaProvider({ children }: { children: React.ReactNode }) {
-  const [criteria, setCriteria] = useState<PersonalCoachingCriterion[]>(seedPersonalCriteria);
+  const { representatives } = useRepresentatives();
+  const [criteria, setCriteria] = useState<PersonalCoachingCriterion[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      persist(seedPersonalCriteria);
-      return;
+    let active = true;
+    async function loadCriteria() {
+      try {
+        const response = await fetch("/api/personal-criteria", { cache: "no-store" });
+        const payload = (await response.json()) as {
+          criteria?: PersonalCoachingCriterion[];
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Persoonlijke criteria konden niet worden geladen.");
+        }
+        if (active) setCriteria(payload.criteria ?? []);
+      } catch (error) {
+        console.error("[personal-criteria-provider]", error);
+      }
     }
-    try {
-      const parsed = JSON.parse(stored) as PersonalCoachingCriterion[];
-      setCriteria(Array.isArray(parsed) ? parsed : seedPersonalCriteria);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-      persist(seedPersonalCriteria);
-    }
+    loadCriteria();
+    return () => {
+      active = false;
+    };
   }, []);
+
+  async function persistCreate(criterion: PersonalCoachingCriterion) {
+    const response = await fetch("/api/personal-criteria", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ criterion }),
+    });
+    if (!response.ok) throw new Error("Persoonlijk criterium kon niet worden opgeslagen.");
+  }
+
+  async function persistUpdate(
+    id: string,
+    criterion: Pick<PersonalCoachingCriterion, "title" | "description" | "focusName">
+  ) {
+    const response = await fetch(`/api/personal-criteria/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ criterion }),
+    });
+    if (!response.ok) throw new Error("Persoonlijk criterium kon niet worden gewijzigd.");
+  }
+
+  async function persistDeactivate(id: string) {
+    const response = await fetch(`/api/personal-criteria/${id}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Persoonlijk criterium kon niet worden gedeactiveerd.");
+  }
 
   const value = useMemo<PersonalCriteriaContextValue>(() => ({
     criteria,
-    visibleCriteria: (actor) => visiblePersonalCriteria(actor, criteria),
+    visibleCriteria: (actor) => visiblePersonalCriteria(actor, criteria, representatives),
     activeForRepresentative: (actor, representativeId) =>
-      activePersonalCriteriaForRepresentative(actor, representativeId, criteria),
+      activePersonalCriteriaForRepresentative(actor, representativeId, criteria, representatives),
     canManageForRepresentative: canManagePersonalCriterionForRepresentative,
     createCriterion: (actor, input) => {
-      const error = validatePersonalCriterionInput(actor, criteria, input);
+      const error = validatePersonalCriterionInput(actor, criteria, input, representatives);
       if (error) return { ok: false, error };
-      const representative = representatives.find((item) => item.id === input.representativeId)!;
+      const representative = representatives.find((item) => item.id === input.representativeId);
+      if (!representative) return { ok: false, error: "Vertegenwoordiger niet gevonden." };
       const now = new Date().toISOString();
       const criterion: PersonalCoachingCriterion = {
         id: createPersonalCriterionId(),
@@ -124,18 +125,18 @@ export function PersonalCriteriaProvider({ children }: { children: React.ReactNo
       };
       setCriteria((current) => {
         const next = [...current, criterion];
-        persist(next);
         return next;
       });
+      void persistCreate(criterion).catch((persistError) => console.error("[personal-criteria:create]", persistError));
       return { ok: true, criterion };
     },
     updateCriterion: (actor, id, input) => {
       const existing = criteria.find((criterion) => criterion.id === id);
       if (!existing) return { ok: false, error: "Criterium niet gevonden." };
-      if (!canManagePersonalCriterion(actor, existing)) {
+      if (!canManagePersonalCriterion(actor, existing, representatives)) {
         return { ok: false, error: "Je mag dit criterium niet wijzigen." };
       }
-      const error = validatePersonalCriterionInput(actor, criteria, input, id);
+      const error = validatePersonalCriterionInput(actor, criteria, input, representatives, id);
       if (error) return { ok: false, error };
       let updated: PersonalCoachingCriterion | undefined;
       setCriteria((current) => {
@@ -150,9 +151,15 @@ export function PersonalCriteriaProvider({ children }: { children: React.ReactNo
           };
           return updated;
         });
-        persist(next);
         return next;
       });
+      if (updated) {
+        void persistUpdate(id, {
+          title: updated.title,
+          description: updated.description,
+          focusName: updated.focusName,
+        }).catch((persistError) => console.error("[personal-criteria:update]", persistError));
+      }
       return updated
         ? { ok: true, criterion: updated }
         : { ok: false, error: "Criterium niet gevonden." };
@@ -160,7 +167,7 @@ export function PersonalCriteriaProvider({ children }: { children: React.ReactNo
     deactivateCriterion: (actor, id) => {
       const existing = criteria.find((criterion) => criterion.id === id);
       if (!existing) return { ok: false, error: "Criterium niet gevonden." };
-      if (!canManagePersonalCriterion(actor, existing)) {
+      if (!canManagePersonalCriterion(actor, existing, representatives)) {
         return { ok: false, error: "Je mag dit criterium niet deactiveren." };
       }
       setCriteria((current) => {
@@ -169,12 +176,12 @@ export function PersonalCriteriaProvider({ children }: { children: React.ReactNo
             ? { ...criterion, isActive: false, updatedAt: new Date().toISOString() }
             : criterion
         );
-        persist(next);
         return next;
       });
+      void persistDeactivate(id).catch((persistError) => console.error("[personal-criteria:deactivate]", persistError));
       return { ok: true };
     },
-  }), [criteria]);
+  }), [criteria, representatives]);
 
   return (
     <PersonalCriteriaContext.Provider value={value}>

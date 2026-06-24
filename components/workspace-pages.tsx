@@ -8,7 +8,6 @@ import {
   BookOpenCheck,
   CalendarCheck,
   CalendarDays,
-  CheckCircle2,
   ChevronRight,
   CircleHelp,
   ClipboardCheck,
@@ -29,9 +28,12 @@ import {
   Users,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
+import { useConfiguration } from "@/components/configuration-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import { usePersonalCriteria } from "@/components/personal-criteria-provider";
+import { usePerformance } from "@/components/performance-provider";
 import { useModules } from "@/components/module-provider";
+import { useRepresentatives } from "@/components/representatives-provider";
 import { MyReflectionsPage, MyReportsPage } from "@/components/representative-workflow-pages";
 import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/contact-help-workflows";
 import { TrainingWorkflowPage } from "@/components/training-workflows";
@@ -42,7 +44,6 @@ import { UsersManagementPage } from "@/components/user-management";
 import { PlanningCalendar } from "@/components/planning-calendar";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { branding } from "@/config/branding";
-import { actionPoints, coachingFramework, kpiDefinitions, representatives } from "@/lib/mock-data";
 import {
   can,
   canAccessRepresentative,
@@ -56,29 +57,30 @@ import { buildSmartCoaching } from "@/lib/smart-coaching";
 import {
   getVisibleRepresentatives,
   getVisibleWorkflowState,
-  visibleStaticInterventions,
 } from "@/lib/data-access";
 import { moduleForRoute } from "@/lib/modules";
 import {
   coachingById,
   coachingsForRepresentative,
-  historicalActionPoints,
-  historicalCoachings,
-  historicalContactMoments,
   latestHistoricalCoaching,
-  monthlyKpiSnapshots,
   performanceTrend,
   representativeForCoaching,
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
-import type { CoachingAppointment, CoachingDossier, PersonalCoachingCriterion } from "@/lib/types";
+import type { CoachingAppointment, CoachingDossier, PersonalCoachingCriterion, Representative } from "@/lib/types";
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
-  const { user } = useSession();
+  const { user, loading: sessionLoading, error: sessionError } = useSession();
   const { isModuleEnabled } = useModules();
   const path = segments.join("/");
   const routeModule = moduleForRoute(segments[0] ?? "");
 
+  if (sessionLoading) {
+    return <EmptyState title="Gebruikerssessie laden" description="De actieve gebruiker en rechten worden uit MariaDB opgehaald." />;
+  }
+  if (sessionError || !user.id) {
+    return <EmptyState title="Gebruikerssessie niet beschikbaar" description={sessionError ?? "Er is geen actieve databasegebruiker beschikbaar."} />;
+  }
   if (routeModule && !isModuleEnabled(routeModule.code)) {
     return <ModuleInactive moduleName={routeModule.name} />;
   }
@@ -112,8 +114,10 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
 }
 
 function Dashboard() {
-  const { user } = useSession();
+  const { user, managedUsers } = useSession();
   const { isModuleEnabled } = useModules();
+  const { representatives } = useRepresentatives();
+  const { dataset: performanceDataset } = usePerformance();
   const {
     visibleInterventions,
     openReflections,
@@ -125,13 +129,13 @@ function Dashboard() {
     state,
   } = useWorkflow();
   const scopedRepresentatives = useMemo(
-    () => getVisibleRepresentatives(user),
-    [user]
+    () => getVisibleRepresentatives(user, representatives),
+    [representatives, user]
   );
   const teamDashboardAllowed = canViewTeamDashboard(user);
   const teamDashboardRepresentatives = useMemo(
-    () => teamDashboardAllowed ? getVisibleRepresentatives(user) : [],
-    [teamDashboardAllowed, user]
+    () => teamDashboardAllowed ? getVisibleRepresentatives(user, representatives) : [],
+    [representatives, teamDashboardAllowed, user]
   );
   const coachingEnabled = isModuleEnabled("BEGELEIDINGEN");
   const planningEnabled = isModuleEnabled("PLANNING");
@@ -146,25 +150,20 @@ function Dashboard() {
   const scopedRetrainings = retrainingEnabled ? visibleRetrainings(user) : [];
   const scopedSalesTrainings = salesTrainingEnabled ? visibleSalesTrainings(user) : [];
   const scopedState = useMemo(
-    () => getVisibleWorkflowState(user, state),
-    [state, user]
+    () => getVisibleWorkflowState(user, state, representatives),
+    [representatives, state, user]
   );
   const smartResult = useMemo(() => {
-    const dataset = buildReportingDataset(scopedState);
-    const scopedDataset = filterReportingDataset(dataset, scopedRepresentatives, emptyReportingFilters);
-    return buildSmartCoaching(scopedDataset, scopedState);
-  }, [scopedState, scopedRepresentatives]);
-  const scopedStaticMoments = useMemo(
-    () => planningEnabled ? visibleStaticInterventions(user).filter((item) => {
-      if (item.type === "begeleiding") return coachingEnabled;
-      if (item.type === "contactmoment") return contactsEnabled;
-      if (item.type === "retraining") return retrainingEnabled;
-      if (item.type === "sales_training") return salesTrainingEnabled;
-      if (item.type === "hulpaanvraag") return helpEnabled;
-      return true;
-    }) : [],
-    [coachingEnabled, contactsEnabled, helpEnabled, planningEnabled, retrainingEnabled, salesTrainingEnabled, user]
-  );
+    const dataset = buildReportingDataset(scopedState, representatives, performanceDataset, managedUsers);
+    const scopedDataset = filterReportingDataset(dataset, scopedRepresentatives, emptyReportingFilters, managedUsers);
+    return buildSmartCoaching(scopedDataset, scopedState, undefined, managedUsers);
+  }, [managedUsers, performanceDataset, representatives, scopedState, scopedRepresentatives]);
+  const scopedOtherMoments = planningEnabled ? [
+    ...scopedContacts.map((item) => ({ id: item.id, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.ownerId, status: item.status })),
+    ...scopedRetrainings.map((item) => ({ id: item.id, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.trainer || item.initiatorId, status: item.status })),
+    ...scopedSalesTrainings.map((item) => ({ id: item.id, type: "sales_training", person: `${item.participantIds.length} deelnemers`, date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.trainer || item.initiatorId, status: item.status })),
+    ...scopedHelpRequests.map((item) => ({ id: item.id, type: "hulpaanvraag", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.requesterId, status: item.status })),
+  ] : [];
   const openActionCount = actionPointsEnabled ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) : 0;
   const reflectionCount = user.role === "REPRESENTATIVE"
     ? openReflections(user).length
@@ -243,7 +242,7 @@ function Dashboard() {
                 owner: user.name,
                 status: item.status,
               };
-            }), ...scopedStaticMoments].slice(0, 5).map((item) => (
+            }), ...scopedOtherMoments].slice(0, 5).map((item) => (
               <div key={item.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="hidden h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-100 sm:flex">
                   <span className="text-xs font-bold uppercase text-slate-400">{item.date.split(" ")[1]}</span>
@@ -283,6 +282,8 @@ function Dashboard() {
 
 function RepresentativesList() {
   const { user } = useSession();
+  const { error, loading, representatives } = useRepresentatives();
+  const { dataset: performanceDataset } = usePerformance();
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("all");
   const [team, setTeam] = useState("all");
@@ -307,6 +308,8 @@ function RepresentativesList() {
         description="Bekijk ontwikkeling, KPI's en volledige coachinghistoriek binnen jouw scope."
         actions={<button className="btn-secondary"><Filter className="h-4 w-4" /> Exporteer selectie</button>}
       />
+      {loading && <p className="text-sm text-slate-500">Vertegenwoordigers laden...</p>}
+      {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</p>}
       <div className="card p-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_160px_200px_200px]">
           <label className="relative">
@@ -350,11 +353,11 @@ function RepresentativesList() {
               </div>
               <p className="text-sm text-slate-600">{representative.team}</p>
               <p className="text-sm font-semibold text-slate-700">{representative.country}</p>
-              <p className="text-sm text-slate-600">{formatShortDate(latestHistoricalCoaching(representative.id)?.date)}</p>
-              <PerformanceTrendLabel value={performanceTrend(representative.id)} />
+              <p className="text-sm text-slate-600">{formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>
+              <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />
               <p className="text-sm text-slate-600">
                 <span className="font-bold text-slate-900">
-                  {historicalActionPoints.filter((item) =>
+                  {performanceDataset.historicalActionPoints.filter((item) =>
                     item.representativeId === representative.id &&
                     !["behaald", "niet_behaald"].includes(item.status)
                   ).length}
@@ -372,8 +375,18 @@ function RepresentativesList() {
 
 function RepresentativeDetail({ id }: { id: string }) {
   const { user } = useSession();
+  const { error, loading, representatives } = useRepresentatives();
+  const { dataset: performanceDataset, error: performanceError } = usePerformance();
   const representative = representatives.find((item) => item.id === id);
   const [tab, setTab] = useState("overzicht");
+
+  if (loading) {
+    return <EmptyState title="Vertegenwoordiger laden" description="De gegevens worden uit MariaDB opgehaald." />;
+  }
+
+  if (error) {
+    return <EmptyState title="Database niet bereikbaar" description={error} />;
+  }
 
   if (!representative || !canAccessRepresentative(user, representative)) {
     return <EmptyState title="Geen toegang" description="Deze vertegenwoordiger valt niet binnen jouw huidige rol- of teamscope." />;
@@ -393,7 +406,7 @@ function RepresentativeDetail({ id }: { id: string }) {
               <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
               <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
               <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>
-              <PerformanceTrendLabel value={performanceTrend(representative.id)} />
+              <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />
             </div>
           </div>
           <Link href="/begeleidingen/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> Begeleiding</Link>
@@ -424,7 +437,7 @@ function RepresentativeDetail({ id }: { id: string }) {
           <section className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
             <div className="card overflow-hidden">
               <SectionTitle title="Open actiepunten" subtitle="Concrete afspraken in opvolging" link="/actiepunten" />
-              {historicalActionPoints
+              {performanceDataset.historicalActionPoints
                 .filter((action) =>
                   action.representativeId === representative.id &&
                   !["behaald", "niet_behaald"].includes(action.status)
@@ -445,15 +458,16 @@ function RepresentativeDetail({ id }: { id: string }) {
               <div className="mt-5 space-y-4">
                 <p className="flex items-center gap-3 text-sm text-slate-600"><Mail className="h-4 w-4 text-brand-700" /> {representative.email}</p>
                 <p className="flex items-center gap-3 text-sm text-slate-600"><Phone className="h-4 w-4 text-brand-700" /> {representative.phone}</p>
-                <p className="flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(representative.id)?.date)}</p>
+                <p className="flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>
               </div>
             </div>
           </section>
         </>
       )}
+      {performanceError && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
       {tab === "Prestatiecirkel" && (
         <PerformanceEvolution
-          coachings={coachingsForRepresentative(representative.id)}
+          coachings={coachingsForRepresentative(performanceDataset, representative.id)}
           representativeName={`${representative.firstName} ${representative.lastName}`}
         />
       )}
@@ -464,8 +478,9 @@ function RepresentativeDetail({ id }: { id: string }) {
   );
 }
 
-function PersonalCriteriaPanel({ representative }: { representative: (typeof representatives)[number] }) {
+function PersonalCriteriaPanel({ representative }: { representative: Representative }) {
   const { user } = useSession();
+  const { coachingFramework } = useConfiguration();
   const personalCriteria = usePersonalCriteria();
   const active = personalCriteria.activeForRepresentative(user, representative.id);
   const inactive = personalCriteria
@@ -691,7 +706,8 @@ function PersonalCriterionCard({
 }
 
 function KpiPanel({ representativeId }: { representativeId: string }) {
-  const snapshots = monthlyKpiSnapshots.filter((item) => item.representativeId === representativeId);
+  const { dataset: performanceDataset } = usePerformance();
+  const snapshots = performanceDataset.monthlyKpiSnapshots.filter((item) => item.representativeId === representativeId);
   const latest = snapshots.at(-1);
   return (
     <div className="card p-5 sm:p-6">
@@ -720,9 +736,10 @@ function KpiPanel({ representativeId }: { representativeId: string }) {
 
 function TimelinePanel({ title, representativeId, representativeName }: { title: string; representativeId: string; representativeName: string }) {
   const { state } = useWorkflow();
+  const { dataset: performanceDataset } = usePerformance();
   const workflowItems = [
-    ...historicalCoachings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.date, owner: item.ownerName, status: item.status })),
-    ...historicalContactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.date, owner: item.reason, status: item.status })),
+    ...performanceDataset.historicalCoachings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.date, owner: item.ownerName, status: item.status })),
+    ...performanceDataset.historicalContactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.date, owner: item.reason, status: item.status })),
     ...state.interventions.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.updatedAt, owner: "Coaching", status: item.status })),
     ...state.contactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.updatedAt, owner: item.reason, status: item.status })),
     ...state.helpRequests.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "hulpaanvraag", date: item.updatedAt, owner: item.subject, status: item.status })),
@@ -756,10 +773,13 @@ function TimelinePanel({ title, representativeId, representativeName }: { title:
 }
 
 function CoachingDetail({ id }: { id: string }) {
-  const { user } = useSession();
+  const { user, managedUsers } = useSession();
+  const { coachingFramework } = useConfiguration();
+  const { representatives } = useRepresentatives();
+  const { dataset: performanceDataset } = usePerformance();
   const workflowApi = useWorkflow();
   const { state } = workflowApi;
-  const historical = coachingById(id);
+  const historical = coachingById(performanceDataset, id);
   const workflow = state.interventions.find((item) => item.id === id);
   const representativeId = historical?.representativeId ?? workflow?.representativeId;
   const representative = representatives.find((item) => item.id === representativeId);
@@ -772,8 +792,8 @@ function CoachingDetail({ id }: { id: string }) {
     return <CoachingDossierDetail intervention={workflow} representative={representative} workflowApi={workflowApi} />;
   }
 
-  const history = coachingsForRepresentative(representative.id);
-  const selected = historical ?? (workflow ? workflowCoachingAsHistory(workflow, history.at(-1)) : undefined);
+  const history = coachingsForRepresentative(performanceDataset, representative.id);
+  const selected = historical ?? (workflow ? workflowCoachingAsHistory(workflow, coachingFramework, managedUsers, history.at(-1)) : undefined);
   if (!selected) {
     return <EmptyState title="Geen scores beschikbaar" description="Voor deze begeleiding zijn nog geen prestatiescores bewaard." />;
   }
@@ -819,10 +839,6 @@ function CoachingDetail({ id }: { id: string }) {
 type WorkflowApi = ReturnType<typeof useWorkflow>;
 type CoachingWorkflowItem = WorkflowApi["state"]["interventions"][number];
 
-const appointmentCriteria = coachingFramework.flatMap((focus) =>
-  focus.criteria.map((criterion) => `${focus.name} - ${criterion}`)
-);
-
 const dossierGeneralCriteria = [
   "Stiptheid",
   "Vertrekuur",
@@ -860,7 +876,7 @@ function defaultDossierState() {
   };
 }
 
-function emptyAppointment() {
+function emptyAppointment(appointmentCriteria: string[]) {
   return {
     id: `appointment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     customer: "",
@@ -882,10 +898,14 @@ function CoachingDossierDetail({
   workflowApi,
 }: {
   intervention: CoachingWorkflowItem;
-  representative: (typeof representatives)[number];
+  representative: Representative;
   workflowApi: WorkflowApi;
 }) {
-  const { user } = useSession();
+  const { user, managedUsers } = useSession();
+  const { coachingFramework } = useConfiguration();
+  const appointmentCriteria = coachingFramework.flatMap((focus) =>
+    focus.criteria.map((criterion) => `${focus.name} - ${criterion}`)
+  );
   const readOnly = ["gefinaliseerd", "afgesloten"].includes(intervention.status) || user.role === "REPRESENTATIVE";
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
@@ -945,7 +965,7 @@ function CoachingDossierDetail({
   }
 
   function addAppointment() {
-    const appointment = emptyAppointment();
+    const appointment = emptyAppointment(appointmentCriteria);
     setLocal((current) => ({ ...current, appointments: [...(current.appointments ?? []), appointment] }));
     setOpenAppointmentId(appointment.id);
   }
@@ -985,7 +1005,7 @@ function CoachingDossierDetail({
       <PageHeader
         eyebrow="Begeleidingsdossier"
         title={`${representative.firstName} ${representative.lastName}`}
-        description={`${formatShortDate(local.plannedDate)} · ${local.startTime ?? ""}-${local.endTime ?? ""} · ${reportingUserName(local.ownerId)}`}
+        description={`${formatShortDate(local.plannedDate)} · ${local.startTime ?? ""}-${local.endTime ?? ""} · ${reportingUserName(local.ownerId, managedUsers)}`}
       />
       {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{message}</div>}
 
@@ -1004,7 +1024,7 @@ function CoachingDossierDetail({
           <TextField label="Gebied" value={dossier.area} disabled={readOnly} onChange={(area) => updateDossier({ area })} />
           <TextField label="Sector" value={dossier.sector} disabled={readOnly} onChange={(sector) => updateDossier({ sector })} />
           <ReadOnlyField label="Niveau" value={representative.level} />
-          <ReadOnlyField label="Verkoopleider" value={reportingUserName(local.ownerId)} />
+          <ReadOnlyField label="Verkoopleider" value={reportingUserName(local.ownerId, managedUsers)} />
           <TextField label="Aankomsttijd" type="time" value={dossier.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => updateDossier({ arrivalTime })} />
           <TextField label="Vertrektijd" type="time" value={dossier.departureTime} disabled={readOnly} onChange={(departureTime) => updateDossier({ departureTime })} />
           <TextField label="Aantal kilometers" value={dossier.kilometers} disabled={readOnly} onChange={(kilometers) => updateDossier({ kilometers })} />
@@ -1211,8 +1231,10 @@ function formatPercentage(value?: number) {
 }
 
 function InterventionList({ kind }: { kind: string }) {
-  const { user } = useSession();
+  const { user, managedUsers } = useSession();
   const { visibleInterventions } = useWorkflow();
+  const { representatives } = useRepresentatives();
+  const { dataset: performanceDataset } = usePerformance();
   const labels: Record<string, { title: string; description: string; icon: typeof ClipboardCheck }> = {
     begeleidingen: { title: "Begeleidingen", description: "Bereid coaching voor, scoor gericht en volg afspraken op.", icon: ClipboardCheck },
     contactmomenten: { title: "Contactmomenten", description: "Korte, gestructureerde opvolging tussen begeleidingen.", icon: Phone },
@@ -1223,13 +1245,13 @@ function InterventionList({ kind }: { kind: string }) {
   const Icon = current.icon;
   const todayKey = new Date().toISOString().slice(0, 10);
   const historicalRows = kind === "begeleidingen"
-    ? historicalCoachings
+    ? performanceDataset.historicalCoachings
       .filter((item) => {
         const representative = representatives.find((person) => person.id === item.representativeId);
         return representative ? canAccessRepresentative(user, representative) : false;
       })
       .map((item) => {
-        const representative = representativeForCoaching(item)!;
+        const representative = representativeForCoaching(item, representatives)!;
         return {
           id: item.id,
           type: "begeleiding",
@@ -1254,7 +1276,7 @@ function InterventionList({ kind }: { kind: string }) {
         type: "begeleiding",
         person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
         date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
-        owner: reportingUserName(item.ownerId),
+        owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
         editable: !["gefinaliseerd", "afgesloten"].includes(item.status),
         detailHref: `/begeleidingen/${item.id}`,
@@ -1265,9 +1287,10 @@ function InterventionList({ kind }: { kind: string }) {
       };
     })
     : [];
+  const workflowIds = new Set(workflowRows.map((item) => item.id));
   const allRows = [
     ...workflowRows,
-    ...historicalRows,
+    ...historicalRows.filter((item) => !workflowIds.has(item.id)),
   ];
   const todayRows = allRows
     .filter((item) => !["gefinaliseerd", "afgesloten"].includes(item.status) && item.plannedDate === todayKey)
@@ -1363,6 +1386,8 @@ function InterventionList({ kind }: { kind: string }) {
 
 function workflowCoachingAsHistory(
   intervention: ReturnType<typeof useWorkflow>["state"]["interventions"][number],
+  coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"],
+  managedUsers: ReturnType<typeof useSession>["managedUsers"],
   previous?: HistoricalCoaching
 ): HistoricalCoaching {
   const scoreByFocus = new Map<string, number[]>();
@@ -1384,7 +1409,7 @@ function workflowCoachingAsHistory(
     representativeId: intervention.representativeId,
     date: intervention.updatedAt.slice(0, 10),
     ownerId: intervention.ownerId,
-    ownerName: reportingUserName(intervention.ownerId),
+    ownerName: reportingUserName(intervention.ownerId, managedUsers),
     status: "afgesloten",
     focusNames: intervention.focusNames,
     phaseScores,
@@ -1421,15 +1446,10 @@ function appointmentScoresAsCriterionScores(appointments: NonNullable<ReturnType
 function ActionPoints() {
   const { user } = useSession();
   const { visibleInterventions, visibleContactMoments, visibleRetrainings, visibleSalesTrainings } = useWorkflow();
+  const { representatives } = useRepresentatives();
+  const { dataset: performanceDataset } = usePerformance();
   const [status, setStatus] = useState("all");
-  const [items, setItems] = useState(actionPoints);
-  const scopedRepresentativeNames = new Set(
-    representatives
-      .filter((representative) => canAccessRepresentative(user, representative))
-      .map((representative) => `${representative.firstName} ${representative.lastName}`)
-  );
-  const scopedStaticItems = items.filter((item) => scopedRepresentativeNames.has(item.person));
-  const seededActions = historicalActionPoints.flatMap((action) => {
+  const seededActions = performanceDataset.historicalActionPoints.flatMap((action) => {
     const representative = representatives.find((item) => item.id === action.representativeId);
     if (!representative || !canAccessRepresentative(user, representative)) return [];
     return [{
@@ -1499,11 +1519,7 @@ function ActionPoints() {
       progress: action.status === "behaald" ? 100 : action.status === "in_uitvoering" ? 50 : 10,
     }))
   );
-  const visible = [...workflowActions, ...contactActions, ...retrainingActions, ...trainingActions, ...seededActions, ...scopedStaticItems].filter((item) => status === "all" || item.status === status);
-
-  function advance(id: string) {
-    setItems((current) => current.map((item) => item.id === id ? { ...item, status: item.status === "nieuw" ? "in_uitvoering" : "behaald", progress: item.status === "nieuw" ? 40 : 100 } : item));
-  }
+  const visible = [...workflowActions, ...contactActions, ...retrainingActions, ...trainingActions, ...seededActions].filter((item) => status === "all" || item.status === status);
 
   return (
     <div className="space-y-6">
@@ -1517,7 +1533,6 @@ function ActionPoints() {
           <article key={item.id} className="card p-5">
             <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{item.type} · {item.priority}</p><h2 className="mt-2 font-bold text-slate-950">{item.title}</h2><p className="mt-1 text-sm text-slate-500">{item.person} · tegen {item.due}</p></div><StatusBadge status={item.status} /></div>
             <div className="mt-5"><div className="mb-2 flex justify-between text-xs font-semibold text-slate-500"><span>Voortgang</span><span>{item.progress}%</span></div><div className="h-2.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-700 transition-all" style={{ width: `${item.progress}%` }} /></div></div>
-            {!["behaald", "niet_behaald", "achterstallig"].includes(item.status) && <button onClick={() => advance(item.id)} className="btn-secondary mt-5 w-full"><CheckCircle2 className="h-4 w-4" /> Status bijwerken</button>}
           </article>
         ))}
       </div>
@@ -1531,6 +1546,9 @@ function Planning() {
 
 function Management({ section }: { section: string }) {
   const { user } = useSession();
+  const { coachingFramework, kpiDefinitions } = useConfiguration();
+  const { representatives } = useRepresentatives();
+  const teams = [...new Map(representatives.map((item) => [item.teamId, item.team])).values()];
   if (section === "gebruikers") {
     return canAccessUserManagement(user)
       ? <UsersManagementPage />
@@ -1546,7 +1564,7 @@ function Management({ section }: { section: string }) {
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Configuratie" title={title} description="Beheer de centrale bouwstenen van het coachingplatform." actions={<button className="btn-primary"><Plus className="h-4 w-4" /> Toevoegen</button>} />
-      {section === "modules" ? <ModuleManagement /> : section === "kapstok" ? <FrameworkManagement /> : section === "kpis" ? <SimpleManagementList items={kpiDefinitions} icon={Gauge} /> : section === "teams" ? <SimpleManagementList items={["BE Team 1", "BE Team 2", "BE Team 3", "NL Team 1", "NL Team 2", "NL Team 3", "DE Team 1", "DE Team 2", "DE Team 3", "DE Team 4"]} icon={Users} /> : <SimpleManagementList items={section === "rollen" ? ["Vertegenwoordiger", "Verkoopleider", "Country Manager", "Group Manager", "Admin", "Super Admin"] : ["Microsoft Entra ID", "Standaardtaal", "Offline opslag", "Audit logging"]} icon={ShieldCheck} />}
+      {section === "modules" ? <ModuleManagement /> : section === "kapstok" ? <FrameworkManagement coachingFramework={coachingFramework} /> : section === "kpis" ? <SimpleManagementList items={kpiDefinitions} icon={Gauge} /> : section === "teams" ? <SimpleManagementList items={teams} icon={Users} /> : <SimpleManagementList items={section === "rollen" ? ["Vertegenwoordiger", "Verkoopleider", "Country Manager", "Group Manager", "Admin", "Super Admin"] : ["Microsoft Entra ID", "Standaardtaal", "Offline opslag", "Audit logging"]} icon={ShieldCheck} />}
     </div>
   );
 }
@@ -1565,12 +1583,12 @@ function SimpleManagementList({ items, icon: Icon }: { items: string[]; icon: ty
   return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((item, index) => <div key={item} className="card flex items-center gap-4 p-5"><div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div><div className="flex-1"><p className="font-semibold">{item}</p><p className="mt-1 text-xs text-slate-500">Actief · volgorde {index + 1}</p></div><button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><MoreHorizontal className="h-5 w-5" /></button></div>)}</div>;
 }
 
-function FrameworkManagement() {
+function FrameworkManagement({ coachingFramework }: { coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"] }) {
   return <div className="space-y-4">{coachingFramework.map((focus) => <div key={focus.name} className="card overflow-hidden"><div className="flex items-center gap-3 p-5"><div className={`h-10 w-2 rounded-full ${focus.color}`} /><div className="flex-1"><p className="font-bold">{focus.name}</p><p className="text-sm text-slate-500">{focus.criteria.length} criteria</p></div><button className="btn-secondary">Bewerken</button></div><div className="grid gap-2 border-t border-slate-100 bg-slate-50 p-4 sm:grid-cols-2">{focus.criteria.map((criterion, index) => <div key={criterion} className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700"><span className="mr-2 font-bold text-slate-400">{index + 1}.</span>{criterion}</div>)}</div></div>)}</div>;
 }
 
 function ModuleManagement() {
-  const { modules, setModuleEnabled } = useModules();
+  const { error, loading, modules, setModuleEnabled } = useModules();
 
   return (
     <div className="card overflow-hidden">
@@ -1579,6 +1597,8 @@ function ModuleManagement() {
         <p className="mt-1 text-sm text-slate-500">
           Schakel modules aan of uit zonder codewijziging. Inactieve modules verdwijnen uit menu, dashboard en routes.
         </p>
+        {loading && <p className="mt-2 text-sm text-slate-500">Modules laden...</p>}
+        {error && <p className="mt-2 text-sm font-semibold text-rose-700">{error}</p>}
       </div>
       <div className="divide-y divide-slate-100">
         {modules.map((module) => (

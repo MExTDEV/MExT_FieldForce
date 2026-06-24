@@ -1,4 +1,3 @@
-import { representatives } from "@/lib/mock-data";
 import { canAccessRepresentativeData } from "@/lib/data-access";
 import type {
   MockUser,
@@ -18,16 +17,18 @@ export function createPersonalCriterionId() {
 }
 
 export function representativeForCriterion(
-  criterion: Pick<PersonalCoachingCriterion, "representativeId">
+  criterion: Pick<PersonalCoachingCriterion, "representativeId">,
+  representatives: Representative[]
 ) {
   return representatives.find((item) => item.id === criterion.representativeId);
 }
 
 export function canViewPersonalCriterion(
   actor: MockUser,
-  criterion: PersonalCoachingCriterion
+  criterion: PersonalCoachingCriterion,
+  representatives: Representative[]
 ) {
-  const representative = representativeForCriterion(criterion);
+  const representative = representativeForCriterion(criterion, representatives);
   if (!representative) return false;
   if (!canAccessRepresentativeData(actor, representative)) return false;
 
@@ -59,9 +60,10 @@ export function canManagePersonalCriterionForRepresentative(
 
 export function canManagePersonalCriterion(
   actor: MockUser,
-  criterion: PersonalCoachingCriterion
+  criterion: PersonalCoachingCriterion,
+  representatives: Representative[]
 ) {
-  const representative = representativeForCriterion(criterion);
+  const representative = representativeForCriterion(criterion, representatives);
   if (!representative) return false;
   if (!canManagePersonalCriterionForRepresentative(actor, representative)) {
     return false;
@@ -74,17 +76,19 @@ export function canManagePersonalCriterion(
 
 export function visiblePersonalCriteria(
   actor: MockUser,
-  criteria: PersonalCoachingCriterion[]
+  criteria: PersonalCoachingCriterion[],
+  representatives: Representative[]
 ) {
-  return criteria.filter((criterion) => canViewPersonalCriterion(actor, criterion));
+  return criteria.filter((criterion) => canViewPersonalCriterion(actor, criterion, representatives));
 }
 
 export function activePersonalCriteriaForRepresentative(
   actor: MockUser,
   representativeId: string,
-  criteria: PersonalCoachingCriterion[]
+  criteria: PersonalCoachingCriterion[],
+  representatives: Representative[]
 ) {
-  return visiblePersonalCriteria(actor, criteria).filter(
+  return visiblePersonalCriteria(actor, criteria, representatives).filter(
     (criterion) =>
       criterion.representativeId === representativeId && criterion.isActive
   );
@@ -94,6 +98,7 @@ export function validatePersonalCriterionInput(
   actor: MockUser,
   criteria: PersonalCoachingCriterion[],
   input: PersonalCriterionInput,
+  representatives: Representative[],
   editingId?: string
 ) {
   const representative = representatives.find(

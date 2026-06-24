@@ -16,16 +16,18 @@ import {
 import { ActionPointEditor, type EditableActionPoint } from "@/components/action-point-editor";
 import { PerformanceWheel } from "@/components/charts/PerformanceWheel";
 import { Avatar, EmptyState, PageHeader, Trend } from "@/components/ui";
+import { useConfiguration } from "@/components/configuration-provider";
 import { useModules } from "@/components/module-provider";
 import { usePersonalCriteria } from "@/components/personal-criteria-provider";
+import { usePerformance } from "@/components/performance-provider";
+import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
-import { actionPoints, coachingFramework, representatives } from "@/lib/mock-data";
 import { coachingsForRepresentative, latestHistoricalCoaching } from "@/lib/performance-data";
 import { getPerformanceWheelData, type PerformanceWheelCriterion } from "@/lib/performance/performance-wheel";
 import { canAccessRepresentative } from "@/lib/permissions";
 import { offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
-import type { ScoreValue } from "@/lib/types";
+import type { CoachingFrameworkFocus, Representative, ScoreValue } from "@/lib/types";
 
 type ScoreCriterion = {
   key: string;
@@ -62,6 +64,8 @@ export function CoachingWizard() {
   const { user } = useSession();
   const { state, saveCoachingStatus, finalizeCoaching } = useWorkflow();
   const { isModuleEnabled } = useModules();
+  const { coachingFramework } = useConfiguration();
+  const { representatives } = useRepresentatives();
   const available = representatives.filter((representative) => canAccessRepresentative(user, representative));
   const existing = editId ? state.interventions.find((item) => {
     if (item.id !== editId || item.status === "gefinaliseerd") return false;
@@ -271,7 +275,7 @@ function RepresentativeStep({
   notifyRepresentative,
   onPlanningChange,
 }: {
-  available: typeof representatives;
+  available: Representative[];
   selected: string;
   onSelect: (id: string) => void;
   plannedDate: string;
@@ -326,10 +330,11 @@ function RepresentativeStep({
   );
 }
 
-function PreparationStep({ representative }: { representative: (typeof representatives)[number] }) {
-  const previousActions = actionPoints.filter((item) => item.person === `${representative.firstName} ${representative.lastName}`);
-  const coachings = useMemo(() => coachingsForRepresentative(representative.id), [representative.id]);
-  const latestCoaching = latestHistoricalCoaching(representative.id);
+function PreparationStep({ representative }: { representative: Representative }) {
+  const { dataset: performanceDataset } = usePerformance();
+  const previousActions = performanceDataset.historicalActionPoints.filter((item) => item.representativeId === representative.id);
+  const coachings = useMemo(() => coachingsForRepresentative(performanceDataset, representative.id), [performanceDataset, representative.id]);
+  const latestCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
   const previousWheelData = latestCoaching
     ? getPerformanceWheelData(representative.id, latestCoaching.id, "kapstok", undefined, coachings)
     : undefined;
@@ -514,8 +519,8 @@ async function exportPreparationPdf({
   wheelData,
   svgElement,
 }: {
-  representative: (typeof representatives)[number];
-  previousActions: typeof actionPoints;
+  representative: Representative;
+  previousActions: { title: string }[];
   latestCoaching: ReturnType<typeof latestHistoricalCoaching> extends infer T ? NonNullable<T> : never;
   wheelData: NonNullable<ReturnType<typeof getPerformanceWheelData>>;
   svgElement: SVGSVGElement;
@@ -709,6 +714,7 @@ function slugify(value: string) {
 }
 
 function FocusStep({ selected, onToggle }: { selected: string[]; onToggle: (name: string) => void }) {
+  const { coachingFramework } = useConfiguration();
   return (
     <div>
       <StepHeading icon={Target} title="Kies de focusfasen" description="Niet-geselecteerde fasen blijven uit de criteria, scoreflow en het eindverslag." />
@@ -748,7 +754,7 @@ function CriteriaStep({
   selectedFocus,
   personalCriteria,
 }: {
-  selectedFocus: typeof coachingFramework;
+  selectedFocus: CoachingFrameworkFocus[];
   personalCriteria: ReturnType<typeof usePersonalCriteria>["criteria"];
 }) {
   return (
@@ -888,7 +894,7 @@ function SummaryStep({
   startTime,
   endTime,
 }: {
-  representative: (typeof representatives)[number];
+  representative: Representative;
   plannedDate: string;
   startTime: string;
   endTime: string;

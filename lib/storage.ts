@@ -3,6 +3,7 @@ export const offlineStorageKeys = {
   pendingMutations: "mext:pending-mutations",
 };
 
+// Local storage is only for recoverable drafts and retry metadata, never as a business-data source.
 export function saveLocalDraft<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
   localStorage.setItem(key, JSON.stringify({ value, savedAt: new Date().toISOString() }));
@@ -19,4 +20,4 @@ export function loadLocalDraft<T>(key: string): T | null {
   }
 }
 
-// TODO: replace this local draft layer with IndexedDB and a retryable sync queue.
+// A future offline phase can move this layer to IndexedDB without changing the database source of truth.

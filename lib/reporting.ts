@@ -1,19 +1,14 @@
-import { actionPoints, interventions, mockUsers, representatives } from "@/lib/mock-data";
-import {
-  historicalActionPoints,
-  historicalCoachings,
-  historicalContactMoments,
-  monthlyKpiSnapshots,
-} from "@/lib/performance-data";
+import { getVisibleRepresentatives } from "@/lib/data-access";
+import { emptyPerformanceDataset, type PerformanceDataset } from "@/lib/performance-data";
 import type {
   Country,
   InterventionKind,
   MockUser,
+  ManagedUser,
   Representative,
   WorkflowActionPoint,
   WorkflowState,
 } from "@/lib/types";
-import { getVisibleRepresentatives } from "@/lib/data-access";
 
 export type ReportingLeader = {
   id: string;
@@ -22,13 +17,16 @@ export type ReportingLeader = {
   teamIds: string[];
 };
 
-export const reportingLeaders: ReportingLeader[] = [
-  { id: "user-leader-be", name: "Sophie Vermeulen", country: "BE", teamIds: ["be-1"] },
-  { id: "leader-be-2", name: "Thomas Martens", country: "BE", teamIds: ["be-2", "be-3"] },
-  { id: "leader-nl-1", name: "Eva De Vries", country: "NL", teamIds: ["nl-1", "nl-2", "nl-3"] },
-  { id: "leader-de-1", name: "Felix Bauer", country: "DE", teamIds: ["de-1", "de-2"] },
-  { id: "leader-de-2", name: "Nina Hoffmann", country: "DE", teamIds: ["de-3", "de-4"] },
-];
+export function reportingLeaders(users: ManagedUser[]): ReportingLeader[] {
+  return users
+    .filter((user) => user.active && user.role === "SALES_LEADER")
+    .map((user) => ({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      country: user.country,
+      teamIds: user.teamId ? [user.teamId] : [],
+    }));
+}
 
 export type ReportingIntervention = {
   id: string;
@@ -99,23 +97,8 @@ export const emptyReportingFilters: ReportingFilters = {
   status: "",
 };
 
-function leaderForTeam(teamId: string) {
-  return reportingLeaders.find((leader) => leader.teamIds.includes(teamId));
-}
-
-function ownerIdByName(name: string, teamId: string) {
-  return mockUsers.find((user) => user.name === name)?.id ?? leaderForTeam(teamId)?.id ?? "user-super";
-}
-
-function isoDate(value: string) {
-  if (value === "Vandaag") return "2026-06-11";
-  const match = value.match(/^(\d{1,2})\s+([a-z]{3})\s+(\d{4})$/i);
-  if (!match) return "2026-06-11";
-  const months: Record<string, string> = {
-    jan: "01", feb: "02", mrt: "03", apr: "04", mei: "05", jun: "06",
-    jul: "07", aug: "08", sep: "09", okt: "10", nov: "11", dec: "12",
-  };
-  return `${match[3]}-${months[match[2].toLowerCase()] ?? "01"}-${match[1].padStart(2, "0")}`;
+function leaderForTeam(teamId: string, users: ManagedUser[]) {
+  return reportingLeaders(users).find((leader) => leader.teamIds.includes(teamId));
 }
 
 function actionToReporting(
@@ -123,6 +106,7 @@ function actionToReporting(
   representativeId: string,
   ownerId: string,
   updatedAt: string,
+  representatives: Representative[],
   linkedKpi = ""
 ): ReportingAction {
   const representative = representatives.find((item) => item.id === representativeId);
@@ -135,9 +119,9 @@ function actionToReporting(
     title: action.title,
     type: action.type,
     linkedKpi: linkedKpi || kpi?.label || "",
-    startValue: kpi ? previousKpiValue(kpi.value, kpi.trend) : "—",
-    targetValue: kpi?.target ?? "—",
-    currentValue: kpi?.value ?? "—",
+    startValue: kpi ? previousKpiValue(kpi.value, kpi.trend) : "-",
+    targetValue: kpi?.target ?? "-",
+    currentValue: kpi?.value ?? "-",
     due: action.due,
     status: action.status,
     ownerId,
@@ -145,7 +129,12 @@ function actionToReporting(
   };
 }
 
-export function buildReportingDataset(state: WorkflowState): ReportingDataset {
+export function buildReportingDataset(
+  state: WorkflowState,
+  representatives: Representative[],
+  performance: PerformanceDataset = emptyPerformanceDataset,
+  users: ManagedUser[] = []
+): ReportingDataset {
   const workflowInterventions: ReportingIntervention[] = [
     ...state.interventions.map((item) => ({
       id: item.id,
@@ -212,38 +201,17 @@ export function buildReportingDataset(state: WorkflowState): ReportingDataset {
       country: item.country,
       teamIds: [item.teamId],
       initiatorId: item.requesterId,
-      ownerId: leaderForTeam(item.teamId)?.id ?? item.requesterId,
+      ownerId: leaderForTeam(item.teamId, users)?.id ?? item.requesterId,
       date: item.updatedAt.slice(0, 10),
       actionCount: 0,
     })),
   ];
 
-  const staticInterventions: ReportingIntervention[] = interventions.flatMap((item) => {
-    const representative = representatives.find((person) => `${person.firstName} ${person.lastName}` === item.person);
-    const participants = representative
-      ? [representative]
-      : representatives.filter((person) => person.team === item.person);
-    if (participants.length === 0) return [];
-    const type = item.type as InterventionKind;
-    return [{
-      id: `mock-${item.id}`,
-      type,
-      status: item.status,
-      title: `${type.replaceAll("_", " ")} ${item.person}`,
-      representativeIds: participants.map((person) => person.id),
-      country: participants[0].country,
-      teamIds: [...new Set(participants.map((person) => person.teamId))],
-      initiatorId: ownerIdByName(item.owner, participants[0].teamId),
-      ownerId: ownerIdByName(item.owner, participants[0].teamId),
-      date: isoDate(item.date),
-      actionCount: 0,
-    }];
-  });
-
   const historicalInterventions: ReportingIntervention[] = [
-    ...historicalCoachings.map((item) => {
-      const representative = representatives.find((person) => person.id === item.representativeId)!;
-      return {
+    ...performance.historicalCoachings.flatMap((item) => {
+      const representative = representatives.find((person) => person.id === item.representativeId);
+      if (!representative) return [];
+      return [{
         id: item.id,
         type: "begeleiding" as const,
         status: item.status,
@@ -256,11 +224,12 @@ export function buildReportingDataset(state: WorkflowState): ReportingDataset {
         date: item.date,
         actionCount: 0,
         finalizedAt: `${item.date}T16:00:00.000Z`,
-      };
+      }];
     }),
-    ...historicalContactMoments.map((item) => {
-      const representative = representatives.find((person) => person.id === item.representativeId)!;
-      return {
+    ...performance.historicalContactMoments.flatMap((item) => {
+      const representative = representatives.find((person) => person.id === item.representativeId);
+      if (!representative) return [];
+      return [{
         id: item.id,
         type: "contactmoment" as const,
         status: item.status,
@@ -272,51 +241,32 @@ export function buildReportingDataset(state: WorkflowState): ReportingDataset {
         ownerId: item.ownerId,
         date: item.date,
         actionCount: 0,
-      };
+      }];
     }),
   ];
 
   const workflowActions: ReportingAction[] = [
     ...state.interventions.flatMap((item) => item.actionPoints.map((action) =>
-      actionToReporting(action, item.representativeId, item.ownerId, item.updatedAt)
+      actionToReporting(action, item.representativeId, item.ownerId, item.updatedAt, representatives)
     )),
     ...state.contactMoments.flatMap((item) => item.actionPoints.map((action) =>
-      actionToReporting(action, item.representativeId, item.ownerId, item.updatedAt)
+      actionToReporting(action, item.representativeId, item.ownerId, item.updatedAt, representatives)
     )),
     ...state.retrainings.flatMap((item) => item.actionPoints.map((action) =>
-      actionToReporting(action, item.representativeId, item.initiatorId, item.updatedAt, item.kpi)
+      actionToReporting(action, item.representativeId, item.initiatorId, item.updatedAt, representatives, item.kpi)
     )),
     ...state.salesTrainings.flatMap((item) => item.actionPoints.flatMap((action) =>
       action.representativeIds.map((representativeId) =>
-        actionToReporting(action, representativeId, item.initiatorId, item.updatedAt, item.kpi)
+        actionToReporting(action, representativeId, item.initiatorId, item.updatedAt, representatives, item.kpi)
       )
     )),
   ];
 
-  const staticActions: ReportingAction[] = actionPoints.flatMap((action) => {
-    const representative = representatives.find((person) => `${person.firstName} ${person.lastName}` === action.person);
+  const performanceActions: ReportingAction[] = performance.historicalActionPoints.flatMap((action) => {
+    const representative = representatives.find((person) => person.id === action.representativeId);
     if (!representative) return [];
     const linkedKpi = action.type === "kpi" ? representative.kpis[0]?.label ?? "" : "";
     return [{
-      id: `mock-${action.id}`,
-      representativeId: representative.id,
-      title: action.title,
-      type: action.type as WorkflowActionPoint["type"],
-      linkedKpi,
-      startValue: linkedKpi ? previousKpiValue(representative.kpis[0].value, representative.kpis[0].trend) : "—",
-      targetValue: linkedKpi ? representative.kpis[0].target : "—",
-      currentValue: linkedKpi ? representative.kpis[0].value : "—",
-      due: isoDate(action.due),
-      status: action.status as WorkflowActionPoint["status"],
-      ownerId: leaderForTeam(representative.teamId)?.id ?? "user-super",
-      updatedAt: "2026-06-10",
-    }];
-  });
-
-  const seededActions: ReportingAction[] = historicalActionPoints.map((action) => {
-    const representative = representatives.find((person) => person.id === action.representativeId)!;
-    const linkedKpi = action.type === "kpi" ? representative.kpis[0]?.label ?? "" : "";
-    return {
       id: action.id,
       representativeId: action.representativeId,
       title: action.title,
@@ -327,13 +277,13 @@ export function buildReportingDataset(state: WorkflowState): ReportingDataset {
       currentValue: linkedKpi ? representative.kpis[0].value : "-",
       due: action.due,
       status: action.status === "achterstallig" ? "in_uitvoering" : action.status,
-      ownerId: leaderForTeam(representative.teamId)?.id ?? "user-super",
+      ownerId: leaderForTeam(representative.teamId, users)?.id ?? "",
       updatedAt: action.updatedAt,
-    };
+    }];
   });
 
   const kpis = representatives.flatMap((representative) => {
-    const snapshots = monthlyKpiSnapshots.filter((item) => item.representativeId === representative.id);
+    const snapshots = performance.monthlyKpiSnapshots.filter((item) => item.representativeId === representative.id);
     const current = snapshots.at(-1);
     const previous = snapshots.at(-2);
     return current?.values.map((value) => {
@@ -341,9 +291,9 @@ export function buildReportingDataset(state: WorkflowState): ReportingDataset {
       return {
         representativeId: representative.id,
         kpi: value.label,
-        previousValue: formatSeedKpi(previousValue, value.unit),
-        currentValue: formatSeedKpi(value.value, value.unit),
-        target: formatSeedKpi(value.target, value.unit),
+        previousValue: formatKpiValue(previousValue, value.unit),
+        currentValue: formatKpiValue(value.value, value.unit),
+        target: formatKpiValue(value.target, value.unit),
         trend: value.value > previousValue ? 1 : value.value < previousValue ? -1 : 0,
       };
     }) ?? [];
@@ -351,26 +301,30 @@ export function buildReportingDataset(state: WorkflowState): ReportingDataset {
 
   return {
     representatives,
-    interventions: [...workflowInterventions, ...staticInterventions, ...historicalInterventions],
-    actions: [...workflowActions, ...staticActions, ...seededActions],
+    interventions: [...workflowInterventions, ...historicalInterventions],
+    actions: [...workflowActions, ...performanceActions],
     kpis,
   };
 }
 
-export function scopedRepresentatives(user: MockUser) {
-  return getVisibleRepresentatives(user);
+export function scopedRepresentatives(
+  user: MockUser,
+  representatives: Representative[]
+) {
+  return getVisibleRepresentatives(user, representatives);
 }
 
 export function filterReportingDataset(
   dataset: ReportingDataset,
   scoped: Representative[],
-  filters: ReportingFilters
+  filters: ReportingFilters,
+  users: ManagedUser[] = []
 ): ReportingDataset {
   const filteredRepresentatives = scoped.filter((item) =>
     (!filters.country || item.country === filters.country) &&
     (!filters.teamId || item.teamId === filters.teamId) &&
     (!filters.level || item.level === filters.level) &&
-    (!filters.leaderId || leaderForTeam(item.teamId)?.id === filters.leaderId)
+    (!filters.leaderId || leaderForTeam(item.teamId, users)?.id === filters.leaderId)
   );
   const ids = new Set(filteredRepresentatives.map((item) => item.id));
   const inPeriod = (date: string) =>
@@ -395,31 +349,32 @@ export function filterReportingDataset(
   };
 }
 
-export function reportingLeaderForTeam(teamId: string) {
-  return leaderForTeam(teamId);
+export function reportingLeaderForTeam(teamId: string, users: ManagedUser[] = []) {
+  return leaderForTeam(teamId, users);
 }
 
-export function reportingUserName(id: string) {
-  return mockUsers.find((user) => user.id === id)?.name ??
-    reportingLeaders.find((leader) => leader.id === id)?.name ??
+export function reportingUserName(id: string, users: ManagedUser[] = []) {
+  return users.find((user) => user.id === id)
+    ? `${users.find((user) => user.id === id)!.firstName} ${users.find((user) => user.id === id)!.lastName}`.trim()
+    : reportingLeaders(users).find((leader) => leader.id === id)?.name ??
     "Onbekend";
 }
 
 export function isOverdue(due: string, status: string) {
-  return Boolean(due) && due < "2026-06-11" && !["behaald", "geannuleerd"].includes(status);
+  return Boolean(due) && due < new Date().toISOString().slice(0, 10) && !["behaald", "afgerond", "geannuleerd"].includes(status);
 }
 
 function previousKpiValue(current: string, trend: number) {
   const numeric = Number.parseFloat(current.replace(/[^\d.,-]/g, "").replace(",", "."));
   if (Number.isNaN(numeric)) return current;
   const previous = numeric - trend * Math.max(1, numeric * 0.03);
-  const prefix = current.includes("€") ? "€ " : "";
+  const prefix = current.includes("EUR") || current.includes("€") ? "EUR " : "";
   const suffix = current.includes("%") ? "%" : "";
   return `${prefix}${previous.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}${suffix}`;
 }
 
-function formatSeedKpi(value: number, unit: "%" | "EUR" | "number") {
+function formatKpiValue(value: number, unit: "%" | "EUR" | "number") {
   if (unit === "%") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}%`;
-  if (unit === "EUR") return `€ ${value.toLocaleString("nl-BE", { maximumFractionDigits: 0 })}`;
+  if (unit === "EUR") return `EUR ${value.toLocaleString("nl-BE", { maximumFractionDigits: 0 })}`;
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
 }

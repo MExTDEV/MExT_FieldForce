@@ -1,6 +1,4 @@
-import { coachingFramework } from "@/lib/mock-data";
 import {
-  historicalCoachings,
   type HistoricalCoaching,
   type PerformanceDimension,
 } from "@/lib/performance-data";
@@ -53,7 +51,7 @@ export function getPerformanceWheelData(
   currentInterventionId: string,
   type: PerformanceWheelType,
   comparisonInterventionId?: string,
-  source: HistoricalCoaching[] = historicalCoachings
+  source: HistoricalCoaching[] = []
 ): PerformanceWheelData | undefined {
   const current = source.find((item) =>
     item.id === currentInterventionId && item.representativeId === representativeId
@@ -151,7 +149,7 @@ export function normalizeScoreToTen(score: number) {
 export function getPreviousComparableIntervention(
   representativeId: string,
   currentInterventionId: string,
-  source: HistoricalCoaching[] = historicalCoachings
+  source: HistoricalCoaching[] = []
 ) {
   const coachings = source
     .filter((item) => item.representativeId === representativeId)
@@ -173,15 +171,28 @@ function criteriaFor(intervention: HistoricalCoaching | undefined, type: Perform
       )
     );
   }
+  const categoryOrder = [
+    ...new Set([
+      ...intervention.focusNames,
+      ...intervention.criterionScores.map((score) => score.focus),
+      ...intervention.phaseScores.map((score) => score.label),
+    ]),
+  ];
   return calculateCriterionAverages(
-    coachingFramework.flatMap((focus) =>
-      focus.criteria.map((criterion) => ({
-        category: focus.name,
-        criterion,
-        score: intervention.criterionScores.find((item) =>
-          item.focus === focus.name && item.criterion === criterion
-        )?.score ?? phaseFallback(intervention.phaseScores, focus.name),
-      }))
+    categoryOrder.flatMap((focus) =>
+      intervention.criterionScores.filter((score) => score.focus === focus).length
+        ? intervention.criterionScores
+          .filter((score) => score.focus === focus)
+          .map((score) => ({
+            category: focus,
+            criterion: score.criterion,
+            score: score.score,
+          }))
+        : [{
+          category: focus,
+          criterion: focus,
+          score: phaseFallback(intervention.phaseScores, focus),
+        }]
     )
   );
 }

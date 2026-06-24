@@ -1,4 +1,3 @@
-import { interventions, representatives } from "@/lib/mock-data";
 import type {
   MockUser,
   Representative,
@@ -15,7 +14,7 @@ export type VisibleUserScope = {
 
 export function getVisibleRepresentatives(
   currentUser: MockUser,
-  source: Representative[] = representatives
+  source: Representative[]
 ) {
   if (currentUser.role === "SUPER_ADMIN" || currentUser.role === "GROUP_MANAGER") {
     return source;
@@ -39,7 +38,7 @@ export function getVisibleRepresentatives(
 
 export function getVisibleUserScope(
   currentUser: MockUser,
-  source: Representative[] = representatives
+  source: Representative[]
 ): VisibleUserScope {
   const visible = getVisibleRepresentatives(currentUser, source);
   return {
@@ -56,35 +55,23 @@ export function canAccessRepresentativeData(
   currentUser: MockUser,
   representative: Representative
 ) {
-  return getVisibleUserScope(currentUser).representativeIds.has(
-    representative.id
-  );
-}
-
-export function visibleStaticInterventions(currentUser: MockUser) {
-  const scope = getVisibleUserScope(currentUser);
-  return interventions.filter((item) => {
-    const participantIds = staticInterventionRepresentativeIds(item.person);
-    return participantIds.some((id) => scope.representativeIds.has(id));
-  });
-}
-
-export function staticInterventionRepresentativeIds(person: string) {
-  const direct = representatives.find(
-    (representative) =>
-      `${representative.firstName} ${representative.lastName}` === person
-  );
-  if (direct) return [direct.id];
-  return representatives
-    .filter((representative) => representative.team === person)
-    .map((representative) => representative.id);
+  if (currentUser.role === "SUPER_ADMIN" || currentUser.role === "GROUP_MANAGER") return true;
+  if (currentUser.role === "REPRESENTATIVE") {
+    return representative.id === currentUser.representativeId;
+  }
+  if (currentUser.role === "SALES_LEADER") {
+    return representative.teamId === currentUser.teamId ||
+      representative.id === currentUser.representativeId;
+  }
+  return representative.country === currentUser.country;
 }
 
 export function scopeSalesTraining(
   currentUser: MockUser,
-  training: SalesTraining
+  training: SalesTraining,
+  representatives: Representative[]
 ): SalesTraining | undefined {
-  const scope = getVisibleUserScope(currentUser);
+  const scope = getVisibleUserScope(currentUser, representatives);
   const participantIds = training.participantIds.filter((id) =>
     scope.representativeIds.has(id)
   );
@@ -103,9 +90,10 @@ export function scopeSalesTraining(
 
 export function getVisibleWorkflowState(
   currentUser: MockUser,
-  state: WorkflowState
+  state: WorkflowState,
+  representatives: Representative[]
 ): WorkflowState {
-  const scope = getVisibleUserScope(currentUser);
+  const scope = getVisibleUserScope(currentUser, representatives);
   const visibleInterventionIds = new Set(
     state.interventions
       .filter((item) => scope.representativeIds.has(item.representativeId))
@@ -138,7 +126,7 @@ export function getVisibleWorkflowState(
       scope.representativeIds.has(item.representativeId)
     ),
     salesTrainings: state.salesTrainings.flatMap((item) => {
-      const scoped = scopeSalesTraining(currentUser, item);
+      const scoped = scopeSalesTraining(currentUser, item, representatives);
       return scoped ? [scoped] : [];
     }),
   };

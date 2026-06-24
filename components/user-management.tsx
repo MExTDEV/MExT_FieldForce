@@ -20,7 +20,6 @@ import {
   fieldForcePermissionGroups,
   fieldForcePermissionKeys,
   roleTemplates,
-  teamOptions,
   userManagementCapabilities,
   visibleManagedUsers,
 } from "@/lib/user-management";
@@ -61,6 +60,7 @@ export function UsersManagementPage() {
   const [notice, setNotice] = useState<
     { type: "success" | "error"; message: string } | undefined
   >();
+  const [saving, setSaving] = useState(false);
 
   const visibleUsers = useMemo(
     () => visibleManagedUsers(user, managedUsers),
@@ -124,15 +124,16 @@ export function UsersManagementPage() {
     if (message) setNotice({ type: "success", message });
   }
 
-  function save() {
+  async function save() {
     try {
+      setSaving(true);
       if (mode === "create") {
-        const created = createManagedUser(draft);
+        const created = await createManagedUser(draft);
         returnToList(
           `${created.firstName} ${created.lastName} is toegevoegd.`
         );
       } else if (selectedId) {
-        const updated = updateManagedUser(selectedId, draft);
+        const updated = await updateManagedUser(selectedId, draft);
         returnToList(
           `De fiche van ${updated.firstName} ${updated.lastName} is bijgewerkt.`
         );
@@ -145,10 +146,26 @@ export function UsersManagementPage() {
             ? error.message
             : "De gebruiker kon niet worden opgeslagen.",
       });
+    } finally {
+      setSaving(false);
     }
   }
 
   if (mode !== "list") {
+    const teamOptions = Array.from(
+      new Map(
+        managedUsers
+          .filter((profile) => profile.teamId)
+          .map((profile) => [
+            profile.teamId,
+            {
+              id: profile.teamId,
+              name: profile.teamName,
+              country: profile.country,
+            },
+          ])
+      ).values()
+    );
     return (
       <UserForm
         actor={user}
@@ -156,6 +173,8 @@ export function UsersManagementPage() {
         draft={draft}
         original={selectedUser}
         notice={notice}
+        saving={saving}
+        teamOptions={teamOptions}
         onChange={setDraft}
         onCancel={() => returnToList()}
         onSave={save}
@@ -278,6 +297,8 @@ function UserForm({
   draft,
   original,
   notice,
+  saving,
+  teamOptions,
   onChange,
   onCancel,
   onSave,
@@ -287,6 +308,8 @@ function UserForm({
   draft: ManagedUser;
   original?: ManagedUser;
   notice?: { type: "success" | "error"; message: string };
+  saving: boolean;
+  teamOptions: { id: string; name: string; country: ManagedUser["country"] }[];
   onChange: (draft: ManagedUser) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -365,8 +388,8 @@ function UserForm({
             Annuleren
           </button>
           {canSave && (
-            <button type="button" className="btn-primary" onClick={onSave}>
-              <Save className="h-4 w-4" /> Opslaan
+            <button type="button" className="btn-primary" onClick={onSave} disabled={saving}>
+              <Save className="h-4 w-4" /> {saving ? "Opslaan..." : "Opslaan"}
             </button>
           )}
         </div>
@@ -509,7 +532,14 @@ function UserForm({
                   className="field disabled:bg-slate-100 disabled:text-slate-500"
                   value={draft.teamId}
                   disabled={!capabilities.canEditScope}
-                  onChange={(event) => update("teamId", event.target.value)}
+                  onChange={(event) => {
+                    const teamId = event.target.value;
+                    onChange({
+                      ...draft,
+                      teamId,
+                      teamName: teamOptions.find((team) => team.id === teamId)?.name ?? "",
+                    });
+                  }}
                 >
                   <option value="">Geen team</option>
                   {availableTeams.map((team) => (
@@ -632,8 +662,8 @@ function UserForm({
           Annuleren
         </button>
         {canSave && (
-          <button type="button" className="btn-primary" onClick={onSave}>
-            <Save className="h-4 w-4" /> Opslaan
+          <button type="button" className="btn-primary" onClick={onSave} disabled={saving}>
+            <Save className="h-4 w-4" /> {saving ? "Opslaan..." : "Opslaan"}
           </button>
         )}
       </div>

@@ -13,10 +13,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { ActionPointEditor, toEditableActionPoint, type EditableActionPoint } from "@/components/action-point-editor";
+import { useRepresentatives } from "@/components/representatives-provider";
+import { useConfiguration } from "@/components/configuration-provider";
 import { useSession } from "@/components/session-provider";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui";
 import { useWorkflow } from "@/components/workflow-provider";
-import { coachingFramework, kpiDefinitions, representatives } from "@/lib/mock-data";
 import { canAccessRepresentative } from "@/lib/permissions";
 import type { Retraining, SalesTraining, TrainingStatus } from "@/lib/types";
 
@@ -159,6 +160,8 @@ function TrainingSection({
   emptyMessage: string;
   historical?: boolean;
 }) {
+  const { representatives } = useRepresentatives();
+
   return (
     <section className={`space-y-4 ${historical ? "border-t border-slate-200 pt-6" : ""}`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -216,7 +219,9 @@ function TrainingSection({
 
 function RetrainingEditor({ record }: { record?: Retraining }) {
   const { user } = useSession();
+  const { coachingFramework, kpiDefinitions } = useConfiguration();
   const { saveRetraining } = useWorkflow();
+  const { representatives } = useRepresentatives();
   const available = representatives.filter((item) => canAccessRepresentative(user, item));
   const initialRepresentative = record?.representativeId ?? user.representativeId ?? available[0]?.id ?? "";
   const [form, setForm] = useState({
@@ -326,7 +331,9 @@ function RetrainingEditor({ record }: { record?: Retraining }) {
 
 function SalesTrainingEditor({ record }: { record?: SalesTraining }) {
   const { user } = useSession();
+  const { coachingFramework, kpiDefinitions } = useConfiguration();
   const { saveSalesTraining } = useWorkflow();
+  const { representatives } = useRepresentatives();
   const scoped = representatives.filter((item) => canAccessRepresentative(user, item));
   const initialParticipants = record?.participantIds ?? (user.representativeId ? [user.representativeId] : []);
   const [form, setForm] = useState({

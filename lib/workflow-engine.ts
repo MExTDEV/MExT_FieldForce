@@ -1,4 +1,3 @@
-import { representatives } from "@/lib/mock-data";
 import type {
   ApprovalStatus,
   CoachingIntervention,
@@ -18,6 +17,7 @@ import type {
   Status,
   CoachingDossier,
   CoachingAppointment,
+  Representative,
 } from "@/lib/types";
 
 export type CoachingWorkflowInput = {
@@ -171,7 +171,8 @@ function mapActionPoints(
 export function saveRetraining(
   current: WorkflowState,
   input: RetrainingInput,
-  status: TrainingStatus
+  status: TrainingStatus,
+  representatives: Representative[]
 ): { state: WorkflowState; retraining: Retraining } {
   const representative = representatives.find((item) => item.id === input.representativeId);
   if (!representative) throw new Error("Vertegenwoordiger niet gevonden.");
@@ -211,7 +212,8 @@ export function saveRetraining(
 export function saveSalesTraining(
   current: WorkflowState,
   input: SalesTrainingInput,
-  status: TrainingStatus
+  status: TrainingStatus,
+  representatives: Representative[]
 ): { state: WorkflowState; salesTraining: SalesTraining } {
   const participants = representatives.filter((item) => input.participantIds.includes(item.id));
   if (participants.length !== input.participantIds.length || participants.length === 0) {
@@ -288,7 +290,8 @@ export function saveSalesTraining(
 export function saveContactMoment(
   current: WorkflowState,
   input: ContactMomentInput,
-  status: ContactMomentStatus
+  status: ContactMomentStatus,
+  representatives: Representative[]
 ): { state: WorkflowState; contactMoment: ContactMoment } {
   const representative = representatives.find((item) => item.id === input.representativeId);
   if (!representative) throw new Error("Vertegenwoordiger niet gevonden.");
@@ -356,7 +359,8 @@ export function submitContactMomentInput(
 
 export function createHelpRequest(
   current: WorkflowState,
-  input: HelpRequestInput
+  input: HelpRequestInput,
+  representatives: Representative[]
 ): { state: WorkflowState; helpRequest: HelpRequest } {
   const representative = representatives.find((item) => item.id === input.representativeId);
   if (!representative) throw new Error("Vertegenwoordiger niet gevonden.");
@@ -386,7 +390,8 @@ export function planHelpRequestFollowUp(
   current: WorkflowState,
   helpRequestId: string,
   actorId: string,
-  followUpType: FollowUpType
+  followUpType: FollowUpType,
+  representatives: Representative[]
 ): WorkflowState {
   const request = current.helpRequests.find((item) => item.id === helpRequestId);
   if (!request) throw new Error("Hulpaanvraag niet gevonden.");
@@ -405,7 +410,7 @@ export function planHelpRequestFollowUp(
       reportedProblems: request.difficulty,
       leaderThemes: [request.desiredResult],
       sourceHelpRequestId: request.id,
-    }, "gepland");
+    }, "gepland", representatives);
     linkedInterventionId = result.contactMoment.id;
     contactMoments = result.state.contactMoments;
   } else if (followUpType === "retraining") {
@@ -418,7 +423,7 @@ export function planHelpRequestFollowUp(
       date: "",
       trainer: "",
       sourceHelpRequestId: request.id,
-    }, "concept");
+    }, "concept", representatives);
     linkedInterventionId = result.retraining.id;
     retrainings = result.state.retrainings;
   } else if (followUpType === "sales_training") {
@@ -433,7 +438,7 @@ export function planHelpRequestFollowUp(
       trainer: "",
       followUpAction: request.desiredResult,
       sourceHelpRequestId: request.id,
-    }, "concept");
+    }, "concept", representatives);
     linkedInterventionId = result.salesTraining.id;
     salesTrainings = result.state.salesTrainings;
   } else if (followUpType === "begeleiding") {
@@ -494,7 +499,8 @@ export function setHelpRequestStatus(
 export function saveCoaching(
   current: WorkflowState,
   input: CoachingWorkflowInput,
-  status: Status
+  status: Status,
+  representatives: Representative[]
 ): { state: WorkflowState; intervention: CoachingIntervention } {
   const representative = representatives.find((item) => item.id === input.representativeId);
   if (!representative) throw new Error("Vertegenwoordiger niet gevonden.");

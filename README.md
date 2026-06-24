@@ -8,8 +8,8 @@ Tablet-first klikbaar prototype voor sales coaching, interventies, actiepunten, 
 
 - Next.js 15, React 19 en TypeScript
 - Tailwind CSS
-- PostgreSQL en Prisma ORM
-- Mock sessie met centrale rollen- en rechtenhelper
+- MariaDB/MySQL en Prisma ORM
+- Databasegestuurde gebruikerssessie met optionele development/staging user switcher
 - PWA-manifest, service-workerbasis en lokale conceptopslag
 - Vertaalbestanden voor Nederlands, Frans en Duits
 
@@ -18,14 +18,14 @@ Tablet-first klikbaar prototype voor sales coaching, interventies, actiepunten, 
 Vereisten:
 
 - Node.js 20 of recenter
-- PostgreSQL 15 of recenter
+- MariaDB 10.6+ of MySQL 8+
 
 ```bash
 npm install
 copy .env.example .env
 npm run db:generate
 npm run db:migrate
-npm run db:seed
+npm run db:seed:config
 npm run dev
 ```
 
@@ -38,15 +38,28 @@ beide compilers elkaars gegenereerde chunks niet vervangen.
 
 ## Database
 
-Pas `DATABASE_URL` in `.env` aan voor de lokale PostgreSQL-database:
+Pas `DATABASE_URL` in `.env` aan voor de lokale MariaDB/MySQL-database:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mext_coaching?schema=public"
+DATABASE_URL="mysql://mext_user:replace-with-password@127.0.0.1:3306/mext_fieldforce"
+SEED_ALLOW_DESTRUCTIVE="false"
 ```
 
-Het schema bevat gebruikers, teams, extra teamleiders, niveaus, KPI-definities en snapshots, interventies, kapstokfasen en criteria, scores, actiepunten, reflecties, goedkeuringen, hulpaanvragen, productanalyse en auditlogs.
+Het schema bevat gebruikers, teams, extra teamleiders, rollen/rechten, modules, niveaus, KPI-definities en snapshots, interventies, kapstokfasen en vaste/persoonlijke criteria, scores, dossiers, afspraken, actiepunten, reflecties, goedkeuringen, hulpaanvragen, productanalyse en auditlogs.
 
-De seed maakt onder andere:
+De veilige configuratie-seed gebruikt upserts en verwijdert geen bestaande businessdata:
+
+```bash
+npm run db:seed:config
+```
+
+De development demo-seed is destructief en alleen bedoeld voor lokale ontwikkeling:
+
+```bash
+SEED_ALLOW_DESTRUCTIVE=true npm run db:seed:dev
+```
+
+De demo-seed maakt onder andere:
 
 - 30 vertegenwoordigers in BE, 20 in NL en 35 in DE
 - 3 verkoopleiders in BE, 3 in NL en 4 in DE
@@ -56,11 +69,22 @@ De seed maakt onder andere:
 - KPI-snapshots voor elke vertegenwoordiger
 - voorbeeldinterventies, hulpaanvragen en actiepunten
 
-De seed is herhaalbaar, maar verwijdert eerst de bestaande applicatiedata.
+Meer details staan in `docs/database.md`.
+
+## VPS deployment
+
+```bash
+npm run deploy:prepare
+npm run start:production
+```
+
+De volledige Plesk-procedure, environmentvariabelen, wachtwoordrotatie,
+health monitoring en rollback staan in `docs/vps-deployment.md`.
 
 ## Development login
 
-De gebruikerskaart rechtsboven is een mock user switcher. Klik erop om te wisselen tussen:
+De gebruikerskaart rechtsboven kan in development en private staging als demo
+user switcher worden gebruikt. In publieke productie staat deze standaard uit.
 
 - Vertegenwoordiger
 - Verkoopleider
@@ -69,19 +93,17 @@ De gebruikerskaart rechtsboven is een mock user switcher. Klik erop om te wissel
 - Admin
 - Super Admin
 
-De zichtbare vertegenwoordigers en beheeropties passen zich direct aan de gekozen rol, het land en het team aan. De laatste mockgebruiker wordt in `localStorage` bewaard.
+In development/demo passen de zichtbare vertegenwoordigers en beheeropties zich direct aan de gekozen rol, het land en het team aan. De laatste demogebruiker wordt alleen in deze modus in `localStorage` bewaard.
 
 ## Rechten
 
-De centrale helper staat in `lib/permissions.ts`. UI-filtering is al actief voor vertegenwoordigers, teamscope, landscope en systeembeheer.
-
-Voor productie moeten dezelfde controles verplicht op de serverlaag worden toegepast in route handlers, server actions en databasequeries. Client-side zichtbaarheid is nooit voldoende als beveiligingsgrens.
+De centrale helper staat in `lib/permissions.ts`. De API-routes valideren de aangemelde databasegebruiker en passen rollen, rechten en vertegenwoordigerscope server-side toe. UI-filtering blijft aanvullend actief voor een rustige gebruikerservaring.
 
 ## Microsoft Entra ID
 
-De gebruiker heeft al een nullable `entraId` en `.env.example` bevat de vereiste Entra-variabelen. Een volgende fase kan Auth.js toevoegen met de Microsoft Entra ID-provider en de databasegebruiker op `entraId` of e-mail koppelen.
+Auth.js is geïntegreerd met de Microsoft Entra ID-provider. Productie gebruikt `NEXT_PUBLIC_AUTH_MODE="entra"`; de lokale demomodus blijft beschikbaar met `NEXT_PUBLIC_AUTH_MODE="demo"`.
 
-De mock sessie is bewust los gehouden van de permissiehelper, zodat de authenticatiebron later kan worden vervangen zonder alle schermen te herschrijven.
+Bij de eerste geldige aanmelding wordt een bestaande actieve databasegebruiker op e-mailadres gevonden en aan de onveranderlijke Entra object-ID gekoppeld. De app maakt niet automatisch nieuwe gebruikers aan. Zie `docs/entra-authentication.md` voor registratie, redirect-URL's en configuratie.
 
 ## PWA en offline
 
@@ -130,18 +152,16 @@ Rollen en instellingen zijn voorbereid als beheeroppervlak en kunnen in een volg
 
 ## Kende beperkingen
 
-- De UI gebruikt momenteel centrale mockdata en schrijft nog niet naar PostgreSQL.
-- Auth.js en Microsoft Entra ID zijn nog niet geïnstalleerd of geconfigureerd.
+- De centrale bedrijfsdata, workflows, rollen en rechten gebruiken MariaDB/MySQL.
+- Auth.js en de Entra-koppeling zijn geïmplementeerd; een echte tenantregistratie en secrets zijn nog nodig om de productie-login te activeren.
 - Formulieren gebruiken lokale state; alleen het begeleidingsconcept heeft lokale autosave.
 - De rapporten en grafieken zijn representatieve prototypevisualisaties.
-- Volledige accessibility-, browser- en offline-tests horen bij de volgende productiefase.
+- Volledige accessibility-, browser-, autorisatie- en offline-tests horen bij de volgende productiefase.
 
 ## Volgende technische stappen
 
-1. Auth.js met Microsoft Entra ID integreren en mock login achter een development flag plaatsen.
-2. Prisma repository/servicefuncties toevoegen met server-side scopefilters.
-3. Server actions of route handlers voor interventies, scores, reflecties en actiepunten bouwen.
-4. Zod-validatie, optimistic updates en uniforme foutafhandeling toevoegen.
-5. IndexedDB, mutation queue en conflictresolutie voor offline gebruik implementeren.
-6. Audit logging op alle mutaties afdwingen.
-7. Integratie- en end-to-endtests voor elke rol en hoofdworkflow toevoegen.
+1. De Entra-appregistratie invullen en aanmeldingen voor alle rollen aanvaardingstesten.
+2. Server-side autorisatietests voor elke rol en hoofdworkflow toevoegen.
+3. Zod-validatie en optimistic updates verder uniformeren.
+4. IndexedDB, mutation queue en conflictresolutie voor offline gebruik implementeren.
+5. Accessibility- en browserregressietests automatiseren.
