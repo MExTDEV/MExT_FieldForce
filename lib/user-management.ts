@@ -265,6 +265,7 @@ export function managedUserToMockUser(profile: ManagedUser): MockUser {
     language: profile.language,
     teamId: profile.teamId || undefined,
     representativeId: profile.representativeId,
+    permissions: profile.permissions,
   };
 }
 

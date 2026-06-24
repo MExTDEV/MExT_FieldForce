@@ -19,6 +19,7 @@ export type MockUser = {
   language: Language;
   teamId?: string;
   representativeId?: string;
+  permissions?: Partial<Record<FieldForcePermissionKey, boolean>>;
 };
 
 export type FieldForcePermissionKey =
@@ -81,6 +82,56 @@ export type CoachingFrameworkFocus = {
 export type FieldForceConfiguration = {
   coachingFramework: CoachingFrameworkFocus[];
   kpiDefinitions: string[];
+};
+
+export type ManagementTeam = {
+  id: string;
+  name: string;
+  country: Country;
+  primaryLeaderId: string;
+  primaryLeaderName: string;
+  active: boolean;
+  memberCount: number;
+};
+
+export type ManagementKpi = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  country: Country | null;
+  unit: string;
+  active: boolean;
+};
+
+export type ManagementCriterion = {
+  id: string;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type ManagementFocus = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  criteria: ManagementCriterion[];
+};
+
+export type ManagementRole = {
+  role: Role;
+  label: string;
+  userCount: number;
+  permissions: Record<FieldForcePermissionKey, boolean>;
+};
+
+export type ManagementConfiguration = {
+  teams: ManagementTeam[];
+  kpis: ManagementKpi[];
+  focuses: ManagementFocus[];
+  roles: ManagementRole[];
 };
 
 export type ManagedUser = {

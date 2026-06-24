@@ -42,6 +42,7 @@ import { SmartDashboardPanel, SmartManagementSections } from "@/components/smart
 import { PerformanceEvolution } from "@/components/performance-evolution";
 import { UsersManagementPage } from "@/components/user-management";
 import { PlanningCalendar } from "@/components/planning-calendar";
+import { ConfigurationManagement } from "@/components/configuration-management";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { branding } from "@/config/branding";
 import {
@@ -1546,9 +1547,6 @@ function Planning() {
 
 function Management({ section }: { section: string }) {
   const { user } = useSession();
-  const { coachingFramework, kpiDefinitions } = useConfiguration();
-  const { representatives } = useRepresentatives();
-  const teams = [...new Map(representatives.map((item) => [item.teamId, item.team])).values()];
   if (section === "gebruikers") {
     return canAccessUserManagement(user)
       ? <UsersManagementPage />
@@ -1556,17 +1554,14 @@ function Management({ section }: { section: string }) {
   }
   if (!canAccessTechnicalManagement(user)) return <ManagementRedirect />;
 
-  const labels: Record<string, string> = { gebruikers: "Gebruikers", teams: "Teams", rollen: "Rollen en rechten", kpis: "KPI-definities", kapstok: "Kapstok beheer", modules: "Modules", instellingen: "Instellingen" };
-  const title = labels[section] ?? "Beheer";
   const superOnly = ["rollen", "kapstok", "modules", "instellingen"].includes(section);
   if (superOnly && !canManageSystem(user)) return <EmptyState title="Super Admin vereist" description="Deze systeemconfiguratie is bewust alleen beschikbaar voor de Super Admin." />;
 
-  return (
-    <div className="space-y-6">
-      <PageHeader eyebrow="Configuratie" title={title} description="Beheer de centrale bouwstenen van het coachingplatform." actions={<button className="btn-primary"><Plus className="h-4 w-4" /> Toevoegen</button>} />
-      {section === "modules" ? <ModuleManagement /> : section === "kapstok" ? <FrameworkManagement coachingFramework={coachingFramework} /> : section === "kpis" ? <SimpleManagementList items={kpiDefinitions} icon={Gauge} /> : section === "teams" ? <SimpleManagementList items={teams} icon={Users} /> : <SimpleManagementList items={section === "rollen" ? ["Vertegenwoordiger", "Verkoopleider", "Country Manager", "Group Manager", "Admin", "Super Admin"] : ["Microsoft Entra ID", "Standaardtaal", "Offline opslag", "Audit logging"]} icon={ShieldCheck} />}
-    </div>
-  );
+  if (section === "modules") return <ModuleManagement />;
+  if (["teams", "rollen", "kpis", "kapstok"].includes(section)) {
+    return <ConfigurationManagement section={section as "teams" | "rollen" | "kpis" | "kapstok"} />;
+  }
+  return <EmptyState title="Instellingen" description="Deze instellingen worden in een volgende beheeriteratie toegevoegd." />;
 }
 
 function ManagementRedirect() {

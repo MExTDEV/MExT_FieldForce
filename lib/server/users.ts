@@ -17,8 +17,11 @@ import type {
 type UserWithAccess = Awaited<ReturnType<typeof fetchUsersWithAccess>>[number];
 
 export async function listManagedUsers() {
-  const users = await fetchUsersWithAccess();
-  return users.map(toManagedUser);
+  const [users, rolePermissions] = await Promise.all([
+    fetchUsersWithAccess(),
+    fetchRolePermissions(),
+  ]);
+  return users.map((user) => toManagedUser(user, rolePermissions));
 }
 
 export async function createManagedUserInDatabase(
@@ -35,7 +38,8 @@ export async function createManagedUserInDatabase(
   });
   await replaceUserPermissions(created.id, prepared.permissions);
   return toManagedUser(
-    await fetchUserWithAccess(created.id)
+    await fetchUserWithAccess(created.id),
+    await fetchRolePermissions()
   );
 }
 
@@ -57,8 +61,15 @@ export async function updateManagedUserInDatabase(
   });
   await replaceUserPermissions(updated.id, prepared.permissions);
   return toManagedUser(
-    await fetchUserWithAccess(updated.id)
+    await fetchUserWithAccess(updated.id),
+    await fetchRolePermissions()
   );
+}
+
+async function fetchRolePermissions() {
+  return prisma.rolePermission.findMany({
+    include: { permission: true },
+  });
 }
 
 async function fetchUsersWithAccess() {
@@ -81,9 +92,16 @@ async function fetchUserWithAccess(id: string) {
   });
 }
 
-function toManagedUser(user: UserWithAccess): ManagedUser {
+function toManagedUser(
+  user: UserWithAccess,
+  rolePermissions: Awaited<ReturnType<typeof fetchRolePermissions>>
+): ManagedUser {
   const role = user.role as Role;
   const basePermissions = { ...roleTemplates[role].permissions };
+  for (const grant of rolePermissions.filter((item) => item.role === role)) {
+    basePermissions[grant.permission.key as FieldForcePermissionKey] =
+      grant.enabled;
+  }
   for (const grant of user.permissions) {
     basePermissions[grant.permission.key as FieldForcePermissionKey] =
       grant.enabled;
