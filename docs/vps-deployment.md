@@ -82,6 +82,16 @@ npm ci
 npm run deploy:prepare
 ```
 
+For a manual Plesk build, this is sufficient:
+
+```bash
+npm install
+npm run build
+```
+
+The `prebuild` lifecycle automatically runs `prisma generate`, so Next.js never
+builds against a stale Prisma Client.
+
 In Plesk, click **Enable Node.js** or **Restart App** after
 `deploy:prepare` succeeds. Plesk starts `server.mjs`.
 

@@ -698,12 +698,10 @@ function interventionData(
 }
 
 function interventionUpdateData(data: Prisma.InterventionUncheckedCreateInput) {
-  const {
-    id: _id,
-    initiatorId: _initiatorId,
-    ownerId: _ownerId,
-    ...updateData
-  } = data;
+  const updateData: Prisma.InterventionUncheckedUpdateInput = { ...data };
+  delete updateData.id;
+  delete updateData.initiatorId;
+  delete updateData.ownerId;
   return updateData;
 }
 
