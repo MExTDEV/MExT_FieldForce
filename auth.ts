@@ -10,10 +10,16 @@ const entraConfigured = Boolean(
   process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER
 );
 
-export const authMode = process.env.NEXT_PUBLIC_AUTH_MODE === "entra" ? "entra" : "demo";
+export const authMode =
+  process.env.NEXT_PUBLIC_AUTH_MODE === "demo"
+    ? "demo"
+    : entraConfigured
+      ? "entra"
+      : "demo";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
+  useSecureCookies: process.env.NODE_ENV === "production",
   secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
   pages: {

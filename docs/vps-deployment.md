@@ -67,6 +67,17 @@ AUTH_MICROSOFT_ENTRA_ID_ISSUER="https://login.microsoftonline.com/tenant-id/v2.0
 Keep all secrets in Plesk environment variables or the approved secret store,
 never in the repository.
 
+For the current deployment both URL values must be:
+
+```env
+APP_URL="https://fieldforce.mext.group"
+AUTH_URL="https://fieldforce.mext.group"
+```
+
+Auth.js uses secure, HTTP-only cookies on HTTPS with the default `SameSite=Lax`
+policy and path `/`. Do not configure a cookie domain manually; host-only
+cookies prevent accidental sharing with other `mext.group` applications.
+
 ## Deployment
 
 Before deploying:

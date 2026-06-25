@@ -14,7 +14,6 @@ import {
   Clock3,
   Contact,
   Filter,
-  Gauge,
   GraduationCap,
   Mail,
   MapPin,
@@ -22,7 +21,6 @@ import {
   Phone,
   Plus,
   Search,
-  ShieldCheck,
   Sparkles,
   Target,
   Users,
@@ -43,6 +41,7 @@ import { PerformanceEvolution } from "@/components/performance-evolution";
 import { UsersManagementPage } from "@/components/user-management";
 import { PlanningCalendar } from "@/components/planning-calendar";
 import { ConfigurationManagement } from "@/components/configuration-management";
+import { SessionFailure } from "@/components/session-state";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { branding } from "@/config/branding";
 import {
@@ -79,8 +78,11 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (sessionLoading) {
     return <EmptyState title="Gebruikerssessie laden" description="De actieve gebruiker en rechten worden uit MariaDB opgehaald." />;
   }
-  if (sessionError || !user.id) {
-    return <EmptyState title="Gebruikerssessie niet beschikbaar" description={sessionError ?? "Er is geen actieve databasegebruiker beschikbaar."} />;
+  if (sessionError) {
+    return <SessionFailure />;
+  }
+  if (!user.id) {
+    return <EmptyState title="Aanmelden vereist" description="Je wordt doorgestuurd naar de loginpagina." />;
   }
   if (routeModule && !isModuleEnabled(routeModule.code)) {
     return <ModuleInactive moduleName={routeModule.name} />;

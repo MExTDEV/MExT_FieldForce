@@ -33,6 +33,7 @@ import {
 } from "@/lib/permissions";
 import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
+import { SessionFailure } from "@/components/session-state";
 import { useModules } from "@/components/module-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { useWorkflow } from "@/components/workflow-provider";
@@ -71,7 +72,7 @@ const representativeNav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, users, language, setLanguage, setUserId } = useSession();
+  const { user, users, language, setLanguage, setUserId, status } = useSession();
   const { isModuleEnabled } = useModules();
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -91,6 +92,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const mainNav = [dashboardNav, ...activeModuleNav];
 
   if (pathname === "/login") return <>{children}</>;
+  if (status === "loading") {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-pulse rounded-lg bg-brand-100" />
+          <h1 className="mt-5 text-lg font-bold text-slate-950">Gebruikerssessie laden</h1>
+          <p className="mt-2 text-sm text-slate-500">Je identiteit en rechten worden veilig gecontroleerd.</p>
+        </div>
+      </main>
+    );
+  }
+  if (status === "error") return <SessionFailure />;
+  if (status === "unauthenticated" || !user.id) return null;
 
   const navigation = (
     <>
@@ -256,10 +270,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {entraAuthMode && (
                 <button
                   type="button"
-                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  onClick={async () => {
+                    await signOut({ redirect: false });
+                    window.location.assign("/login");
+                  }}
                   className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                  title="Afmelden"
-                  aria-label="Afmelden"
+                  title="Uitloggen"
+                  aria-label="Uitloggen"
                 >
                   <X className="h-4 w-4" />
                 </button>

@@ -15,7 +15,9 @@ type SessionContextValue = {
   managedUsers: ManagedUser[];
   language: Language;
   loading: boolean;
+  status: "loading" | "authenticated" | "unauthenticated" | "error";
   error: string | null;
+  retry: () => void;
   setUserId: (id: string) => void;
   setLanguage: (language: Language) => void;
   createManagedUser: (draft: ManagedUser) => Promise<ManagedUser>;
@@ -45,6 +47,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Language>("nl");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+  const [authTimedOut, setAuthTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!entraAuthMode || authStatus !== "loading") {
+      setAuthTimedOut(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setAuthTimedOut(true), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, [authStatus, retryKey]);
 
   useEffect(() => {
     if (
@@ -57,9 +70,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [authStatus, pathname, router]);
 
   useEffect(() => {
+    if (authTimedOut) {
+      setLoading(false);
+      setError("De sessiecontrole duurde te lang. Controleer de verbinding en probeer opnieuw.");
+    }
+  }, [authTimedOut]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadUsers() {
-      if (entraAuthMode && authStatus === "loading") return;
+      if (entraAuthMode && authStatus === "loading") {
+        setLoading(true);
+        return;
+      }
       if (entraAuthMode && authStatus === "unauthenticated") {
         setManagedUsers([]);
         setUserId("");
@@ -69,22 +92,50 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/users", { cache: "no-store" });
-        const payload = (await response.json()) as {
-          users?: ManagedUser[];
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 12_000);
+        const meResponse = await fetch("/api/auth/me", {
+          cache: "no-store",
+          signal: controller.signal,
+        }).finally(() => window.clearTimeout(timeout));
+        const mePayload = (await meResponse.json()) as {
+          user?: ManagedUser;
           error?: string;
         };
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Gebruikers konden niet worden geladen.");
+        if (meResponse.status === 401 || meResponse.status === 403) {
+          router.replace(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
+          return;
         }
-        const nextUsers = (payload.users ?? []).map(normalizeManagedUser);
-        if (!nextUsers.length) {
-          throw new Error("Er zijn geen actieve gebruikers in de database.");
+        if (!meResponse.ok || !mePayload.user) {
+          throw new Error(mePayload.error ?? "De huidige gebruiker kon niet worden geladen.");
         }
+
+        const currentProfile = normalizeManagedUser(mePayload.user);
+        let loadedUsers: ManagedUser[] = [];
+        try {
+          const usersController = new AbortController();
+          const usersTimeout = window.setTimeout(() => usersController.abort(), 8_000);
+          const usersResponse = await fetch("/api/users", {
+            cache: "no-store",
+            signal: usersController.signal,
+          }).finally(() => window.clearTimeout(usersTimeout));
+          const usersPayload = (await usersResponse.json()) as {
+            users?: ManagedUser[];
+          };
+          if (usersResponse.ok) {
+            loadedUsers = (usersPayload.users ?? []).map(normalizeManagedUser);
+          }
+        } catch (usersError) {
+          console.warn("[session] De bredere gebruikerslijst is tijdelijk niet beschikbaar.", usersError);
+        }
+        const nextUsers = loadedUsers.some((profile) => profile.id === currentProfile.id)
+          ? loadedUsers
+          : [currentProfile, ...loadedUsers];
         if (cancelled) return;
         setManagedUsers(nextUsers);
-        const authenticatedUserId = authSession?.user?.databaseUserId;
-        const stored = demoUserSwitcherEnabled ? localStorage.getItem(selectedUserStorageKey) : null;
+        const authenticatedUserId =
+          authSession?.user?.databaseUserId ?? currentProfile.id;
+        const stored = demoUserSwitcherEnabled ? readStoredUserId() : null;
         const selected = entraAuthMode
           ? authenticatedUserId
           : stored && nextUsers.some((profile) => profile.id === stored)
@@ -101,8 +152,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       } catch (loadError) {
         console.error("[session]", loadError);
         if (!cancelled) {
-          setError("Gebruikers konden niet uit de database worden geladen.");
+          setError(
+            loadError instanceof DOMException && loadError.name === "AbortError"
+              ? "De sessiecontrole duurde te lang. Probeer opnieuw."
+              : "Gebruikers konden niet uit de database worden geladen."
+          );
           setManagedUsers([]);
+          setUserId("");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -112,13 +168,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authSession?.user?.databaseUserId, authStatus]);
+  }, [authSession?.user?.databaseUserId, authStatus, pathname, retryKey, router]);
 
   const users = useMemo(
     () => managedUsers.filter((profile) => profile.active).map(managedUserToMockUser),
     [managedUsers]
   );
   const user = users.find((item) => item.id === userId) ?? users[0] ?? unavailableUser;
+  const status: SessionContextValue["status"] = loading
+    ? "loading"
+    : error
+      ? "error"
+      : entraAuthMode && authStatus === "unauthenticated"
+        ? "unauthenticated"
+        : user.id
+          ? "authenticated"
+          : "unauthenticated";
 
   function switchUser(id: string) {
     const nextUser = users.find((item) => item.id === id);
@@ -126,7 +191,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setUserId(id);
     setLanguage(nextUser.language);
     if (demoUserSwitcherEnabled) {
-      localStorage.setItem(selectedUserStorageKey, id);
+      try {
+        localStorage.setItem(selectedUserStorageKey, id);
+      } catch {
+        // The demo switcher remains usable when browser storage is unavailable.
+      }
     }
   }
 
@@ -176,7 +245,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     managedUsers,
     language,
     loading,
+    status,
     error,
+    retry: () => {
+      setError(null);
+      setAuthTimedOut(false);
+      setLoading(true);
+      setRetryKey((value) => value + 1);
+    },
     setUserId: switchUser,
     setLanguage,
     createManagedUser,
@@ -190,4 +266,12 @@ export function useSession() {
   const context = useContext(SessionContext);
   if (!context) throw new Error("useSession must be used within SessionProvider");
   return context;
+}
+
+function readStoredUserId() {
+  try {
+    return localStorage.getItem(selectedUserStorageKey);
+  } catch {
+    return null;
+  }
 }

@@ -51,6 +51,9 @@ if (productionCheck) {
       if (deploymentEnv === "production" && parsed.protocol !== "https:") {
         errors.push("APP_URL moet HTTPS gebruiken in productie.");
       }
+      if (deploymentEnv === "production" && ["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+        errors.push("APP_URL mag in productie niet naar localhost verwijzen.");
+      }
     } catch {
       errors.push("APP_URL is geen geldige URL.");
     }
