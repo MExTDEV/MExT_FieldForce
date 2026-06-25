@@ -111,10 +111,32 @@ export async function saveTeam(
   });
   if (!leader) throw new Error("De gekozen teamleider is niet actief in dit land.");
   return prisma.$transaction(async (tx) => {
+    if (input.id) {
+      const existing = await tx.team.findUniqueOrThrow({
+        where: { id: input.id },
+        select: {
+          country: true,
+          members: { select: { country: true } },
+        },
+      });
+      if (
+        existing.country !== input.country &&
+        existing.members.some((member) => member.country !== input.country)
+      ) {
+        throw new Error(
+          "Verplaats eerst de bestaande teamleden voordat je het land van dit team wijzigt."
+        );
+      }
+    }
     const team = input.id
       ? await tx.team.update({
           where: { id: input.id },
-          data: { name: input.name.trim(), primaryLeaderId: leader.id, active: true },
+          data: {
+            name: input.name.trim(),
+            country: input.country,
+            primaryLeaderId: leader.id,
+            active: true,
+          },
         })
       : await tx.team.create({
           data: {

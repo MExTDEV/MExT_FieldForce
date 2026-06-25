@@ -34,7 +34,16 @@ export async function POST(request: Request) {
     }
     const actorId = (await requireAuthenticatedUser(body.actorId)).id;
     const userInput = body.user;
-    const user = await createManagedUserInDatabase(actorId, userInput);
+    let user: ManagedUser;
+    try {
+      user = await createManagedUserInDatabase(actorId, userInput);
+    } catch (error) {
+      badRequest(
+        error instanceof Error
+          ? error.message
+          : "Gebruiker kon niet worden opgeslagen."
+      );
+    }
     await writeAuditLog({
       actorId,
       entityType: "User",

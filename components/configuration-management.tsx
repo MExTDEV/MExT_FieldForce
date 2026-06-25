@@ -251,6 +251,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
         <ManagementEditor
           editor={editor}
           users={managedUsers}
+          canChooseCountry={user.role === "SUPER_ADMIN"}
           onChange={setEditor}
           onCancel={() => setEditor(undefined)}
           onSave={() => void saveEditor()}
@@ -401,12 +402,14 @@ function newEditor(
 function ManagementEditor({
   editor,
   users,
+  canChooseCountry,
   onChange,
   onCancel,
   onSave,
 }: {
   editor: EditorState;
   users: ReturnType<typeof useSession>["managedUsers"];
+  canChooseCountry: boolean;
   onChange: (editor: EditorState) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -467,29 +470,47 @@ function ManagementEditor({
           />
         </Field>
         {editor.kind === "team" && (
-          <Field label="Primaire teamleider">
-            <select
-              className="field"
-              value={editor.primaryLeaderId}
-              onChange={(event) => onChange({
-                ...editor,
-                primaryLeaderId: event.target.value,
-              })}
-            >
-              <option value="">Selecteer een teamleider</option>
-              {users
-                .filter((item) =>
-                  item.active &&
-                  item.country === editor.country &&
-                  item.role !== "REPRESENTATIVE"
-                )
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.firstName} {item.lastName} ({item.role})
-                  </option>
-                ))}
-            </select>
-          </Field>
+          <>
+            <Field label="Land">
+              <select
+                className="field disabled:bg-slate-100 disabled:text-slate-500"
+                value={editor.country}
+                disabled={!canChooseCountry}
+                onChange={(event) => onChange({
+                  ...editor,
+                  country: event.target.value as Country,
+                  primaryLeaderId: "",
+                })}
+              >
+                <option value="BE">België</option>
+                <option value="NL">Nederland</option>
+                <option value="DE">Duitsland</option>
+              </select>
+            </Field>
+            <Field label="Primaire teamleider">
+              <select
+                className="field"
+                value={editor.primaryLeaderId}
+                onChange={(event) => onChange({
+                  ...editor,
+                  primaryLeaderId: event.target.value,
+                })}
+              >
+                <option value="">Selecteer een teamleider</option>
+                {users
+                  .filter((item) =>
+                    item.active &&
+                    item.country === editor.country &&
+                    item.role !== "REPRESENTATIVE"
+                  )
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.firstName} {item.lastName} ({item.role})
+                    </option>
+                  ))}
+              </select>
+            </Field>
+          </>
         )}
         {editor.kind === "kpi" && (
           <>

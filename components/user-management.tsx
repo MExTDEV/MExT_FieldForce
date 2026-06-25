@@ -19,6 +19,7 @@ import {
   createEmptyManagedUser,
   fieldForcePermissionGroups,
   fieldForcePermissionKeys,
+  prepareManagedUserSave,
   roleTemplates,
   userManagementCapabilities,
   visibleManagedUsers,
@@ -127,6 +128,12 @@ export function UsersManagementPage() {
   async function save() {
     try {
       setSaving(true);
+      prepareManagedUserSave(
+        user,
+        managedUsers,
+        draft,
+        mode === "edit" ? selectedUser : undefined
+      );
       if (mode === "create") {
         const created = await createManagedUser(draft);
         returnToList(
@@ -320,6 +327,9 @@ function UserForm({
     capabilities.canEditScope ||
     capabilities.canEditRoleRights ||
     capabilities.canEditActive;
+  const teamRequired = ["REPRESENTATIVE", "SALES_LEADER", "SERVICE_OPERATOR"].includes(
+    draft.role
+  );
   const availableRoles = roles.filter(
     (role) => actor.role === "SUPER_ADMIN" || role !== "SUPER_ADMIN"
   );
@@ -529,7 +539,11 @@ function UserForm({
               </Field>
               <Field label="Team">
                 <select
-                  className="field disabled:bg-slate-100 disabled:text-slate-500"
+                  className={`field disabled:bg-slate-100 disabled:text-slate-500 ${
+                    teamRequired && !draft.teamId
+                      ? "border-rose-300 focus:border-rose-500 focus:ring-rose-100"
+                      : ""
+                  }`}
                   value={draft.teamId}
                   disabled={!capabilities.canEditScope}
                   onChange={(event) => {
@@ -548,6 +562,11 @@ function UserForm({
                     </option>
                   ))}
                 </select>
+                {teamRequired && !draft.teamId && (
+                  <span className="mt-1.5 block text-xs font-semibold text-rose-600">
+                    Selecteer een team voor deze rol.
+                  </span>
+                )}
               </Field>
               <Field label="Vestigingsnummer">
                 <input

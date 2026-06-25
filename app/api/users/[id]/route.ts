@@ -19,7 +19,16 @@ export async function PATCH(
     }
     const actorId = (await requireAuthenticatedUser(body.actorId)).id;
     const userInput = body.user;
-    const user = await updateManagedUserInDatabase(actorId, id, userInput);
+    let user: ManagedUser;
+    try {
+      user = await updateManagedUserInDatabase(actorId, id, userInput);
+    } catch (error) {
+      badRequest(
+        error instanceof Error
+          ? error.message
+          : "Gebruiker kon niet worden opgeslagen."
+      );
+    }
     await writeAuditLog({
       actorId,
       entityType: "User",
