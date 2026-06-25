@@ -64,6 +64,10 @@ On first successful login:
 FieldForce never auto-provisions a new database user. Inactive, unknown or
 mismatched accounts are refused.
 
+When Microsoft returns a different verified sign-in address than the business
+mailbox, register that exact address in `UserLoginAlias`. Aliases are explicit
+database records; FieldForce never matches users by partial address or domain.
+
 ## 5. Local development
 
 Use demo mode when Entra is not needed:

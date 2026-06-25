@@ -131,6 +131,7 @@ model User {
   createdCriteria          PersonalCoachingCriterion[] @relation("CreatedPersonalCriteria")
   representativeCriteria   PersonalCoachingCriterion[] @relation("RepresentativePersonalCriteria")
   permissions              UserPermission[]
+  loginAliases             UserLoginAlias[]
   trainingParticipants     TrainingParticipant[]
   actionAssignments        ActionPointAssignment[]
   interventionParticipants InterventionParticipant[]
@@ -139,6 +140,18 @@ model User {
 
   @@index([country, role])
   @@index([teamId])
+}
+
+model UserLoginAlias {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String   @unique
+  provider  String   @default("microsoft-entra-id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Team {

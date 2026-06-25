@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useSession } from "@/components/session-provider";
 import type { Representative } from "@/lib/types";
 
 type RepresentativesContextValue = {
@@ -13,6 +14,7 @@ type RepresentativesContextValue = {
 const RepresentativesContext = createContext<RepresentativesContextValue | null>(null);
 
 export function RepresentativesProvider({ children }: { children: React.ReactNode }) {
+  const { loading: sessionLoading, user } = useSession();
   const [representatives, setRepresentatives] = useState<Representative[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,12 @@ export function RepresentativesProvider({ children }: { children: React.ReactNod
   }
 
   useEffect(() => {
+    if (sessionLoading || !user.id) {
+      setLoading(sessionLoading);
+      setError(null);
+      setRepresentatives([]);
+      return;
+    }
     let active = true;
     async function loadIfActive() {
       await loadRepresentatives();
@@ -49,7 +57,7 @@ export function RepresentativesProvider({ children }: { children: React.ReactNod
     return () => {
       active = false;
     };
-  }, []);
+  }, [sessionLoading, user.id]);
 
   const value = useMemo(
     () => ({

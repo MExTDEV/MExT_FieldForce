@@ -21,12 +21,18 @@ type ModuleContextValue = {
 const ModuleContext = createContext<ModuleContextValue | null>(null);
 
 export function ModuleProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useSession();
+  const { loading: sessionLoading, user } = useSession();
   const [modules, setModules] = useState<AppModuleConfig[]>(defaultAppModules);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (sessionLoading || !user.id) {
+      setLoading(sessionLoading);
+      setError(null);
+      setModules(defaultAppModules);
+      return;
+    }
     let cancelled = false;
     async function loadModules() {
       setLoading(true);
@@ -57,7 +63,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sessionLoading, user.id]);
 
   const value = useMemo<ModuleContextValue>(() => ({
     modules,

@@ -11,6 +11,7 @@ import {
   type PersonalCriterionInput,
 } from "@/lib/personal-criteria";
 import { useRepresentatives } from "@/components/representatives-provider";
+import { useSession } from "@/components/session-provider";
 import type {
   MockUser,
   PersonalCoachingCriterion,
@@ -46,10 +47,15 @@ type PersonalCriteriaContextValue = {
 const PersonalCriteriaContext = createContext<PersonalCriteriaContextValue | null>(null);
 
 export function PersonalCriteriaProvider({ children }: { children: React.ReactNode }) {
+  const { loading: sessionLoading, user } = useSession();
   const { representatives } = useRepresentatives();
   const [criteria, setCriteria] = useState<PersonalCoachingCriterion[]>([]);
 
   useEffect(() => {
+    if (sessionLoading || !user.id) {
+      setCriteria([]);
+      return;
+    }
     let active = true;
     async function loadCriteria() {
       try {
@@ -70,7 +76,7 @@ export function PersonalCriteriaProvider({ children }: { children: React.ReactNo
     return () => {
       active = false;
     };
-  }, []);
+  }, [sessionLoading, user.id]);
 
   async function persistCreate(criterion: PersonalCoachingCriterion) {
     const response = await fetch("/api/personal-criteria", {

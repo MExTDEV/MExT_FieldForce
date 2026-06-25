@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useSession } from "@/components/session-provider";
 import type { FieldForceConfiguration } from "@/lib/types";
 
 const emptyConfiguration: FieldForceConfiguration = {
@@ -17,6 +18,7 @@ type ConfigurationContextValue = FieldForceConfiguration & {
 const ConfigurationContext = createContext<ConfigurationContextValue | null>(null);
 
 export function ConfigurationProvider({ children }: { children: React.ReactNode }) {
+  const { loading: sessionLoading, user } = useSession();
   const [configuration, setConfiguration] = useState(emptyConfiguration);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +48,14 @@ export function ConfigurationProvider({ children }: { children: React.ReactNode 
   }
 
   useEffect(() => {
+    if (sessionLoading || !user.id) {
+      setLoading(sessionLoading);
+      setError(null);
+      setConfiguration(emptyConfiguration);
+      return;
+    }
     void loadConfiguration();
-  }, []);
+  }, [sessionLoading, user.id]);
 
   const value = useMemo(
     () => ({

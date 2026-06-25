@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useSession } from "@/components/session-provider";
 import {
   emptyPerformanceDataset,
   type PerformanceDataset,
@@ -16,6 +17,7 @@ type PerformanceContextValue = {
 const PerformanceContext = createContext<PerformanceContextValue | null>(null);
 
 export function PerformanceProvider({ children }: { children: React.ReactNode }) {
+  const { loading: sessionLoading, user } = useSession();
   const [dataset, setDataset] = useState<PerformanceDataset>(emptyPerformanceDataset);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,12 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
   }
 
   useEffect(() => {
+    if (sessionLoading || !user.id) {
+      setLoading(sessionLoading);
+      setError(null);
+      setDataset(emptyPerformanceDataset);
+      return;
+    }
     let active = true;
     async function loadIfActive() {
       await loadPerformance();
@@ -52,7 +60,7 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
     return () => {
       active = false;
     };
-  }, []);
+  }, [sessionLoading, user.id]);
 
   const value = useMemo(
     () => ({

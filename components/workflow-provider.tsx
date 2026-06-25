@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getVisibleWorkflowState } from "@/lib/data-access";
 import { useRepresentatives } from "@/components/representatives-provider";
+import { useSession } from "@/components/session-provider";
 import type {
   ApprovalStatus,
   CoachingIntervention,
@@ -91,6 +92,7 @@ type WorkflowPatch = Partial<Pick<
 >>;
 
 export function WorkflowProvider({ children }: { children: React.ReactNode }) {
+  const { loading: sessionLoading, user } = useSession();
   const { representatives } = useRepresentatives();
   const [state, setState] = useState<WorkflowState>(initialState);
   const [hydrated, setHydrated] = useState(false);
@@ -98,6 +100,12 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
   const [failedSave, setFailedSave] = useState<{ endpoint: string; patch: WorkflowPatch } | null>(null);
 
   useEffect(() => {
+    if (sessionLoading || !user.id) {
+      setState(initialState);
+      setHydrated(!sessionLoading);
+      return;
+    }
+    setHydrated(false);
     let active = true;
     async function loadWorkflowState() {
       try {
@@ -130,7 +138,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [sessionLoading, user.id]);
 
   const persist = useCallback(async (endpoint: string, patch: WorkflowPatch) => {
     try {

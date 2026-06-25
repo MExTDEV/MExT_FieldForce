@@ -738,7 +738,7 @@ function KpiPanel({ representativeId }: { representativeId: string }) {
 function TimelinePanel({ title, representativeId, representativeName }: { title: string; representativeId: string; representativeName: string }) {
   const { state } = useWorkflow();
   const { dataset: performanceDataset } = usePerformance();
-  const workflowItems = [
+  const workflowItems = [...new Map([
     ...performanceDataset.historicalCoachings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.date, owner: item.ownerName, status: item.status })),
     ...performanceDataset.historicalContactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.date, owner: item.reason, status: item.status })),
     ...state.interventions.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.updatedAt, owner: "Coaching", status: item.status })),
@@ -754,7 +754,8 @@ function TimelinePanel({ title, representativeId, representativeName }: { title:
     if (title === "retrainingen") return item.type === "retraining";
     if (title === "sales trainingen") return item.type === "sales_training";
     return true;
-  }).sort((a, b) => b.date.localeCompare(a.date));
+  }).map((item) => [`${item.type}:${item.id}`, item])).values()]
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className="card overflow-hidden">

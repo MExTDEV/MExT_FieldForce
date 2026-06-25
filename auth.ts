@@ -31,24 +31,44 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     : [],
   callbacks: {
     async signIn({ account, profile }) {
-      if (account?.provider !== "microsoft-entra-id") return false;
+      if (account?.provider !== "microsoft-entra-id") {
+        console.warn("[auth] Login geweigerd: onverwachte provider.");
+        return false;
+      }
       const entraProfile = profile as MicrosoftEntraIDProfile | undefined;
       const entraId = entraProfile?.oid ?? account.providerAccountId;
-      const email = entraProfile?.email ?? entraProfile?.preferred_username;
-      if (!entraId || !email) return false;
+      const email = (entraProfile?.email ?? entraProfile?.preferred_username)?.trim().toLowerCase();
+      if (!entraId || !email) {
+        console.warn("[auth] Login geweigerd: Entra-ID of e-mailadres ontbreekt.");
+        return false;
+      }
 
       const linkedUser = await prisma.user.findFirst({
         where: { active: true, entraId },
         select: { id: true },
       });
-      const unlinkedUser = linkedUser
+      const aliasUser = linkedUser
+        ? null
+        : await prisma.user.findFirst({
+            where: {
+              active: true,
+              loginAliases: {
+                some: { email, provider: "microsoft-entra-id" },
+              },
+            },
+            select: { id: true, entraId: true },
+          });
+      const unlinkedUser = linkedUser || aliasUser
         ? null
         : await prisma.user.findFirst({
             where: { active: true, email, entraId: null },
             select: { id: true },
           });
-      const user = linkedUser ?? unlinkedUser;
-      if (!user) return false;
+      const user = linkedUser ?? aliasUser ?? unlinkedUser;
+      if (!user) {
+        console.warn(`[auth] Login geweigerd: geen actieve FieldForce-gebruiker voor ${email}.`);
+        return false;
+      }
       if (!linkedUser) {
         await prisma.user.update({
           where: { id: user.id },

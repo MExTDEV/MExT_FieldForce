@@ -2,15 +2,23 @@ import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 export default function nextConfig(phase: string): NextConfig {
+  const entraConfigured = Boolean(
+    process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
+    process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET &&
+    process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER
+  );
+  const publicAuthMode =
+    process.env.NEXT_PUBLIC_AUTH_MODE === "demo"
+      ? "demo"
+      : entraConfigured
+        ? "entra"
+        : "demo";
   return {
     reactStrictMode: true,
     poweredByHeader: false,
     env: {
-      NEXT_PUBLIC_ENTRA_CONFIGURED: String(Boolean(
-        process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
-        process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET &&
-        process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER
-      )),
+      NEXT_PUBLIC_AUTH_MODE: publicAuthMode,
+      NEXT_PUBLIC_ENTRA_CONFIGURED: String(entraConfigured),
     },
     async headers() {
       return [
