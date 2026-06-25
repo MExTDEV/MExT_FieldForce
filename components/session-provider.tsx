@@ -26,9 +26,9 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 const selectedUserStorageKey = "mext:selected-user-id";
-const entraAuthMode = process.env.NEXT_PUBLIC_AUTH_MODE === "entra";
+const authenticatedMode = process.env.NEXT_PUBLIC_AUTH_MODE !== "demo";
 const demoUserSwitcherEnabled =
-  !entraAuthMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
+  !authenticatedMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
 const unavailableUser: MockUser = {
   id: "",
   name: "Geen actieve gebruiker",
@@ -51,7 +51,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [authTimedOut, setAuthTimedOut] = useState(false);
 
   useEffect(() => {
-    if (!entraAuthMode || authStatus !== "loading") {
+    if (!authenticatedMode || authStatus !== "loading") {
       setAuthTimedOut(false);
       return;
     }
@@ -61,7 +61,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (
-      entraAuthMode &&
+      authenticatedMode &&
       authStatus === "unauthenticated" &&
       pathname !== "/login"
     ) {
@@ -79,11 +79,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     async function loadUsers() {
-      if (entraAuthMode && authStatus === "loading") {
+      if (authenticatedMode && authStatus === "loading") {
         setLoading(true);
         return;
       }
-      if (entraAuthMode && authStatus === "unauthenticated") {
+      if (authenticatedMode && authStatus === "unauthenticated") {
         setManagedUsers([]);
         setUserId("");
         setLoading(false);
@@ -136,12 +136,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const authenticatedUserId =
           authSession?.user?.databaseUserId ?? currentProfile.id;
         const stored = demoUserSwitcherEnabled ? readStoredUserId() : null;
-        const selected = entraAuthMode
+        const selected = authenticatedMode
           ? authenticatedUserId
           : stored && nextUsers.some((profile) => profile.id === stored)
             ? stored
             : nextUsers[0]?.id;
-        if (entraAuthMode && !selected) {
+        if (authenticatedMode && !selected) {
           throw new Error("De Entra-gebruiker is niet gekoppeld aan een actieve FieldForce-gebruiker.");
         }
         if (selected) {
@@ -179,7 +179,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     ? "loading"
     : error
       ? "error"
-      : entraAuthMode && authStatus === "unauthenticated"
+      : authenticatedMode && authStatus === "unauthenticated"
         ? "unauthenticated"
         : user.id
           ? "authenticated"

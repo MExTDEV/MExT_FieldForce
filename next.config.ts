@@ -10,9 +10,7 @@ export default function nextConfig(phase: string): NextConfig {
   const publicAuthMode =
     process.env.NEXT_PUBLIC_AUTH_MODE === "demo"
       ? "demo"
-      : entraConfigured
-        ? "entra"
-        : "demo";
+      : "credentials";
   return {
     reactStrictMode: true,
     poweredByHeader: false,

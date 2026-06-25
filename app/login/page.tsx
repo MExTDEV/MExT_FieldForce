@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { signIn, useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { Mail, ShieldCheck } from "lucide-react";
 import { branding } from "@/config/branding";
 
 export default function LoginPage() {
@@ -12,7 +12,9 @@ export default function LoginPage() {
   const { status } = useSession();
   const [loginError, setLoginError] = useState<string | null>(null);
   const [callbackUrl, setCallbackUrl] = useState("/dashboard");
-  const entraMode = process.env.NEXT_PUBLIC_AUTH_MODE === "entra";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const entraConfigured =
     process.env.NEXT_PUBLIC_ENTRA_CONFIGURED === "true";
 
@@ -33,10 +35,33 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!entraMode || status === "authenticated") {
+    if (status === "authenticated") {
       router.replace("/dashboard");
     }
-  }, [entraMode, router, status]);
+  }, [router, status]);
+
+  async function handleCredentialsLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setLoginError(null);
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        callbackUrl,
+        redirect: false,
+      });
+      if (result?.error) {
+        setLoginError("Het e-mailadres of wachtwoord is niet correct.");
+        return;
+      }
+      window.location.assign(result?.url ?? callbackUrl);
+    } catch {
+      setLoginError("Aanmelden is tijdelijk niet mogelijk. Probeer opnieuw.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
@@ -53,26 +78,71 @@ export default function LoginPage() {
           Aanmelden bij FieldForce
         </h1>
         <p className="mt-2 text-center text-sm leading-6 text-slate-500">
-          Gebruik je zakelijke Microsoft-account.
+          Meld je aan met je FieldForce-account.
         </p>
         {loginError && (
           <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
             {loginError}
           </p>
         )}
-        {entraConfigured ? (
+        <form className="mt-7 space-y-4" onSubmit={handleCredentialsLogin}>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+              E-mailadres
+            </span>
+            <span className="relative block">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="username"
+                required
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              />
+            </span>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+              Wachtwoord
+            </span>
+            <span className="relative block">
+              <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              />
+            </span>
+          </label>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="btn-primary w-full justify-center disabled:cursor-wait disabled:opacity-60"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            {submitting ? "Aanmelden..." : "Aanmelden"}
+          </button>
+        </form>
+        {entraConfigured && (
+          <>
+            <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              of
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
           <button
             type="button"
             onClick={() => signIn("microsoft-entra-id", { callbackUrl })}
-            className="btn-primary mt-7 w-full justify-center"
+            className="btn-secondary w-full justify-center"
           >
             <ShieldCheck className="h-4 w-4" />
             Aanmelden met Microsoft
           </button>
-        ) : (
-          <p className="mt-7 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-            Microsoft Entra ID is nog niet geconfigureerd.
-          </p>
+          </>
         )}
       </section>
     </main>

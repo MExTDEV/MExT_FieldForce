@@ -70,13 +70,20 @@ if (productionCheck) {
   ) {
     errors.push("De demo-gebruikerswisselaar mag niet actief zijn in publieke productie.");
   }
-  if (deploymentEnv === "production" && process.env.NEXT_PUBLIC_AUTH_MODE !== "entra") {
-    errors.push("NEXT_PUBLIC_AUTH_MODE moet entra zijn in publieke productie.");
+  if (deploymentEnv === "production" && process.env.NEXT_PUBLIC_AUTH_MODE === "demo") {
+    errors.push("NEXT_PUBLIC_AUTH_MODE mag niet demo zijn in publieke productie.");
   }
-  if (process.env.NEXT_PUBLIC_AUTH_MODE === "entra") {
-    required("AUTH_MICROSOFT_ENTRA_ID_ID");
-    required("AUTH_MICROSOFT_ENTRA_ID_SECRET");
-    const issuer = required("AUTH_MICROSOFT_ENTRA_ID_ISSUER");
+  const entraNames = [
+    "AUTH_MICROSOFT_ENTRA_ID_ID",
+    "AUTH_MICROSOFT_ENTRA_ID_SECRET",
+    "AUTH_MICROSOFT_ENTRA_ID_ISSUER",
+  ];
+  const entraValues = entraNames.map((name) => process.env[name]?.trim());
+  if (entraValues.some(Boolean) && !entraValues.every(Boolean)) {
+    errors.push("Microsoft Entra is onvolledig: stel alle drie Entra-variabelen in of geen enkele.");
+  }
+  if (entraValues.every(Boolean)) {
+    const issuer = process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER!.trim();
     if (issuer && !/^https:\/\/login\.microsoftonline\.com\/[^/]+\/v2\.0\/?$/.test(issuer)) {
       errors.push("AUTH_MICROSOFT_ENTRA_ID_ISSUER heeft geen geldige tenant-specifieke issuer URL.");
     }

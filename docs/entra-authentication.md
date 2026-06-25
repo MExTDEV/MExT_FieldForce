@@ -1,7 +1,11 @@
 # Microsoft Entra ID authentication
 
-MExT FieldForce uses Auth.js with the Microsoft Entra ID provider. Production
-authentication is enabled with `NEXT_PUBLIC_AUTH_MODE="entra"`.
+Microsoft Entra ID is optional. FieldForce continues to support secure
+database login with e-mail and password when Entra is absent or temporarily
+unavailable.
+
+MExT FieldForce uses Auth.js with the Microsoft Entra ID provider as an
+optional second login method. Database authentication remains active.
 
 ## 1. Register the application
 
@@ -32,7 +36,7 @@ match exactly, including protocol, hostname, port and path.
 Local `.env`:
 
 ```env
-NEXT_PUBLIC_AUTH_MODE="entra"
+NEXT_PUBLIC_AUTH_MODE="credentials"
 APP_URL="https://your-fieldforce-domain.example"
 AUTH_URL="https://your-fieldforce-domain.example"
 AUTH_SECRET="at-least-32-random-characters"
@@ -83,7 +87,7 @@ production environment.
 
 1. Run `npm run deploy:prepare`.
 2. Restart the Node.js application in Plesk.
-3. Open `/login` and sign in with a registered Entra user.
+3. Open `/login` and verify both database login and Entra login.
 4. Confirm that `User.entraId` is populated in MariaDB.
 5. Test a representative, sales leader, country manager and administrator.
 6. Confirm each role only sees and changes records within its allowed scope.

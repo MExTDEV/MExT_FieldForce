@@ -99,9 +99,12 @@ In development/demo passen de zichtbare vertegenwoordigers en beheeropties zich 
 
 De centrale helper staat in `lib/permissions.ts`. De API-routes valideren de aangemelde databasegebruiker en passen rollen, rechten en vertegenwoordigerscope server-side toe. UI-filtering blijft aanvullend actief voor een rustige gebruikerservaring.
 
-## Microsoft Entra ID
+## Authenticatie
 
-Auth.js is geïntegreerd met de Microsoft Entra ID-provider. Productie gebruikt `NEXT_PUBLIC_AUTH_MODE="entra"`; de lokale demomodus blijft beschikbaar met `NEXT_PUBLIC_AUTH_MODE="demo"`.
+Auth.js ondersteunt altijd database-login met e-mailadres en een veilig
+gehasht wachtwoord. Microsoft Entra ID is een optionele tweede loginmethode.
+Productie gebruikt `NEXT_PUBLIC_AUTH_MODE="credentials"`; de lokale demomodus
+blijft beschikbaar met `NEXT_PUBLIC_AUTH_MODE="demo"`.
 
 Bij de eerste geldige aanmelding wordt een bestaande actieve databasegebruiker op e-mailadres gevonden en aan de onveranderlijke Entra object-ID gekoppeld. De app maakt niet automatisch nieuwe gebruikers aan. Zie `docs/entra-authentication.md` voor registratie, redirect-URL's en configuratie.
 

@@ -27,6 +27,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:config": "tsx prisma/seed.ts",
     "db:seed:dev": "tsx prisma/seed.ts --dev-demo",
+    "auth:set-password": "tsx scripts/set-user-password.ts",
     "deploy:prepare": "npm run env:check:production && npm run db:generate && npm run db:migrate:deploy && npm run db:seed:config && npm run build",
     "start:production": "npm run env:check:production && node server.mjs"
   },

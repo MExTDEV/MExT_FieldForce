@@ -12,15 +12,15 @@ DEPLOYMENT_ENV="staging"
 NEXT_PUBLIC_AUTH_MODE="demo"
 ```
 
-Public production must use Microsoft Entra ID:
+Public production uses database authentication by default:
 
 ```env
 DEPLOYMENT_ENV="production"
-NEXT_PUBLIC_AUTH_MODE="entra"
+NEXT_PUBLIC_AUTH_MODE="credentials"
 ```
 
-See `docs/entra-authentication.md` for the Entra app registration and callback
-URLs. Do not expose demo mode publicly.
+Microsoft Entra ID can optionally be enabled as a second login method. See
+`docs/entra-authentication.md`. Do not expose demo mode publicly.
 
 ## Rotate the exposed database password
 
@@ -58,11 +58,11 @@ PORT="3000"
 DATABASE_URL="mysql://database-user:url-encoded-password@database-host:3306/database-name"
 SEED_ALLOW_DESTRUCTIVE="false"
 AUTH_SECRET="at-least-32-random-characters"
-NEXT_PUBLIC_AUTH_MODE="entra"
-AUTH_MICROSOFT_ENTRA_ID_ID="application-client-id"
-AUTH_MICROSOFT_ENTRA_ID_SECRET="application-client-secret"
-AUTH_MICROSOFT_ENTRA_ID_ISSUER="https://login.microsoftonline.com/tenant-id/v2.0"
+NEXT_PUBLIC_AUTH_MODE="credentials"
 ```
+
+The three `AUTH_MICROSOFT_ENTRA_ID_*` variables are optional. Configure either
+all three or none.
 
 Keep all secrets in Plesk environment variables or the approved secret store,
 never in the repository.
@@ -77,6 +77,25 @@ AUTH_URL="https://fieldforce.mext.group"
 Auth.js uses secure, HTTP-only cookies on HTTPS with the default `SameSite=Lax`
 policy and path `/`. Do not configure a cookie domain manually; host-only
 cookies prevent accidental sharing with other `mext.group` applications.
+
+## Database login
+
+FieldForce always supports login with the user's primary database e-mail
+address and a password. Microsoft Entra is optional and appears as an extra
+login method only when all three Entra variables are configured.
+
+Set or reset a password without placing it in source control:
+
+```bash
+export AUTH_PASSWORD_EMAIL="jochen.andries@mext.be"
+export AUTH_PASSWORD="use-a-unique-password-of-at-least-12-characters"
+npm run auth:set-password
+unset AUTH_PASSWORD_EMAIL AUTH_PASSWORD
+```
+
+In Plesk, these two values can instead be added temporarily as environment
+variables. Remove them immediately after `npm run auth:set-password` succeeds.
+The script only updates the password hash for the selected active user.
 
 ## Deployment
 

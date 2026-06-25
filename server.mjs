@@ -28,9 +28,6 @@ function validateProductionEnvironment() {
     "APP_URL",
     "AUTH_URL",
     "AUTH_SECRET",
-    "AUTH_MICROSOFT_ENTRA_ID_ID",
-    "AUTH_MICROSOFT_ENTRA_ID_SECRET",
-    "AUTH_MICROSOFT_ENTRA_ID_ISSUER",
   ];
   const missing = required.filter((name) => !process.env[name]?.trim());
   if (missing.length) {
@@ -44,5 +41,14 @@ function validateProductionEnvironment() {
   }
   if (process.env.APP_URL !== process.env.AUTH_URL) {
     throw new Error("APP_URL and AUTH_URL must be identical.");
+  }
+  const entraNames = [
+    "AUTH_MICROSOFT_ENTRA_ID_ID",
+    "AUTH_MICROSOFT_ENTRA_ID_SECRET",
+    "AUTH_MICROSOFT_ENTRA_ID_ISSUER",
+  ];
+  const entraValues = entraNames.map((name) => process.env[name]?.trim());
+  if (entraValues.some(Boolean) && !entraValues.every(Boolean)) {
+    throw new Error("Microsoft Entra configuration is incomplete. Set all three Entra variables or none.");
   }
 }

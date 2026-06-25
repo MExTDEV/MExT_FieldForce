@@ -79,9 +79,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const canSeeManagement = canAccessTechnicalManagement(user);
   const canSeeUsers = canAccessUserManagement(user);
-  const entraAuthMode = process.env.NEXT_PUBLIC_AUTH_MODE === "entra";
+  const authenticatedMode = process.env.NEXT_PUBLIC_AUTH_MODE !== "demo";
   const demoUserSwitcherEnabled =
-    !entraAuthMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
+    !authenticatedMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
   const activeModuleNav = appModuleRegistry
     .filter((module) => isModuleEnabled(module.code))
     .map((module) => ({
@@ -267,7 +267,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ))}
               </select>}
               {demoUserSwitcherEnabled && <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />}
-              {entraAuthMode && (
+              {authenticatedMode && (
                 <button
                   type="button"
                   onClick={async () => {

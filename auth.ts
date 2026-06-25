@@ -1,8 +1,10 @@
 import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import MicrosoftEntraID, {
   type MicrosoftEntraIDProfile,
 } from "next-auth/providers/microsoft-entra-id";
 import { prisma } from "@/lib/server/db";
+import { verifyPassword } from "@/lib/server/password";
 
 const entraConfigured = Boolean(
   process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
@@ -13,9 +15,7 @@ const entraConfigured = Boolean(
 export const authMode =
   process.env.NEXT_PUBLIC_AUTH_MODE === "demo"
     ? "demo"
-    : entraConfigured
-      ? "entra"
-      : "demo";
+    : "credentials";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -26,17 +26,59 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/login",
     error: "/login",
   },
-  providers: entraConfigured
-    ? [
+  providers: [
+    Credentials({
+      name: "E-mailadres en wachtwoord",
+      credentials: {
+        email: { label: "E-mailadres", type: "email" },
+        password: { label: "Wachtwoord", type: "password" },
+      },
+      async authorize(credentials) {
+        const email =
+          typeof credentials.email === "string"
+            ? credentials.email.trim().toLowerCase()
+            : "";
+        const password =
+          typeof credentials.password === "string" ? credentials.password : "";
+        if (!email || !password) return null;
+
+        const databaseUser = await prisma.user.findFirst({
+          where: { email, active: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            passwordHash: true,
+          },
+        });
+        if (
+          !databaseUser?.passwordHash ||
+          !verifyPassword(password, databaseUser.passwordHash)
+        ) {
+          return null;
+        }
+
+        return {
+          id: databaseUser.id,
+          email: databaseUser.email,
+          name: `${databaseUser.firstName} ${databaseUser.lastName}`.trim(),
+        };
+      },
+    }),
+    ...(entraConfigured
+      ? [
         MicrosoftEntraID({
           clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID!,
           clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
           issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER!.replace(/\/+$/, ""),
         }),
       ]
-    : [],
+      : []),
+  ],
   callbacks: {
     async signIn({ account, profile }) {
+      if (account?.provider === "credentials") return true;
       if (account?.provider !== "microsoft-entra-id") {
         console.warn("[auth] Login geweigerd: onverwachte provider.");
         return false;
@@ -83,7 +125,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, account, profile }) {
+    async jwt({ token, account, profile, user }) {
+      if (account?.provider === "credentials" && user?.id) {
+        token.databaseUserId = user.id;
+      }
       if (account?.provider === "microsoft-entra-id") {
         const entraProfile = profile as MicrosoftEntraIDProfile | undefined;
         const entraId = entraProfile?.oid ?? account.providerAccountId;
