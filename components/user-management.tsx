@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -27,6 +27,7 @@ import {
 import type {
   FieldForcePermissionKey,
   ManagedUser,
+  ManagementTeam,
   Role,
 } from "@/lib/types";
 
@@ -62,6 +63,9 @@ export function UsersManagementPage() {
     { type: "success" | "error"; message: string } | undefined
   >();
   const [saving, setSaving] = useState(false);
+  const [teamOptions, setTeamOptions] = useState<ManagementTeam[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsError, setTeamsError] = useState<string>();
 
   const visibleUsers = useMemo(
     () => visibleManagedUsers(user, managedUsers),
@@ -97,6 +101,51 @@ export function UsersManagementPage() {
     ? managedUsers.find((profile) => profile.id === selectedId)
     : undefined;
   const createCapabilities = userManagementCapabilities(user);
+
+  useEffect(() => {
+    if (mode === "list") return;
+    let cancelled = false;
+    async function loadTeams() {
+      setTeamsLoading(true);
+      setTeamsError(undefined);
+      try {
+        const response = await fetch(
+          `/api/management/teams?country=${encodeURIComponent(draft.country)}`,
+          { cache: "no-store" }
+        );
+        const payload = await response.json() as {
+          teams?: ManagementTeam[];
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Teams konden niet worden geladen.");
+        }
+        if (!cancelled) {
+          setTeamOptions(
+            (payload.teams ?? [])
+              .filter((team) => team.active && team.country === draft.country)
+              .sort((left, right) => left.name.localeCompare(right.name, "nl"))
+          );
+        }
+      } catch (cause) {
+        console.error("[users] Actieve teams laden mislukt.", cause);
+        if (!cancelled) {
+          setTeamOptions([]);
+          setTeamsError(
+            cause instanceof Error
+              ? cause.message
+              : "Teams konden niet uit MariaDB worden geladen."
+          );
+        }
+      } finally {
+        if (!cancelled) setTeamsLoading(false);
+      }
+    }
+    void loadTeams();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.country, mode]);
 
   if (!canAccessUserManagement(user)) {
     return <EmptyState title="Geen toegang" description="Gebruikersbeheer is niet beschikbaar voor jouw FieldForce-rol." />;
@@ -159,20 +208,6 @@ export function UsersManagementPage() {
   }
 
   if (mode !== "list") {
-    const teamOptions = Array.from(
-      new Map(
-        managedUsers
-          .filter((profile) => profile.teamId)
-          .map((profile) => [
-            profile.teamId,
-            {
-              id: profile.teamId,
-              name: profile.teamName,
-              country: profile.country,
-            },
-          ])
-      ).values()
-    );
     return (
       <UserForm
         actor={user}
@@ -182,6 +217,8 @@ export function UsersManagementPage() {
         notice={notice}
         saving={saving}
         teamOptions={teamOptions}
+        teamsLoading={teamsLoading}
+        teamsError={teamsError}
         onChange={setDraft}
         onCancel={() => returnToList()}
         onSave={save}
@@ -306,6 +343,8 @@ function UserForm({
   notice,
   saving,
   teamOptions,
+  teamsLoading,
+  teamsError,
   onChange,
   onCancel,
   onSave,
@@ -316,7 +355,9 @@ function UserForm({
   original?: ManagedUser;
   notice?: { type: "success" | "error"; message: string };
   saving: boolean;
-  teamOptions: { id: string; name: string; country: ManagedUser["country"] }[];
+  teamOptions: ManagementTeam[];
+  teamsLoading: boolean;
+  teamsError?: string;
   onChange: (draft: ManagedUser) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -333,11 +374,9 @@ function UserForm({
   const availableRoles = roles.filter(
     (role) => actor.role === "SUPER_ADMIN" || role !== "SUPER_ADMIN"
   );
-  const availableTeams = teamOptions.filter(
-    (team) =>
-      team.country === draft.country ||
-      (actor.role !== "SUPER_ADMIN" && team.country === actor.country)
-  );
+  const availableTeams = teamOptions
+    .filter((team) => team.active && team.country === draft.country)
+    .sort((left, right) => left.name.localeCompare(right.name, "nl"));
   const modeLabel =
     mode === "create"
       ? "Gebruiker toevoegen"
@@ -555,13 +594,20 @@ function UserForm({
                     });
                   }}
                 >
-                  <option value="">Geen team</option>
+                  <option value="">
+                    {teamsLoading ? "Teams laden..." : "Geen team"}
+                  </option>
                   {availableTeams.map((team) => (
                     <option key={team.id} value={team.id}>
                       {team.name}
                     </option>
                   ))}
                 </select>
+                {teamsError && (
+                  <span className="mt-1.5 block text-xs font-semibold text-rose-600">
+                    {teamsError}
+                  </span>
+                )}
                 {teamRequired && !draft.teamId && (
                   <span className="mt-1.5 block text-xs font-semibold text-rose-600">
                     Selecteer een team voor deze rol.

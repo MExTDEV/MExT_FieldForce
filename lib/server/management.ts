@@ -14,19 +14,40 @@ import type {
 
 const roles = Object.keys(roleLabels) as Role[];
 
+export async function listManagementTeams(
+  actor: MockUser,
+  options: { activeOnly?: boolean; country?: Country } = {}
+) {
+  const requestedCountry =
+    actor.role === "SUPER_ADMIN" ? options.country : actor.country;
+  const teams = await prisma.team.findMany({
+    where: {
+      ...(requestedCountry ? { country: requestedCountry } : {}),
+      ...(options.activeOnly ? { active: true } : {}),
+    },
+    include: {
+      primaryLeader: { select: { firstName: true, lastName: true } },
+      _count: { select: { members: true } },
+    },
+    orderBy: [{ name: "asc" }],
+  });
+  return teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    country: team.country as Country,
+    primaryLeaderId: team.primaryLeaderId,
+    primaryLeaderName:
+      `${team.primaryLeader.firstName} ${team.primaryLeader.lastName}`.trim(),
+    active: team.active,
+    memberCount: team._count.members,
+  }));
+}
+
 export async function getManagementConfiguration(
   actor: MockUser
 ): Promise<ManagementConfiguration> {
-  const countryWhere = actor.role === "SUPER_ADMIN" ? {} : { country: actor.country };
   const [teams, kpis, focuses, permissions, roleGrants, roleCounts] = await Promise.all([
-    prisma.team.findMany({
-      where: countryWhere,
-      include: {
-        primaryLeader: { select: { firstName: true, lastName: true } },
-        _count: { select: { members: true } },
-      },
-      orderBy: [{ country: "asc" }, { name: "asc" }],
-    }),
+    listManagementTeams(actor),
     prisma.kpiDefinition.findMany({
       where: actor.role === "SUPER_ADMIN"
         ? {}
@@ -48,15 +69,7 @@ export async function getManagementConfiguration(
   const countMap = new Map(roleCounts.map((item) => [item.role, item._count.id]));
 
   return {
-    teams: teams.map((team) => ({
-      id: team.id,
-      name: team.name,
-      country: team.country as Country,
-      primaryLeaderId: team.primaryLeaderId,
-      primaryLeaderName: `${team.primaryLeader.firstName} ${team.primaryLeader.lastName}`.trim(),
-      active: team.active,
-      memberCount: team._count.members,
-    })),
+    teams,
     kpis: kpis.map((kpi) => ({
       id: kpi.id,
       code: kpi.code,

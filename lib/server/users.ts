@@ -33,6 +33,7 @@ export async function createManagedUserInDatabase(
   if (!actor) throw new Error("Actieve gebruiker niet gevonden.");
 
   const prepared = prepareManagedUserSave(actor, users, draft);
+  await validateManagedUserTeam(prepared);
   const created = await prisma.user.create({
     data: userDataFromManagedUser(prepared),
   });
@@ -55,6 +56,7 @@ export async function updateManagedUserInDatabase(
   if (!existing) throw new Error("Gebruiker niet gevonden.");
 
   const prepared = prepareManagedUserSave(actor, users, draft, existing);
+  await validateManagedUserTeam(prepared);
   const updated = await prisma.user.update({
     where: { id: userId },
     data: userDataFromManagedUser(prepared),
@@ -160,6 +162,30 @@ function userDataFromManagedUser(user: ManagedUser) {
     teamSupervisor: user.teamSupervisor,
     teamId: user.teamId || null,
   };
+}
+
+async function validateManagedUserTeam(user: ManagedUser) {
+  const teamRequired = ["REPRESENTATIVE", "SALES_LEADER", "SERVICE_OPERATOR"].includes(
+    user.role
+  );
+  if (!user.teamId) {
+    if (teamRequired) throw new Error("Selecteer een team voor deze rol.");
+    return;
+  }
+
+  const team = await prisma.team.findFirst({
+    where: {
+      id: user.teamId,
+      country: user.country,
+      active: true,
+    },
+    select: { id: true },
+  });
+  if (!team) {
+    throw new Error(
+      "Het gekozen team is niet actief of behoort niet tot het geselecteerde land."
+    );
+  }
 }
 
 async function replaceUserPermissions(
