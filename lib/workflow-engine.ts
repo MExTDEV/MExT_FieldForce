@@ -521,6 +521,11 @@ export function saveCoaching(
     startTime: input.startTime ?? previous?.startTime ?? "09:00",
     endTime: input.endTime ?? previous?.endTime ?? "11:00",
     notifyRepresentative: input.notifyRepresentative ?? previous?.notifyRepresentative ?? false,
+    outlookEventId: previous?.outlookEventId,
+    outlookICalUId: previous?.outlookICalUId,
+    outlookSyncStatus: "NOT_SYNCED",
+    lastSyncedAt: previous?.lastSyncedAt,
+    syncError: undefined,
     focusNames: input.focusNames,
     scores: input.scores,
     actionPoints: input.actionPoints

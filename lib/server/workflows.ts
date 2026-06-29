@@ -82,6 +82,11 @@ export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
         endTime: item.endTime ?? undefined,
         notifyRepresentative: item.notifyRepresentative,
         deletedAt: item.deletedAt?.toISOString(),
+        outlookEventId: item.outlookEventId ?? undefined,
+        outlookICalUId: item.outlookICalUId ?? undefined,
+        outlookSyncStatus: item.outlookSyncStatus,
+        lastSyncedAt: item.lastSyncedAt?.toISOString(),
+        syncError: item.syncError ?? undefined,
         focusNames: item.focuses.map((focus) => focus.focus.name),
         scores: item.scores.filter((score) => !score.category?.startsWith("Dossier:")).map(toWorkflowScore),
         actionPoints: item.actionPoints.map(toWorkflowActionPoint),
@@ -290,7 +295,11 @@ async function upsertCoaching(tx: Transaction, item: CoachingIntervention) {
   await tx.intervention.upsert({
     where: { id: item.id },
     create: data,
-    update: interventionUpdateData(data),
+    update: {
+      ...interventionUpdateData(data),
+      outlookSyncStatus: "NOT_SYNCED",
+      syncError: null,
+    },
   });
   await replaceInterventionFocuses(tx, item.id, item.focusNames);
   await replaceScores(tx, item.id, item.scores, item.dossier);

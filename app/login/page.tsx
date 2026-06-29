@@ -25,7 +25,7 @@ export default function LoginPage() {
     if (requestedCallback?.startsWith("/")) setCallbackUrl(requestedCallback);
     setLoginError(
       error === "AccessDenied"
-        ? "Dit Microsoft-account is niet gekoppeld aan een actieve FieldForce-gebruiker."
+        ? "Dit Microsoft-account is niet gekoppeld aan FieldForce. Kies bij Microsoft expliciet het account dat je eerder voor FieldForce gebruikte."
         : error === "Configuration"
           ? "De Microsoft-login is technisch niet correct geconfigureerd. Neem contact op met de beheerder."
           : error

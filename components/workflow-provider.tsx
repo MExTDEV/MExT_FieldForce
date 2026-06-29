@@ -149,9 +149,28 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
+      const payload = (await response.json()) as {
+        error?: string;
+        outlookSync?: Array<{
+          interventionId: string;
+          outlookEventId?: string;
+          outlookICalUId?: string;
+          outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
+          lastSyncedAt?: string;
+          syncError?: string;
+        }>;
+      };
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
         throw new Error(payload.error ?? "Workflowgegevens konden niet worden opgeslagen.");
+      }
+      if (payload.outlookSync?.length) {
+        setState((current) => ({
+          ...current,
+          interventions: current.interventions.map((intervention) => {
+            const sync = payload.outlookSync?.find((item) => item.interventionId === intervention.id);
+            return sync ? { ...intervention, ...sync, id: intervention.id } : intervention;
+          }),
+        }));
       }
     } catch (error) {
       console.error("[workflow-provider:persist]", error);

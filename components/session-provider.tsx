@@ -29,6 +29,8 @@ const selectedUserStorageKey = "mext:selected-user-id";
 const authenticatedMode = process.env.NEXT_PUBLIC_AUTH_MODE !== "demo";
 const demoUserSwitcherEnabled =
   !authenticatedMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
+const sessionTimeoutMs = process.env.NODE_ENV === "development" ? 30_000 : 20_000;
+const usersTimeoutMs = process.env.NODE_ENV === "development" ? 25_000 : 15_000;
 const unavailableUser: MockUser = {
   id: "",
   name: "Geen actieve gebruiker",
@@ -55,7 +57,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setAuthTimedOut(false);
       return;
     }
-    const timeout = window.setTimeout(() => setAuthTimedOut(true), 12_000);
+    const timeout = window.setTimeout(() => setAuthTimedOut(true), sessionTimeoutMs);
     return () => window.clearTimeout(timeout);
   }, [authStatus, retryKey]);
 
@@ -92,12 +94,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
       try {
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 12_000);
-        const meResponse = await fetch("/api/auth/me", {
-          cache: "no-store",
-          signal: controller.signal,
-        }).finally(() => window.clearTimeout(timeout));
+        const meResponse = await fetchWithTimeout(
+          "/api/auth/me",
+          { cache: "no-store" },
+          sessionTimeoutMs
+        );
         const mePayload = (await meResponse.json()) as {
           user?: ManagedUser;
           error?: string;
@@ -113,12 +114,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const currentProfile = normalizeManagedUser(mePayload.user);
         let loadedUsers: ManagedUser[] = [];
         try {
-          const usersController = new AbortController();
-          const usersTimeout = window.setTimeout(() => usersController.abort(), 8_000);
-          const usersResponse = await fetch("/api/users", {
-            cache: "no-store",
-            signal: usersController.signal,
-          }).finally(() => window.clearTimeout(usersTimeout));
+          const usersResponse = await fetchWithTimeout(
+            "/api/users",
+            { cache: "no-store" },
+            usersTimeoutMs
+          );
           const usersPayload = (await usersResponse.json()) as {
             users?: ManagedUser[];
           };
@@ -126,7 +126,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             loadedUsers = (usersPayload.users ?? []).map(normalizeManagedUser);
           }
         } catch (usersError) {
-          console.warn("[session] De bredere gebruikerslijst is tijdelijk niet beschikbaar.", usersError);
+          if (!(usersError instanceof RequestTimeoutError)) {
+            console.warn("[session] De bredere gebruikerslijst is tijdelijk niet beschikbaar.", usersError);
+          }
         }
         const nextUsers = loadedUsers.some((profile) => profile.id === currentProfile.id)
           ? loadedUsers
@@ -150,10 +152,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           if (profile) setLanguage(profile.language);
         }
       } catch (loadError) {
-        console.error("[session]", loadError);
+        if (!(loadError instanceof RequestTimeoutError)) {
+          console.error("[session]", loadError);
+        }
         if (!cancelled) {
           setError(
-            loadError instanceof DOMException && loadError.name === "AbortError"
+            loadError instanceof RequestTimeoutError
               ? "De sessiecontrole duurde te lang. Probeer opnieuw."
               : "Gebruikers konden niet uit de database worden geladen."
           );
@@ -273,5 +277,28 @@ function readStoredUserId() {
     return localStorage.getItem(selectedUserStorageKey);
   } catch {
     return null;
+  }
+}
+
+class RequestTimeoutError extends Error {
+  constructor() {
+    super("De aanvraag duurde te lang.");
+    this.name = "RequestTimeoutError";
+  }
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new RequestTimeoutError()), timeoutMs);
+  });
+  try {
+    return await Promise.race([fetch(input, init), timeout]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   }
 }

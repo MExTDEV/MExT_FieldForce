@@ -72,6 +72,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID!,
           clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
           issuer: process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER!.replace(/\/+$/, ""),
+          authorization: {
+            params: {
+              scope: "openid profile email offline_access User.Read Calendars.ReadWrite",
+              prompt: "select_account",
+            },
+          },
         }),
       ]
       : []),
@@ -83,25 +89,46 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         console.warn("[auth] Login geweigerd: onverwachte provider.");
         return false;
       }
-      const entraProfile = profile as MicrosoftEntraIDProfile | undefined;
-      const entraId = entraProfile?.oid ?? account.providerAccountId;
-      const email = (entraProfile?.email ?? entraProfile?.preferred_username)?.trim().toLowerCase();
-      if (!entraId || !email) {
-        console.warn("[auth] Login geweigerd: Entra-ID of e-mailadres ontbreekt.");
+      const entraProfile = profile as (MicrosoftEntraIDProfile & {
+        sub?: string;
+        upn?: string;
+        unique_name?: string;
+      }) | undefined;
+      const entraIds = [...new Set([
+        entraProfile?.oid,
+        entraProfile?.sub,
+        account.providerAccountId,
+      ].filter((value): value is string => Boolean(value)))];
+      const emails = [...new Set([
+        entraProfile?.email,
+        entraProfile?.preferred_username,
+        entraProfile?.upn,
+        entraProfile?.unique_name,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean))];
+      if (!entraIds.length) {
+        console.warn("[auth] Login geweigerd: Entra-ID ontbreekt.");
         return false;
       }
 
       const linkedUser = await prisma.user.findFirst({
-        where: { active: true, entraId },
+        where: { active: true, entraId: { in: entraIds } },
         select: { id: true },
       });
+      if (linkedUser) return true;
+      if (!emails.length) {
+        console.warn("[auth] Login geweigerd: account is niet gekoppeld en e-mailclaim ontbreekt.");
+        return false;
+      }
       const aliasUser = linkedUser
         ? null
         : await prisma.user.findFirst({
             where: {
               active: true,
               loginAliases: {
-                some: { email, provider: "microsoft-entra-id" },
+                some: { email: { in: emails }, provider: "microsoft-entra-id" },
               },
             },
             select: { id: true, entraId: true },
@@ -109,15 +136,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const unlinkedUser = linkedUser || aliasUser
         ? null
         : await prisma.user.findFirst({
-            where: { active: true, email, entraId: null },
+            where: { active: true, email: { in: emails }, entraId: null },
             select: { id: true },
           });
-      const user = linkedUser ?? aliasUser ?? unlinkedUser;
+      const user = aliasUser ?? unlinkedUser;
       if (!user) {
-        console.warn(`[auth] Login geweigerd: geen actieve FieldForce-gebruiker voor ${email}.`);
+        console.warn(`[auth] Login geweigerd: geen actieve FieldForce-gebruiker voor ${emails.join(", ")}.`);
         return false;
       }
-      if (!linkedUser) {
+      const entraId = entraIds[0];
+      if (aliasUser?.entraId && !entraIds.includes(aliasUser.entraId)) {
+        console.warn("[auth] Login geweigerd: de alias hoort bij een andere Microsoft-identiteit.");
+        return false;
+      }
+      if (!aliasUser?.entraId) {
         await prisma.user.update({
           where: { id: user.id },
           data: { entraId },
@@ -138,6 +170,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         token.databaseUserId = databaseUser?.id;
         token.entraId = entraId;
+        token.microsoftAccessToken = account.access_token;
+        token.microsoftAccessTokenExpires = account.expires_at
+          ? account.expires_at * 1000
+          : Date.now() + 55 * 60 * 1000;
+        token.microsoftRefreshToken = account.refresh_token;
+        token.microsoftTokenError = undefined;
+      }
+      if (
+        token.microsoftAccessToken &&
+        token.microsoftAccessTokenExpires &&
+        Date.now() >= token.microsoftAccessTokenExpires - 60_000 &&
+        token.microsoftRefreshToken
+      ) {
+        return refreshMicrosoftToken(token);
       }
       return token;
     },
@@ -155,4 +201,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 export function isEntraConfigured() {
   return entraConfigured;
+}
+
+export async function refreshMicrosoftToken(token: import("next-auth/jwt").JWT) {
+  try {
+    const issuer = process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER!.replace(/\/+$/, "");
+    const authority = issuer.replace(/\/v2\.0$/, "");
+    const response = await fetch(`${authority}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.AUTH_MICROSOFT_ENTRA_ID_ID!,
+        client_secret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
+        grant_type: "refresh_token",
+        refresh_token: token.microsoftRefreshToken!,
+        scope: "openid profile email offline_access User.Read Calendars.ReadWrite",
+      }),
+    });
+    const refreshed = await response.json() as {
+      access_token?: string;
+      expires_in?: number;
+      refresh_token?: string;
+      error_description?: string;
+    };
+    if (!response.ok || !refreshed.access_token) {
+      throw new Error(refreshed.error_description ?? "Microsoft-token kon niet worden vernieuwd.");
+    }
+    return {
+      ...token,
+      microsoftAccessToken: refreshed.access_token,
+      microsoftAccessTokenExpires: Date.now() + (refreshed.expires_in ?? 3600) * 1000,
+      microsoftRefreshToken: refreshed.refresh_token ?? token.microsoftRefreshToken,
+      microsoftTokenError: undefined,
+    };
+  } catch (error) {
+    console.error("[auth:microsoft-refresh]", error);
+    return { ...token, microsoftTokenError: "RefreshAccessTokenError" as const };
+  }
 }

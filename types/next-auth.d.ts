@@ -17,5 +17,9 @@ declare module "next-auth/jwt" {
   interface JWT {
     databaseUserId?: string;
     entraId?: string;
+    microsoftAccessToken?: string;
+    microsoftAccessTokenExpires?: number;
+    microsoftRefreshToken?: string;
+    microsoftTokenError?: "RefreshAccessTokenError";
   }
 }

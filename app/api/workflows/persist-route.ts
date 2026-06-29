@@ -10,6 +10,11 @@ import {
   requireRepresentativeScope,
   requireRole,
 } from "@/lib/server/authenticated-user";
+import {
+  recordOutlookSyncFailure,
+  requireMicrosoftAccessToken,
+  syncCoachingsToOutlook,
+} from "@/lib/server/microsoft-graph";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -25,7 +30,17 @@ export async function persistWorkflowPatch(
     const patch = applyAuthenticatedActor(selectedPatch, actor.id);
     await saveWorkflowPatchToDatabase(patch);
     await writeAuditLogs(auditEntriesFromWorkflowPatch(routeName, patch, actor.id));
-    return { ok: true };
+    let outlookSync = undefined;
+    if (routeName === "coaching" && patch.interventions?.length) {
+      try {
+        const accessToken = await requireMicrosoftAccessToken(request);
+        outlookSync = await syncCoachingsToOutlook(accessToken, actor.id, patch.interventions);
+      } catch (error) {
+        console.error("[outlook-sync] Fieldforce-opslag is behouden.", error);
+        outlookSync = await recordOutlookSyncFailure(actor.id, patch.interventions, error);
+      }
+    }
+    return { ok: true, outlookSync };
   }, "Workflowgegevens konden niet worden opgeslagen.");
 }
 

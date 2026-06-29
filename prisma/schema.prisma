@@ -279,6 +279,11 @@ model Intervention {
   completedAt          DateTime?
   finalizedAt          DateTime?
   deletedAt            DateTime?
+  outlookEventId       String?
+  outlookICalUId       String?
+  outlookSyncStatus    OutlookSyncStatus        @default(NOT_SYNCED)
+  lastSyncedAt         DateTime?
+  syncError            String?                  @db.Text
   representative       User                      @relation("RepresentativeInterventions", fields: [representativeId], references: [id])
   initiator            User                      @relation("InitiatedInterventions", fields: [initiatorId], references: [id])
   owner                User                      @relation("OwnedInterventions", fields: [ownerId], references: [id])
@@ -301,6 +306,13 @@ model Intervention {
   @@index([teamId])
   @@index([type, status, country, updatedAt])
   @@index([plannedAt])
+  @@index([outlookEventId])
+}
+
+enum OutlookSyncStatus {
+  NOT_SYNCED
+  SYNCED
+  ERROR
 }
 
 model ContactMomentDetail {

@@ -307,6 +307,11 @@ export type CoachingIntervention = {
   endTime?: string;
   notifyRepresentative?: boolean;
   deletedAt?: string;
+  outlookEventId?: string;
+  outlookICalUId?: string;
+  outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
+  lastSyncedAt?: string;
+  syncError?: string;
   focusNames: string[];
   scores: WorkflowScore[];
   actionPoints: WorkflowActionPoint[];

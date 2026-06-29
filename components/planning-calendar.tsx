@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  LoaderCircle,
   Plus,
+  ShieldCheck,
 } from "lucide-react";
 
 import { useModules } from "@/components/module-provider";
@@ -27,11 +29,25 @@ type CalendarEvent = {
   duration: number;
   type: string;
   status: string;
-  href: string;
+  href?: string;
   color: string;
+  source: "fieldforce" | "outlook";
+  syncStatus?: "NOT_SYNCED" | "SYNCED" | "ERROR";
+  syncError?: string;
 };
 
-const REFERENCE_DATE = new Date(2026, 5, 15);
+type OutlookEventResponse = {
+  id: string;
+  iCalUId?: string;
+  title: string;
+  preview: string;
+  start: string;
+  end: string;
+  isAllDay: boolean;
+  location?: string;
+};
+
+const REFERENCE_DATE = new Date();
 const DAY_NAMES = ["ma", "di", "wo", "do", "vr", "za", "zo"];
 const MONTH_NAMES = [
   "januari",
@@ -55,6 +71,7 @@ const EVENT_COLORS: Record<string, string> = {
   Retraining: "border-amber-500 bg-amber-50 text-amber-950",
   "Sales training": "border-cyan-500 bg-cyan-50 text-cyan-950",
   Hulpaanvraag: "border-rose-500 bg-rose-50 text-rose-950",
+  Outlook: "border-slate-400 bg-slate-100 text-slate-800",
 };
 
 function dateKey(date: Date) {
@@ -128,15 +145,27 @@ function deterministicHour(id: string) {
 }
 
 function hourFromTime(value?: string) {
-  const hour = Number((value ?? "").split(":")[0]);
+  const hour = decimalHour(value);
   return Number.isFinite(hour) ? Math.max(8, Math.min(18, hour)) : undefined;
 }
 
 function durationFromTimes(start?: string, end?: string) {
-  const startHour = Number((start ?? "").split(":")[0]);
-  const endHour = Number((end ?? "").split(":")[0]);
+  const startHour = decimalHour(start);
+  const endHour = decimalHour(end);
   if (!Number.isFinite(startHour) || !Number.isFinite(endHour) || endHour <= startHour) return 1;
-  return Math.max(1, Math.min(8, endHour - startHour));
+  return Math.max(0.5, Math.min(11, endHour - startHour));
+}
+
+function decimalHour(value?: string) {
+  const [hours, minutes] = (value ?? "").split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return Number.NaN;
+  return hours + minutes / 60;
+}
+
+function formatEventTime(hour: number) {
+  const hours = Math.floor(hour);
+  const minutes = Math.round((hour - hours) * 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 function representativeName(representatives: Representative[], id?: string) {
@@ -157,6 +186,36 @@ export function PlanningCalendar() {
   const { representatives } = useRepresentatives();
   const [view, setView] = useState<CalendarView>("week");
   const [selectedDate, setSelectedDate] = useState(new Date(REFERENCE_DATE));
+  const [outlookEvents, setOutlookEvents] = useState<OutlookEventResponse[]>([]);
+  const [outlookLoading, setOutlookLoading] = useState(false);
+  const [outlookError, setOutlookError] = useState<string>();
+
+  const outlookRange = useMemo(() => calendarRange(selectedDate, view), [selectedDate, view]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setOutlookLoading(true);
+    setOutlookError(undefined);
+    const params = new URLSearchParams({
+      start: outlookRange.start.toISOString(),
+      end: outlookRange.end.toISOString(),
+    });
+    void fetch(`/api/outlook/events?${params}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { events?: OutlookEventResponse[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Outlook-agenda kon niet worden geladen.");
+        setOutlookEvents(payload.events ?? []);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setOutlookEvents([]);
+        setOutlookError(error instanceof Error ? error.message : "Outlook-agenda kon niet worden geladen.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setOutlookLoading(false);
+      });
+    return () => controller.abort();
+  }, [outlookRange.end, outlookRange.start]);
 
   const events = useMemo<CalendarEvent[]>(() => {
     const coachingEvents = workflow.visibleInterventions(user)
@@ -172,6 +231,9 @@ export function PlanningCalendar() {
         status: item.status,
         href: `/begeleidingen/${item.id}`,
         color: eventColor("Begeleiding"),
+        source: "fieldforce" as const,
+        syncStatus: item.outlookSyncStatus,
+        syncError: item.syncError,
       }));
 
     const contactEvents = isModuleEnabled("CONTACTMOMENTEN") ? workflow.visibleContactMoments(user).map((item) => ({
@@ -185,6 +247,7 @@ export function PlanningCalendar() {
       status: item.status,
       href: `/contactmomenten/${item.id}`,
       color: eventColor("Contactmoment"),
+      source: "fieldforce" as const,
     })) : [];
 
     const retrainingEvents = isModuleEnabled("RETRAININGEN") ? workflow.visibleRetrainings(user).map((item) => ({
@@ -198,6 +261,7 @@ export function PlanningCalendar() {
       status: item.status,
       href: `/retrainingen/${item.id}`,
       color: eventColor("Retraining"),
+      source: "fieldforce" as const,
     })) : [];
 
     const salesTrainingEvents = isModuleEnabled("SALESTRAININGEN") ? workflow.visibleSalesTrainings(user).map((item) => ({
@@ -211,6 +275,7 @@ export function PlanningCalendar() {
       status: item.status,
       href: `/sales-trainingen/${item.id}`,
       color: eventColor("Sales training"),
+      source: "fieldforce" as const,
     })) : [];
 
     const helpRequestEvents = isModuleEnabled("HULPAANVRAGEN") ? workflow.visibleHelpRequests(user).map((item) => ({
@@ -224,7 +289,34 @@ export function PlanningCalendar() {
       status: item.status,
       href: `/hulpaanvragen/${item.id}`,
       color: eventColor("Hulpaanvraag"),
+      source: "fieldforce" as const,
     })) : [];
+
+    const linkedOutlookIds = new Set(
+      workflow.state.interventions.map((item) => item.outlookEventId).filter(Boolean)
+    );
+    const externalEvents = outlookEvents
+      .filter((item) => !linkedOutlookIds.has(item.id))
+      .map((item) => {
+        const start = new Date(item.start);
+        const end = new Date(item.end);
+        const startHour = item.isAllDay ? 8 : start.getHours() + start.getMinutes() / 60;
+        const duration = item.isAllDay
+          ? 1
+          : Math.max(0.5, Math.min(11, (end.getTime() - start.getTime()) / 3_600_000));
+        return {
+          id: `outlook-${item.id}`,
+          title: item.title,
+          subtitle: item.location ? `Outlook · ${item.location}` : "Outlook · Alleen lezen",
+          date: dateKey(start),
+          hour: Math.max(8, Math.min(18, startHour)),
+          duration,
+          type: "Outlook",
+          status: "read_only",
+          color: eventColor("Outlook"),
+          source: "outlook" as const,
+        };
+      });
 
     return [
       ...coachingEvents,
@@ -232,20 +324,17 @@ export function PlanningCalendar() {
       ...retrainingEvents,
       ...salesTrainingEvents,
       ...helpRequestEvents,
+      ...externalEvents,
     ].filter(
       (event, index, list) =>
-        list.findIndex(
-          (candidate) =>
-            candidate.href === event.href &&
-            candidate.date === event.date &&
-            candidate.type === event.type,
-        ) === index,
+        list.findIndex((candidate) => candidate.id === event.id) === index,
     );
   }, [
     user,
     workflow,
     isModuleEnabled,
     representatives,
+    outlookEvents,
   ]);
 
   const periodLabel = useMemo(() => {
@@ -283,6 +372,16 @@ export function PlanningCalendar() {
       />
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {(outlookLoading || outlookError) && (
+          <div className={`flex items-center gap-2 border-b px-4 py-2.5 text-xs font-semibold ${
+            outlookError
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-blue-100 bg-blue-50 text-blue-800"
+          }`}>
+            {outlookLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            {outlookLoading ? "Outlook-agenda laden…" : `${outlookError} Fieldforce-planning blijft beschikbaar.`}
+          </div>
+        )}
         <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -528,7 +627,7 @@ function MonthView({
                       key={event.id}
                       className={`block truncate rounded border-l-4 px-1.5 py-1 text-[11px] font-semibold ${event.color}`}
                     >
-                      {String(event.hour).padStart(2, "0")}:00 {event.title}
+                      {formatEventTime(event.hour)} {event.title}
                     </span>
                   ))}
                   {dayEvents.length > 3 && (
@@ -555,26 +654,79 @@ function CalendarEventCard({
   style: React.CSSProperties;
   spacious?: boolean;
 }) {
-  return (
-    <Link
-      href={event.href}
-      style={style}
-      className={`absolute z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 shadow-sm transition hover:z-20 hover:shadow-md ${event.color}`}
-      title={`${event.title} - ${event.subtitle}`}
-    >
+  const content = (
+    <>
       <p className="truncate text-[11px] font-bold">
-        {String(event.hour).padStart(2, "0")}:00 {event.title}
+        {formatEventTime(event.hour)} {event.title}
       </p>
       <p className="truncate text-[10px] opacity-80">{event.subtitle}</p>
+      {event.source === "outlook" && (
+        <span className="mt-1 inline-flex rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-700">
+          Outlook · read-only
+        </span>
+      )}
+      {event.syncStatus && <SyncIndicator status={event.syncStatus} error={event.syncError} />}
       {spacious && (
         <div className="mt-1 flex items-center gap-2">
           <span className="inline-flex items-center gap-1 text-[10px] opacity-75">
             <Clock3 className="h-2.5 w-2.5" />
             {event.duration} uur
           </span>
-          <StatusBadge status={event.status} />
+          {event.source === "fieldforce" && <StatusBadge status={event.status} />}
         </div>
       )}
+    </>
+  );
+  const className = `absolute z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 shadow-sm ${event.color}`;
+  if (event.source === "outlook" || !event.href) {
+    return <div style={style} className={className} title={`${event.title} - externe Outlook-afspraak, alleen lezen`}>{content}</div>;
+  }
+  return (
+    <Link
+      href={event.href}
+      style={style}
+      className={`${className} transition hover:z-20 hover:shadow-md`}
+      title={`${event.title} - ${event.subtitle}`}
+    >
+      {content}
     </Link>
   );
+}
+
+function SyncIndicator({
+  status,
+  error,
+}: {
+  status: "NOT_SYNCED" | "SYNCED" | "ERROR";
+  error?: string;
+}) {
+  const label = status === "SYNCED"
+    ? "Gesynchroniseerd"
+    : status === "ERROR"
+      ? "Sync-fout"
+      : "Nog niet gesynchroniseerd";
+  const tone = status === "SYNCED"
+    ? "bg-emerald-100 text-emerald-800"
+    : status === "ERROR"
+      ? "bg-rose-100 text-rose-800"
+      : "bg-amber-100 text-amber-800";
+  return (
+    <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold ${tone}`} title={error ?? label}>
+      {label}
+    </span>
+  );
+}
+
+function calendarRange(date: Date, view: CalendarView) {
+  if (view === "day") {
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return { start, end: addDays(start, 1) };
+  }
+  if (view === "week") {
+    const start = startOfWeek(date);
+    return { start, end: addDays(start, 7) };
+  }
+  const first = new Date(date.getFullYear(), date.getMonth(), 1);
+  const start = startOfWeek(first);
+  return { start, end: addDays(start, 42) };
 }

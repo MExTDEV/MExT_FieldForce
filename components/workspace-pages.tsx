@@ -910,7 +910,7 @@ function CoachingDossierDetail({
   const appointmentCriteria = coachingFramework.flatMap((focus) =>
     focus.criteria.map((criterion) => `${focus.name} - ${criterion}`)
   );
-  const readOnly = ["gefinaliseerd", "afgesloten"].includes(intervention.status) || user.role === "REPRESENTATIVE";
+  const readOnly = ["gefinaliseerd", "afgesloten", "geannuleerd"].includes(intervention.status) || user.role === "REPRESENTATIVE";
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
   const [openAppointmentId, setOpenAppointmentId] = useState<string>();
@@ -919,7 +919,7 @@ function CoachingDossierDetail({
   const appointments = (local.appointments ?? []).filter((item) => !item.isDeleted);
   const totalCoachingScore = calculateTotalCoachingScore(dossier, appointments);
 
-  function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd") {
+  function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "geannuleerd") {
     const saved = workflowApi.saveCoachingStatus({
       id: local.id,
       representativeId: local.representativeId,
@@ -941,7 +941,13 @@ function CoachingDossierDetail({
       appointments: local.appointments,
     }, status);
     setLocal(saved);
-    setMessage(status === "gefinaliseerd" ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger." : `Begeleiding opgeslagen als ${status.replace("_", " ")}.`);
+    setMessage(
+      status === "gefinaliseerd"
+        ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger."
+        : status === "geannuleerd"
+          ? "Begeleiding geannuleerd. De gekoppelde Outlook-afspraak wordt verwijderd."
+          : `Begeleiding opgeslagen als ${status.replace("_", " ")}.`
+    );
   }
 
   function updateDossier(partial: Partial<typeof dossier>) {
@@ -1012,6 +1018,7 @@ function CoachingDossierDetail({
         description={`${formatShortDate(local.plannedDate)} · ${local.startTime ?? ""}-${local.endTime ?? ""} · ${reportingUserName(local.ownerId, managedUsers)}`}
       />
       {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{message}</div>}
+      <CoachingOutlookSyncStatus intervention={local} />
 
       <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
         <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Totale begeleiding</p>
@@ -1112,6 +1119,7 @@ function CoachingDossierDetail({
 
       {!readOnly && (
         <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:justify-end">
+          <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>Annuleren</button>
           <button type="button" className="btn-secondary" onClick={() => persist("in_uitvoering")}>Opslaan</button>
           <button type="button" className="btn-secondary" onClick={() => persist("gesloten")}>Sluiten</button>
           <button type="button" className="btn-primary" onClick={() => persist("gefinaliseerd")}>Finaliseren</button>
@@ -1123,6 +1131,44 @@ function CoachingDossierDetail({
 
 function TextField({ label, value, onChange, type = "text", disabled = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean }) {
   return <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span><input type={type} className="field" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></label>;
+}
+
+function CoachingOutlookSyncStatus({ intervention }: { intervention: CoachingWorkflowItem }) {
+  const label = intervention.outlookSyncStatus === "SYNCED"
+    ? "Gesynchroniseerd met Outlook"
+    : intervention.outlookSyncStatus === "ERROR"
+      ? "Outlook-syncfout"
+      : "Nog niet gesynchroniseerd met Outlook";
+  const tone = intervention.outlookSyncStatus === "SYNCED"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : intervention.outlookSyncStatus === "ERROR"
+      ? "border-rose-200 bg-rose-50 text-rose-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
+  return (
+    <div className={`rounded-2xl border p-4 text-sm ${tone}`}>
+      <p className="font-bold">{label}</p>
+      {intervention.lastSyncedAt && (
+        <p className="mt-1 text-xs opacity-80">Laatst gesynchroniseerd: {new Date(intervention.lastSyncedAt).toLocaleString("nl-BE")}</p>
+      )}
+      {intervention.syncError && <p className="mt-1 text-xs">{intervention.syncError}</p>}
+    </div>
+  );
+}
+
+function InlineOutlookSyncStatus({
+  status,
+  error,
+}: {
+  status: "NOT_SYNCED" | "SYNCED" | "ERROR";
+  error?: string;
+}) {
+  const label = status === "SYNCED" ? "Gesynchroniseerd" : status === "ERROR" ? "Sync-fout" : "Nog niet gesynchroniseerd";
+  const tone = status === "SYNCED"
+    ? "bg-emerald-100 text-emerald-800"
+    : status === "ERROR"
+      ? "bg-rose-100 text-rose-800"
+      : "bg-amber-100 text-amber-800";
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${tone}`} title={error ?? label}>{label}</span>;
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
@@ -1269,6 +1315,8 @@ function InterventionList({ kind }: { kind: string }) {
           startTime: "",
           endTime: "",
           executionAt: executionTimestamp(item.date),
+          outlookSyncStatus: undefined,
+          syncError: undefined,
         };
       })
     : [];
@@ -1288,6 +1336,8 @@ function InterventionList({ kind }: { kind: string }) {
         startTime: item.startTime ?? "",
         endTime: item.endTime ?? "",
         executionAt: executionTimestamp(`${item.plannedDate ?? item.updatedAt.slice(0, 10)}T${item.startTime ?? "00:00"}`),
+        outlookSyncStatus: item.outlookSyncStatus,
+        syncError: item.syncError,
       };
     })
     : [];
@@ -1324,6 +1374,9 @@ function InterventionList({ kind }: { kind: string }) {
               <div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{item.person}</p><p className="mt-1 text-sm text-slate-500">{item.date} · {item.owner}</p></div>
               <StatusBadge status={item.status} />
             </div>
+            {item.outlookSyncStatus && (
+              <div className="mt-3"><InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} /></div>
+            )}
             <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Begeleidingsdossier</span>
               {item.editable ? (
