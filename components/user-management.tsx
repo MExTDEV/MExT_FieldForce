@@ -14,12 +14,19 @@ import {
   X,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
+import { useModules } from "@/components/module-provider";
 import { Avatar, EmptyState, PageHeader } from "@/components/ui";
+import {
+  getConfigurableMenuDomains,
+  menuPermissionKeys,
+  type AppSwitcherDomain,
+} from "@/lib/app-switcher";
 import { canAccessUserManagement, roleLabels } from "@/lib/permissions";
 import {
   createEmptyManagedUser,
+  fieldForceBasePermissionKeys,
   fieldForcePermissionGroups,
-  fieldForcePermissionKeys,
+  managedUserToMockUser,
   prepareManagedUserSave,
   roleTemplates,
   userManagementCapabilities,
@@ -31,6 +38,8 @@ import type {
   ManagedUser,
   ManagementTeam,
   Role,
+  UserLoginSessionPage,
+  UserLoginSessionRecord,
 } from "@/lib/types";
 
 const roles: Role[] = [
@@ -488,10 +497,10 @@ function UsersTable({
 }) {
   return (
     <div className="overflow-hidden">
-        <div className="hidden grid-cols-[minmax(260px,1.3fr)_minmax(220px,1fr)_120px_36px] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
+        <div className="hidden grid-cols-[minmax(240px,1.3fr)_minmax(190px,1fr)_170px_36px] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
           <span>Gebruiker</span>
           <span>Rol en team</span>
-          <span>Status</span>
+          <span>Status en Microsoft</span>
           <span />
         </div>
         {users.length ? (
@@ -500,7 +509,7 @@ function UsersTable({
               key={profile.id}
               type="button"
               onClick={() => onOpen(profile)}
-              className="grid w-full gap-3 border-b border-slate-100 px-4 py-4 text-left transition last:border-b-0 hover:bg-brand-50/50 md:grid-cols-[minmax(260px,1.3fr)_minmax(220px,1fr)_120px_36px] md:items-center md:gap-4 md:px-5"
+              className="grid w-full gap-3 border-b border-slate-100 px-4 py-4 text-left transition last:border-b-0 hover:bg-brand-50/50 md:grid-cols-[minmax(240px,1.3fr)_minmax(190px,1fr)_170px_36px] md:items-center md:gap-4 md:px-5"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar
@@ -525,15 +534,18 @@ function UsersTable({
                   {profile.teamName || profile.country}
                 </p>
               </div>
-              <span
-                className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${
-                  profile.active
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {profile.active ? "Actief" : "Niet-actief"}
-              </span>
+              <div className="flex flex-wrap gap-1.5 md:flex-col md:items-start">
+                <span
+                  className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${
+                    profile.active
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {profile.active ? "Actief" : "Niet-actief"}
+                </span>
+                <MicrosoftStatusBadge user={profile} compact />
+              </div>
               <ChevronRight className="hidden h-5 w-5 text-slate-400 md:block" />
             </button>
           ))
@@ -585,6 +597,7 @@ function UserForm({
   onSave: () => void;
   onDelete?: () => void;
 }) {
+  const { modules } = useModules();
   const [showTeamCreator, setShowTeamCreator] = useState(false);
   const capabilities = userManagementCapabilities(actor, original);
   const canSave =
@@ -607,6 +620,10 @@ function UserForm({
       : canSave
         ? "Gebruiker bewerken"
         : "Gebruiker bekijken";
+  const configurableMenuDomains = useMemo(
+    () => getConfigurableMenuDomains(managedUserToMockUser(draft), modules),
+    [draft, modules]
+  );
 
   function update<K extends keyof ManagedUser>(
     field: K,
@@ -628,12 +645,24 @@ function UserForm({
   }
 
   function setAllRights(enabled: boolean) {
-    onChange({
-      ...draft,
-      permissions: Object.fromEntries(
-        fieldForcePermissionKeys.map((key) => [key, enabled])
-      ) as Record<FieldForcePermissionKey, boolean>,
-    });
+    const permissions = { ...draft.permissions };
+    for (const key of fieldForceBasePermissionKeys) permissions[key] = enabled;
+    onChange({ ...draft, permissions });
+  }
+
+  function setAllMenuRights(enabled: boolean) {
+    const permissions = { ...draft.permissions };
+    for (const key of menuPermissionKeys) permissions[key] = false;
+    if (enabled) {
+      for (const domain of configurableMenuDomains) {
+        if (!domain.available) continue;
+        permissions[domain.enabledPermission] = true;
+        for (const link of domain.links) {
+          if (link.available) permissions[link.permission] = true;
+        }
+      }
+    }
+    onChange({ ...draft, permissions });
   }
 
   return (
@@ -780,6 +809,39 @@ function UserForm({
                   onChange={(event) => update("avatarUrl", event.target.value)}
                 />
               </Field>
+            </div>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Microsoft-account
+                </p>
+                <MicrosoftStatusBadge user={draft} />
+              </div>
+              {draft.microsoftLinked ? (
+                <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="text-slate-400">Microsoft e-mail</dt>
+                    <dd className="mt-0.5 truncate font-semibold text-slate-700">
+                      {draft.microsoftEmail || draft.email}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400">Entra ID</dt>
+                    <dd className="mt-0.5 truncate font-mono text-[11px] text-slate-600" title={draft.entraId}>
+                      {draft.entraId || "Niet beschikbaar"}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Deze gebruiker heeft nog geen gekoppelde Microsoft-identiteit.
+                </p>
+              )}
+              {draft.lastLoginAt && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Laatste login: <span className="font-semibold text-slate-700">{formatLoginDate(draft.lastLoginAt)}</span>
+                </p>
+              )}
             </div>
           </FormSection>
 
@@ -944,6 +1006,19 @@ function UserForm({
             )}
         </div>
         <div className="grid gap-5 p-5 xl:grid-cols-2">
+          <MenuRightsSection
+            domains={configurableMenuDomains}
+            permissions={draft.permissions}
+            disabled={!capabilities.canEditRoleRights}
+            onChange={(key, enabled) =>
+              update("permissions", {
+                ...draft.permissions,
+                [key]: enabled,
+              })
+            }
+            onEnableAll={() => setAllMenuRights(true)}
+            onDisableAll={() => setAllMenuRights(false)}
+          />
           {fieldForcePermissionGroups.map((group) => (
             <div
               key={group.title}
@@ -975,6 +1050,10 @@ function UserForm({
           ))}
         </div>
       </section>
+
+      {mode === "edit" && original && (
+        <LoginSessions actorId={actor.id} userId={original.id} />
+      )}
 
       <div className="flex justify-end gap-2">
         <button type="button" className="btn-secondary" onClick={onCancel}>
@@ -1022,6 +1101,374 @@ function UserForm({
       )}
     </div>
   );
+}
+
+function MenuRightsSection({
+  domains,
+  permissions,
+  disabled,
+  onChange,
+  onEnableAll,
+  onDisableAll,
+}: {
+  domains: AppSwitcherDomain[];
+  permissions: Record<FieldForcePermissionKey, boolean>;
+  disabled: boolean;
+  onChange: (key: FieldForcePermissionKey, enabled: boolean) => void;
+  onEnableAll: () => void;
+  onDisableAll: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-brand-100 bg-brand-50/30 p-4 xl:col-span-2">
+      <div className="flex flex-col justify-between gap-3 border-b border-brand-100 pb-4 sm:flex-row sm:items-start">
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-brand-800">
+            Menu-rechten
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Bepaalt welke applicaties en directe links zichtbaar zijn in het mega-menu voor deze gebruiker.
+          </p>
+        </div>
+        {!disabled && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-secondary min-h-9 px-3 py-1.5 text-xs"
+              onClick={onEnableAll}
+            >
+              Alle menu-items aanzetten
+            </button>
+            <button
+              type="button"
+              className="btn-secondary min-h-9 px-3 py-1.5 text-xs"
+              onClick={onDisableAll}
+            >
+              Alle menu-items uitzetten
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {domains.map((domain) => {
+          const DomainIcon = domain.icon;
+          const parentEnabled = Boolean(permissions[domain.enabledPermission]);
+          const parentDisabled = disabled || !domain.available;
+          return (
+            <article
+              key={domain.key}
+              className={`rounded-xl border bg-white p-4 ${
+                domain.available ? "border-slate-200" : "border-slate-100 opacity-70"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${parentEnabled && domain.available ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-500"}`}>
+                  <DomainIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-slate-900">{domain.title}</p>
+                  <p className="truncate text-xs text-slate-500">{domain.subtitle}</p>
+                  {!domain.available && (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                      Niet beschikbaar voor deze rol of moduleconfiguratie
+                    </p>
+                  )}
+                </div>
+                <CompactToggle
+                  label={`${domain.title} in mega-menu`}
+                  checked={parentEnabled}
+                  disabled={parentDisabled}
+                  onChange={(enabled) => onChange(domain.enabledPermission, enabled)}
+                />
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {domain.links.map((link) => {
+                  const LinkIcon = link.icon;
+                  const linkDisabled = disabled || !domain.available || !parentEnabled || !link.available;
+                  return (
+                    <label
+                      key={link.permission}
+                      className={`flex min-h-10 items-center gap-2 rounded-lg border px-2.5 py-2 ${
+                        linkDisabled
+                          ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400"
+                          : "cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-brand-200"
+                      }`}
+                      title={!link.available ? "Functioneel niet beschikbaar" : undefined}
+                    >
+                      <LinkIcon className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold">{link.label}</span>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-200"
+                        checked={Boolean(permissions[link.permission])}
+                        disabled={linkDisabled}
+                        onChange={(event) => onChange(link.permission, event.target.checked)}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompactToggle({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className={disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} title={label}>
+      <span className="sr-only">{label}</span>
+      <input
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className={`relative block h-6 w-11 rounded-full transition ${checked ? "bg-brand-700" : "bg-slate-300"}`}>
+        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${checked ? "left-6" : "left-1"}`} />
+      </span>
+    </label>
+  );
+}
+
+function MicrosoftStatusBadge({
+  user,
+  compact = false,
+}: {
+  user: ManagedUser;
+  compact?: boolean;
+}) {
+  const linked = Boolean(user.microsoftLinked || user.entraId);
+  const Icon = linked ? CheckCircle2 : X;
+  return (
+    <span
+      className={`inline-flex w-fit items-center gap-1 rounded-full font-bold ${
+        compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-xs"
+      } ${linked ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+      title={linked ? user.microsoftEmail || user.entraId : "Geen Microsoft-account gekoppeld"}
+    >
+      <Icon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
+      {linked ? "Microsoft gekoppeld" : "Niet gekoppeld"}
+    </span>
+  );
+}
+
+function LoginSessions({ actorId, userId }: { actorId: string; userId: string }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<UserLoginSessionPage>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadSessions() {
+      try {
+        setLoading(true);
+        setError(undefined);
+        const parameters = new URLSearchParams({
+          actorId,
+          page: String(page),
+        });
+        if (from) parameters.set("from", from);
+        if (to) parameters.set("to", to);
+        const response = await fetch(
+          `/api/users/${encodeURIComponent(userId)}/login-sessions?${parameters}`,
+          { cache: "no-store", signal: controller.signal }
+        );
+        const payload = await response.json() as UserLoginSessionPage & { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Login-sessies konden niet worden geladen.");
+        setData(payload);
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : "Login-sessies konden niet worden geladen.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    void loadSessions();
+    return () => controller.abort();
+  }, [actorId, from, page, to, userId]);
+
+  const sessions = data?.sessions ?? [];
+  const pagination = data?.pagination;
+
+  return (
+    <section className="card overflow-hidden">
+      <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-brand-700" />
+          <h2 className="font-bold text-slate-900">Login-sessies</h2>
+        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Succesvolle aanmeldingen, met de nieuwste login bovenaan.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,180px)_minmax(0,180px)_auto] sm:items-end">
+          <Field label="Van datum">
+            <input
+              type="date"
+              className="field"
+              value={from}
+              max={to || undefined}
+              onChange={(event) => {
+                setFrom(event.target.value);
+                setPage(1);
+              }}
+            />
+          </Field>
+          <Field label="Tot datum">
+            <input
+              type="date"
+              className="field"
+              value={to}
+              min={from || undefined}
+              onChange={(event) => {
+                setTo(event.target.value);
+                setPage(1);
+              }}
+            />
+          </Field>
+          {(from || to) && (
+            <button
+              type="button"
+              className="btn-secondary min-h-10 px-3 py-2 text-xs"
+              onClick={() => {
+                setFrom("");
+                setTo("");
+                setPage(1);
+              }}
+            >
+              Filters wissen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 px-5 py-10 text-sm text-slate-500">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" /> Login-sessies laden...
+        </div>
+      ) : error ? (
+        <div className="m-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+          {error}
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="px-5 py-10 text-center">
+          <ShieldCheck className="mx-auto h-8 w-8 text-slate-300" />
+          <p className="mt-3 text-sm font-semibold text-slate-700">Nog geen login-sessies geregistreerd.</p>
+        </div>
+      ) : (
+        <>
+          <div className="hidden grid-cols-[170px_110px_minmax(180px,1fr)_140px_minmax(180px,1fr)] gap-3 border-b border-slate-100 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 lg:grid">
+            <span>Datum en uur</span>
+            <span>Provider</span>
+            <span>E-mailadres</span>
+            <span>IP-adres</span>
+            <span>Browser / toestel</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {sessions.map((session) => (
+              <LoginSessionRow key={session.id} session={session} />
+            ))}
+          </div>
+          {pagination && (
+            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+              <span>{pagination.total} {pagination.total === 1 ? "login" : "logins"} · pagina {pagination.page} van {pagination.totalPages}</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary min-h-8 px-3 py-1 text-xs"
+                  disabled={pagination.page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Vorige
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary min-h-8 px-3 py-1 text-xs"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Volgende
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function LoginSessionRow({ session }: { session: UserLoginSessionRecord }) {
+  return (
+    <div className="grid gap-2 px-4 py-4 text-sm lg:grid-cols-[170px_110px_minmax(180px,1fr)_140px_minmax(180px,1fr)] lg:items-center lg:gap-3 lg:px-5">
+      <div className="font-semibold text-slate-800">{formatLoginDate(session.loginAt)}</div>
+      <div>
+        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${session.provider === "microsoft" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
+          {session.provider === "microsoft" ? "Microsoft" : session.provider === "credentials" ? "Wachtwoord" : session.provider}
+        </span>
+      </div>
+      <div className="min-w-0 truncate text-slate-600" title={session.email ?? undefined}>{session.email || "Niet beschikbaar"}</div>
+      <div className="font-mono text-xs text-slate-600">{session.ipAddress || "Niet beschikbaar"}</div>
+      <div className="flex min-w-0 items-center gap-2 text-slate-600" title={session.userAgent ?? undefined}>
+        <UserCog className="h-4 w-4 shrink-0 text-slate-400" />
+        <span className="truncate">{describeUserAgent(session.userAgent)}</span>
+      </div>
+    </div>
+  );
+}
+
+function formatLoginDate(value: string) {
+  return new Intl.DateTimeFormat("nl-BE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/Brussels",
+  }).format(new Date(value));
+}
+
+function describeUserAgent(userAgent?: string | null) {
+  if (!userAgent) return "Niet beschikbaar";
+  const browser = userAgent.includes("Edg/")
+    ? "Edge"
+    : userAgent.includes("Firefox/")
+      ? "Firefox"
+      : userAgent.includes("Chrome/")
+        ? "Chrome"
+        : userAgent.includes("Safari/")
+          ? "Safari"
+          : "Onbekende browser";
+  const device = userAgent.includes("iPhone")
+    ? "iPhone"
+    : userAgent.includes("iPad")
+      ? "iPad"
+      : userAgent.includes("Android")
+        ? "Android"
+        : userAgent.includes("Macintosh")
+          ? "Mac"
+          : userAgent.includes("Windows")
+            ? "Windows"
+            : "Onbekend toestel";
+  return `${browser} · ${device}`;
 }
 
 function TeamCreationDialog({

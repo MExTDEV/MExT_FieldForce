@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,6 +55,7 @@ import {
   canAccessUserManagement,
   canManageSystem,
   canViewTeamDashboard,
+  roleLabels,
 } from "@/lib/permissions";
 import { buildReportingDataset, filterReportingDataset, emptyReportingFilters, reportingUserName } from "@/lib/reporting";
 import { buildSmartCoaching } from "@/lib/smart-coaching";
@@ -100,6 +101,12 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   }
 
   if (path === "dashboard") return <Dashboard />;
+  if (path === "mijn-gegevens") return <MyProfilePage />;
+  if (path === "taken-vandaag") return <TodayTasksPage />;
+  if (segments[0] === "salesday") return <PlaceholderWorkspace title="Salesday" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
+  if (segments[0] === "pst") return <PlaceholderWorkspace title="PST" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
+  if (segments[0] === "contract") return <PlaceholderWorkspace title="Contract" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
+  if (segments[0] === "service") return <PlaceholderWorkspace title="Service" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "mijn-team") {
     if (!canViewTeamDashboard(user)) {
       return <EmptyState title="Geen toegang" description="Mijn Team is alleen beschikbaar voor gebruikers met een team- of beheerscope." />;
@@ -2229,6 +2236,164 @@ function Planning() {
   return <PlanningCalendar />;
 }
 
+function MyProfilePage() {
+  const { user, managedUsers } = useSession();
+  const profile = managedUsers.find((item) => item.id === user.id);
+  const initials = `${user.name.split(" ")[0]?.[0] ?? ""}${user.name.split(" ")[1]?.[0] ?? ""}`.toUpperCase();
+  const details = [
+    { label: "E-mailadres", value: user.email || profile?.email || "Onbekend" },
+    { label: "Rol", value: roleLabels[user.role] },
+    { label: "Land", value: user.country },
+    { label: "Team", value: profile?.teamName || "Geen team" },
+    { label: "Vertegenwoordiger", value: profile?.representativeId ? "Gekoppeld" : "Niet gekoppeld" },
+    { label: "Taal", value: user.language.toUpperCase() },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        eyebrow="Gebruiker"
+        title="Mijn gegevens"
+        description="Je persoonlijke profiel en accountgegevens in FieldForce."
+      />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="card p-5">
+          <div className="flex items-start gap-4">
+            <Avatar initials={initials} className="h-16 w-16 text-lg" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Profiel</p>
+              <h2 className="mt-1 text-2xl font-bold text-slate-950">{user.name}</h2>
+              <p className="mt-1 text-sm text-slate-500">{roleLabels[user.role]} · {user.country}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StatusBadge status="open" label={roleLabels[user.role]} />
+                <StatusBadge status={profile?.active ? "open" : "geannuleerd"} label={profile?.active ? "Actief" : "Niet-actief"} />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {details.map((detail) => (
+              <div key={detail.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{detail.label}</p>
+                <p className="mt-2 break-words text-sm font-semibold text-slate-900">{detail.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Snelle acties</p>
+          <div className="mt-3 space-y-2">
+            <Link href="/dashboard" className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800">
+              Naar dashboard
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link href="/mijn-team" className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800">
+              Mijn Team
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link href="/begeleidingen" className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800">
+              Begeleidingen
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TodayTasksPage() {
+  const { user } = useSession();
+  const { visibleInterventions } = useWorkflow();
+  const { representatives } = useRepresentatives();
+  const today = localDateKey();
+  const interventions = dedupeById(
+    visibleInterventions(user).filter((item) => !item.deletedAt)
+  );
+  const todayCoachings = interventions
+    .filter((item) => (item.plannedDate ?? item.updatedAt.slice(0, 10)) === today)
+    .sort((left, right) => (left.startTime ?? "00:00").localeCompare(right.startTime ?? "00:00"));
+  const openCoachings = interventions.filter((item) => !completedCoachingStatuses.has(item.status) && item.status !== "geannuleerd");
+  const completedToday = interventions.filter((item) => completedCoachingStatuses.has(item.status) && (item.finalizedAt ?? item.updatedAt).slice(0, 10) === today);
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        eyebrow="Werkdag"
+        title="Taken vandaag"
+        description="Een compacte weergave van wat vandaag in jouw scope aandacht vraagt."
+      />
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="card p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Vandaag gepland</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{todayCoachings.length}</p>
+          <p className="mt-1 text-sm text-slate-500">Begeleidingen op {new Date(`${today}T12:00:00`).toLocaleDateString("nl-BE")}</p>
+        </div>
+        <div className="card p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Open coachings</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{openCoachings.length}</p>
+          <p className="mt-1 text-sm text-slate-500">Nog niet afgeronde begeleidingen</p>
+        </div>
+        <div className="card p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Vandaag afgewerkt</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{completedToday.length}</p>
+          <p className="mt-1 text-sm text-slate-500">Volledig afgesloten tijdens de huidige dag</p>
+        </div>
+        <div className="card p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Totale scope</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{interventions.length}</p>
+          <p className="mt-1 text-sm text-slate-500">Alle zichtbare coachingsmomenten</p>
+        </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+          <p className="font-bold text-slate-950">Vandaag in detail</p>
+          <p className="mt-1 text-sm text-slate-500">De planning hieronder toont alleen de coachings die vandaag staan of vandaag afgewerkt werden.</p>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {todayCoachings.length > 0 ? todayCoachings.map((intervention) => {
+            const representative = representatives.find((item) => item.id === intervention.representativeId);
+            return (
+              <Link
+                key={intervention.id}
+                href={`/begeleidingen/${intervention.id}`}
+                className="flex flex-col gap-3 p-5 transition hover:bg-slate-50 md:flex-row md:items-center md:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">
+                    {intervention.startTime ?? "00:00"} - {intervention.endTime ?? "--:--"} · {intervention.status.replaceAll("_", " ")}
+                  </p>
+                  <h2 className="mt-1 truncate font-bold text-slate-950">
+                    {representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {representative ? representative.team : "Geen team"} · {intervention.title}
+                  </p>
+                </div>
+                <StatusBadge status={intervention.status} />
+              </Link>
+            );
+          }) : (
+            <EmptyState title="Geen taken gevonden voor vandaag" description="Er staan vandaag geen zichtbare begeleidingen in jouw scope." />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderWorkspace({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="space-y-4">
+      <PageHeader eyebrow="Voorbereiding" title={title} description={description} />
+      <EmptyState title="Nog geen inhoud beschikbaar" description="Deze route is al gekoppeld aan het menu, maar de inhoud wordt later verder ingevuld." />
+    </div>
+  );
+}
+
 function Management({ section }: { section: string }) {
   const { user } = useSession();
   if (section === "gebruikers") {
@@ -2398,3 +2563,4 @@ function formatKpiValue(value: number, unit: "%" | "EUR" | "number") {
 function SectionTitle({ title, subtitle, link }: { title: string; subtitle: string; link?: string }) {
   return <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div>{link && <Link href={link} className="flex items-center gap-1 text-sm font-semibold text-brand-700">Alles <ArrowRight className="h-4 w-4" /></Link>}</div>;
 }
+

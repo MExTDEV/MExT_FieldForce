@@ -4,6 +4,7 @@ import type {
   MockUser,
   Role,
 } from "@/lib/types";
+import { menuPermissionKeys } from "@/lib/app-switcher";
 
 export const fieldForcePermissionGroups: {
   title: string;
@@ -76,9 +77,14 @@ export const fieldForcePermissionGroups: {
   },
 ];
 
-export const fieldForcePermissionKeys = fieldForcePermissionGroups.flatMap(
+export const fieldForceBasePermissionKeys = fieldForcePermissionGroups.flatMap(
   (group) => group.permissions.map((permission) => permission.key)
 );
+
+export const fieldForcePermissionKeys = [
+  ...fieldForceBasePermissionKeys,
+  ...menuPermissionKeys,
+];
 
 const emptyPermissions = (): Record<FieldForcePermissionKey, boolean> =>
   Object.fromEntries(
@@ -96,6 +102,50 @@ function permissions(
 const allPermissions = () =>
   permissions(...fieldForcePermissionKeys);
 
+const representativeMenuPermissions: FieldForcePermissionKey[] = [
+  "menu.coaching.enabled",
+  "menu.coaching.dashboard",
+  "menu.coaching.planning",
+  "menu.coaching.coachings",
+  "menu.coaching.actionPoints",
+];
+
+const serviceOperatorMenuPermissions: FieldForcePermissionKey[] = [
+  ...representativeMenuPermissions,
+  "menu.service.enabled",
+  "menu.service.myDay",
+  "menu.service.planning",
+  "menu.service.interventions",
+];
+
+const internalMenuPermissions: FieldForcePermissionKey[] = [
+  "menu.coaching.enabled",
+  "menu.coaching.dashboard",
+  "menu.coaching.planning",
+  "menu.coaching.coachings",
+  "menu.coaching.myTeam",
+  "menu.coaching.actionPoints",
+  "menu.coaching.reporting",
+  "menu.coaching.users",
+  "menu.salesday.enabled",
+  "menu.salesday.preparation",
+  "menu.salesday.agenda",
+  "menu.salesday.team",
+  "menu.salesday.stock",
+  "menu.pst.enabled",
+  "menu.pst.dashboard",
+  "menu.pst.planning",
+  "menu.pst.segments",
+  "menu.pst.routes",
+  "menu.pst.prospecting",
+  "menu.contract.enabled",
+  "menu.contract.open",
+  "menu.service.enabled",
+  "menu.service.myDay",
+  "menu.service.planning",
+  "menu.service.interventions",
+];
+
 export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
   REPRESENTATIVE: {
     permissions: permissions(
@@ -106,7 +156,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "performanceView",
       "performanceCompare",
       "performanceScoresView",
-      "reportingOwn"
+      "reportingOwn",
+      ...representativeMenuPermissions
     ),
   },
   SALES_LEADER: {
@@ -125,7 +176,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "usersView",
       "reportingOwn",
       "reportingTeam",
-      "reportingExport"
+      "reportingExport",
+      ...internalMenuPermissions
     ),
   },
   SERVICE_OPERATOR: {
@@ -134,7 +186,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "moduleAgenda",
       "modulePreparation",
       "moduleVisitRecord",
-      "reportingOwn"
+      "reportingOwn",
+      ...serviceOperatorMenuPermissions
     ),
   },
   COUNTRY_MANAGER: {
@@ -151,7 +204,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "usersView",
       "reportingOwn",
       "reportingTeam",
-      "reportingExport"
+      "reportingExport",
+      ...internalMenuPermissions
     ),
   },
   GROUP_MANAGER: {
@@ -169,7 +223,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingOwn",
       "reportingTeam",
       "reportingAll",
-      "reportingExport"
+      "reportingExport",
+      ...internalMenuPermissions
     ),
   },
   ADMIN: {
@@ -195,7 +250,10 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "usersPermissionsEdit",
       "reportingOwn",
       "reportingTeam",
-      "reportingExport"
+      "reportingExport",
+      ...internalMenuPermissions,
+      "menu.coaching.modules",
+      "menu.coaching.roles"
     ),
   },
   SUPER_ADMIN: {

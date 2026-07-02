@@ -17,6 +17,7 @@
     "test:modules": "tsx scripts/test-modules.ts",
     "test:data-access": "tsx scripts/test-data-access.ts",
     "test:coaching-visibility": "tsx scripts/test-coaching-visibility.ts",
+    "test:menu-rights": "tsx scripts/test-menu-rights.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",
     "test:auth-session": "tsx scripts/test-auth-session.ts",
     "test:api-persistence": "tsx scripts/test-api-persistence.ts",

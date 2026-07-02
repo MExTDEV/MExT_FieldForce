@@ -203,6 +203,10 @@ function toManagedUser(
       {} as Record<FieldForcePermissionKey, boolean>
     ),
     representativeId: user.representativeId ?? undefined,
+    microsoftLinked: Boolean(user.entraId),
+    entraId: user.entraId ?? undefined,
+    microsoftEmail: user.microsoftEmail ?? undefined,
+    lastLoginAt: user.lastLoginAt?.toISOString(),
   });
 }
 

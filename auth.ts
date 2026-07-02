@@ -6,6 +6,7 @@ import MicrosoftEntraID, {
 import { prisma } from "@/lib/server/db";
 import { authPayloadDiagnostics, compactSessionToken } from "@/lib/server/auth-session";
 import { storeMicrosoftTokens } from "@/lib/server/microsoft-token-store";
+import { recordSuccessfulLogin } from "@/lib/server/login-history";
 import { verifyPassword } from "@/lib/server/password";
 
 const entraConfigured = Boolean(
@@ -194,6 +195,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       authPayloadDiagnostics("session", session);
       return session;
+    },
+  },
+  events: {
+    async signIn({ user, account, profile }) {
+      try {
+        await recordSuccessfulLogin({
+          provider: account?.provider,
+          providerAccountId: account?.providerAccountId,
+          userId: user.id,
+          userEmail: user.email,
+          profile: profile as Record<string, unknown> | undefined,
+        });
+      } catch (error) {
+        console.error("[auth:login-history] Succesvolle login kon niet worden geregistreerd.", error);
+      }
     },
   },
 });

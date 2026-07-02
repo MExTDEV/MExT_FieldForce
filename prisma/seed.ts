@@ -16,6 +16,7 @@ import {
   fieldForcePermissionGroups,
   roleTemplates,
 } from "../lib/user-management";
+import { menuPermissionGroups } from "../lib/app-switcher";
 let developmentManagedUsers: typeof import("../lib/development-seed").developmentManagedUsers;
 let developmentTeamOptions: typeof import("../lib/development-seed").developmentTeamOptions;
 let developmentRepresentatives: typeof import("../lib/mock-data").representatives;
@@ -422,7 +423,7 @@ async function seedConfiguration() {
 }
 
 async function seedPermissions() {
-  for (const group of fieldForcePermissionGroups) {
+  for (const group of [...fieldForcePermissionGroups, ...menuPermissionGroups]) {
     for (const permission of group.permissions) {
       await prisma.permission.upsert({
         where: { key: permission.key },

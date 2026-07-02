@@ -108,6 +108,8 @@ model User {
   branchNumber             String?
   representativeId         String?                     @unique
   entraId                  String?                     @unique
+  microsoftEmail           String?
+  lastLoginAt              DateTime?
   passwordHash             String?
   role                     Role
   country                  Country
@@ -137,6 +139,7 @@ model User {
   representativeCriteria   PersonalCoachingCriterion[] @relation("RepresentativePersonalCriteria")
   permissions              UserPermission[]
   loginAliases             UserLoginAlias[]
+  loginSessions            UserLoginSession[]
   trainingParticipants     TrainingParticipant[]
   actionAssignments        ActionPointAssignment[]
   interventionParticipants InterventionParticipant[]
@@ -172,6 +175,21 @@ model UserLoginAlias {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+model UserLoginSession {
+  id         String   @id @default(cuid())
+  userId     String
+  requestKey String   @unique
+  loginAt    DateTime @default(now())
+  provider   String
+  email      String?
+  ipAddress  String?
+  userAgent  String?  @db.Text
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, loginAt])
 }
 
 model Team {

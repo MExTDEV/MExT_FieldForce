@@ -50,7 +50,34 @@ export type FieldForcePermissionKey =
   | "technicalTables"
   | "technicalParameters"
   | "technicalBranding"
-  | "technicalImportExport";
+  | "technicalImportExport"
+  | "menu.coaching.enabled"
+  | "menu.coaching.dashboard"
+  | "menu.coaching.planning"
+  | "menu.coaching.coachings"
+  | "menu.coaching.myTeam"
+  | "menu.coaching.actionPoints"
+  | "menu.coaching.reporting"
+  | "menu.coaching.users"
+  | "menu.coaching.modules"
+  | "menu.coaching.roles"
+  | "menu.salesday.enabled"
+  | "menu.salesday.preparation"
+  | "menu.salesday.agenda"
+  | "menu.salesday.team"
+  | "menu.salesday.stock"
+  | "menu.pst.enabled"
+  | "menu.pst.dashboard"
+  | "menu.pst.planning"
+  | "menu.pst.segments"
+  | "menu.pst.routes"
+  | "menu.pst.prospecting"
+  | "menu.contract.enabled"
+  | "menu.contract.open"
+  | "menu.service.enabled"
+  | "menu.service.myDay"
+  | "menu.service.planning"
+  | "menu.service.interventions";
 
 export type AppModuleCode =
   | "PLANNING"
@@ -151,6 +178,29 @@ export type ManagedUser = {
   avatarUrl: string;
   permissions: Record<FieldForcePermissionKey, boolean>;
   representativeId?: string;
+  microsoftLinked?: boolean;
+  entraId?: string;
+  microsoftEmail?: string;
+  lastLoginAt?: string;
+};
+
+export type UserLoginSessionRecord = {
+  id: string;
+  loginAt: string;
+  provider: string;
+  email?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
+export type UserLoginSessionPage = {
+  sessions: UserLoginSessionRecord[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 export type Representative = {

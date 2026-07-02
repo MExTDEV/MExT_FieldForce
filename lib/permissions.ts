@@ -51,6 +51,39 @@ export function canAccessTechnicalManagement(user: MockUser) {
   return ["ADMIN", "SUPER_ADMIN"].includes(user.role);
 }
 
+export function canAccessCoaching(user: MockUser) {
+  return Boolean(user.id);
+}
+
+export function canAccessSalesday(user: MockUser) {
+  return [
+    "SALES_LEADER",
+    "COUNTRY_MANAGER",
+    "GROUP_MANAGER",
+    "ADMIN",
+    "SUPER_ADMIN",
+  ].includes(user.role);
+}
+
+export function canAccessPST(user: MockUser) {
+  return canAccessSalesday(user);
+}
+
+export function canAccessContract(user: MockUser) {
+  return canAccessSalesday(user);
+}
+
+export function canAccessService(user: MockUser) {
+  return [
+    "SERVICE_OPERATOR",
+    "SALES_LEADER",
+    "COUNTRY_MANAGER",
+    "GROUP_MANAGER",
+    "ADMIN",
+    "SUPER_ADMIN",
+  ].includes(user.role);
+}
+
 export function canViewTeamDashboard(user: MockUser) {
   return [
     "SALES_LEADER",

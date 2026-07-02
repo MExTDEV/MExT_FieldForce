@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -7,7 +7,6 @@ import {
   BarChart3,
   BookOpenCheck,
   CalendarDays,
-  ChevronDown,
   CircleHelp,
   ClipboardCheck,
   Contact,
@@ -25,16 +24,15 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { signOut } from "next-auth/react";
 import {
   canAccessTechnicalManagement,
   canAccessUserManagement,
   canViewTeamDashboard,
-  roleLabels,
 } from "@/lib/permissions";
 import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
 import { SessionFailure } from "@/components/session-state";
+import { AppSwitcherMenu } from "@/components/app-switcher-menu";
 import { useModules } from "@/components/module-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { useWorkflow } from "@/components/workflow-provider";
@@ -74,16 +72,13 @@ const representativeNav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, users, language, setLanguage, setUserId, status } = useSession();
+  const { user, language, setLanguage, status } = useSession();
   const { isModuleEnabled } = useModules();
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const canSeeManagement = canAccessTechnicalManagement(user);
   const canSeeUsers = canAccessUserManagement(user);
-  const authenticatedMode = process.env.NEXT_PUBLIC_AUTH_MODE !== "demo";
-  const demoUserSwitcherEnabled =
-    !authenticatedMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
   const activeModuleNav = appModuleRegistry
     .filter((module) => isModuleEnabled(module.code))
     .map((module) => ({
@@ -249,42 +244,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </select>
             </label>
 
-            <div className="relative flex max-w-[220px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-700 text-xs font-bold text-white">
-                {user.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}
-              </div>
-              <div className="hidden min-w-0 sm:block">
-                <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
-                <p className="truncate text-xs text-slate-500">{roleLabels[user.role]} · {user.country}</p>
-              </div>
-              {demoUserSwitcherEnabled && <select
-                value={user.id}
-                onChange={(event) => setUserId(event.target.value)}
-                aria-label="Demo gebruiker wisselen"
-                className="absolute inset-0 cursor-pointer opacity-0"
-              >
-                {users.map((mockUser) => (
-                  <option key={mockUser.id} value={mockUser.id}>
-                    {mockUser.name} — {roleLabels[mockUser.role]}
-                  </option>
-                ))}
-              </select>}
-              {demoUserSwitcherEnabled && <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />}
-              {authenticatedMode && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await signOut({ redirect: false });
-                    window.location.assign("/login");
-                  }}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                  title="Uitloggen"
-                  aria-label="Uitloggen"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
+            <AppSwitcherMenu />
           </div>
         </header>
         <main className="mx-auto max-w-[1600px] p-4 pb-24 sm:p-6 lg:p-8">
@@ -354,3 +314,4 @@ function NavItem({
     </Link>
   );
 }
+
