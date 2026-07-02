@@ -8,7 +8,6 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       databaseUserId?: string;
-      entraId?: string;
     };
   }
 }
@@ -16,10 +15,5 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     databaseUserId?: string;
-    entraId?: string;
-    microsoftAccessToken?: string;
-    microsoftAccessTokenExpires?: number;
-    microsoftRefreshToken?: string;
-    microsoftTokenError?: "RefreshAccessTokenError";
   }
 }

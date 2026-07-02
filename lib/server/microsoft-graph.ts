@@ -1,7 +1,7 @@
 import { getToken } from "next-auth/jwt";
-import { refreshMicrosoftToken } from "@/auth";
 import { unauthorized } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
+import { getValidMicrosoftAccessToken } from "@/lib/server/microsoft-token-store";
 import type { CoachingIntervention } from "@/lib/types";
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
@@ -50,24 +50,12 @@ export async function requireMicrosoftAccessToken(request: Request) {
     secret: process.env.AUTH_SECRET,
     secureCookie: process.env.NODE_ENV === "production",
   });
-  if (!token?.entraId) {
+  if (!token?.databaseUserId) {
     unauthorized("Meld je aan met Microsoft om de Outlook-agenda te gebruiken.");
   }
-  let usableToken = token;
-  if (
-    !token.microsoftAccessToken ||
-    !token.microsoftAccessTokenExpires ||
-    Date.now() >= token.microsoftAccessTokenExpires - 60_000
-  ) {
-    if (!token.microsoftRefreshToken) {
-      unauthorized("Meld je opnieuw aan met Microsoft en geef toegang tot je agenda.");
-    }
-    usableToken = await refreshMicrosoftToken(token);
-  }
-  if (!usableToken.microsoftAccessToken || usableToken.microsoftTokenError) {
-    unauthorized("De Microsoft-sessie is verlopen. Meld je opnieuw aan.");
-  }
-  return usableToken.microsoftAccessToken;
+  const accessToken = await getValidMicrosoftAccessToken(token.databaseUserId);
+  if (!accessToken) unauthorized("Meld je opnieuw aan met Microsoft en geef toegang tot je agenda.");
+  return accessToken;
 }
 
 export async function listOutlookCalendarEvents(

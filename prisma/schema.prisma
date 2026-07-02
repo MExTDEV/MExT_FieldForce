@@ -132,6 +132,7 @@ model User {
   receivedHelp             HelpRequest[]               @relation("HelpRepresentative")
   productAnalyses          ProductAnalysis[]
   auditLogs                AuditLog[]
+  microsoftAuthToken       MicrosoftAuthToken?
   createdCriteria          PersonalCoachingCriterion[] @relation("CreatedPersonalCriteria")
   representativeCriteria   PersonalCoachingCriterion[] @relation("RepresentativePersonalCriteria")
   permissions              UserPermission[]
@@ -144,6 +145,21 @@ model User {
 
   @@index([country, role])
   @@index([teamId])
+}
+
+model MicrosoftAuthToken {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  accessTokenEncrypted  String   @db.LongText
+  refreshTokenEncrypted String?  @db.LongText
+  expiresAt             DateTime
+  scopes                 String   @db.VarChar(512)
+  lastError              String?  @db.Text
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([expiresAt])
 }
 
 model UserLoginAlias {

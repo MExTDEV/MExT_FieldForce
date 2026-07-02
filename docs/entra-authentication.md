@@ -68,6 +68,27 @@ On first successful login:
 FieldForce never auto-provisions a new database user. Inactive, unknown or
 mismatched accounts are refused.
 
+## Server-side Microsoft tokens
+
+FieldForce bewaart uitsluitend een compacte gebruikersidentiteit in de
+versleutelde Auth.js-sessiecookie. Microsoft `access_token`, `refresh_token` en
+`id_token` worden nooit naar de browsersessie gekopieerd.
+
+De gedelegeerde Graph-tokens worden server-side, AES-256-GCM versleuteld,
+opgeslagen in `MicrosoftAuthToken`. De versleutelingssleutel wordt afgeleid van
+`AUTH_SECRET`. Wijzig `AUTH_SECRET` daarom niet zonder dat alle gebruikers
+opnieuw met Microsoft kunnen aanmelden.
+
+Na deployment van deze wijziging:
+
+1. Voer `npx prisma migrate deploy` uit.
+2. Herstart de Node.js-app in Plesk.
+3. Wis eenmalig de bestaande Auth.js-cookies voor het productiedomein.
+4. Meld opnieuw aan met Microsoft om de server-side Graph-tokenopslag te vullen.
+
+Met `AUTH_SESSION_DEBUG=true` kan staging uitsluitend veldnamen en geschatte
+payloadgroottes loggen. Tokenwaarden en andere secrets worden nooit gelogd.
+
 When Microsoft returns a different verified sign-in address than the business
 mailbox, register that exact address in `UserLoginAlias`. Aliases are explicit
 database records; FieldForce never matches users by partial address or domain.

@@ -4,6 +4,8 @@ import MicrosoftEntraID, {
   type MicrosoftEntraIDProfile,
 } from "next-auth/providers/microsoft-entra-id";
 import { prisma } from "@/lib/server/db";
+import { authPayloadDiagnostics, compactSessionToken } from "@/lib/server/auth-session";
+import { storeMicrosoftTokens } from "@/lib/server/microsoft-token-store";
 import { verifyPassword } from "@/lib/server/password";
 
 const entraConfigured = Boolean(
@@ -158,8 +160,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
     async jwt({ token, account, profile, user }) {
+      let databaseUserId = typeof token.databaseUserId === "string"
+        ? token.databaseUserId
+        : undefined;
       if (account?.provider === "credentials" && user?.id) {
-        token.databaseUserId = user.id;
+        databaseUserId = user.id;
       }
       if (account?.provider === "microsoft-entra-id") {
         const entraProfile = profile as MicrosoftEntraIDProfile | undefined;
@@ -168,32 +173,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { entraId, active: true },
           select: { id: true },
         });
-        token.databaseUserId = databaseUser?.id;
-        token.entraId = entraId;
-        token.microsoftAccessToken = account.access_token;
-        token.microsoftAccessTokenExpires = account.expires_at
-          ? account.expires_at * 1000
-          : Date.now() + 55 * 60 * 1000;
-        token.microsoftRefreshToken = account.refresh_token;
-        token.microsoftTokenError = undefined;
+        databaseUserId = databaseUser?.id;
+        if (databaseUser?.id) {
+          await storeMicrosoftTokens(databaseUser.id, {
+            accessToken: account.access_token,
+            refreshToken: account.refresh_token,
+            expiresAt: account.expires_at,
+            scope: account.scope,
+          });
+        }
       }
-      if (
-        token.microsoftAccessToken &&
-        token.microsoftAccessTokenExpires &&
-        Date.now() >= token.microsoftAccessTokenExpires - 60_000 &&
-        token.microsoftRefreshToken
-      ) {
-        return refreshMicrosoftToken(token);
-      }
-      return token;
+      const compactToken = compactSessionToken(token, databaseUserId);
+      authPayloadDiagnostics("jwt", compactToken);
+      return compactToken;
     },
     session({ session, token }) {
       if (session.user) {
         session.user.databaseUserId =
           typeof token.databaseUserId === "string" ? token.databaseUserId : undefined;
-        session.user.entraId =
-          typeof token.entraId === "string" ? token.entraId : undefined;
       }
+      authPayloadDiagnostics("session", session);
       return session;
     },
   },
@@ -201,41 +200,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 export function isEntraConfigured() {
   return entraConfigured;
-}
-
-export async function refreshMicrosoftToken(token: import("next-auth/jwt").JWT) {
-  try {
-    const issuer = process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER!.replace(/\/+$/, "");
-    const authority = issuer.replace(/\/v2\.0$/, "");
-    const response = await fetch(`${authority}/oauth2/v2.0/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: process.env.AUTH_MICROSOFT_ENTRA_ID_ID!,
-        client_secret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET!,
-        grant_type: "refresh_token",
-        refresh_token: token.microsoftRefreshToken!,
-        scope: "openid profile email offline_access User.Read Calendars.ReadWrite",
-      }),
-    });
-    const refreshed = await response.json() as {
-      access_token?: string;
-      expires_in?: number;
-      refresh_token?: string;
-      error_description?: string;
-    };
-    if (!response.ok || !refreshed.access_token) {
-      throw new Error(refreshed.error_description ?? "Microsoft-token kon niet worden vernieuwd.");
-    }
-    return {
-      ...token,
-      microsoftAccessToken: refreshed.access_token,
-      microsoftAccessTokenExpires: Date.now() + (refreshed.expires_in ?? 3600) * 1000,
-      microsoftRefreshToken: refreshed.refresh_token ?? token.microsoftRefreshToken,
-      microsoftTokenError: undefined,
-    };
-  } catch (error) {
-    console.error("[auth:microsoft-refresh]", error);
-    return { ...token, microsoftTokenError: "RefreshAccessTokenError" as const };
-  }
 }

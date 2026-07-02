@@ -18,6 +18,7 @@
     "test:data-access": "tsx scripts/test-data-access.ts",
     "test:coaching-visibility": "tsx scripts/test-coaching-visibility.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",
+    "test:auth-session": "tsx scripts/test-auth-session.ts",
     "test:api-persistence": "tsx scripts/test-api-persistence.ts",
     "test:db-verification": "tsx scripts/verify-step10-database.ts",
     "env:check": "tsx scripts/validate-environment.ts",
