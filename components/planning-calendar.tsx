@@ -17,6 +17,7 @@ import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import type { Representative } from "@/lib/types";
+import { dedupeById } from "@/lib/coaching/visibility";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -218,8 +219,7 @@ export function PlanningCalendar() {
   }, [outlookRange.end, outlookRange.start]);
 
   const events = useMemo<CalendarEvent[]>(() => {
-    const coachingEvents = workflow.visibleInterventions(user)
-      .filter((item) => user.role !== "REPRESENTATIVE" || ["gefinaliseerd", "wacht_op_akkoord"].includes(item.status))
+    const coachingEvents = dedupeById(workflow.visibleInterventions(user))
       .map((item) => ({
         id: `coaching-${item.id}`,
         title: "Begeleiding",
@@ -293,7 +293,7 @@ export function PlanningCalendar() {
     })) : [];
 
     const linkedOutlookIds = new Set(
-      workflow.state.interventions.map((item) => item.outlookEventId).filter(Boolean)
+      dedupeById(workflow.visibleInterventions(user)).map((item) => item.outlookEventId).filter(Boolean)
     );
     const externalEvents = outlookEvents
       .filter((item) => !linkedOutlookIds.has(item.id))

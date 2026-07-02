@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getVisibleWorkflowState } from "@/lib/data-access";
+import { dedupeWorkflowState } from "@/lib/coaching/visibility";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
 import type {
@@ -57,6 +58,7 @@ type WorkflowContextValue = {
   saveConcept: (input: CoachingWorkflowInput) => CoachingIntervention;
   finalizeCoaching: (input: CoachingWorkflowInput) => CoachingIntervention;
   saveCoachingStatus: (input: CoachingWorkflowInput, status: Status) => CoachingIntervention;
+  transitionCoaching: (id: string, action: "reopen" | "send_for_approval" | "approve") => Promise<CoachingIntervention>;
   submitReflection: (
     reflectionId: string,
     answers: Pick<WorkflowReflection, "learnedText" | "workOnText" | "concreteGoalText">
@@ -109,7 +111,10 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     async function loadWorkflowState() {
       try {
-        const response = await fetch("/api/workflows", { cache: "no-store" });
+        const response = await fetch(
+          `/api/workflows?actorId=${encodeURIComponent(user.id)}`,
+          { cache: "no-store" }
+        );
         const payload = (await response.json()) as {
           state?: Partial<WorkflowState>;
           error?: string;
@@ -118,7 +123,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           throw new Error(payload.error ?? "Workflowgegevens konden niet worden geladen.");
         }
         if (!active) return;
-        setState({
+        setState(dedupeWorkflowState({
           interventions: payload.state?.interventions ?? [],
           reflections: payload.state?.reflections ?? [],
           approvals: payload.state?.approvals ?? [],
@@ -127,7 +132,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           linkedInterventions: payload.state?.linkedInterventions ?? [],
           retrainings: payload.state?.retrainings ?? [],
           salesTrainings: payload.state?.salesTrainings ?? [],
-        });
+        }));
       } catch (error) {
         console.error("[workflow-provider]", error);
       } finally {
@@ -164,7 +169,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         throw new Error(payload.error ?? "Workflowgegevens konden niet worden opgeslagen.");
       }
       if (payload.outlookSync?.length) {
-        setState((current) => ({
+        setState((current) => dedupeWorkflowState({
           ...current,
           interventions: current.interventions.map((intervention) => {
             const sync = payload.outlookSync?.find((item) => item.interventionId === intervention.id);
@@ -190,7 +195,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     patch: (next: WorkflowState) => WorkflowPatch
   ) => {
     setState((current) => {
-      const next = updater(current);
+      const next = dedupeWorkflowState(updater(current));
       void persist(endpoint, patch(next));
       return next;
     });
@@ -198,13 +203,39 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
 
   const upsertIntervention = useCallback((input: CoachingWorkflowInput, status: Status) => {
     const result = saveCoaching(state, input, status, representatives);
-    setState(result.state);
+    setState(dedupeWorkflowState(result.state));
     void persist("/api/workflows/coaching", {
       interventions: [result.intervention],
       reflections: result.state.reflections.filter((item) => item.interventionId === result.intervention.id),
     });
     return result.intervention;
   }, [persist, representatives, state]);
+
+  const transitionCoaching = useCallback(async (
+    id: string,
+    action: "reopen" | "send_for_approval" | "approve"
+  ) => {
+    const response = await fetch(
+      `/api/workflows/coaching/${encodeURIComponent(id)}/transition?actorId=${encodeURIComponent(user.id)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      }
+    );
+    const payload = await response.json() as { intervention?: CoachingIntervention; error?: string };
+    if (!response.ok || !payload.intervention) {
+      throw new Error(payload.error ?? "De status kon niet worden aangepast.");
+    }
+    setState((current) => dedupeWorkflowState({
+      ...current,
+      interventions: [
+        ...current.interventions.filter((item) => item.id !== payload.intervention!.id),
+        payload.intervention!,
+      ],
+    }));
+    return payload.intervention;
+  }, [user.id]);
 
   const submitReflection = useCallback((
     reflectionId: string,
@@ -286,8 +317,9 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     clearSaveError: () => setSaveError(null),
     state,
     saveConcept: (input) => upsertIntervention(input, "concept"),
-    finalizeCoaching: (input) => upsertIntervention(input, "gefinaliseerd"),
+    finalizeCoaching: (input) => upsertIntervention(input, "voltooid"),
     saveCoachingStatus: upsertIntervention,
+    transitionCoaching,
     submitReflection,
     confirmApproval,
     visibleInterventions,
@@ -295,7 +327,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     pendingApprovals,
     saveContactMoment: (input, status) => {
       const result = saveContactMoment(state, input, status, representatives);
-      setState(result.state);
+      setState(dedupeWorkflowState(result.state));
       void persist("/api/workflows/contact-moments", { contactMoments: [result.contactMoment] });
       return result.contactMoment;
     },
@@ -308,7 +340,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     },
     createHelpRequest: (input) => {
       const result = createHelpRequest(state, input, representatives);
-      setState(result.state);
+      setState(dedupeWorkflowState(result.state));
       void persist("/api/workflows/help-requests", { helpRequests: [result.helpRequest] });
       return result.helpRequest;
     },
@@ -333,13 +365,13 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     },
     saveRetraining: (input, status) => {
       const result = saveRetraining(state, input, status, representatives);
-      setState(result.state);
+      setState(dedupeWorkflowState(result.state));
       void persist("/api/workflows/retrainings", { retrainings: [result.retraining] });
       return result.retraining;
     },
     saveSalesTraining: (input, status) => {
       const result = saveSalesTraining(state, input, status, representatives);
-      setState(result.state);
+      setState(dedupeWorkflowState(result.state));
       void persist("/api/workflows/sales-trainings", { salesTrainings: [result.salesTraining] });
       return result.salesTraining;
     },
@@ -362,6 +394,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     visibleSalesTrainings,
     state,
     submitReflection,
+    transitionCoaching,
     upsertIntervention,
     updateState,
     visibleInterventions,

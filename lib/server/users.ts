@@ -26,13 +26,17 @@ export async function listManagedUsers() {
 
 export async function createManagedUserInDatabase(
   actorId: string,
-  draft: ManagedUser
+  draft: ManagedUser,
+  newTeamName?: string
 ) {
   const users = await listManagedUsers();
   const actor = actorFromManagedUser(users.find((user) => user.id === actorId));
   if (!actor) throw new Error("Actieve gebruiker niet gevonden.");
 
   const prepared = prepareManagedUserSave(actor, users, draft);
+  if (newTeamName?.trim()) {
+    return createSalesLeaderWithTeam(prepared, newTeamName.trim());
+  }
   await validateManagedUserTeam(prepared);
   const created = await prisma.user.create({
     data: userDataFromManagedUser(prepared),
@@ -40,6 +44,76 @@ export async function createManagedUserInDatabase(
   await replaceUserPermissions(created.id, prepared.permissions);
   return toManagedUser(
     await fetchUserWithAccess(created.id),
+    await fetchRolePermissions()
+  );
+}
+
+async function createSalesLeaderWithTeam(
+  prepared: ManagedUser,
+  teamName: string
+) {
+  if (prepared.role !== "SALES_LEADER" && !prepared.teamSupervisor) {
+    throw new Error(
+      "De nieuwe gebruiker moet verkoopleider of teamsupervisor zijn om primaire leider van een nieuw team te worden."
+    );
+  }
+
+  const permissionRecords = await prisma.permission.findMany();
+  const createdId = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        ...userDataFromManagedUser(prepared),
+        teamId: null,
+      },
+    });
+    const team = await tx.team.create({
+      data: {
+        name: teamName,
+        country: prepared.country,
+        primaryLeaderId: created.id,
+        active: true,
+      },
+    });
+    await tx.teamLeader.create({
+      data: {
+        teamId: team.id,
+        userId: created.id,
+        type: "PRIMARY",
+      },
+    });
+    await tx.user.update({
+      where: { id: created.id },
+      data: { teamId: team.id },
+    });
+    await Promise.all(
+      permissionRecords.map((permission) =>
+        tx.userPermission.upsert({
+          where: {
+            userId_permissionId: {
+              userId: created.id,
+              permissionId: permission.id,
+            },
+          },
+          update: {
+            enabled: Boolean(
+              prepared.permissions[permission.key as FieldForcePermissionKey]
+            ),
+          },
+          create: {
+            userId: created.id,
+            permissionId: permission.id,
+            enabled: Boolean(
+              prepared.permissions[permission.key as FieldForcePermissionKey]
+            ),
+          },
+        })
+      )
+    );
+    return created.id;
+  });
+
+  return toManagedUser(
+    await fetchUserWithAccess(createdId),
     await fetchRolePermissions()
   );
 }

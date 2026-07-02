@@ -183,6 +183,9 @@ export type Status =
   | "in_uitvoering"
   | "gesloten"
   | "gefinaliseerd"
+  | "voltooid"
+  | "verzonden_ter_akkoord"
+  | "akkoord_door_vertegenwoordiger"
   | "wacht_op_vt"
   | "wacht_op_akkoord"
   | "afgesloten"
@@ -250,12 +253,14 @@ export type WorkflowActionPoint = {
   status: "open" | "nieuw" | "in_uitvoering" | "afgerond" | "behaald" | "niet_behaald" | "geannuleerd";
   owner?: string;
   priority?: "laag" | "normaal" | "hoog";
+  description?: string;
 };
 
 export type CoachingSimpleScore = {
   criterion: string;
   score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt";
   comment: string;
+  previousScore?: number;
 };
 
 export type CoachingAppointment = {
@@ -291,6 +296,9 @@ export type AuditEntry = {
   userId: string;
   action: string;
   summary: string;
+  userName?: string;
+  oldValue?: Record<string, unknown>;
+  newValue?: Record<string, unknown>;
 };
 
 export type CoachingIntervention = {
@@ -312,6 +320,7 @@ export type CoachingIntervention = {
   outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
   lastSyncedAt?: string;
   syncError?: string;
+  internalNotes?: string;
   focusNames: string[];
   scores: WorkflowScore[];
   actionPoints: WorkflowActionPoint[];
@@ -321,6 +330,10 @@ export type CoachingIntervention = {
   createdAt: string;
   updatedAt: string;
   finalizedAt?: string;
+  sentForApprovalAt?: string;
+  sentForApprovalById?: string;
+  approvedByRepAt?: string;
+  approvedByRepId?: string;
 };
 
 export type WorkflowReflection = {

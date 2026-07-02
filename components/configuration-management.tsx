@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, MoreHorizontal, Plus, X } from "lucide-react";
+import { Check, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import { useSession } from "@/components/session-provider";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { fieldForcePermissionGroups } from "@/lib/user-management";
@@ -20,7 +20,8 @@ type EditorState =
   | { kind: "kpi"; id?: string; code: string; name: string; description: string; country: Country | null; unit: string }
   | { kind: "focus"; id?: string; code: string; name: string; sortOrder: number }
   | { kind: "criterion"; id?: string; focusId: string; name: string; sortOrder: number }
-  | { kind: "deactivate"; entity: string; id: string; name: string };
+  | { kind: "deactivate"; entity: string; id: string; name: string }
+  | { kind: "purge"; entity: string; id: string; name: string };
 
 export function ConfigurationManagement({ section }: { section: Section }) {
   const { user, managedUsers } = useSession();
@@ -62,6 +63,13 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     let saved = false;
     if (editor.kind === "deactivate") {
       saved = await mutate("DELETE", { entity: editor.entity, id: editor.id });
+    } else if (editor.kind === "purge") {
+      saved = await mutate("DELETE", {
+        entity: editor.entity,
+        id: editor.id,
+        permanent: true,
+        confirmation: editor.name,
+      });
     } else {
       const { kind, id, ...values } = editor;
       saved = await mutate(id ? "PATCH" : "POST", {
@@ -111,8 +119,10 @@ export function ConfigurationManagement({ section }: { section: Section }) {
       )}
 
       {section === "teams" && (
-        <Grid>
-          {data.teams.map((item) => (
+        <>
+          <StatusGroup title="Actieve teams" count={data.teams.filter((item) => item.active).length}>
+            <Grid>
+          {data.teams.filter((item) => item.active).map((item) => (
             <Card
               key={item.id}
               title={item.name}
@@ -131,14 +141,55 @@ export function ConfigurationManagement({ section }: { section: Section }) {
                 id: item.id,
                 name: item.name,
               })}
+              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
+                kind: "purge",
+                entity: "team",
+                id: item.id,
+                name: item.name,
+              }) : undefined}
             />
           ))}
-        </Grid>
+            </Grid>
+          </StatusGroup>
+          <StatusGroup title="Niet-actieve teams" count={data.teams.filter((item) => !item.active).length}>
+            <Grid>
+          {data.teams.filter((item) => !item.active).map((item) => (
+            <Card
+              key={item.id}
+              title={item.name}
+              detail={`${item.country} | ${item.primaryLeaderName} | ${item.memberCount} leden`}
+              active={item.active}
+              onEdit={() => setEditor({
+                kind: "team",
+                id: item.id,
+                name: item.name,
+                country: item.country,
+                primaryLeaderId: item.primaryLeaderId,
+              })}
+              onDelete={() => setEditor({
+                kind: "deactivate",
+                entity: "team",
+                id: item.id,
+                name: item.name,
+              })}
+              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
+                kind: "purge",
+                entity: "team",
+                id: item.id,
+                name: item.name,
+              }) : undefined}
+            />
+          ))}
+            </Grid>
+          </StatusGroup>
+        </>
       )}
 
       {section === "kpis" && (
-        <Grid>
-          {data.kpis.map((item) => (
+        <>
+          <StatusGroup title="Actieve KPI's" count={data.kpis.filter((item) => item.active).length}>
+            <Grid>
+          {data.kpis.filter((item) => item.active).map((item) => (
             <Card
               key={item.id}
               title={item.name}
@@ -159,93 +210,89 @@ export function ConfigurationManagement({ section }: { section: Section }) {
                 id: item.id,
                 name: item.name,
               })}
+              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
+                kind: "purge",
+                entity: "kpi",
+                id: item.id,
+                name: item.name,
+              }) : undefined}
             />
           ))}
-        </Grid>
+            </Grid>
+          </StatusGroup>
+          <StatusGroup title="Niet-actieve KPI's" count={data.kpis.filter((item) => !item.active).length}>
+            <Grid>
+          {data.kpis.filter((item) => !item.active).map((item) => (
+            <Card
+              key={item.id}
+              title={item.name}
+              detail={`${item.code} | ${item.unit} | ${item.country ?? "Globaal"}`}
+              active={item.active}
+              onEdit={() => setEditor({
+                kind: "kpi",
+                id: item.id,
+                code: item.code,
+                name: item.name,
+                description: item.description,
+                country: item.country,
+                unit: item.unit,
+              })}
+              onDelete={() => setEditor({
+                kind: "deactivate",
+                entity: "kpi",
+                id: item.id,
+                name: item.name,
+              })}
+              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
+                kind: "purge",
+                entity: "kpi",
+                id: item.id,
+                name: item.name,
+              }) : undefined}
+            />
+          ))}
+            </Grid>
+          </StatusGroup>
+        </>
       )}
 
-      {section === "kapstok" && data.focuses.map((focus) => (
-        <section key={focus.id} className="card overflow-hidden">
-          <div className="flex items-center gap-3 p-5">
-            <div className="flex-1">
-              <h2 className="font-bold">{focus.name}</h2>
-              <p className="text-sm text-slate-500">{focus.code} | volgorde {focus.sortOrder}</p>
+      {section === "kapstok" && (
+        <>
+          <StatusGroup title="Actieve kapstokken" count={data.focuses.filter((focus) => focus.active).length}>
+            <div className="space-y-4">
+              {data.focuses.filter((focus) => focus.active).map((focus) => (
+                <FocusCard key={focus.id} focus={focus} isSuperAdmin={user.role === "SUPER_ADMIN"} onEdit={setEditor} />
+              ))}
             </div>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setEditor({
-                kind: "criterion",
-                focusId: focus.id,
-                name: "",
-                sortOrder: focus.criteria.length + 1,
-              })}
-            >
-              <Plus className="h-4 w-4" /> Criterium
-            </button>
-            <Action
-              label="Bewerken"
-              onClick={() => setEditor({
-                kind: "focus",
-                id: focus.id,
-                code: focus.code,
-                name: focus.name,
-                sortOrder: focus.sortOrder,
-              })}
-            >
-              <MoreHorizontal />
-            </Action>
-            <Action
-              label="Deactiveren"
-              danger
-              onClick={() => setEditor({
-                kind: "deactivate",
-                entity: "focus",
-                id: focus.id,
-                name: focus.name,
-              })}
-            >
-              <X />
-            </Action>
-          </div>
-          <div className="divide-y divide-slate-100 border-t">
-            {focus.criteria.map((criterion) => (
-              <div key={criterion.id} className="flex items-center gap-3 px-5 py-3">
-                <span className="w-8 text-sm font-bold text-slate-400">{criterion.sortOrder}</span>
-                <span className="flex-1 text-sm font-semibold">{criterion.name}</span>
-                <Action
-                  label="Bewerken"
-                  onClick={() => setEditor({
-                    kind: "criterion",
-                    id: criterion.id,
-                    focusId: focus.id,
-                    name: criterion.name,
-                    sortOrder: criterion.sortOrder,
-                  })}
-                >
-                  <MoreHorizontal />
-                </Action>
-                <Action
-                  label="Deactiveren"
-                  danger
-                  onClick={() => setEditor({
-                    kind: "deactivate",
-                    entity: "criterion",
-                    id: criterion.id,
-                    name: criterion.name,
-                  })}
-                >
-                  <X />
-                </Action>
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
+          </StatusGroup>
+          <StatusGroup title="Niet-actieve kapstokken" count={data.focuses.filter((focus) => !focus.active).length}>
+            <div className="space-y-4">
+              {data.focuses.filter((focus) => !focus.active).map((focus) => (
+                <FocusCard key={focus.id} focus={focus} isSuperAdmin={user.role === "SUPER_ADMIN"} onEdit={setEditor} />
+              ))}
+            </div>
+          </StatusGroup>
+        </>
+      )}
 
-      {section === "rollen" && data.roles.map((role) => (
-        <RolePermissions key={role.role} role={role} mutate={mutate} />
-      ))}
+      {section === "rollen" && (
+        <>
+          <StatusGroup title="Actieve rollen" count={data.roles.filter((role) => role.userCount > 0).length} description="Rollen die momenteel aan gebruikers zijn toegewezen.">
+            <div className="space-y-4">
+              {data.roles.filter((role) => role.userCount > 0).map((role) => (
+                <RolePermissions key={role.role} role={role} mutate={mutate} />
+              ))}
+            </div>
+          </StatusGroup>
+          <StatusGroup title="Niet-actieve rollen" count={data.roles.filter((role) => role.userCount === 0).length} description="Vaste systeemrollen die momenteel niet in gebruik zijn.">
+            <div className="space-y-4">
+              {data.roles.filter((role) => role.userCount === 0).map((role) => (
+                <RolePermissions key={role.role} role={role} mutate={mutate} />
+              ))}
+            </div>
+          </StatusGroup>
+        </>
+      )}
 
       {editor && (
         <ManagementEditor
@@ -258,6 +305,178 @@ export function ConfigurationManagement({ section }: { section: Section }) {
         />
       )}
     </div>
+  );
+}
+
+function StatusGroup({
+  title,
+  count,
+  description,
+  children,
+}: {
+  title: string;
+  count: number;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-500">
+          {description ?? `${count} ${count === 1 ? "item" : "items"}`}
+        </p>
+      </div>
+      {count > 0 ? children : (
+        <div className="card px-5 py-10 text-center text-sm font-semibold text-slate-500">
+          Geen items in deze groep.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FocusCard({
+  focus,
+  isSuperAdmin,
+  onEdit,
+}: {
+  focus: ManagementConfiguration["focuses"][number];
+  isSuperAdmin: boolean;
+  onEdit: (editor: EditorState) => void;
+}) {
+  const activeCriteria = focus.criteria.filter((criterion) => criterion.active);
+  const inactiveCriteria = focus.criteria.filter((criterion) => !criterion.active);
+
+  function criterionRows(
+    criteria: typeof focus.criteria,
+    title: string
+  ) {
+    return (
+      <div>
+        <div className="border-y border-slate-100 bg-slate-50 px-5 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+          {title} ({criteria.length})
+        </div>
+        {criteria.length ? criteria.map((criterion) => (
+          <div key={criterion.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-b-0">
+            <span className="w-8 text-sm font-bold text-slate-400">{criterion.sortOrder}</span>
+            <span className="flex-1 text-sm font-semibold">{criterion.name}</span>
+            <Action
+              label="Bewerken"
+              onClick={() => onEdit({
+                kind: "criterion",
+                id: criterion.id,
+                focusId: focus.id,
+                name: criterion.name,
+                sortOrder: criterion.sortOrder,
+              })}
+            >
+              <MoreHorizontal />
+            </Action>
+            {isSuperAdmin && (
+              <Action
+                label="Definitief verwijderen"
+                danger
+                onClick={() => onEdit({
+                  kind: "purge",
+                  entity: "criterion",
+                  id: criterion.id,
+                  name: criterion.name,
+                })}
+              >
+                <Trash2 />
+              </Action>
+            )}
+            {criterion.active && (
+              <Action
+                label="Deactiveren"
+                danger
+                onClick={() => onEdit({
+                  kind: "deactivate",
+                  entity: "criterion",
+                  id: criterion.id,
+                  name: criterion.name,
+                })}
+              >
+                <X />
+              </Action>
+            )}
+          </div>
+        )) : (
+          <p className="px-5 py-4 text-sm text-slate-500">Geen criteria in deze groep.</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <section className="card overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 p-5">
+        <div className="min-w-[220px] flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold">{focus.name}</h3>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${focus.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+              {focus.active ? "Actief" : "Niet-actief"}
+            </span>
+          </div>
+          <p className="text-sm text-slate-500">{focus.code} | volgorde {focus.sortOrder}</p>
+        </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => onEdit({
+            kind: "criterion",
+            focusId: focus.id,
+            name: "",
+            sortOrder: focus.criteria.length + 1,
+          })}
+        >
+          <Plus className="h-4 w-4" /> Criterium
+        </button>
+        <Action
+          label="Bewerken"
+          onClick={() => onEdit({
+            kind: "focus",
+            id: focus.id,
+            code: focus.code,
+            name: focus.name,
+            sortOrder: focus.sortOrder,
+          })}
+        >
+          <MoreHorizontal />
+        </Action>
+        {isSuperAdmin && (
+          <Action
+            label="Definitief verwijderen"
+            danger
+            onClick={() => onEdit({
+              kind: "purge",
+              entity: "focus",
+              id: focus.id,
+              name: focus.name,
+            })}
+          >
+            <Trash2 />
+          </Action>
+        )}
+        {focus.active && (
+          <Action
+            label="Deactiveren"
+            danger
+            onClick={() => onEdit({
+              kind: "deactivate",
+              entity: "focus",
+              id: focus.id,
+              name: focus.name,
+            })}
+          >
+            <X />
+          </Action>
+        )}
+      </div>
+      {criterionRows(activeCriteria, "Actieve criteria")}
+      {criterionRows(inactiveCriteria, "Niet-actieve criteria")}
+    </section>
   );
 }
 
@@ -322,12 +541,14 @@ function Card({
   active,
   onEdit,
   onDelete,
+  onPermanentDelete,
 }: {
   title: string;
   detail: string;
   active: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onPermanentDelete?: () => void;
 }) {
   return (
     <article className="card flex items-center gap-3 p-5">
@@ -340,6 +561,7 @@ function Card({
       </div>
       <Action label="Bewerken" onClick={onEdit}><MoreHorizontal /></Action>
       {active && <Action label="Deactiveren" danger onClick={onDelete}><X /></Action>}
+      {onPermanentDelete && <Action label="Definitief verwijderen" danger onClick={onPermanentDelete}><Trash2 /></Action>}
     </article>
   );
 }
@@ -414,6 +636,16 @@ function ManagementEditor({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  if (editor.kind === "purge") {
+    return (
+      <PermanentDeleteEditor
+        entity={editor.entity}
+        name={editor.name}
+        onCancel={onCancel}
+        onDelete={onSave}
+      />
+    );
+  }
   if (editor.kind === "deactivate") {
     return (
       <Modal title="Configuratie deactiveren" onCancel={onCancel}>
@@ -553,6 +785,49 @@ function ManagementEditor({
         )}
       </div>
       <ModalActions onCancel={onCancel} onSave={onSave} disabled={!valid} />
+    </Modal>
+  );
+}
+
+function PermanentDeleteEditor({
+  entity,
+  name,
+  onCancel,
+  onDelete,
+}: {
+  entity: string;
+  name: string;
+  onCancel: () => void;
+  onDelete: () => void;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  const matches = confirmation.trim().toLocaleLowerCase("nl-BE") === name.trim().toLocaleLowerCase("nl-BE");
+  const label = entity === "team" ? "team" : entity === "kpi" ? "KPI" : entity === "focus" ? "kapstokfase" : "criterium";
+  return (
+    <Modal title={`${label} permanent verwijderen`} onCancel={onCancel}>
+      <div className="space-y-4">
+        <p className="text-sm leading-6 text-slate-600">
+          <strong>{name}</strong> en alle gekoppelde historie worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt.
+        </p>
+        <label className="block">
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+            Typ <strong className="normal-case text-slate-800">{name}</strong> ter bevestiging
+          </span>
+          <input
+            className="field"
+            autoFocus
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+        </label>
+      </div>
+      <ModalActions
+        onCancel={onCancel}
+        onSave={onDelete}
+        saveLabel="Permanent verwijderen"
+        danger
+        disabled={!matches}
+      />
     </Modal>
   );
 }

@@ -29,6 +29,7 @@ import { signOut } from "next-auth/react";
 import {
   canAccessTechnicalManagement,
   canAccessUserManagement,
+  canViewTeamDashboard,
   roleLabels,
 } from "@/lib/permissions";
 import { translate, type TranslationKey } from "@/lib/i18n";
@@ -54,6 +55,7 @@ const iconMap = {
 } as const;
 
 const dashboardNav = { href: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard };
+const myTeamNav = { href: "/mijn-team", key: "nav.myTeam", icon: UsersRound };
 
 const manageNav = [
   { href: "/beheer/gebruikers", key: "nav.users", icon: UserCog },
@@ -89,7 +91,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       key: module.navKey,
       icon: iconMap[module.icon as keyof typeof iconMap] ?? LayoutDashboard,
     }));
-  const mainNav = [dashboardNav, ...activeModuleNav];
+  const canSeeMyTeam = canViewTeamDashboard(user);
+  const mainNav = [dashboardNav, ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
 
   if (pathname === "/login") return <>{children}</>;
   if (status === "loading") {

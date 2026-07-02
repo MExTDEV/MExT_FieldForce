@@ -52,6 +52,9 @@ enum InterventionStatus {
   GEFINALISEERD
   AFGESLOTEN
   GESLOTEN
+  VOLTOOID
+  VERZONDEN_TER_AKKOORD
+  AKKOORD_DOOR_VERTEGENWOORDIGER
   GEANNULEERD
 }
 
@@ -278,6 +281,10 @@ model Intervention {
   startedAt            DateTime?
   completedAt          DateTime?
   finalizedAt          DateTime?
+  sentForApprovalAt    DateTime?
+  sentForApprovalById  String?
+  approvedByRepAt      DateTime?
+  approvedByRepId      String?
   deletedAt            DateTime?
   outlookEventId       String?
   outlookICalUId       String?
@@ -306,6 +313,7 @@ model Intervention {
   @@index([teamId])
   @@index([type, status, country, updatedAt])
   @@index([plannedAt])
+  @@index([status, plannedAt])
   @@index([outlookEventId])
 }
 

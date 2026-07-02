@@ -28,6 +28,7 @@ export type CoachingWorkflowInput = {
   startTime?: string;
   endTime?: string;
   notifyRepresentative?: boolean;
+  internalNotes?: string;
   focusNames: string[];
   scores: WorkflowScore[];
   actionPoints: Omit<WorkflowActionPoint, "id" | "status">[];
@@ -526,6 +527,11 @@ export function saveCoaching(
     outlookSyncStatus: "NOT_SYNCED",
     lastSyncedAt: previous?.lastSyncedAt,
     syncError: undefined,
+    internalNotes: input.internalNotes ?? previous?.internalNotes,
+    sentForApprovalAt: previous?.sentForApprovalAt,
+    sentForApprovalById: previous?.sentForApprovalById,
+    approvedByRepAt: previous?.approvedByRepAt,
+    approvedByRepId: previous?.approvedByRepId,
     focusNames: input.focusNames,
     scores: input.scores,
     actionPoints: input.actionPoints
@@ -541,11 +547,11 @@ export function saveCoaching(
     appointments: input.appointments ?? previous?.appointments ?? [],
     auditTrail: [
       ...(previous?.auditTrail ?? []),
-      auditEntry(input.initiatorId, status, status === "gefinaliseerd" ? "Begeleiding gefinaliseerd." : `Begeleiding opgeslagen als ${status}.`),
+      auditEntry(input.initiatorId, status, ["gefinaliseerd", "voltooid"].includes(status) ? "Begeleiding afgewerkt." : `Begeleiding opgeslagen als ${status}.`),
     ],
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
-    finalizedAt: status === "wacht_op_vt" || status === "gefinaliseerd" ? now : previous?.finalizedAt,
+    finalizedAt: ["wacht_op_vt", "gefinaliseerd", "voltooid"].includes(status) ? now : previous?.finalizedAt,
   };
   const interventions = [
     ...current.interventions.filter((item) => item.id !== id),

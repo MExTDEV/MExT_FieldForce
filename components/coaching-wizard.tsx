@@ -68,7 +68,13 @@ export function CoachingWizard() {
   const { representatives } = useRepresentatives();
   const available = representatives.filter((representative) => canAccessRepresentative(user, representative));
   const existing = editId ? state.interventions.find((item) => {
-    if (item.id !== editId || item.status === "gefinaliseerd") return false;
+    if (item.id !== editId || [
+      "gefinaliseerd",
+      "voltooid",
+      "verzonden_ter_akkoord",
+      "akkoord_door_vertegenwoordiger",
+      "afgesloten",
+    ].includes(item.status)) return false;
     const representative = representatives.find((person) => person.id === item.representativeId);
     return representative ? canAccessRepresentative(user, representative) : false;
   }) : undefined;

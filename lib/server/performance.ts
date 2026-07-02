@@ -6,13 +6,16 @@ import type {
   MonthlyKpiSnapshot,
   PerformanceDataset,
 } from "@/lib/performance-data";
-import type { WorkflowActionPoint } from "@/lib/types";
+import type { Status, WorkflowActionPoint } from "@/lib/types";
+import type { Prisma } from "@prisma/client";
 
 type KpiUnit = "%" | "EUR" | "number";
 
-export async function loadPerformanceDatasetFromDatabase(): Promise<PerformanceDataset> {
+export async function loadPerformanceDatasetFromDatabase(
+  options: { coachingWhere?: Prisma.InterventionWhereInput } = {}
+): Promise<PerformanceDataset> {
   const [coachings, contactMoments, actionPoints, kpiSnapshots] = await Promise.all([
-    loadHistoricalCoachings(),
+    loadHistoricalCoachings(options.coachingWhere),
     loadHistoricalContactMoments(),
     loadHistoricalActionPoints(),
     loadMonthlyKpiSnapshots(),
@@ -26,17 +29,25 @@ export async function loadPerformanceDatasetFromDatabase(): Promise<PerformanceD
   };
 }
 
-async function loadHistoricalCoachings(): Promise<HistoricalCoaching[]> {
+async function loadHistoricalCoachings(
+  visibilityWhere: Prisma.InterventionWhereInput = {}
+): Promise<HistoricalCoaching[]> {
   const interventions = await prisma.intervention.findMany({
     where: {
-      type: "BEGELEIDING",
-      OR: [
-        { completedAt: { not: null } },
-        { finalizedAt: { not: null } },
-        { status: { in: ["AFGESLOTEN", "GEFINALISEERD", "GESLOTEN"] } },
+      AND: [
+        visibilityWhere,
+        {
+          type: "BEGELEIDING",
+          OR: [
+            { completedAt: { not: null } },
+            { finalizedAt: { not: null } },
+            { status: { in: ["AFGESLOTEN", "GEFINALISEERD", "GESLOTEN", "VOLTOOID", "VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"] } },
+          ],
+          deletedAt: null,
+        },
       ],
-      deletedAt: null,
     },
+    distinct: ["id"],
     include: {
       representative: true,
       owner: true,
@@ -47,9 +58,25 @@ async function loadHistoricalCoachings(): Promise<HistoricalCoaching[]> {
           personalCriterion: true,
         },
       },
+      coachingDetail: {
+        include: {
+          appointments: {
+            where: { deletedAt: null },
+            include: { scoreRows: true },
+          },
+        },
+      },
     },
-    orderBy: [{ completedAt: "asc" }, { finalizedAt: "asc" }, { updatedAt: "asc" }],
+    orderBy: [{ completedAt: "desc" }, { finalizedAt: "desc" }, { updatedAt: "desc" }],
   });
+  const reopenedIds = new Set((await prisma.auditLog.findMany({
+    where: {
+      entityType: "Intervention",
+      entityId: { in: interventions.map((item) => item.id) },
+      action: "coaching.reopened",
+    },
+    select: { entityId: true },
+  })).map((item) => item.entityId));
 
   return interventions.map((item) => {
     const representativeId = item.representative.representativeId ?? item.representativeId;
@@ -73,6 +100,24 @@ async function loadHistoricalCoachings(): Promise<HistoricalCoaching[]> {
         criterion: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
         score: scoreToPercent(score.score),
       }));
+    const dossierValues = scoreRows
+      .filter((score) => score.category?.startsWith("Dossier:"))
+      .map((score) => scoreToPercent(score.score));
+    const appointmentAverages = (item.coachingDetail?.appointments ?? []).flatMap((appointment) => {
+      const values = appointment.scoreRows
+        .filter((score) => score.score !== null && !score.notApplicable)
+        .map((score) => scoreToPercent(score.score));
+      return values.length ? [average(values)] : [];
+    });
+    const appointmentScore = appointmentAverages.length ? average(appointmentAverages) : undefined;
+    const dossierScore = dossierValues.length ? average(dossierValues) : undefined;
+    const overallScore = appointmentScore === undefined && dossierScore === undefined
+      ? undefined
+      : appointmentScore === undefined
+        ? dossierScore
+        : dossierScore === undefined
+          ? appointmentScore
+          : (appointmentScore * 0.8) + (dossierScore * 0.2);
 
     return {
       id: item.id,
@@ -80,9 +125,15 @@ async function loadHistoricalCoachings(): Promise<HistoricalCoaching[]> {
       date: dateOnly(item.completedAt ?? item.finalizedAt ?? item.plannedAt ?? item.updatedAt),
       ownerId: item.ownerId,
       ownerName: `${item.owner.firstName} ${item.owner.lastName}`,
-      status: "afgesloten",
+      status: item.status.toLowerCase() as Status,
+      overallScore,
+      wasReopened: reopenedIds.has(item.id),
       focusNames: item.focuses.map((focus) => focus.focus.name),
-      phaseScores,
+      phaseScores: phaseScores.length
+        ? phaseScores
+        : overallScore !== undefined
+          ? [{ label: "Algemene begeleiding", score: Math.round(overallScore) }]
+          : [],
       generalScores,
       criterionScores,
     };
@@ -185,6 +236,10 @@ function averageByLabel(items: { label: string; score: number }[]) {
     label,
     score: Math.round(values.reduce((sum, value) => sum + value, 0) / values.length),
   }));
+}
+
+function average(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 }
 
 function scoreToPercent(score: number | null) {

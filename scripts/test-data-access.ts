@@ -5,6 +5,7 @@ import {
 } from "../lib/data-access";
 import { mockUsers, representatives } from "../lib/mock-data";
 import type { MockUser, WorkflowState } from "../lib/types";
+import { canViewTeamDashboard } from "../lib/permissions";
 
 const jonas = mockUsers.find((user) => user.id === "user-rep-be")!;
 const sophie = mockUsers.find((user) => user.id === "user-leader-be")!;
@@ -38,6 +39,10 @@ assert.equal(
   representatives.length,
   "Een Super Admin moet alle vertegenwoordigers zien."
 );
+assert.equal(canViewTeamDashboard(jonas), false, "Een vertegenwoordiger mag Mijn Team niet zien.");
+assert.equal(canViewTeamDashboard(sophie), true, "Een verkoopleider moet Mijn Team zien.");
+assert.equal(canViewTeamDashboard(countryManagerBe), true, "Een Country Manager moet Mijn Team zien.");
+assert.equal(canViewTeamDashboard(superAdmin), true, "Een Super Admin moet Mijn Team zien.");
 
 const state: WorkflowState = {
   interventions: [],

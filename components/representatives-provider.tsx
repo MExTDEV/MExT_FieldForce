@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/session-provider";
 import type { Representative } from "@/lib/types";
 
@@ -19,11 +19,14 @@ export function RepresentativesProvider({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadRepresentatives() {
+  const loadRepresentatives = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/representatives", { cache: "no-store" });
+      const response = await fetch(
+        `/api/representatives?actorId=${encodeURIComponent(user.id)}`,
+        { cache: "no-store" }
+      );
       const payload = (await response.json()) as {
         representatives?: Representative[];
         error?: string;
@@ -39,7 +42,7 @@ export function RepresentativesProvider({ children }: { children: React.ReactNod
     } finally {
       setLoading(false);
     }
-  }
+  }, [user.id]);
 
   useEffect(() => {
     if (sessionLoading || !user.id) {
@@ -57,7 +60,7 @@ export function RepresentativesProvider({ children }: { children: React.ReactNod
     return () => {
       active = false;
     };
-  }, [sessionLoading, user.id]);
+  }, [loadRepresentatives, sessionLoading, user.id]);
 
   const value = useMemo(
     () => ({
@@ -66,7 +69,7 @@ export function RepresentativesProvider({ children }: { children: React.ReactNod
       error,
       refresh: loadRepresentatives,
     }),
-    [error, loading, representatives]
+    [error, loadRepresentatives, loading, representatives]
   );
 
   return (

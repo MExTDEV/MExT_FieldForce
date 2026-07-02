@@ -1,14 +1,17 @@
 import { handleApi } from "@/lib/server/api";
 import { loadPerformanceDatasetFromDatabase } from "@/lib/server/performance";
-import { requireAuthenticatedRead } from "@/lib/server/authenticated-user";
+import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
 import { listRepresentativesFromDatabase } from "@/lib/server/representatives";
 import { getVisibleRepresentatives } from "@/lib/data-access";
+import { buildCoachingVisibilityFilter } from "@/lib/server/coaching-visibility";
 
-export async function GET() {
+export async function GET(request: Request) {
   return handleApi("api/performance:get", async () => {
-    const actor = await requireAuthenticatedRead();
-    const dataset = await loadPerformanceDatasetFromDatabase();
-    if (!actor) return { dataset };
+    const actorId = new URL(request.url).searchParams.get("actorId");
+    const actor = await requireAuthenticatedUser(actorId);
+    const dataset = await loadPerformanceDatasetFromDatabase({
+      coachingWhere: buildCoachingVisibilityFilter(actor),
+    });
 
     const representatives = await listRepresentativesFromDatabase();
     const representativeIds = new Set(

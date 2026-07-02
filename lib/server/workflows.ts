@@ -25,23 +25,30 @@ import type {
   CoachingSimpleScore,
 } from "@/lib/types";
 import type { Country } from "@/lib/types";
+import { dedupeById, dedupeWorkflowState } from "@/lib/coaching/visibility";
 
 type JsonArray = string[];
 
-const emptyState: WorkflowState = {
-  interventions: [],
-  reflections: [],
-  approvals: [],
-  contactMoments: [],
-  helpRequests: [],
-  linkedInterventions: [],
-  retrainings: [],
-  salesTrainings: [],
-};
+function createEmptyWorkflowState(): WorkflowState {
+  return {
+    interventions: [],
+    reflections: [],
+    approvals: [],
+    contactMoments: [],
+    helpRequests: [],
+    linkedInterventions: [],
+    retrainings: [],
+    salesTrainings: [],
+  };
+}
 
-export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
+export async function loadWorkflowStateFromDatabase(
+  options: { interventionWhere?: Prisma.InterventionWhereInput } = {}
+): Promise<WorkflowState> {
   const [interventions, helpRequests] = await Promise.all([
     prisma.intervention.findMany({
+      where: options.interventionWhere,
+      distinct: ["id"],
       include: {
         representative: { include: { team: true } },
         focuses: { include: { focus: true } },
@@ -64,7 +71,32 @@ export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
     }),
   ]);
 
-  const state: WorkflowState = { ...emptyState };
+  const state = createEmptyWorkflowState();
+  const coachingIds = interventions
+    .filter((item) => item.type === "BEGELEIDING")
+    .map((item) => item.id);
+  const auditLogs = coachingIds.length
+    ? await prisma.auditLog.findMany({
+        where: { entityType: "Intervention", entityId: { in: coachingIds } },
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+  const auditByIntervention = new Map<string, CoachingIntervention["auditTrail"]>();
+  for (const audit of auditLogs) {
+    const entries = auditByIntervention.get(audit.entityId) ?? [];
+    entries.push({
+      id: audit.id,
+      at: audit.createdAt.toISOString(),
+      userId: audit.userId,
+      userName: `${audit.user.firstName} ${audit.user.lastName}`.trim(),
+      action: audit.action,
+      summary: auditSummary(audit.action),
+      oldValue: parseAuditValue(audit.oldValue),
+      newValue: parseAuditValue(audit.newValue),
+    });
+    auditByIntervention.set(audit.entityId, entries);
+  }
   for (const item of interventions) {
     const representativeId = publicRepresentativeId(item.representative);
     if (item.type === "BEGELEIDING") {
@@ -87,6 +119,7 @@ export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
         outlookSyncStatus: item.outlookSyncStatus,
         lastSyncedAt: item.lastSyncedAt?.toISOString(),
         syncError: item.syncError ?? undefined,
+        internalNotes: item.description ?? undefined,
         focusNames: item.focuses.map((focus) => focus.focus.name),
         scores: item.scores.filter((score) => !score.category?.startsWith("Dossier:")).map(toWorkflowScore),
         actionPoints: item.actionPoints.map(toWorkflowActionPoint),
@@ -103,7 +136,7 @@ export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
               personalityScores: item.scores.filter((score) => score.category === "Dossier:Persoonlijkheid").map(toSimpleScore),
             }
           : undefined,
-        appointments: item.coachingDetail?.appointments.map((appointment) => ({
+        appointments: dedupeById(item.coachingDetail?.appointments ?? []).map((appointment) => ({
           id: appointment.id,
           customer: appointment.customer,
           customerNumber: appointment.customerNumber ?? "",
@@ -113,20 +146,24 @@ export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
           arrivalTime: appointment.arrivalTime,
           departureTime: appointment.departureTime,
           activity: appointment.activity,
-          scores: appointment.scoreRows
+          scores: [...new Map(appointment.scoreRows
             .sort((left, right) => left.sortOrder - right.sortOrder)
-            .map((score) => ({
+            .map((score) => [score.criterion, {
               criterion: score.criterion,
               score: toSimpleScoreValue(score.score, score.notApplicable),
               comment: score.comment,
-            })),
+            }] as const)).values()],
           remarks: appointment.remarks,
           isDeleted: Boolean(appointment.deletedAt),
         })),
-        auditTrail: [],
+        auditTrail: auditByIntervention.get(item.id) ?? [],
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
         finalizedAt: item.finalizedAt?.toISOString() ?? item.completedAt?.toISOString(),
+        sentForApprovalAt: item.sentForApprovalAt?.toISOString(),
+        sentForApprovalById: item.sentForApprovalById ?? undefined,
+        approvedByRepAt: item.approvedByRepAt?.toISOString(),
+        approvedByRepId: item.approvedByRepId ?? undefined,
       });
     }
 
@@ -249,7 +286,7 @@ export async function loadWorkflowStateFromDatabase(): Promise<WorkflowState> {
     updatedAt: item.updatedAt.toISOString(),
   }));
 
-  return state;
+  return dedupeWorkflowState(state);
 }
 
 export async function saveWorkflowStateToDatabase(state: WorkflowState) {
@@ -626,7 +663,7 @@ async function replaceActionPoints(
         representativeId: representative.id,
         ownerId: action.owner ?? ownerId,
         title: action.title,
-        description: "",
+        description: action.description ?? "",
         type: toActionType(action.type),
         status: toActionStatus(action.status),
         priority: toPriority(action.priority ?? "normaal"),
@@ -696,12 +733,17 @@ function interventionData(
           : "reason" in item
             ? item.reason
             : "Interventie",
+    description: "internalNotes" in item ? item.internalNotes : undefined,
     plannedAt: dateFromString(baseDate),
     startTime: "startTime" in item ? item.startTime : undefined,
     endTime: "endTime" in item ? item.endTime : undefined,
     notifyRepresentative: "notifyRepresentative" in item ? item.notifyRepresentative ?? false : false,
     completedAt: "completedAt" in item ? dateFromString(item.completedAt) : undefined,
     finalizedAt: "finalizedAt" in item ? dateFromString(item.finalizedAt) : undefined,
+    sentForApprovalAt: "sentForApprovalAt" in item ? dateFromString(item.sentForApprovalAt) : undefined,
+    sentForApprovalById: "sentForApprovalById" in item ? item.sentForApprovalById : undefined,
+    approvedByRepAt: "approvedByRepAt" in item ? dateFromString(item.approvedByRepAt) : undefined,
+    approvedByRepId: "approvedByRepId" in item ? item.approvedByRepId : undefined,
     deletedAt: "deletedAt" in item ? dateFromString(item.deletedAt) : undefined,
   };
 }
@@ -740,6 +782,28 @@ function parseJsonArray(value: string): JsonArray {
   }
 }
 
+function parseAuditValue(value: string | null): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function auditSummary(action: string) {
+  const labels: Record<string, string> = {
+    "coaching.reopened": "Afgewerkte begeleiding opnieuw geopend voor aanpassing.",
+    "coaching.sent_for_approval": "Begeleiding naar de vertegenwoordiger verstuurd ter akkoord.",
+    "coaching.approved_by_representative": "Vertegenwoordiger bevestigde voor akkoord.",
+    "workflow.coaching.save": "Begeleiding aangepast en opgeslagen.",
+  };
+  return labels[action] ?? action.replaceAll("_", " ").replaceAll(".", " · ");
+}
+
 function toWorkflowActionPoint(item: {
   id: string;
   title: string;
@@ -748,6 +812,7 @@ function toWorkflowActionPoint(item: {
   status: string;
   ownerId: string;
   priority: string;
+  description: string;
 }): WorkflowActionPoint {
   return {
     id: item.id,
@@ -757,6 +822,7 @@ function toWorkflowActionPoint(item: {
     status: fromActionStatus(item.status),
     owner: item.ownerId,
     priority: fromPriority(item.priority),
+    description: item.description || undefined,
   };
 }
 

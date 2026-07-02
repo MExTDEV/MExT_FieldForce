@@ -20,8 +20,9 @@ type SessionContextValue = {
   retry: () => void;
   setUserId: (id: string) => void;
   setLanguage: (language: Language) => void;
-  createManagedUser: (draft: ManagedUser) => Promise<ManagedUser>;
+  createManagedUser: (draft: ManagedUser, newTeamName?: string) => Promise<ManagedUser>;
   updateManagedUser: (id: string, draft: ManagedUser) => Promise<ManagedUser>;
+  deleteManagedUser: (id: string, confirmation: string) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -207,11 +208,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setManagedUsers(next);
   }
 
-  async function createManagedUser(draft: ManagedUser) {
+  async function createManagedUser(draft: ManagedUser, newTeamName?: string) {
     const response = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actorId: user.id, user: draft }),
+      body: JSON.stringify({ actorId: user.id, user: draft, newTeamName }),
     });
     const payload = (await response.json()) as {
       user?: ManagedUser;
@@ -243,6 +244,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return updated;
   }
 
+  async function deleteManagedUser(id: string, confirmation: string) {
+    const response = await fetch(`/api/users/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: user.id, confirmation }),
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Gebruiker kon niet permanent worden verwijderd.");
+    }
+    persistLocal(managedUsers.filter((profile) => profile.id !== id));
+  }
+
   const value = {
     user,
     users,
@@ -261,6 +275,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setLanguage,
     createManagedUser,
     updateManagedUser,
+    deleteManagedUser,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

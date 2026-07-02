@@ -12,6 +12,12 @@ import {
   saveTeam,
 } from "@/lib/server/management";
 import {
+  permanentlyDeleteCriterion,
+  permanentlyDeleteFocus,
+  permanentlyDeleteKpi,
+  permanentlyDeleteTeam,
+} from "@/lib/server/permanent-delete";
+import {
   requireAuthenticatedRead,
   requireAuthenticatedUser,
   requireRole,
@@ -52,9 +58,21 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
     );
     requireRole(actor, ["ADMIN", "SUPER_ADMIN"]);
     const entity = String(payload.entity ?? "");
+    const permanent = operation === "delete" && payload.permanent === true;
+    if (permanent) requireRole(actor, ["SUPER_ADMIN"]);
     let result: unknown;
 
-    if (entity === "team") {
+    if (permanent) {
+      try {
+        result = await permanentlyDeleteManagementEntity(
+          entity,
+          String(payload.id),
+          String(payload.confirmation ?? "")
+        );
+      } catch (error) {
+        badRequest(error instanceof Error ? error.message : "Permanent verwijderen is mislukt.");
+      }
+    } else if (entity === "team") {
       result = operation === "delete"
         ? await deactivateTeam(actor, String(payload.id))
         : await saveTeam(actor, {
@@ -107,9 +125,17 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
       actorId: actor.id,
       entityType: `Management:${entity}`,
       entityId: String(payload.id ?? ("id" in (result as object) ? (result as { id: string }).id : entity)),
-      action: `management.${entity}.${operation}`,
+      action: permanent ? `management.${entity}.permanentDelete` : `management.${entity}.${operation}`,
       newValue: result,
     });
     return { ok: true, result };
   }, "De beheerwijziging kon niet worden opgeslagen.");
+}
+
+function permanentlyDeleteManagementEntity(entity: string, id: string, confirmation: string) {
+  if (entity === "team") return permanentlyDeleteTeam(id, confirmation);
+  if (entity === "kpi") return permanentlyDeleteKpi(id, confirmation);
+  if (entity === "focus") return permanentlyDeleteFocus(id, confirmation);
+  if (entity === "criterion") return permanentlyDeleteCriterion(id, confirmation);
+  badRequest("Deze configuratie kan niet permanent worden verwijderd.");
 }

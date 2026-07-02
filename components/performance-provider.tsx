@@ -26,7 +26,10 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/performance", { cache: "no-store" });
+      const response = await fetch(
+        `/api/performance?actorId=${encodeURIComponent(user.id)}`,
+        { cache: "no-store" }
+      );
       const payload = (await response.json()) as {
         dataset?: PerformanceDataset;
         error?: string;
