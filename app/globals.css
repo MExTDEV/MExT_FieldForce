@@ -31,6 +31,29 @@ textarea {
   font: inherit;
 }
 
+.mext-horizontal-scrollbar {
+  scrollbar-color: #1266b3 #e8eef5;
+  scrollbar-width: thin;
+}
+
+.mext-horizontal-scrollbar::-webkit-scrollbar {
+  height: 5px;
+}
+
+.mext-horizontal-scrollbar::-webkit-scrollbar-track {
+  background: #e8eef5;
+  border-radius: 9999px;
+}
+
+.mext-horizontal-scrollbar::-webkit-scrollbar-thumb {
+  background: #1266b3;
+  border-radius: 9999px;
+}
+
+.mext-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #003b83;
+}
+
 @layer components {
   .card {
     @apply rounded-2xl border border-slate-200/80 bg-white shadow-card;

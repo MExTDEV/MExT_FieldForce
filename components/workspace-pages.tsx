@@ -67,9 +67,12 @@ import { moduleForRoute } from "@/lib/modules";
 import {
   coachingById,
   coachingsForRepresentative,
+  criterionScoresFromRows,
   hasCoachingScoreData,
   latestHistoricalCoaching,
   latestScoredCoaching,
+  mergeCriterionScores,
+  normalizePerformanceScore,
   performanceTrend,
   representativeForCoaching,
 } from "@/lib/performance-data";
@@ -562,29 +565,38 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
   const latestCoaching = latestScoredCoaching(performanceDataset, representative.id);
   const latestScore = latestCoaching ? coachingScoreOutOfFive(latestCoaching) : undefined;
   const scoredCoachings = coachingsForRepresentative(performanceDataset, representative.id).filter(hasCoachingScoreData);
+  const representativeRoleLabel = roleLabels.REPRESENTATIVE;
+  const showLevelBadge = representative.level.localeCompare(
+    representativeRoleLabel,
+    "nl-BE",
+    { sensitivity: "base" }
+  ) !== 0;
 
   return (
     <div className="space-y-6">
       {teamMode && <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← Terug naar Mijn Team</Link>}
       <div className="card overflow-hidden">
-        <div className="h-24 bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500" />
-        <div className="flex flex-col gap-5 px-5 pb-5 sm:flex-row sm:items-end sm:px-7">
-          <Avatar initials={representative.initials} className="-mt-10 h-24 w-24 border-4 border-white bg-brand-100 text-2xl shadow-lg" />
-          <div className="min-w-0 flex-1 sm:pb-1">
-            <h1 className="text-2xl font-bold text-slate-950">{representative.firstName} {representative.lastName}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+        <div className="flex min-h-32 items-center bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500 px-5 pb-8 pt-6 sm:min-h-36 sm:px-7 sm:pb-10 sm:pt-8">
+          <h1 className="ml-24 min-w-0 break-words text-2xl font-extrabold leading-tight text-white drop-shadow-sm sm:ml-32 sm:text-3xl lg:text-[34px]">
+            {representative.firstName} {representative.lastName}
+          </h1>
+        </div>
+        <div className="flex flex-col gap-4 px-5 pb-5 sm:flex-row sm:items-start sm:gap-5 sm:px-7">
+          <Avatar initials={representative.initials} className="-mt-10 h-24 w-24 shrink-0 border-4 border-white bg-brand-100 text-2xl shadow-lg sm:h-28 sm:w-28" />
+          <div className="min-w-0 flex-1 sm:pt-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
               <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
               <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Vertegenwoordiger</span>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{representativeRoleLabel}</span>
+              {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>}
               <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />
             </div>
           </div>
-          {user.role !== "REPRESENTATIVE" && <Link href="/begeleidingen/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> Begeleiding</Link>}
+          {user.role !== "REPRESENTATIVE" && <Link href="/begeleidingen/nieuw" className="btn-primary w-full shrink-0 sm:mt-2 sm:w-auto"><Plus className="h-4 w-4" /> Begeleiding</Link>}
         </div>
-        <div className="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 pt-2">
+        <div className="mext-horizontal-scrollbar flex min-h-[58px] gap-1 overflow-x-auto border-t border-slate-100 px-4 pt-2">
           {tabs.map((item) => (
-            <button key={item} onClick={() => setTab(item)} className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold capitalize ${tab === item ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+            <button key={item} onClick={() => setTab(item)} className={`min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold capitalize transition-colors ${tab === item ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
               {item}
             </button>
           ))}
@@ -2083,10 +2095,25 @@ function workflowCoachingAsHistory(
   previous?: HistoricalCoaching
 ): HistoricalCoaching {
   const scoreByFocus = new Map<string, number[]>();
-  const appointmentCriterionScores = appointmentScoresAsCriterionScores(intervention.appointments ?? []);
-  for (const score of appointmentCriterionScores.length ? [] : intervention.scores) {
-    if (score.value === "NVT") continue;
-    scoreByFocus.set(score.focus, [...(scoreByFocus.get(score.focus) ?? []), score.value]);
+  const appointmentCriterionScores = criterionScoresFromRows(
+    (intervention.appointments ?? [])
+      .filter((appointment) => !appointment.isDeleted)
+      .flatMap((appointment) => appointment.scores.map((score) => ({
+        criterion: score.criterion,
+        score: score.score === "nvt" ? null : score.score,
+        notApplicable: score.score === "nvt",
+      })))
+  );
+  const workflowCriterionScores = intervention.scores.map((score) => ({
+    focus: score.focus,
+    criterion: score.criterion,
+    score: score.value === "NVT" ? 0 : normalizePerformanceScore(score.value),
+    scored: score.value !== "NVT",
+  }));
+  const criterionScores = mergeCriterionScores(appointmentCriterionScores, workflowCriterionScores);
+  for (const score of criterionScores) {
+    if (score.scored === false) continue;
+    scoreByFocus.set(score.focus, [...(scoreByFocus.get(score.focus) ?? []), score.score]);
   }
   const phaseScores = coachingFramework.map((focus) => {
     const values = scoreByFocus.get(focus.name);
@@ -2103,36 +2130,11 @@ function workflowCoachingAsHistory(
     ownerId: intervention.ownerId,
     ownerName: reportingUserName(intervention.ownerId, managedUsers),
     status: "afgesloten",
-    focusNames: intervention.focusNames,
+    focusNames: [...new Set([...intervention.focusNames, ...criterionScores.map((score) => score.focus)])],
     phaseScores,
     generalScores: previous?.generalScores ?? [],
-    criterionScores: appointmentCriterionScores.length
-      ? appointmentCriterionScores
-      : intervention.scores
-        .filter((score) => score.value !== "NVT")
-        .map((score) => ({ focus: score.focus, criterion: score.criterion, score: score.value as number })),
+    criterionScores,
   };
-}
-
-function appointmentScoresAsCriterionScores(appointments: NonNullable<ReturnType<typeof useWorkflow>["state"]["interventions"][number]["appointments"]>) {
-  const grouped = new Map<string, { focus: string; criterion: string; values: number[] }>();
-  for (const appointment of appointments.filter((item) => !item.isDeleted)) {
-    for (const score of appointment.scores) {
-      const value = numericScore(score.score);
-      if (value === undefined) continue;
-      const [focus, ...criterionParts] = score.criterion.split(" - ");
-      const criterion = criterionParts.join(" - ") || score.criterion;
-      const key = `${focus}::${criterion}`;
-      const current = grouped.get(key) ?? { focus, criterion, values: [] };
-      current.values.push(value * 20);
-      grouped.set(key, current);
-    }
-  }
-  return [...grouped.values()].map((item) => ({
-    focus: item.focus,
-    criterion: item.criterion,
-    score: Math.round(item.values.reduce((sum, value) => sum + value, 0) / item.values.length),
-  }));
 }
 
 function ActionPoints() {

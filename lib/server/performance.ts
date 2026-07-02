@@ -6,6 +6,11 @@ import type {
   MonthlyKpiSnapshot,
   PerformanceDataset,
 } from "@/lib/performance-data";
+import {
+  criterionScoresFromRows,
+  mergeCriterionScores,
+  normalizePerformanceScore,
+} from "@/lib/performance-data";
 import type { Status, WorkflowActionPoint } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
 
@@ -81,23 +86,31 @@ async function loadHistoricalCoachings(
   return interventions.map((item) => {
     const representativeId = item.representative.representativeId ?? item.representativeId;
     const scoreRows = item.scores.filter((score) => score.score !== null && !score.notApplicable);
-    const phaseScores = averageByLabel(scoreRows
+    const storedCriterionScores = scoreRows
       .filter((score) => score.category && !score.category.startsWith("Dossier:"))
       .map((score) => ({
-        label: score.category ?? score.criterion?.focus.name ?? score.personalCriterion?.focusName ?? "Algemeen",
+        focus: score.category ?? score.criterion?.focus.name ?? score.personalCriterion?.focusName ?? "Algemeen",
+        criterion: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
         score: scoreToPercent(score.score),
-      })));
+        scored: true,
+      }));
+    const appointmentCriterionScores = criterionScoresFromRows(
+      (item.coachingDetail?.appointments ?? []).flatMap((appointment) =>
+        appointment.scoreRows.map((score) => ({
+          criterion: score.criterion,
+          score: score.score,
+          notApplicable: score.notApplicable,
+        }))
+      )
+    );
+    const criterionScores = mergeCriterionScores(appointmentCriterionScores, storedCriterionScores);
+    const phaseScores = averageByLabel(criterionScores
+      .filter((score) => score.scored !== false)
+      .map((score) => ({ label: score.focus, score: score.score })));
     const generalScores = scoreRows
       .filter((score) => score.category === "Dossier:Algemeen" || score.category === "Dossier:Persoonlijkheid")
       .map((score) => ({
         label: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
-        score: scoreToPercent(score.score),
-      }));
-    const criterionScores = scoreRows
-      .filter((score) => !score.category?.startsWith("Dossier:"))
-      .map((score) => ({
-        focus: score.category ?? score.criterion?.focus.name ?? score.personalCriterion?.focusName ?? "Algemeen",
-        criterion: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
         score: scoreToPercent(score.score),
       }));
     const dossierValues = scoreRows
@@ -128,7 +141,10 @@ async function loadHistoricalCoachings(
       status: item.status.toLowerCase() as Status,
       overallScore,
       wasReopened: reopenedIds.has(item.id),
-      focusNames: item.focuses.map((focus) => focus.focus.name),
+      focusNames: [...new Set([
+        ...item.focuses.map((focus) => focus.focus.name),
+        ...criterionScores.map((score) => score.focus),
+      ])],
       phaseScores: phaseScores.length
         ? phaseScores
         : overallScore !== undefined
@@ -243,9 +259,7 @@ function average(values: number[]) {
 }
 
 function scoreToPercent(score: number | null) {
-  if (score === null) return 0;
-  if (score <= 5) return Math.round((score / 5) * 100);
-  return Math.max(0, Math.min(100, score));
+  return score === null ? 0 : normalizePerformanceScore(score);
 }
 
 function toActionStatus(status: string): WorkflowActionPoint["status"] {

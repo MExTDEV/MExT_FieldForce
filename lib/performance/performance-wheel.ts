@@ -11,6 +11,7 @@ export type PerformanceWheelCriterion = {
   index: number;
   category: string;
   criterion: string;
+  currentScored: boolean;
   currentScore: number;
   previousScore?: number;
   currentTen: number;
@@ -63,7 +64,11 @@ export function getPerformanceWheelData(
     )
     : getPreviousComparableIntervention(representativeId, currentInterventionId, source);
   const currentCriteria = criteriaFor(current, type);
-  const previousScores = new Map(criteriaFor(comparison, type).map((item) => [criterionKey(item), item.score]));
+  const previousScores = new Map(
+    criteriaFor(comparison, type)
+      .filter((item) => item.scored !== false)
+      .map((item) => [criterionKey(item), item.score])
+  );
   const criteria = currentCriteria.map((item, index) => {
     const previousScore = previousScores.get(criterionKey(item));
     return {
@@ -71,6 +76,7 @@ export function getPerformanceWheelData(
       index: index + 1,
       category: item.category,
       criterion: item.criterion,
+      currentScored: item.scored !== false,
       currentScore: item.score,
       previousScore,
       currentTen: normalizeScoreToTen(item.score),
@@ -96,19 +102,20 @@ export function getPerformanceWheelData(
 }
 
 export function calculateCriterionAverages(
-  scores: Array<{ category: string; criterion: string; score: number }>
+  scores: Array<{ category: string; criterion: string; score: number; scored?: boolean }>
 ) {
   const grouped = new Map<string, { category: string; criterion: string; values: number[] }>();
   for (const score of scores) {
     const key = `${score.category}::${score.criterion}`;
     const current = grouped.get(key) ?? { category: score.category, criterion: score.criterion, values: [] };
-    current.values.push(score.score);
+    if (score.scored !== false) current.values.push(score.score);
     grouped.set(key, current);
   }
   return [...grouped.values()].map((item) => ({
     category: item.category,
     criterion: item.criterion,
-    score: average(item.values),
+    score: item.values.length ? average(item.values) : 0,
+    scored: item.values.length > 0,
   }));
 }
 
@@ -187,6 +194,7 @@ function criteriaFor(intervention: HistoricalCoaching | undefined, type: Perform
             category: focus,
             criterion: score.criterion,
             score: score.score,
+            scored: score.scored,
           }))
         : [{
           category: focus,

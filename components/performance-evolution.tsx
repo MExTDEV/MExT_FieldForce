@@ -318,7 +318,7 @@ function ScoreOverview({ criteria }: { criteria: PerformanceWheelCriterion[] }) 
                     V: {row.previousTen === undefined ? "-" : formatScore(row.previousTen)}
                   </span>
                   <span className="whitespace-nowrap font-bold text-slate-950">
-                    H: {formatScore(row.currentTen)}
+                    H: {row.currentScored ? formatScore(row.currentTen) : "niet gescoord"}
                   </span>
                   <DifferenceBadge difference={row.differenceTen} trend={row.trend} />
                   <WheelTrendBadge trend={row.trend} />

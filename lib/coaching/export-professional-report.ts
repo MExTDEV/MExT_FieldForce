@@ -6,6 +6,11 @@ import type {
   Language,
   Representative,
 } from "@/lib/types";
+import {
+  criterionScoresFromRows,
+  mergeCriterionScores,
+  normalizePerformanceScore,
+} from "@/lib/performance-data";
 
 export type ProfessionalCoachingReportInput = {
   intervention: CoachingIntervention;
@@ -579,14 +584,29 @@ function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: 
 
 function collectScoreRows(intervention?: CoachingIntervention): ScoreRow[] {
   if (!intervention) return [];
-  if (intervention.scores.length) {
-    return intervention.scores.flatMap((score) => score.value === "NVT" ? [] : [{
+  const appointmentCriteria = criterionScoresFromRows(
+    (intervention.appointments ?? [])
+      .filter((appointment) => !appointment.isDeleted)
+      .flatMap((appointment) => appointment.scores.map((score) => ({
+        criterion: score.criterion,
+        score: score.score === "nvt" ? null : score.score,
+        notApplicable: score.score === "nvt",
+      })))
+  );
+  const workflowCriteria = intervention.scores.map((score) => ({
+    focus: score.focus,
+    criterion: score.criterion,
+    score: score.value === "NVT" ? 0 : normalizePerformanceScore(score.value),
+    scored: score.value !== "NVT",
+  }));
+  const criteria = mergeCriterionScores(appointmentCriteria, workflowCriteria);
+  if (criteria.length) {
+    return criteria.map((score) => ({
       group: score.focus,
       criterion: score.criterion,
-      current: Number(score.value),
-      previous: score.previousScore,
-      comment: score.description,
-    }]);
+      current: score.score,
+      comment: intervention.scores.find((item) => item.focus === score.focus && item.criterion === score.criterion)?.description,
+    }));
   }
   const dossier = intervention.dossier;
   if (!dossier) return [];
@@ -602,7 +622,7 @@ function simpleScoreRow(score: CoachingSimpleScore, group: string): ScoreRow | u
 }
 
 function drawPerformanceWheel(pdf: Pdf, rows: ScoreRow[], centerX: number, centerY: number, radius: number) {
-  const usable = rows.slice(0, 24);
+  const usable = rows;
   const count = Math.max(3, usable.length);
   pdf.setFillColor("#F8FAFC");
   pdf.circle(centerX, centerY, radius + 3, "F");
@@ -622,14 +642,15 @@ function drawPerformanceWheel(pdf: Pdf, rows: ScoreRow[], centerX: number, cente
     return { x: centerX + Math.cos(angle) * radius * factor, y: centerY + Math.sin(angle) * radius * factor };
   });
   if (points.length > 1) {
-    pdf.setDrawColor(BLUE);
     pdf.setLineWidth(1.1);
     points.forEach((point, index) => {
       const next = points[(index + 1) % points.length];
-      pdf.line(point.x, point.y, next.x, next.y);
       const row = usable[index];
       const difference = row.previous === undefined ? undefined : row.current - row.previous;
-      pdf.setFillColor(difference === undefined || difference === 0 ? MID_BLUE : difference > 0 ? GREEN : RED);
+      const trendColor = difference === undefined || difference === 0 ? MID_BLUE : difference > 0 ? GREEN : RED;
+      pdf.setDrawColor(trendColor);
+      pdf.line(point.x, point.y, next.x, next.y);
+      pdf.setFillColor(trendColor);
       pdf.circle(point.x, point.y, 1.7, "F");
     });
   }

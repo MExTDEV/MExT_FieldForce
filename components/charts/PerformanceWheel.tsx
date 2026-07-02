@@ -50,6 +50,9 @@ export function PerformanceWheel({
   }
 
   const count = data.criteria.length;
+  if (count === 0) {
+    return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">Geen gescoorde criteria beschikbaar.</div>;
+  }
   const angleStep = 360 / count;
   const currentPoints = data.criteria.map((item, index) =>
     polarPoint(CENTER, CENTER, scoreRadius(item.currentScore), centerAngle(index, angleStep))
@@ -59,6 +62,15 @@ export function PerformanceWheel({
       ? []
       : [polarPoint(CENTER, CENTER, scoreRadius(item.previousScore), centerAngle(index, angleStep))]
   );
+  const labels = data.criteria.map((item) => item.criterion);
+  if (labels.length !== currentPoints.length) {
+    console.error("[performance-wheel] Het aantal labels en scorewaarden komt niet overeen.", {
+      labels: labels.length,
+      values: currentPoints.length,
+      interventionId: data.currentInterventionId,
+    });
+    return <div className="rounded-2xl bg-rose-50 p-8 text-center text-sm text-rose-700">De prestatiecirkel kon niet volledig worden opgebouwd.</div>;
+  }
 
   return (
     <div>
@@ -69,6 +81,8 @@ export function PerformanceWheel({
           className="h-auto w-full"
           role="img"
           aria-label={`${type === "kapstok" ? "Kapstok" : "Algemeen"} competentiewiel`}
+          data-wheel-label-count={labels.length}
+          data-wheel-value-count={currentPoints.length}
           onMouseLeave={() => setHoverId(undefined)}
         >
           <circle cx={CENTER} cy={CENTER} r={PLOT_RADIUS} fill="#f8fafc" stroke="#cbd5e1" />
@@ -191,11 +205,28 @@ export function PerformanceWheel({
           <polygon
             points={currentPoints.map(pointString).join(" ")}
             fill="none"
-            stroke="#003b83"
-            strokeWidth="3"
+            stroke="#bfdbfe"
+            strokeWidth="2"
             strokeLinejoin="round"
             data-wheel-line="current"
           />
+          {currentPoints.map((point, index) => {
+            const next = currentPoints[(index + 1) % currentPoints.length];
+            const item = data.criteria[index];
+            return (
+              <line
+                key={`trend-line-${item.id}`}
+                x1={point.x}
+                y1={point.y}
+                x2={next.x}
+                y2={next.y}
+                stroke={trendColor(item.trend)}
+                strokeWidth="3"
+                strokeLinejoin="round"
+                data-wheel-trend-line={item.trend}
+              />
+            );
+          })}
 
           {data.criteria.map((item, index) => {
             const point = currentPoints[index];
@@ -227,11 +258,11 @@ export function PerformanceWheel({
                   y={labelPoint.y}
                   textAnchor={rightSide ? "start" : "end"}
                   dominantBaseline="middle"
-                  fill={activeId === item.id ? "#003b83" : "#475569"}
+                  fill={trendColor(item.trend)}
                   fontSize={type === "kapstok" ? "9.5" : "12"}
                   fontWeight={activeId === item.id ? "700" : "600"}
                 >
-                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({formatScore(item.currentTen)})
+                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({item.currentScored ? formatScore(item.currentTen) : "niet gescoord"})
                 </text>
               </g>
             );
@@ -256,7 +287,7 @@ export function PerformanceWheel({
             </div>
             <div className="flex items-center gap-4 text-xs text-slate-600">
               <span>Vorige <strong>{active.previousTen === undefined ? "-" : formatScore(active.previousTen)}</strong></span>
-              <span>Huidige <strong>{formatScore(active.currentTen)}</strong></span>
+              <span>Huidige <strong>{active.currentScored ? formatScore(active.currentTen) : "niet gescoord"}</strong></span>
               <TrendBadge trend={active.trend} />
             </div>
           </div>

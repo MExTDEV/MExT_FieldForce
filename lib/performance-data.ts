@@ -16,6 +16,19 @@ export type PerformanceDimension = {
   score: number;
 };
 
+export type HistoricalCriterionScore = {
+  focus: string;
+  criterion: string;
+  score: number;
+  scored?: boolean;
+};
+
+export type RawCriterionScore = {
+  criterion: string;
+  score: number | null;
+  notApplicable?: boolean;
+};
+
 export type HistoricalCoaching = {
   id: string;
   representativeId: string;
@@ -28,11 +41,7 @@ export type HistoricalCoaching = {
   focusNames: string[];
   phaseScores: PerformanceDimension[];
   generalScores: PerformanceDimension[];
-  criterionScores: {
-    focus: string;
-    criterion: string;
-    score: number;
-  }[];
+  criterionScores: HistoricalCriterionScore[];
 };
 
 export type HistoricalContactMoment = {
@@ -111,7 +120,76 @@ export function latestScoredCoaching(dataset: PerformanceDataset, representative
 }
 
 export function hasCoachingScoreData(coaching: HistoricalCoaching) {
-  return coaching.overallScore !== undefined || coaching.phaseScores.length > 0 || coaching.generalScores.length > 0;
+  return coaching.overallScore !== undefined || coaching.phaseScores.length > 0 || coaching.generalScores.length > 0 || coaching.criterionScores.length > 0;
+}
+
+/**
+ * Converts the score rows used by appointment tables into the exact criterion
+ * dataset used by the performance wheel. Repeated criteria across appointments
+ * are averaged; their first occurrence determines the stable display order.
+ */
+export function criterionScoresFromRows(rows: RawCriterionScore[]): HistoricalCriterionScore[] {
+  const grouped = new Map<string, {
+    focus: string;
+    criterion: string;
+    values: number[];
+  }>();
+
+  for (const row of rows) {
+    const { focus, criterion } = splitCriterionLabel(row.criterion);
+    const key = criterionScoreKey({ focus, criterion });
+    const current = grouped.get(key) ?? { focus, criterion, values: [] };
+    if (row.score !== null && !row.notApplicable) {
+      current.values.push(normalizePerformanceScore(row.score));
+    }
+    grouped.set(key, current);
+  }
+
+  return [...grouped.values()].map((item) => ({
+    focus: item.focus,
+    criterion: item.criterion,
+    score: item.values.length ? Math.round(average(item.values)) : 0,
+    scored: item.values.length > 0,
+  }));
+}
+
+/** Keep the primary score source authoritative and append non-overlapping rows. */
+export function mergeCriterionScores(
+  primary: HistoricalCriterionScore[],
+  ...fallbacks: HistoricalCriterionScore[][]
+) {
+  const merged = new Map<string, HistoricalCriterionScore>();
+  for (const score of primary) merged.set(criterionScoreKey(score), score);
+  for (const fallback of fallbacks) {
+    for (const score of fallback) {
+      const key = criterionScoreKey(score);
+      const existing = merged.get(key);
+      if (!existing || (existing.scored === false && score.scored !== false)) {
+        merged.set(key, score);
+      }
+    }
+  }
+  return [...merged.values()];
+}
+
+export function splitCriterionLabel(label: string) {
+  const [rawFocus, ...criterionParts] = label.split(" - ");
+  const focus = criterionParts.length ? rawFocus.trim() : "Algemeen";
+  const criterion = (criterionParts.length ? criterionParts.join(" - ") : label).trim();
+  return {
+    focus: focus || "Algemeen",
+    criterion: criterion || label.trim() || "Criterium",
+  };
+}
+
+export function normalizePerformanceScore(score: number) {
+  if (!Number.isFinite(score)) return 0;
+  if (score >= 0 && score <= 5) return Math.round(score * 20);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+export function criterionScoreKey(score: Pick<HistoricalCriterionScore, "focus" | "criterion">) {
+  return `${score.focus.trim().toLocaleLowerCase("nl-BE")}::${score.criterion.trim().toLocaleLowerCase("nl-BE")}`;
 }
 
 export function representativeForCoaching(
