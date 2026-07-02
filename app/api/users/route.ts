@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       actorId?: string;
       user?: ManagedUser;
+      newTeamName?: string;
     };
     if (!body.actorId || !body.user) {
       badRequest("Ongeldige gebruikersgegevens.");
@@ -36,7 +37,11 @@ export async function POST(request: Request) {
     const userInput = body.user;
     let user: ManagedUser;
     try {
-      user = await createManagedUserInDatabase(actorId, userInput);
+      user = await createManagedUserInDatabase(
+        actorId,
+        userInput,
+        body.newTeamName
+      );
     } catch (error) {
       badRequest(
         error instanceof Error

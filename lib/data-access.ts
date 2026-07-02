@@ -4,6 +4,10 @@ import type {
   SalesTraining,
   WorkflowState,
 } from "@/lib/types";
+import {
+  dedupeWorkflowState,
+  visibleCoachings,
+} from "@/lib/coaching/visibility";
 
 export type VisibleUserScope = {
   representativeIds: Set<string>;
@@ -93,39 +97,37 @@ export function getVisibleWorkflowState(
   state: WorkflowState,
   representatives: Representative[]
 ): WorkflowState {
+  const uniqueState = dedupeWorkflowState(state);
   const scope = getVisibleUserScope(currentUser, representatives);
+  const interventions = visibleCoachings(currentUser, uniqueState.interventions);
   const visibleInterventionIds = new Set(
-    state.interventions
-      .filter((item) => scope.representativeIds.has(item.representativeId))
-      .map((item) => item.id)
+    interventions.map((item) => item.id)
   );
   return {
-    interventions: state.interventions.filter((item) =>
-      scope.representativeIds.has(item.representativeId)
-    ),
-    reflections: state.reflections.filter(
+    interventions,
+    reflections: uniqueState.reflections.filter(
       (item) =>
         scope.representativeIds.has(item.representativeId) &&
         visibleInterventionIds.has(item.interventionId)
     ),
-    approvals: state.approvals.filter(
+    approvals: uniqueState.approvals.filter(
       (item) =>
         scope.representativeIds.has(item.representativeId) &&
         visibleInterventionIds.has(item.interventionId)
     ),
-    contactMoments: state.contactMoments.filter((item) =>
+    contactMoments: uniqueState.contactMoments.filter((item) =>
       scope.representativeIds.has(item.representativeId)
     ),
-    helpRequests: state.helpRequests.filter((item) =>
+    helpRequests: uniqueState.helpRequests.filter((item) =>
       scope.representativeIds.has(item.representativeId)
     ),
-    linkedInterventions: state.linkedInterventions.filter((item) =>
+    linkedInterventions: uniqueState.linkedInterventions.filter((item) =>
       scope.representativeIds.has(item.representativeId)
     ),
-    retrainings: state.retrainings.filter((item) =>
+    retrainings: uniqueState.retrainings.filter((item) =>
       scope.representativeIds.has(item.representativeId)
     ),
-    salesTrainings: state.salesTrainings.flatMap((item) => {
+    salesTrainings: uniqueState.salesTrainings.flatMap((item) => {
       const scoped = scopeSalesTraining(currentUser, item, representatives);
       return scoped ? [scoped] : [];
     }),

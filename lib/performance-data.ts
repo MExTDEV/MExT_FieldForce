@@ -1,4 +1,4 @@
-import type { Representative, WorkflowActionPoint } from "@/lib/types";
+import type { Representative, Status, WorkflowActionPoint } from "@/lib/types";
 
 export const generalCompetencies = [
   "Stiptheid",
@@ -22,7 +22,9 @@ export type HistoricalCoaching = {
   date: string;
   ownerId: string;
   ownerName: string;
-  status: "afgesloten";
+  status: Status;
+  overallScore?: number;
+  wasReopened?: boolean;
   focusNames: string[];
   phaseScores: PerformanceDimension[];
   generalScores: PerformanceDimension[];
@@ -90,7 +92,7 @@ export function coachingById(dataset: PerformanceDataset, id: string) {
 }
 
 export function performanceTrend(dataset: PerformanceDataset, representativeId: string): -1 | 0 | 1 {
-  const coachings = coachingsForRepresentative(dataset, representativeId);
+  const coachings = coachingsForRepresentative(dataset, representativeId).filter(hasCoachingScoreData);
   if (coachings.length < 2) return 0;
   const current = average(coachings.at(-1)!.phaseScores.map((item) => item.score));
   const previous = average(coachings.at(-2)!.phaseScores.map((item) => item.score));
@@ -100,6 +102,16 @@ export function performanceTrend(dataset: PerformanceDataset, representativeId: 
 
 export function latestHistoricalCoaching(dataset: PerformanceDataset, representativeId: string) {
   return coachingsForRepresentative(dataset, representativeId).at(-1);
+}
+
+export function latestScoredCoaching(dataset: PerformanceDataset, representativeId: string) {
+  return coachingsForRepresentative(dataset, representativeId)
+    .filter(hasCoachingScoreData)
+    .at(-1);
+}
+
+export function hasCoachingScoreData(coaching: HistoricalCoaching) {
+  return coaching.overallScore !== undefined || coaching.phaseScores.length > 0 || coaching.generalScores.length > 0;
 }
 
 export function representativeForCoaching(

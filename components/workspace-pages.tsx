@@ -13,8 +13,10 @@ import {
   ClipboardCheck,
   Clock3,
   Contact,
+  FileDown,
   Filter,
   GraduationCap,
+  LoaderCircle,
   Mail,
   MapPin,
   MoreHorizontal,
@@ -24,6 +26,7 @@ import {
   Sparkles,
   Target,
   Users,
+  UsersRound,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
 import { useConfiguration } from "@/components/configuration-provider";
@@ -37,6 +40,7 @@ import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/conta
 import { TrainingWorkflowPage } from "@/components/training-workflows";
 import { ReportingDashboard } from "@/components/reporting-dashboard";
 import { SmartDashboardPanel, SmartManagementSections } from "@/components/smart-coaching-dashboard";
+import { ActivityHistoryCard } from "@/components/activity-history-card";
 import { PerformanceEvolution } from "@/components/performance-evolution";
 import { UsersManagementPage } from "@/components/user-management";
 import { PlanningCalendar } from "@/components/planning-calendar";
@@ -62,12 +66,19 @@ import { moduleForRoute } from "@/lib/modules";
 import {
   coachingById,
   coachingsForRepresentative,
+  hasCoachingScoreData,
   latestHistoricalCoaching,
+  latestScoredCoaching,
   performanceTrend,
   representativeForCoaching,
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
-import type { CoachingAppointment, CoachingDossier, PersonalCoachingCriterion, Representative } from "@/lib/types";
+import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, WorkflowScore } from "@/lib/types";
+import {
+  completedCoachingStatuses,
+  dedupeById,
+  localDateKey,
+} from "@/lib/coaching/visibility";
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user, loading: sessionLoading, error: sessionError } = useSession();
@@ -89,6 +100,14 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   }
 
   if (path === "dashboard") return <Dashboard />;
+  if (segments[0] === "mijn-team") {
+    if (!canViewTeamDashboard(user)) {
+      return <EmptyState title="Geen toegang" description="Mijn Team is alleen beschikbaar voor gebruikers met een team- of beheerscope." />;
+    }
+    return segments[1]
+      ? <RepresentativeDetail id={segments[1]} teamMode />
+      : <MyTeamPage />;
+  }
   if (segments[0] === "mijn-reflecties") return <MyReflectionsPage id={segments[1]} />;
   if (segments[0] === "mijn-verslagen") return <MyReportsPage id={segments[1]} />;
   if (segments[0] === "contactmomenten") return <ContactMomentsPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
@@ -147,7 +166,9 @@ function Dashboard() {
   const retrainingEnabled = isModuleEnabled("RETRAININGEN");
   const salesTrainingEnabled = isModuleEnabled("SALESTRAININGEN");
   const actionPointsEnabled = isModuleEnabled("ACTIEPUNTEN");
-  const scopedInterventions = coachingEnabled ? visibleInterventions(user) : [];
+  const scopedInterventions = coachingEnabled
+    ? dedupeById(visibleInterventions(user))
+    : [];
   const scopedContacts = contactsEnabled ? visibleContactMoments(user) : [];
   const scopedHelpRequests = helpEnabled ? visibleHelpRequests(user) : [];
   const scopedRetrainings = retrainingEnabled ? visibleRetrainings(user) : [];
@@ -162,11 +183,41 @@ function Dashboard() {
     return buildSmartCoaching(scopedDataset, scopedState, undefined, managedUsers);
   }, [managedUsers, performanceDataset, representatives, scopedState, scopedRepresentatives]);
   const scopedOtherMoments = planningEnabled ? [
-    ...scopedContacts.map((item) => ({ id: item.id, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.ownerId, status: item.status })),
-    ...scopedRetrainings.map((item) => ({ id: item.id, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.trainer || item.initiatorId, status: item.status })),
-    ...scopedSalesTrainings.map((item) => ({ id: item.id, type: "sales_training", person: `${item.participantIds.length} deelnemers`, date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.trainer || item.initiatorId, status: item.status })),
-    ...scopedHelpRequests.map((item) => ({ id: item.id, type: "hulpaanvraag", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), owner: item.requesterId, status: item.status })),
+    ...scopedContacts.map((item) => ({ id: `contact-${item.id}`, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.ownerId, status: item.status })),
+    ...scopedRetrainings.map((item) => ({ id: `retraining-${item.id}`, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
+    ...scopedSalesTrainings.map((item) => ({ id: `sales-${item.id}`, type: "sales_training", person: `${item.participantIds.length} deelnemers`, date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
+    ...scopedHelpRequests.map((item) => ({ id: `help-${item.id}`, type: "hulpaanvraag", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.requesterId, status: item.status })),
   ] : [];
+  const upcomingMoments = dedupeById([
+    ...scopedInterventions
+      .filter((item) =>
+        !completedCoachingStatuses.has(item.status) &&
+        item.status !== "geannuleerd" &&
+        (item.plannedDate ?? item.updatedAt.slice(0, 10)) >= localDateKey()
+      )
+      .map((item) => {
+        const representative = representatives.find((person) => person.id === item.representativeId);
+        const sortAt = `${item.plannedDate ?? item.updatedAt.slice(0, 10)}T${item.startTime ?? "00:00"}`;
+        return {
+          id: `coaching-${item.id}`,
+          type: "begeleiding",
+          person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
+          date: new Date(sortAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }),
+          sortAt,
+          owner: reportingUserName(item.ownerId, managedUsers),
+          status: item.status,
+        };
+      }),
+    ...scopedOtherMoments,
+  ])
+    .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
+    .slice(0, 5);
+  const completedToday = dedupeById(scopedInterventions)
+    .filter((item) =>
+      completedCoachingStatuses.has(item.status) &&
+      (item.plannedDate ?? item.updatedAt.slice(0, 10)) === localDateKey()
+    )
+    .sort((left, right) => (left.startTime ?? "00:00").localeCompare(right.startTime ?? "00:00"));
   const openActionCount = actionPointsEnabled ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) : 0;
   const reflectionCount = user.role === "REPRESENTATIVE"
     ? openReflections(user).length
@@ -235,17 +286,7 @@ function Dashboard() {
         {planningEnabled && <div className="card overflow-hidden">
           <SectionTitle title="Eerstvolgende momenten" subtitle="Planning voor je huidige scope" link="/planning" />
           <div className="divide-y divide-slate-100">
-            {[...scopedInterventions.map((item) => {
-              const representative = representatives.find((person) => person.id === item.representativeId);
-              return {
-                id: item.id,
-                type: "begeleiding",
-                person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
-                date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }),
-                owner: user.name,
-                status: item.status,
-              };
-            }), ...scopedOtherMoments].slice(0, 5).map((item) => (
+            {upcomingMoments.map((item) => (
               <div key={item.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="hidden h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-100 sm:flex">
                   <span className="text-xs font-bold uppercase text-slate-400">{item.date.split(" ")[1]}</span>
@@ -279,8 +320,122 @@ function Dashboard() {
           </div>
         )}
       </section>
+
+      {coachingEnabled && completedToday.length > 0 && (
+        <section className="card overflow-hidden">
+          <SectionTitle title="Vandaag uitgevoerd" subtitle="Afgewerkte begeleidingen van vandaag" link="/begeleidingen" />
+          <div className="divide-y divide-slate-100">
+            {completedToday.map((item) => {
+              const representative = representatives.find((person) => person.id === item.representativeId);
+              return (
+                <Link key={item.id} href={`/begeleidingen/${item.id}`} className="flex items-center gap-4 px-5 py-4 transition hover:bg-slate-50">
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><ClipboardCheck className="h-5 w-5" /></div>
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend"}</p><p className="mt-1 text-xs text-slate-500">{item.startTime ?? "--:--"}–{item.endTime ?? "--:--"} · {reportingUserName(item.ownerId, managedUsers)}</p></div>
+                  <StatusBadge status={item.status} />
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <ActivityHistoryCard user={user} />
     </div>
   );
+}
+
+function MyTeamPage() {
+  const { user } = useSession();
+  const { error, loading, representatives } = useRepresentatives();
+  const { dataset, error: performanceError } = usePerformance();
+  const visibleRepresentatives = dedupeById(
+    representatives.filter((representative) => canAccessRepresentative(user, representative))
+  ).sort((left, right) =>
+    left.country.localeCompare(right.country) ||
+    left.team.localeCompare(right.team, "nl") ||
+    left.lastName.localeCompare(right.lastName, "nl") ||
+    left.firstName.localeCompare(right.firstName, "nl")
+  );
+  const countries = [...new Set(visibleRepresentatives.map((item) => item.country))];
+
+  if (loading) return <EmptyState title="Mijn Team laden" description="De toegestane vertegenwoordigers worden veilig opgehaald." />;
+  if (error) return <EmptyState title="Mijn Team kon niet worden geladen" description={error} />;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Mensen"
+        title="Mijn Team"
+        description="Vertegenwoordigers binnen jouw toegestane team- en landscope, gegroepeerd per land en team."
+      />
+      {performanceError && <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Scores konden niet volledig worden geladen.</p>}
+      {visibleRepresentatives.length === 0 && <EmptyState title="Geen vertegenwoordigers gevonden" description="Er zijn geen actieve vertegenwoordigers binnen jouw huidige scope." />}
+
+      {countries.map((country) => {
+        const countryRepresentatives = visibleRepresentatives.filter((item) => item.country === country);
+        const teams = [...new Set(countryRepresentatives.map((item) => item.team || "Geen team"))];
+        return (
+          <section key={country} className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div><p className="eyebrow">Land</p><h2 className="text-xl font-bold text-slate-950">{countryName(country)}</h2></div>
+              <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{countryRepresentatives.length}</span>
+            </div>
+            {teams.map((team) => {
+              const teamRepresentatives = countryRepresentatives.filter((item) => (item.team || "Geen team") === team);
+              return (
+                <div key={`${country}-${team}`} className="card overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3 sm:px-5">
+                    <div className="flex items-center gap-2"><UsersRound className="h-4 w-4 text-brand-700" /><h3 className="font-bold text-slate-900">{team}</h3></div>
+                    <span className="text-xs font-semibold text-slate-500">{teamRepresentatives.length} vertegenwoordiger{teamRepresentatives.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {teamRepresentatives.map((representative) => {
+                      const latestCompleted = latestHistoricalCoaching(dataset, representative.id);
+                      const latest = latestScoredCoaching(dataset, representative.id);
+                      const score = latest ? coachingScoreOutOfFive(latest) : undefined;
+                      return (
+                        <Link
+                          key={representative.id}
+                          href={`/mijn-team/${representative.id}`}
+                          className="grid gap-3 p-4 transition hover:bg-slate-50 sm:grid-cols-[minmax(200px,1.4fr)_minmax(130px,0.8fr)_minmax(140px,0.8fr)_auto] sm:items-center sm:px-5"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar initials={representative.initials} />
+                            <div className="min-w-0"><p className="truncate font-semibold text-slate-900">{representative.firstName} {representative.lastName}</p><p className="text-xs text-slate-500">Vertegenwoordiger · {representative.country}</p></div>
+                          </div>
+                          <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Laatste score</p><p className="mt-1 text-sm font-bold text-slate-900">{score === undefined ? "Nog geen score" : `${score.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`}</p>{latestCompleted && !latest && <p className="mt-1 text-xs leading-4 text-amber-700">Afgewerkt, maar nog geen score geregistreerd.</p>}</div>
+                          <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Laatste begeleiding met score</p><p className="mt-1 text-sm text-slate-700">{latest ? formatShortDate(latest.date) : latestCompleted ? formatShortDate(latestCompleted.date) : "Nog geen begeleiding"}</p>{(latest ?? latestCompleted) && <div className="mt-1"><StatusBadge status={(latest ?? latestCompleted)!.status} label={coachingPerformanceStatus((latest ?? latestCompleted)!)} /></div>}</div>
+                          <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">Details <ChevronRight className="h-4 w-4" /></span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function countryName(country: string) {
+  return country === "BE" ? "België" : country === "NL" ? "Nederland" : country === "DE" ? "Duitsland" : country;
+}
+
+function coachingScoreOutOfFive(coaching: HistoricalCoaching) {
+  if (coaching.overallScore !== undefined) return coaching.overallScore / 20;
+  const scores = coaching.phaseScores.length ? coaching.phaseScores : coaching.generalScores;
+  if (!scores.length) return undefined;
+  return scores.reduce((total, item) => total + item.score, 0) / scores.length / 20;
+}
+
+function coachingPerformanceStatus(coaching: HistoricalCoaching, representativeView = false) {
+  if (coaching.status === "akkoord_door_vertegenwoordiger") return "Akkoord gegeven";
+  if (coaching.status === "verzonden_ter_akkoord") return representativeView ? "Te bevestigen" : "Voor akkoord verzonden";
+  if (coaching.wasReopened || coaching.status === "in_uitvoering") return "Aangepast na afwerking";
+  return "Afgewerkt – wacht op akkoord vertegenwoordiger";
 }
 
 function RepresentativesList() {
@@ -376,7 +531,7 @@ function RepresentativesList() {
   );
 }
 
-function RepresentativeDetail({ id }: { id: string }) {
+function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?: boolean }) {
   const { user } = useSession();
   const { error, loading, representatives } = useRepresentatives();
   const { dataset: performanceDataset, error: performanceError } = usePerformance();
@@ -396,9 +551,14 @@ function RepresentativeDetail({ id }: { id: string }) {
   }
 
   const tabs = ["overzicht", "Prestatiecirkel", "persoonlijke criteria", "KPI's", "begeleidingen", "contactmomenten", "retrainingen", "sales trainingen", "hulpaanvragen", "actiepunten", "productanalyse", "tijdlijn"];
+  const latestCompletedCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
+  const latestCoaching = latestScoredCoaching(performanceDataset, representative.id);
+  const latestScore = latestCoaching ? coachingScoreOutOfFive(latestCoaching) : undefined;
+  const scoredCoachings = coachingsForRepresentative(performanceDataset, representative.id).filter(hasCoachingScoreData);
 
   return (
     <div className="space-y-6">
+      {teamMode && <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← Terug naar Mijn Team</Link>}
       <div className="card overflow-hidden">
         <div className="h-24 bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500" />
         <div className="flex flex-col gap-5 px-5 pb-5 sm:flex-row sm:items-end sm:px-7">
@@ -408,11 +568,12 @@ function RepresentativeDetail({ id }: { id: string }) {
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
               <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
               <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Vertegenwoordiger</span>
               <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>
               <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />
             </div>
           </div>
-          <Link href="/begeleidingen/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> Begeleiding</Link>
+          {user.role !== "REPRESENTATIVE" && <Link href="/begeleidingen/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> Begeleiding</Link>}
         </div>
         <div className="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 pt-2">
           {tabs.map((item) => (
@@ -425,6 +586,17 @@ function RepresentativeDetail({ id }: { id: string }) {
 
       {tab === "overzicht" && (
         <>
+          <section className="grid gap-4 lg:grid-cols-[220px_1fr]">
+            <div className="card grid place-items-center p-5 text-center">
+              {latestCoaching && latestScore !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestScore * 20))}%, #e2e8f0 0)` }}>
+                <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{latestScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">van 5</p></div></div>
+              </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."}</p></div>}
+            </div>
+            <div className="card p-5 sm:p-6">
+              <p className="eyebrow">Laatste begeleiding</p>
+              {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">Algemene score {latestScore!.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE")} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">Begeleiding openen <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd.</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE")} /></div></div> : <EmptyState title="Nog geen begeleidingen beschikbaar" description="Voor deze vertegenwoordiger is nog geen afgewerkte begeleiding gevonden." />}
+            </div>
+          </section>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {representative.kpis.map((kpi) => (
               <div key={kpi.label} className="card p-5">
@@ -469,14 +641,15 @@ function RepresentativeDetail({ id }: { id: string }) {
       )}
       {performanceError && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
       {tab === "Prestatiecirkel" && (
-        <PerformanceEvolution
-          coachings={coachingsForRepresentative(performanceDataset, representative.id)}
+        scoredCoachings.length ? <PerformanceEvolution
+          coachings={scoredCoachings}
           representativeName={`${representative.firstName} ${representative.lastName}`}
-        />
+        /> : <EmptyState title="Geen score beschikbaar" description={latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."} />
       )}
       {tab === "persoonlijke criteria" && <PersonalCriteriaPanel representative={representative} />}
       {tab === "KPI's" && <KpiPanel representativeId={representative.id} />}
-      {!["overzicht", "Prestatiecirkel", "persoonlijke criteria", "KPI's"].includes(tab) && <TimelinePanel title={tab} representativeId={representative.id} representativeName={representative.firstName} />}
+      {tab === "actiepunten" && <RepresentativeActionPointsPanel representativeId={representative.id} />}
+      {!["overzicht", "Prestatiecirkel", "persoonlijke criteria", "KPI's", "actiepunten"].includes(tab) && <TimelinePanel title={tab} representativeId={representative.id} representativeName={representative.firstName} />}
     </div>
   );
 }
@@ -544,7 +717,7 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
   }
 
   return (
-    <div className="space-y-5">
+    <div id="overzicht" className="space-y-5 scroll-mt-24">
       <div className="card p-5 sm:p-6">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
           <div>
@@ -743,7 +916,7 @@ function TimelinePanel({ title, representativeId, representativeName }: { title:
   const workflowItems = [...new Map([
     ...performanceDataset.historicalCoachings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.date, owner: item.ownerName, status: item.status })),
     ...performanceDataset.historicalContactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.date, owner: item.reason, status: item.status })),
-    ...state.interventions.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.updatedAt, owner: "Coaching", status: item.status })),
+    ...state.interventions.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.plannedDate ?? item.updatedAt, owner: "Coaching", status: item.status })),
     ...state.contactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.updatedAt, owner: item.reason, status: item.status })),
     ...state.helpRequests.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "hulpaanvraag", date: item.updatedAt, owner: item.subject, status: item.status })),
     ...state.retrainings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "retraining", date: item.updatedAt, owner: item.theme, status: item.status })),
@@ -764,13 +937,43 @@ function TimelinePanel({ title, representativeId, representativeName }: { title:
       <SectionTitle title={`${title[0].toUpperCase()}${title.slice(1)}`} subtitle={`Historiek en geplande items voor ${representativeName}`} />
       <div className="divide-y divide-slate-100">
         {workflowItems.map((item) => (
-          <div key={item.id} className="flex items-center gap-4 p-5">
+          <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className="flex items-center gap-4 p-5 transition hover:bg-slate-50">
             <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700"><ClipboardCheck className="h-5 w-5" /></div>
             <div className="flex-1"><p className="font-semibold capitalize text-slate-900">{item.type.replace("_", " ")}</p><p className="mt-1 text-xs text-slate-500">{new Date(item.date).toLocaleDateString("nl-BE")} · {item.owner}</p></div>
             <StatusBadge status={item.status} />
-          </div>
+            <ChevronRight className="h-4 w-4 text-slate-300" />
+          </Link>
         ))}
-        {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">Nog geen items in deze historiek.</p>}
+        {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{title === "begeleidingen" ? "Nog geen begeleidingen beschikbaar" : "Nog geen items in deze historiek."}</p>}
+      </div>
+    </div>
+  );
+}
+
+function timelineItemHref(type: string, id: string) {
+  if (type === "begeleiding") return `/begeleidingen/${id}`;
+  if (type === "contactmoment") return `/contactmomenten/${id}`;
+  if (type === "hulpaanvraag") return `/hulpaanvragen/${id}`;
+  if (type === "retraining") return `/retrainingen/${id}`;
+  if (type === "sales_training") return `/sales-trainingen/${id}`;
+  return "/mijn-team";
+}
+
+function RepresentativeActionPointsPanel({ representativeId }: { representativeId: string }) {
+  const { state } = useWorkflow();
+  const { dataset } = usePerformance();
+  const workflowActions = state.interventions
+    .filter((item) => item.representativeId === representativeId)
+    .flatMap((item) => item.actionPoints);
+  const historicalActions = dataset.historicalActionPoints.filter((item) => item.representativeId === representativeId);
+  const actions = dedupeById([...workflowActions, ...historicalActions])
+    .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
+  return (
+    <div className="card overflow-hidden">
+      <SectionTitle title="Actiepunten" subtitle="Open en afgewerkte opvolgacties voor deze vertegenwoordiger" />
+      <div className="divide-y divide-slate-100">
+        {actions.map((action) => <div key={action.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"}</p></div><StatusBadge status={action.status} /></div>)}
+        {actions.length === 0 && <p className="p-8 text-center text-sm text-slate-500">Geen actiepunten gevonden.</p>}
       </div>
     </div>
   );
@@ -784,7 +987,7 @@ function CoachingDetail({ id }: { id: string }) {
   const workflowApi = useWorkflow();
   const { state } = workflowApi;
   const historical = coachingById(performanceDataset, id);
-  const workflow = state.interventions.find((item) => item.id === id);
+  const workflow = workflowApi.visibleInterventions(user).find((item) => item.id === id);
   const representativeId = historical?.representativeId ?? workflow?.representativeId;
   const representative = representatives.find((item) => item.id === representativeId);
 
@@ -910,16 +1113,95 @@ function CoachingDossierDetail({
   const appointmentCriteria = coachingFramework.flatMap((focus) =>
     focus.criteria.map((criterion) => `${focus.name} - ${criterion}`)
   );
-  const readOnly = ["gefinaliseerd", "afgesloten", "geannuleerd"].includes(intervention.status) || user.role === "REPRESENTATIVE";
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
   const [openAppointmentId, setOpenAppointmentId] = useState<string>();
+  const [isExportingReport, setIsExportingReport] = useState(false);
+  const [reportMessage, setReportMessage] = useState<{ type: "success" | "error"; text: string }>();
+  const [editingCompleted, setEditingCompleted] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
 
   const dossier = local.dossier ?? defaultDossierState();
   const appointments = (local.appointments ?? []).filter((item) => !item.isDeleted);
   const totalCoachingScore = calculateTotalCoachingScore(dossier, appointments);
+  const isCompleted = ["voltooid", "gefinaliseerd", "gesloten", "afgesloten"].includes(local.status);
+  const isApprovalLocked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(local.status);
+  const canManageCompleted = user.role === "SUPER_ADMIN" ||
+    user.role === "ADMIN" ||
+    (user.role === "SALES_LEADER" && (
+      local.ownerId === user.id ||
+      local.initiatorId === user.id ||
+      local.teamId === user.teamId
+    ));
+  const readOnly = user.role === "REPRESENTATIVE" || isApprovalLocked || (isCompleted && !editingCompleted) || local.status === "geannuleerd";
 
-  function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "geannuleerd") {
+  async function transition(action: "reopen" | "send_for_approval" | "approve") {
+    setTransitioning(true);
+    setMessage(undefined);
+    try {
+      const updated = await workflowApi.transitionCoaching(local.id, action);
+      setLocal(updated);
+      if (action === "reopen") {
+        setEditingCompleted(true);
+        setMessage("De begeleiding is opnieuw geopend. Sla je wijzigingen op om ze opnieuw als afgewerkt te bewaren.");
+      } else if (action === "send_for_approval") {
+        setEditingCompleted(false);
+        setMessage("De begeleiding is verstuurd naar de vertegenwoordiger en is nu definitief vergrendeld.");
+      } else {
+        setMessage("Je hebt deze begeleiding voor akkoord bevestigd.");
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "De status kon niet worden aangepast.");
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
+  async function downloadProfessionalReport() {
+    setIsExportingReport(true);
+    setReportMessage(undefined);
+    try {
+      const previousIntervention = workflowApi.state.interventions
+        .filter((item) =>
+          item.id !== local.id &&
+          item.representativeId === local.representativeId &&
+          (item.plannedDate ?? item.createdAt) < (local.plannedDate ?? local.createdAt)
+        )
+        .sort((left, right) =>
+          (left.plannedDate ?? left.createdAt).localeCompare(right.plannedDate ?? right.createdAt)
+        )
+        .at(-1);
+      const { exportProfessionalCoachingReport } = await import(
+        "@/lib/coaching/export-professional-report"
+      );
+      const result = await exportProfessionalCoachingReport({
+        intervention: local,
+        previousIntervention,
+        representative,
+        leaderName: reportingUserName(local.ownerId, managedUsers),
+        language: user.language,
+      });
+      void fetch(`/api/activity-history?actorId=${encodeURIComponent(user.id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interventionId: local.id, action: "pdf_exported" }),
+      }).catch((auditError) => console.error("PDF-export kon niet worden gelogd", auditError));
+      setReportMessage({
+        type: "success",
+        text: `${result.filename} is aangemaakt (${result.pageCount} pagina's).`,
+      });
+    } catch (error) {
+      console.error("Professionele PDF-export mislukt", error);
+      setReportMessage({
+        type: "error",
+        text: "Het professionele PDF-rapport kon niet worden aangemaakt.",
+      });
+    } finally {
+      setIsExportingReport(false);
+    }
+  }
+
+  function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "voltooid" | "geannuleerd") {
     const saved = workflowApi.saveCoachingStatus({
       id: local.id,
       representativeId: local.representativeId,
@@ -928,6 +1210,7 @@ function CoachingDossierDetail({
       startTime: local.startTime,
       endTime: local.endTime,
       notifyRepresentative: local.notifyRepresentative,
+      internalNotes: local.internalNotes,
       focusNames: local.focusNames,
       scores: local.scores,
       actionPoints: local.actionPoints.map((action) => ({
@@ -936,11 +1219,13 @@ function CoachingDossierDetail({
         due: action.due,
         owner: action.owner,
         priority: action.priority,
+        description: action.description,
       })),
       dossier: local.dossier,
       appointments: local.appointments,
     }, status);
     setLocal(saved);
+    if (status === "voltooid") setEditingCompleted(false);
     setMessage(
       status === "gefinaliseerd"
         ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger."
@@ -1006,11 +1291,51 @@ function CoachingDossierDetail({
     setOpenAppointmentId((current) => current === id ? undefined : current);
   }
 
+  if ((isCompleted && !editingCompleted) || isApprovalLocked) {
+    return (
+      <CompletedCoachingSummary
+        intervention={local}
+        representative={representative}
+        leaderName={reportingUserName(local.ownerId, managedUsers)}
+        totalScore={totalCoachingScore}
+        canManage={canManageCompleted}
+        showHistory={["ADMIN", "SUPER_ADMIN"].includes(user.role)}
+        isRepresentative={user.role === "REPRESENTATIVE"}
+        isBusy={transitioning || isExportingReport}
+        message={message}
+        onReopen={() => void transition("reopen")}
+        onSendForApproval={() => void transition("send_for_approval")}
+        onApprove={() => void transition("approve")}
+        onDownload={() => void downloadProfessionalReport()}
+        canDownload={can(user, "modulePdfExport")}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← Terug naar begeleidingen</Link>
-        <StatusBadge status={local.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          {can(user, "modulePdfExport") && (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={isExportingReport}
+              onClick={() => void downloadProfessionalReport()}
+            >
+              {isExportingReport ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              {isExportingReport
+                ? "PDF-rapport maken..."
+                : "Professioneel PDF-rapport downloaden"}
+            </button>
+          )}
+          <StatusBadge status={local.status} />
+        </div>
       </div>
       <PageHeader
         eyebrow="Begeleidingsdossier"
@@ -1018,6 +1343,15 @@ function CoachingDossierDetail({
         description={`${formatShortDate(local.plannedDate)} · ${local.startTime ?? ""}-${local.endTime ?? ""} · ${reportingUserName(local.ownerId, managedUsers)}`}
       />
       {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{message}</div>}
+      {reportMessage && (
+        <div className={`rounded-2xl border p-4 text-sm font-semibold ${
+          reportMessage.type === "success"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-rose-200 bg-rose-50 text-rose-800"
+        }`}>
+          {reportMessage.text}
+        </div>
+      )}
       <CoachingOutlookSyncStatus intervention={local} />
 
       <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
@@ -1121,12 +1455,298 @@ function CoachingDossierDetail({
         <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:justify-end">
           <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>Annuleren</button>
           <button type="button" className="btn-secondary" onClick={() => persist("in_uitvoering")}>Opslaan</button>
-          <button type="button" className="btn-secondary" onClick={() => persist("gesloten")}>Sluiten</button>
-          <button type="button" className="btn-primary" onClick={() => persist("gefinaliseerd")}>Finaliseren</button>
+          {editingCompleted ? (
+            <button type="button" className="btn-primary" onClick={() => persist("voltooid")}>Wijzigingen opslaan als afgewerkt</button>
+          ) : (
+            <>
+              <button type="button" className="btn-secondary" onClick={() => persist("gesloten")}>Sluiten</button>
+              <button type="button" className="btn-primary" onClick={() => persist("voltooid")}>Afwerken</button>
+            </>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+function CompletedCoachingSummary({
+  intervention,
+  representative,
+  leaderName,
+  totalScore,
+  canManage,
+  showHistory,
+  isRepresentative,
+  isBusy,
+  message,
+  onReopen,
+  onSendForApproval,
+  onApprove,
+  onDownload,
+  canDownload,
+}: {
+  intervention: CoachingWorkflowItem;
+  representative: Representative;
+  leaderName: string;
+  totalScore?: number;
+  canManage: boolean;
+  showHistory: boolean;
+  isRepresentative: boolean;
+  isBusy: boolean;
+  message?: string;
+  onReopen: () => void;
+  onSendForApproval: () => void;
+  onApprove: () => void;
+  onDownload: () => void;
+  canDownload: boolean;
+}) {
+  const [confirmation, setConfirmation] = useState<"send" | "approve">();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [openAppointmentIds, setOpenAppointmentIds] = useState<Set<string>>(() => new Set());
+  const dossier = intervention.dossier ?? defaultDossierState();
+  const appointments = dedupeById(intervention.appointments ?? []).filter((item) => !item.isDeleted);
+  const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
+  const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
+  const generalRemarks = [
+    ...dossier.groupAttentionPoints.filter((item) => item.trim()).map((text, index) => ({ label: `Groepsaandachtspunt ${index + 1}`, text })),
+    ...(dossier.individualAttentionPoint.trim() ? [{ label: "Individueel aandachtspunt / conclusie", text: dossier.individualAttentionPoint }] : []),
+    ...mainScoreRows.filter((item) => item.comment.trim()).map((item) => ({ label: item.criterion, text: item.comment })),
+    ...workflowScoreRows.filter((item) => item.description?.trim()).map((item) => ({ label: `${item.focus} · ${item.criterion}`, text: item.description! })),
+  ];
+  const latestAudit = [...(intervention.auditTrail ?? [])]
+    .sort((left, right) => right.at.localeCompare(left.at))[0];
+  const locked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(intervention.status);
+
+  function confirmTransition() {
+    if (confirmation === "send") onSendForApproval();
+    if (confirmation === "approve") onApprove();
+    setConfirmation(undefined);
+  }
+
+  function toggleAppointment(id: string) {
+    setOpenAppointmentIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← Terug naar begeleidingen</Link>
+        <div className="flex flex-wrap gap-2">
+          {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={onDownload}><FileDown className="h-4 w-4" /> PDF-rapport</button>}
+          {canManage && !locked && <button type="button" className="btn-secondary" disabled={isBusy} onClick={onReopen}>Opnieuw openen en aanpassen</button>}
+          {canManage && !locked && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("send")}>Versturen naar vertegenwoordiger ter akkoord</button>}
+          {isRepresentative && intervention.status === "verzonden_ter_akkoord" && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("approve")}>Voor akkoord bevestigen</button>}
+          <StatusBadge status={intervention.status} />
+        </div>
+      </div>
+
+      <PageHeader
+        eyebrow="Afgewerkte begeleiding"
+        title={`${representative.firstName} ${representative.lastName}`}
+        description={`${formatShortDate(intervention.plannedDate)} · ${intervention.startTime ?? "--:--"}-${intervention.endTime ?? "--:--"}`}
+        compact
+      />
+
+      {message && <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm font-semibold text-brand-900">{message}</div>}
+      {locked && (
+        <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm font-semibold text-fuchsia-900">
+          {intervention.status === "akkoord_door_vertegenwoordiger"
+            ? `Voor akkoord bevestigd${intervention.approvedByRepAt ? ` op ${formatDateTime(intervention.approvedByRepAt)}` : ""}.`
+            : "Deze begeleiding werd doorgestuurd ter akkoord en kan niet meer aangepast worden."}
+        </div>
+      )}
+      {latestAudit && (
+        <p className="text-sm text-slate-500">
+          Laatst aangepast op {formatDateTime(latestAudit.at)} door {latestAudit.userName ?? "een gebruiker"}.
+        </p>
+      )}
+
+      <section className="grid gap-4 lg:grid-cols-[1fr_220px]">
+        <div className="card p-5">
+          <h2 className="text-lg font-bold text-slate-950">Algemene info</h2>
+          <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+            <SummaryValue label="Vertegenwoordiger" value={`${representative.firstName} ${representative.lastName}`} />
+            <SummaryValue label="Verkoopleider" value={leaderName} />
+            <SummaryValue label="Team" value={representative.team} />
+            <SummaryValue label="Rol / niveau" value={`Vertegenwoordiger · ${representative.level}`} />
+            <SummaryValue label="Datum" value={formatShortDate(intervention.plannedDate)} />
+            <SummaryValue label="Uren" value={`${intervention.startTime ?? "--:--"} – ${intervention.endTime ?? "--:--"}`} />
+            <SummaryValue label="Status" value={<StatusBadge status={intervention.status} />} />
+            <SummaryValue label="Effectieve aankomst / vertrek" value={`${dossier.arrivalTime || "--:--"} – ${dossier.departureTime || "--:--"}`} />
+            <SummaryValue label="Gebied" value={dossier.area || "—"} />
+            <SummaryValue label="Sector" value={dossier.sector || "—"} />
+            <SummaryValue label="Kilometers" value={dossier.kilometers || "—"} />
+            <SummaryValue label="Focus" value={intervention.focusNames.length ? intervention.focusNames.join(", ") : "Geen focus geregistreerd"} />
+            <SummaryValue label="Vooraf verwittigd" value={intervention.notifyRepresentative ? "Ja" : "Nee"} />
+          </dl>
+        </div>
+        <div className="card grid place-items-center p-5 text-center">
+          <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, totalScore ?? 0))}%, #e2e8f0 0)` }}>
+            <div className="grid h-28 w-28 place-items-center rounded-full bg-white">
+              <div><p className="text-3xl font-black text-brand-950">{formatPercentage(totalScore)}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Prestatie</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="opmerkingen" className="card scroll-mt-24 p-5">
+        <h2 className="text-lg font-bold text-slate-950">Samenvatting en conclusie</h2>
+        <div className="mt-4 space-y-3">
+          {generalRemarks.map((remark) => <div key={`${remark.label}:${remark.text}`} className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{remark.label}</p><p className="mt-1 text-sm leading-6 text-slate-700">{remark.text}</p></div>)}
+          {generalRemarks.length === 0 && <p className="text-sm text-slate-500">Geen opmerkingen ingevuld.</p>}
+          {!isRepresentative && intervention.internalNotes?.trim() && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Interne opmerking</p><p className="mt-1 text-sm leading-6 text-amber-900">{intervention.internalNotes}</p></div>}
+        </div>
+      </section>
+
+      <section id="scores" className="card scroll-mt-24 p-5">
+        <h2 className="text-lg font-bold text-slate-950">Scores hoofdformulier</h2>
+        <ReadOnlySimpleScoreTable scores={mainScoreRows} />
+        <h3 className="mt-6 text-base font-bold text-slate-900">Gedetailleerde coachingscriteria</h3>
+        <ReadOnlyWorkflowScoreTable scores={workflowScoreRows} />
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div id="actiepunten" className="card scroll-mt-24 p-5">
+          <h2 className="text-lg font-bold text-slate-950">Actiepunten</h2>
+          <div className="mt-4 space-y-2">
+            {dedupeById(intervention.actionPoints).map((action) => <div key={action.id} className="rounded-xl bg-slate-50 px-4 py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"} · prioriteit {action.priority ?? "normaal"}</p></div><StatusBadge status={action.status} /></div><p className="mt-3 text-sm leading-6 text-slate-600">{action.description?.trim() || "Geen opmerking bij dit actiepunt."}</p></div>)}
+            {intervention.actionPoints.length === 0 && <p className="text-sm text-slate-500">Geen actiepunten.</p>}
+          </div>
+        </div>
+        <div className="card p-5">
+          <h2 className="text-lg font-bold text-slate-950">Afspraken binnen de begeleiding</h2>
+          <div className="mt-4 space-y-2">
+            {appointments.map((appointment, index) => {
+              const expanded = openAppointmentIds.has(appointment.id);
+              return <article key={`report-${appointment.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <button type="button" className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-slate-50" onClick={() => toggleAppointment(appointment.id)} aria-expanded={expanded}>
+                  <div className="grid h-10 min-w-16 place-items-center rounded-xl bg-brand-50 px-2 text-xs font-bold text-brand-800">{appointment.arrivalTime || "--:--"}</div>
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{index + 1}. {appointment.customer || "Onbenoemde afspraak"}</p><p className="mt-1 text-xs capitalize text-slate-500">{appointment.relationType} · {appointment.appointmentType} · {appointment.place || "Geen locatie"}</p></div>
+                  <div className="hidden text-right sm:block"><p className="text-sm font-bold text-brand-800">{formatAppointmentAverage(appointment)} / 5</p><p className="text-xs text-slate-400">gemiddelde</p></div>
+                  <ChevronRight className={`h-5 w-5 shrink-0 text-slate-400 transition ${expanded ? "rotate-90" : ""}`} />
+                </button>
+                {expanded && <AppointmentReadOnlyReport appointment={appointment} />}
+              </article>;
+            })}
+            {appointments.length === 0 && <p className="text-sm text-slate-500">Geen afspraken geregistreerd.</p>}
+          </div>
+        </div>
+      </section>
+
+      {showHistory && (intervention.auditTrail?.length ?? 0) > 0 && (
+        <section className="card p-5">
+          <button type="button" className="flex w-full items-center justify-between text-left font-bold text-slate-950" onClick={() => setHistoryOpen((value) => !value)}>
+            Wijzigingshistoriek bekijken <span>{historyOpen ? "−" : "+"}</span>
+          </button>
+          {historyOpen && <div className="mt-4 space-y-3">{intervention.auditTrail!.map((entry) => <div key={entry.id} className="border-l-2 border-brand-200 pl-4"><p className="text-sm font-semibold text-slate-800">{entry.summary}</p><p className="text-xs text-slate-500">{formatDateTime(entry.at)} · {entry.userName ?? entry.userId}</p></div>)}</div>}
+        </section>
+      )}
+
+      {confirmation && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-bold text-slate-950">Bevestiging</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {confirmation === "send"
+                ? "Na het versturen kan deze begeleiding niet meer aangepast worden. Wil je doorgaan?"
+                : "Wil je bevestigen dat je deze begeleiding hebt gelezen en voor akkoord bevestigt?"}
+            </p>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setConfirmation(undefined)}>Annuleren</button><button type="button" className="btn-primary" onClick={confirmTransition}>Bevestigen</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AppointmentReadOnlyReport({ appointment }: { appointment: CoachingAppointment }) {
+  const scores = dedupeScoresByCriterion(appointment.scores);
+  return (
+    <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-5">
+      <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <SummaryValue label="Klant / prospect" value={appointment.customer || "Niet ingevuld"} />
+        <SummaryValue label="Klantnummer" value={appointment.customerNumber || "Niet ingevuld"} />
+        <SummaryValue label="Adres / locatie" value={appointment.place || "Niet ingevuld"} />
+        <SummaryValue label="Tijdstip" value={`${appointment.arrivalTime || "--:--"} – ${appointment.departureTime || "--:--"}`} />
+        <SummaryValue label="Type" value={`${appointment.relationType} · ${appointment.appointmentType}`} />
+        <SummaryValue label="Gemiddelde score" value={`${formatAppointmentAverage(appointment)} / 5`} />
+      </dl>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Resultaat / activiteit</p><p className="mt-2 text-sm leading-6 text-slate-700">{appointment.activity?.trim() || "Geen resultaat ingevuld."}</p></div>
+        <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Notities / opmerkingen</p><p className="mt-2 text-sm leading-6 text-slate-700">{appointment.remarks?.trim() || "Geen opmerkingen ingevuld."}</p></div>
+      </div>
+      <h4 className="mt-5 font-bold text-slate-900">Gedetailleerde scores</h4>
+      <ReadOnlySimpleScoreTable scores={scores} splitCriterion />
+      <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">Geen afzonderlijk aan deze afspraak gekoppelde actiepunten geregistreerd.</div>
+    </div>
+  );
+}
+
+function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: CoachingSimpleScore[]; splitCriterion?: boolean }) {
+  if (scores.length === 0) return <p className="mt-4 text-sm text-slate-500">Geen scores geregistreerd.</p>;
+  return (
+    <div className="mt-4 space-y-2">
+      {scores.map((score) => {
+        const criterion = splitScoreCriterion(score.criterion);
+        const trend = scoreTrend(score.score, score.previousScore);
+        return <div key={score.criterion} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_90px_minmax(180px,1.2fr)] sm:items-center">
+          <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{splitCriterion ? criterion.group : "Criterium"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{splitCriterion ? criterion.detail : score.criterion}</p></div>
+          <div><p className="text-sm font-bold text-slate-950">{score.score === "nvt" ? "N.v.t." : `${score.score} / 5`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}</p>}</div>
+          <p className="text-sm leading-5 text-slate-600">{score.comment?.trim() || "Geen opmerking ingevuld."}</p>
+        </div>;
+      })}
+    </div>
+  );
+}
+
+function ReadOnlyWorkflowScoreTable({ scores }: { scores: WorkflowScore[] }) {
+  if (scores.length === 0) return <p className="mt-4 text-sm text-slate-500">Geen gedetailleerde criteria geregistreerd.</p>;
+  return (
+    <div className="mt-4 space-y-2">
+      {scores.map((score) => {
+        const current = score.value === "NVT" ? undefined : score.value;
+        const trend = scoreTrend(current, score.previousScore);
+        return <div key={`${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_105px_minmax(180px,1.2fr)] sm:items-center">
+          <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{score.focus || "Algemeen"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{score.criterion}</p></div>
+          <div><p className="text-sm font-bold text-slate-950">{current === undefined ? "N.v.t." : `${current}%`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}%</p>}</div>
+          <p className="text-sm leading-5 text-slate-600">{score.description?.trim() || "Geen opmerking ingevuld."}</p>
+        </div>;
+      })}
+    </div>
+  );
+}
+
+function dedupeScoresByCriterion(scores: CoachingSimpleScore[]) {
+  return [...new Map(scores.map((score) => [score.criterion, score])).values()];
+}
+
+function dedupeWorkflowScores(scores: WorkflowScore[]) {
+  return [...new Map(scores.map((score) => [`${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`, score])).values()];
+}
+
+function splitScoreCriterion(value: string) {
+  const [group, ...detail] = value.split(/\s+-\s+/);
+  return { group: detail.length ? group : "Criterium", detail: detail.length ? detail.join(" - ") : group };
+}
+
+function scoreTrend(current?: number | "nvt", previous?: number) {
+  if (typeof current !== "number" || previous === undefined) return { label: "", tone: "text-slate-500" };
+  if (current > previous) return { label: "↑ Beter", tone: "text-emerald-700" };
+  if (current < previous) return { label: "↓ Lager", tone: "text-rose-700" };
+  return { label: "→ Gelijk", tone: "text-slate-600" };
+}
+
+function SummaryValue({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div><dt className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</dt><dd className="mt-1 text-sm font-semibold text-slate-800">{value}</dd></div>;
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("nl-BE", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function TextField({ label, value, onChange, type = "text", disabled = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean }) {
@@ -1293,7 +1913,7 @@ function InterventionList({ kind }: { kind: string }) {
   };
   const current = labels[kind];
   const Icon = current.icon;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDateKey();
   const historicalRows = kind === "begeleidingen"
     ? performanceDataset.historicalCoachings
       .filter((item) => {
@@ -1330,7 +1950,7 @@ function InterventionList({ kind }: { kind: string }) {
         date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
         owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
-        editable: !["gefinaliseerd", "afgesloten"].includes(item.status),
+        editable: !completedCoachingStatuses.has(item.status),
         detailHref: `/begeleidingen/${item.id}`,
         plannedDate: item.plannedDate ?? item.updatedAt.slice(0, 10),
         startTime: item.startTime ?? "",
@@ -1342,18 +1962,26 @@ function InterventionList({ kind }: { kind: string }) {
     })
     : [];
   const workflowIds = new Set(workflowRows.map((item) => item.id));
-  const allRows = [
+  const allRows = dedupeById([
     ...workflowRows,
     ...historicalRows.filter((item) => !workflowIds.has(item.id)),
-  ];
+  ]);
   const todayRows = allRows
-    .filter((item) => !["gefinaliseerd", "afgesloten"].includes(item.status) && item.plannedDate === todayKey)
+    .filter((item) =>
+      !completedCoachingStatuses.has(item.status) &&
+      item.status !== "geannuleerd" &&
+      item.plannedDate === todayKey
+    )
     .sort((left, right) => left.executionAt - right.executionAt);
   const plannedRows = allRows
-    .filter((item) => !["gefinaliseerd", "afgesloten"].includes(item.status) && item.plannedDate > todayKey)
+    .filter((item) =>
+      !completedCoachingStatuses.has(item.status) &&
+      item.status !== "geannuleerd" &&
+      item.plannedDate > todayKey
+    )
     .sort((left, right) => left.executionAt - right.executionAt);
   const completedRows = allRows
-    .filter((item) => ["gefinaliseerd", "afgesloten"].includes(item.status))
+    .filter((item) => completedCoachingStatuses.has(item.status))
     .sort((left, right) => right.executionAt - left.executionAt);
 
   function renderRows(items: typeof allRows, emptyMessage: string) {

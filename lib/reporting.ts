@@ -146,7 +146,7 @@ export function buildReportingDataset(
       teamIds: [item.teamId],
       initiatorId: item.initiatorId,
       ownerId: item.ownerId,
-      date: item.updatedAt.slice(0, 10),
+      date: item.plannedDate ?? item.updatedAt.slice(0, 10),
       actionCount: item.actionPoints.length,
       approvalStatus: state.approvals.find((approval) => approval.interventionId === item.id)?.status,
       finalizedAt: item.finalizedAt,
@@ -244,6 +244,11 @@ export function buildReportingDataset(
       }];
     }),
   ];
+  const uniqueInterventions = new Map<string, ReportingIntervention>();
+  for (const intervention of [...workflowInterventions, ...historicalInterventions]) {
+    const key = `${intervention.type}:${intervention.id}`;
+    if (!uniqueInterventions.has(key)) uniqueInterventions.set(key, intervention);
+  }
 
   const workflowActions: ReportingAction[] = [
     ...state.interventions.flatMap((item) => item.actionPoints.map((action) =>
@@ -301,7 +306,7 @@ export function buildReportingDataset(
 
   return {
     representatives,
-    interventions: [...workflowInterventions, ...historicalInterventions],
+    interventions: [...uniqueInterventions.values()],
     actions: [...workflowActions, ...performanceActions],
     kpis,
   };

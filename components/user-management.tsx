@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Plus,
   Save,
@@ -25,6 +26,7 @@ import {
   visibleManagedUsers,
 } from "@/lib/user-management";
 import type {
+  Country,
   FieldForcePermissionKey,
   ManagedUser,
   ManagementTeam,
@@ -42,6 +44,7 @@ const roles: Role[] = [
 ];
 
 type ViewMode = "list" | "create" | "edit";
+const newTeamSelectionId = "__new_team__";
 
 export function UsersManagementPage() {
   const {
@@ -49,6 +52,7 @@ export function UsersManagementPage() {
     managedUsers,
     createManagedUser,
     updateManagedUser,
+    deleteManagedUser,
   } = useSession();
   const [mode, setMode] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<string>();
@@ -56,9 +60,6 @@ export function UsersManagementPage() {
     createEmptyManagedUser(user)
   );
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">(
-    "all"
-  );
   const [notice, setNotice] = useState<
     { type: "success" | "error"; message: string } | undefined
   >();
@@ -66,6 +67,7 @@ export function UsersManagementPage() {
   const [teamOptions, setTeamOptions] = useState<ManagementTeam[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState<string>();
+  const [deleteTarget, setDeleteTarget] = useState<ManagedUser>();
 
   const visibleUsers = useMemo(
     () => visibleManagedUsers(user, managedUsers),
@@ -75,8 +77,6 @@ export function UsersManagementPage() {
     const normalizedQuery = query.trim().toLowerCase();
     return visibleUsers
       .filter((profile) => {
-        if (statusFilter === "active" && !profile.active) return false;
-        if (statusFilter === "inactive" && profile.active) return false;
         if (!normalizedQuery) return true;
         return [
           profile.firstName,
@@ -95,7 +95,9 @@ export function UsersManagementPage() {
           "nl"
         )
       );
-  }, [query, statusFilter, visibleUsers]);
+  }, [query, visibleUsers]);
+  const activeUsers = filteredUsers.filter((profile) => profile.active);
+  const inactiveUsers = filteredUsers.filter((profile) => !profile.active);
 
   const selectedUser = selectedId
     ? managedUsers.find((profile) => profile.id === selectedId)
@@ -184,7 +186,10 @@ export function UsersManagementPage() {
         mode === "edit" ? selectedUser : undefined
       );
       if (mode === "create") {
-        const created = await createManagedUser(draft);
+        const created = await createManagedUser(
+          draft,
+          draft.teamId === newTeamSelectionId ? draft.teamName : undefined
+        );
         returnToList(
           `${created.firstName} ${created.lastName} is toegevoegd.`
         );
@@ -207,22 +212,61 @@ export function UsersManagementPage() {
     }
   }
 
+  async function permanentlyDeleteSelected(confirmation: string) {
+    if (!deleteTarget) return;
+    try {
+      setSaving(true);
+      await deleteManagedUser(deleteTarget.id, confirmation);
+      const name = `${deleteTarget.firstName} ${deleteTarget.lastName}`.trim();
+      setDeleteTarget(undefined);
+      returnToList(`${name} en alle gekoppelde historie zijn permanent verwijderd.`);
+    } catch (error) {
+      setDeleteTarget(undefined);
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Gebruiker kon niet permanent worden verwijderd.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (mode !== "list") {
     return (
-      <UserForm
-        actor={user}
-        mode={mode}
-        draft={draft}
-        original={selectedUser}
-        notice={notice}
-        saving={saving}
-        teamOptions={teamOptions}
-        teamsLoading={teamsLoading}
-        teamsError={teamsError}
-        onChange={setDraft}
-        onCancel={() => returnToList()}
-        onSave={save}
-      />
+      <>
+        <UserForm
+          actor={user}
+          mode={mode}
+          draft={draft}
+          original={selectedUser}
+          notice={notice}
+          saving={saving}
+          teamOptions={teamOptions}
+          teamsLoading={teamsLoading}
+          teamsError={teamsError}
+          managedUsers={managedUsers}
+          onChange={setDraft}
+          onTeamCreated={(team) =>
+            setTeamOptions((current) => [
+              ...current.filter((item) => item.id !== team.id),
+              team,
+            ])
+          }
+          onCancel={() => returnToList()}
+          onSave={save}
+          onDelete={selectedUser && user.role === "SUPER_ADMIN" && selectedUser.id !== user.id
+            ? () => setDeleteTarget(selectedUser)
+            : undefined}
+        />
+        {deleteTarget && (
+          <DeleteUserDialog
+            user={deleteTarget}
+            saving={saving}
+            onCancel={() => setDeleteTarget(undefined)}
+            onDelete={(confirmation) => void permanentlyDeleteSelected(confirmation)}
+          />
+        )}
+      </>
     );
   }
 
@@ -254,34 +298,208 @@ export function UsersManagementPage() {
               placeholder="Zoek op naam, e-mail, team of rol"
             />
           </label>
-          <select
-            className="field sm:w-48"
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as typeof statusFilter)
-            }
-            aria-label="Filter op status"
-          >
-            <option value="all">Alle statussen</option>
-            <option value="active">Actief</option>
-            <option value="inactive">Niet-actief</option>
-          </select>
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <UsersByStatus
+        title="Actieve gebruikers"
+        users={activeUsers}
+        forceExpand={Boolean(query.trim())}
+        onOpen={openEdit}
+      />
+      <UsersByStatus
+        title="Niet-actieve gebruikers"
+        users={inactiveUsers}
+        forceExpand={Boolean(query.trim())}
+        onOpen={openEdit}
+      />
+    </div>
+  );
+}
+
+const countryLabels: Record<Country, string> = {
+  BE: "België",
+  NL: "Nederland",
+  DE: "Duitsland",
+};
+
+function UsersByStatus({
+  title,
+  users,
+  forceExpand,
+  onOpen,
+}: {
+  title: string;
+  users: ManagedUser[];
+  forceExpand: boolean;
+  onOpen: (profile: ManagedUser) => void;
+}) {
+  const countries = groupUsersByCountryAndTeam(users);
+  const knownCountries = useRef(
+    new Set(countries.map(({ country }) => country))
+  );
+  const [openCountries, setOpenCountries] = useState<Set<Country>>(
+    () => new Set(countries.map(({ country }) => country))
+  );
+  const [openTeams, setOpenTeams] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const newCountries = countries
+      .map(({ country }) => country)
+      .filter((country) => !knownCountries.current.has(country));
+    if (!newCountries.length) return;
+    for (const country of newCountries) knownCountries.current.add(country);
+    setOpenCountries((current) => new Set([...current, ...newCountries]));
+  }, [countries]);
+
+  function toggleCountry(country: Country) {
+    setOpenCountries((current) => {
+      const next = new Set(current);
+      if (next.has(country)) next.delete(country);
+      else next.add(country);
+      return next;
+    });
+  }
+
+  function toggleTeam(teamKey: string) {
+    setOpenTeams((current) => {
+      const next = new Set(current);
+      if (next.has(teamKey)) next.delete(teamKey);
+      else next.add(teamKey);
+      return next;
+    });
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-500">
+          {users.length} {users.length === 1 ? "gebruiker" : "gebruikers"}
+        </p>
+      </div>
+      {countries.length ? countries.map(({ country, teams }) => {
+        const countryCount = teams.reduce(
+          (total, team) => total + team.users.length,
+          0
+        );
+        const countryOpen = forceExpand || openCountries.has(country);
+        return (
+          <section key={country} className="card overflow-hidden">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 bg-slate-50/70 px-4 py-4 text-left transition hover:bg-brand-50/60 sm:px-5"
+              aria-expanded={countryOpen}
+              onClick={() => toggleCountry(country)}
+            >
+              {countryOpen ? (
+                <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" />
+              ) : (
+                <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-base font-bold text-slate-900 sm:text-lg">
+                  {countryLabels[country]}
+                  <span className="ml-2 text-sm text-slate-400">({country})</span>
+                </span>
+              </span>
+              <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">
+                {countryCount} {countryCount === 1 ? "gebruiker" : "gebruikers"}
+              </span>
+            </button>
+            {countryOpen && (
+              <div className="space-y-3 border-t border-slate-100 p-3 sm:p-4">
+                {teams.map((team) => {
+                  const teamKey = `${country}:${team.name}`;
+                  const teamOpen = forceExpand || openTeams.has(teamKey);
+                  return (
+                    <section key={team.name} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-slate-50 sm:px-4"
+                        aria-expanded={teamOpen}
+                        onClick={() => toggleTeam(teamKey)}
+                      >
+                        {teamOpen ? (
+                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">
+                          {team.name}
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold text-slate-500">
+                          {team.users.length} {team.users.length === 1 ? "gebruiker" : "gebruikers"}
+                        </span>
+                      </button>
+                      {teamOpen && (
+                        <div className="border-t border-slate-100">
+                          <UsersTable users={team.users} onOpen={onOpen} />
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      }) : (
+        <div className="card px-5 py-10 text-center">
+          <UserCog className="mx-auto h-9 w-9 text-slate-300" />
+          <p className="mt-3 font-semibold text-slate-700">Geen gebruikers gevonden</p>
+          <p className="mt-1 text-sm text-slate-500">In deze groep zijn geen gebruikers gevonden.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function groupUsersByCountryAndTeam(users: ManagedUser[]) {
+  const countries = new Map<Country, Map<string, ManagedUser[]>>();
+
+  for (const profile of users) {
+    const teams = countries.get(profile.country) ?? new Map<string, ManagedUser[]>();
+    const teamName = profile.teamName?.trim() || "Geen team";
+    teams.set(teamName, [...(teams.get(teamName) ?? []), profile]);
+    countries.set(profile.country, teams);
+  }
+
+  return [...countries.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, "nl"))
+    .map(([country, teams]) => ({
+      country,
+      teams: [...teams.entries()]
+        .sort(([left], [right]) => {
+          if (left === "Geen team") return 1;
+          if (right === "Geen team") return -1;
+          return left.localeCompare(right, "nl");
+        })
+        .map(([name, teamUsers]) => ({ name, users: teamUsers })),
+    }));
+}
+
+function UsersTable({
+  users,
+  onOpen,
+}: {
+  users: ManagedUser[];
+  onOpen: (profile: ManagedUser) => void;
+}) {
+  return (
+    <div className="overflow-hidden">
         <div className="hidden grid-cols-[minmax(260px,1.3fr)_minmax(220px,1fr)_120px_36px] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
           <span>Gebruiker</span>
           <span>Rol en team</span>
           <span>Status</span>
           <span />
         </div>
-        {filteredUsers.length ? (
-          filteredUsers.map((profile) => (
+        {users.length ? (
+          users.map((profile) => (
             <button
               key={profile.id}
               type="button"
-              onClick={() => openEdit(profile)}
+              onClick={() => onOpen(profile)}
               className="grid w-full gap-3 border-b border-slate-100 px-4 py-4 text-left transition last:border-b-0 hover:bg-brand-50/50 md:grid-cols-[minmax(260px,1.3fr)_minmax(220px,1fr)_120px_36px] md:items-center md:gap-4 md:px-5"
             >
               <div className="flex min-w-0 items-center gap-3">
@@ -326,11 +544,10 @@ export function UsersManagementPage() {
               Geen gebruikers gevonden
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              Pas de zoekopdracht of statusfilter aan.
+              In deze groep zijn geen gebruikers gevonden.
             </p>
           </div>
         )}
-      </div>
     </div>
   );
 }
@@ -345,9 +562,12 @@ function UserForm({
   teamOptions,
   teamsLoading,
   teamsError,
+  managedUsers,
   onChange,
+  onTeamCreated,
   onCancel,
   onSave,
+  onDelete,
 }: {
   actor: ReturnType<typeof useSession>["user"];
   mode: Exclude<ViewMode, "list">;
@@ -358,10 +578,14 @@ function UserForm({
   teamOptions: ManagementTeam[];
   teamsLoading: boolean;
   teamsError?: string;
+  managedUsers: ManagedUser[];
   onChange: (draft: ManagedUser) => void;
+  onTeamCreated: (team: ManagementTeam) => void;
   onCancel: () => void;
   onSave: () => void;
+  onDelete?: () => void;
 }) {
+  const [showTeamCreator, setShowTeamCreator] = useState(false);
   const capabilities = userManagementCapabilities(actor, original);
   const canSave =
     capabilities.canEditPersonal ||
@@ -396,6 +620,9 @@ function UserForm({
     onChange({
       ...draft,
       role,
+      ...(draft.teamId === newTeamSelectionId && role !== "SALES_LEADER" && !draft.teamSupervisor
+        ? { teamId: "", teamName: "" }
+        : {}),
       permissions: { ...template.permissions },
     });
   }
@@ -433,6 +660,11 @@ function UserForm({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onDelete && (
+            <button type="button" className="btn-secondary text-rose-700" onClick={onDelete} disabled={saving}>
+              <X className="h-4 w-4" /> Permanent verwijderen
+            </button>
+          )}
           <button type="button" className="btn-secondary" onClick={onCancel}>
             Annuleren
           </button>
@@ -602,7 +834,19 @@ function UserForm({
                       {team.name}
                     </option>
                   ))}
+                  {draft.teamId === newTeamSelectionId && (
+                    <option value={newTeamSelectionId}>{draft.teamName} (nieuw)</option>
+                  )}
                 </select>
+                {mode === "create" && capabilities.canEditScope && (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 hover:text-brand-900"
+                    onClick={() => setShowTeamCreator(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Nieuw team aanmaken
+                  </button>
+                )}
                 {teamsError && (
                   <span className="mt-1.5 block text-xs font-semibold text-rose-600">
                     {teamsError}
@@ -644,7 +888,17 @@ function UserForm({
                 label="Teamsupervisor"
                 checked={draft.teamSupervisor}
                 disabled={!capabilities.canEditScope}
-                onChange={(checked) => update("teamSupervisor", checked)}
+                onChange={(checked) =>
+                  onChange({
+                    ...draft,
+                    teamSupervisor: checked,
+                    ...(draft.teamId === newTeamSelectionId &&
+                    !checked &&
+                    draft.role !== "SALES_LEADER"
+                      ? { teamId: "", teamName: "" }
+                      : {}),
+                  })
+                }
               />
               <Toggle
                 label="Gebruiker actief"
@@ -732,6 +986,237 @@ function UserForm({
           </button>
         )}
       </div>
+
+      {showTeamCreator && (
+        <TeamCreationDialog
+          actorId={actor.id}
+          country={draft.country}
+          newUserCanLeadTeam={
+            draft.teamSupervisor || draft.role === "SALES_LEADER"
+          }
+          leaders={managedUsers.filter(
+            (profile) =>
+              profile.active &&
+              profile.country === draft.country &&
+              profile.role !== "REPRESENTATIVE"
+          )}
+          onCancel={() => setShowTeamCreator(false)}
+          onUseNewUser={(name) => {
+            onChange({
+              ...draft,
+              teamId: newTeamSelectionId,
+              teamName: name,
+            });
+            setShowTeamCreator(false);
+          }}
+          onCreated={(team) => {
+            onTeamCreated(team);
+            onChange({
+              ...draft,
+              teamId: team.id,
+              teamName: team.name,
+            });
+            setShowTeamCreator(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TeamCreationDialog({
+  actorId,
+  country,
+  newUserCanLeadTeam,
+  leaders,
+  onCancel,
+  onUseNewUser,
+  onCreated,
+}: {
+  actorId: string;
+  country: Country;
+  newUserCanLeadTeam: boolean;
+  leaders: ManagedUser[];
+  onCancel: () => void;
+  onUseNewUser: (name: string) => void;
+  onCreated: (team: ManagementTeam) => void;
+}) {
+  const newUserLeaderId = "__new_user__";
+  const [name, setName] = useState("");
+  const [leaderId, setLeaderId] = useState(
+    newUserCanLeadTeam ? newUserLeaderId : ""
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function createTeam() {
+    const normalizedName = name.trim();
+    if (!normalizedName || !leaderId) return;
+    if (leaderId === newUserLeaderId) {
+      onUseNewUser(normalizedName);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(undefined);
+      const response = await fetch("/api/management", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId,
+          entity: "team",
+          name: normalizedName,
+          country,
+          primaryLeaderId: leaderId,
+        }),
+      });
+      const payload = (await response.json()) as {
+        result?: {
+          id: string;
+          name: string;
+          country: Country;
+          primaryLeaderId: string;
+          active: boolean;
+        };
+        error?: string;
+      };
+      if (!response.ok || !payload.result) {
+        throw new Error(payload.error ?? "Het team kon niet worden aangemaakt.");
+      }
+      const leader = leaders.find((profile) => profile.id === leaderId);
+      onCreated({
+        ...payload.result,
+        primaryLeaderName: leader
+          ? `${leader.firstName} ${leader.lastName}`.trim()
+          : "",
+        memberCount: 0,
+      });
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Het team kon niet worden aangemaakt."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"
+      role="presentation"
+      onMouseDown={(event) =>
+        event.target === event.currentTarget && !saving && onCancel()
+      }
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-team-title"
+        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl"
+      >
+        <h2 id="new-team-title" className="text-lg font-bold text-slate-950">
+          Nieuw team aanmaken
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Het team wordt aangemaakt voor {country} en meteen geselecteerd.
+        </p>
+        <div className="mt-5 space-y-4">
+          <Field label="Teamnaam" required>
+            <input
+              className="field"
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+          <Field label="Primaire teamleider" required>
+            <select
+              className="field"
+              value={leaderId}
+              onChange={(event) => setLeaderId(event.target.value)}
+            >
+              <option value="">Selecteer een teamleider</option>
+              {newUserCanLeadTeam && (
+                <option value={newUserLeaderId}>
+                  Deze nieuwe gebruiker
+                </option>
+              )}
+              {leaders.map((leader) => (
+                <option key={leader.id} value={leader.id}>
+                  {leader.firstName} {leader.lastName} ({roleLabels[leader.role]})
+                </option>
+              ))}
+            </select>
+          </Field>
+          {error && (
+            <p className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>
+            Annuleren
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!name.trim() || !leaderId || saving}
+            onClick={() => void createTeam()}
+          >
+            <Plus className="h-4 w-4" /> {saving ? "Aanmaken..." : "Team aanmaken"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DeleteUserDialog({
+  user,
+  saving,
+  onCancel,
+  onDelete,
+}: {
+  user: ManagedUser;
+  saving: boolean;
+  onCancel: () => void;
+  onDelete: (confirmation: string) => void;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  const matches = confirmation.trim().toLowerCase() === user.email.trim().toLowerCase();
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && !saving && onCancel()}
+    >
+      <section role="dialog" aria-modal="true" aria-labelledby="delete-user-title" className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl">
+        <h2 id="delete-user-title" className="text-lg font-bold text-slate-950">Gebruiker permanent verwijderen</h2>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          <strong>{user.firstName} {user.lastName}</strong> en alle gekoppelde historie worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt.
+        </p>
+        <label className="mt-4 block">
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+            Typ <strong className="normal-case text-slate-800">{user.email}</strong> ter bevestiging
+          </span>
+          <input className="field" autoFocus value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+        </label>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>Annuleren</button>
+          <button
+            type="button"
+            className="rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!matches || saving}
+            onClick={() => onDelete(confirmation)}
+          >
+            {saving ? "Verwijderen..." : "Permanent verwijderen"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

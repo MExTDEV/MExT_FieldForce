@@ -5,6 +5,8 @@ node_modules
 .env.local
 coverage
 outputs/
+output/
+tmp/
 *.log
 *.tsbuildinfo
 prisma/dev.db
