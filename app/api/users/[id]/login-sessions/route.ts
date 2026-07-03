@@ -24,13 +24,31 @@ export async function GET(
 
     const from = validDateFilter(url.searchParams.get("from"));
     const to = validDateFilter(url.searchParams.get("to"));
+    const provider = validChoice(url.searchParams.get("provider"), ["microsoft", "credentials"]);
+    const browser = validChoice(url.searchParams.get("browser"), ["Edge", "Chrome", "Firefox", "Safari", "Other"]);
+    const deviceType = validChoice(url.searchParams.get("device"), ["Desktop", "Mobile", "Tablet"]);
+    const status = validChoice(url.searchParams.get("status"), ["active", "logged-out", "expired"]);
+    const ipAddress = compactFilter(url.searchParams.get("ip"));
     const requestedPage = Number(url.searchParams.get("page") ?? "1");
     const page = Number.isInteger(requestedPage) && requestedPage > 0
       ? requestedPage
       : 1;
 
-    return listUserLoginSessions({ userId: target.id, from, to, page });
+    return listUserLoginSessions({
+      userId: target.id, from, to, provider, browser, deviceType, status, ipAddress, page,
+    });
   }, "Login-sessies konden niet worden geladen.");
+}
+
+function validChoice<T extends string>(value: string | null, allowed: readonly T[]) {
+  if (!value) return undefined;
+  if (!allowed.includes(value as T)) badRequest("Ongeldige loginfilter.");
+  return value as T;
+}
+
+function compactFilter(value: string | null) {
+  const compact = value?.trim().slice(0, 191);
+  return compact || undefined;
 }
 
 function validDateFilter(value: string | null) {

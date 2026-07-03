@@ -73,6 +73,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [authStatus, pathname, router]);
 
   useEffect(() => {
+    if (!authenticatedMode || authStatus !== "authenticated") return;
+    const reportActivity = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetch("/api/auth/activity", { method: "POST", cache: "no-store" }).catch((cause) => {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[session] Sessieactiviteit kon niet worden gemeld.", cause);
+        }
+      });
+    };
+    reportActivity();
+    const interval = window.setInterval(reportActivity, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", reportActivity);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", reportActivity);
+    };
+  }, [authStatus]);
+
+  useEffect(() => {
     if (authTimedOut) {
       setLoading(false);
       setError("De sessiecontrole duurde te lang. Controleer de verbinding en probeer opnieuw.");

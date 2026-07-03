@@ -20,7 +20,7 @@ export function getVisibleRepresentatives(
   currentUser: MockUser,
   source: Representative[]
 ) {
-  if (currentUser.role === "SUPER_ADMIN" || currentUser.role === "GROUP_MANAGER") {
+  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) {
     return source;
   }
   if (currentUser.role === "REPRESENTATIVE") {
@@ -50,6 +50,7 @@ export function getVisibleUserScope(
     teamIds: new Set(visible.map((item) => item.teamId)),
     countries: new Set(visible.map((item) => item.country)),
     isGlobal:
+      currentUser.role === "ADMIN" ||
       currentUser.role === "SUPER_ADMIN" ||
       currentUser.role === "GROUP_MANAGER",
   };
@@ -59,7 +60,7 @@ export function canAccessRepresentativeData(
   currentUser: MockUser,
   representative: Representative
 ) {
-  if (currentUser.role === "SUPER_ADMIN" || currentUser.role === "GROUP_MANAGER") return true;
+  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return true;
   if (currentUser.role === "REPRESENTATIVE") {
     return representative.id === currentUser.representativeId;
   }

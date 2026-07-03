@@ -1,135 +1,189 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
+
+const DEFAULT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 type LoginRequestMetadata = {
   requestKey: string;
+  sessionId: string;
   ipAddress?: string;
   userAgent?: string;
 };
 
 type SuccessfulLoginInput = {
   provider?: string | null;
-  userId?: string | null;
+  userId: string;
   userEmail?: string | null;
-  providerAccountId?: string | null;
-  profile?: Record<string, unknown> | null;
+  sessionId?: string;
+  expiresAt?: Date;
 };
+
+export type LoginSessionStatus = "active" | "logged-out" | "expired";
 
 const loginRequestMetadata = new AsyncLocalStorage<LoginRequestMetadata>();
 
-export function withLoginRequestContext<T>(
-  request: Request,
-  action: () => Promise<T>
-) {
-  const forwardedFor = request.headers.get("x-forwarded-for")
-    ?.split(",")[0]
-    ?.trim();
-  const ipAddress = forwardedFor || request.headers.get("x-real-ip")?.trim();
-  const userAgent = request.headers.get("user-agent")?.trim();
+export function withLoginRequestContext<T>(request: Request, action: () => Promise<T>) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const ipAddress = forwardedFor
+    || request.headers.get("cf-connecting-ip")?.trim()
+    || request.headers.get("x-real-ip")?.trim();
+  const id = randomUUID();
+  return loginRequestMetadata.run({
+    requestKey: id,
+    sessionId: id,
+    ipAddress: compactOptional(ipAddress, 191),
+    userAgent: compactOptional(request.headers.get("user-agent"), 2000),
+  }, action);
+}
 
-  return loginRequestMetadata.run(
-    {
-      requestKey: randomUUID(),
-      ipAddress: compactOptional(ipAddress, 191),
-      userAgent: compactOptional(userAgent, 2000),
-    },
-    action
-  );
+export function getLoginRequestSessionId() {
+  return loginRequestMetadata.getStore()?.sessionId;
 }
 
 export async function recordSuccessfulLogin(input: SuccessfulLoginInput) {
-  const provider = input.provider === "microsoft-entra-id"
-    ? "microsoft"
-    : input.provider ?? "onbekend";
-  const profile = input.profile ?? {};
-  const microsoftEmail = provider === "microsoft"
-    ? firstString(
-        profile.email,
-        profile.preferred_username,
-        profile.upn,
-        profile.unique_name,
-        input.userEmail
-      )?.toLowerCase()
-    : undefined;
-  const entraIds = provider === "microsoft"
-    ? uniqueStrings(profile.oid, profile.sub, input.providerAccountId)
-    : [];
+  const metadata = loginRequestMetadata.getStore();
+  const provider = normalizeProvider(input.provider);
+  const sessionId = input.sessionId ?? metadata?.sessionId ?? randomUUID();
+  const requestKey = metadata?.requestKey ?? sessionId;
+  const loginAt = new Date();
+  const expiresAt = input.expiresAt
+    ?? new Date(loginAt.getTime() + DEFAULT_SESSION_MAX_AGE_SECONDS * 1000);
+  const client = parseUserAgent(metadata?.userAgent);
 
-  const databaseUser = provider === "microsoft"
-    ? await prisma.user.findFirst({
-        where: {
-          active: true,
-          OR: [
-            ...(entraIds.length ? [{ entraId: { in: entraIds } }] : []),
-            ...(microsoftEmail ? [{ email: microsoftEmail }] : []),
-          ],
-        },
-        select: { id: true, email: true },
-      })
-    : input.userId
-      ? await prisma.user.findFirst({
-          where: { id: input.userId, active: true },
-          select: { id: true, email: true },
-        })
-      : null;
-
-  if (!databaseUser) {
-    console.warn(`[auth:login-history] Geen actieve FieldForce-gebruiker gevonden voor provider ${provider}.`);
-    return;
+  if (process.env.NODE_ENV === "development" || process.env.AUTH_SESSION_DEBUG === "true") {
+    console.info("[auth:login-audit] Succesvolle login ontvangen.", {
+      userId: input.userId,
+      provider,
+      sessionId,
+      ipAddress: metadata?.ipAddress ?? null,
+    });
   }
 
-  const metadata = loginRequestMetadata.getStore();
-  const loginAt = new Date();
-  const email = microsoftEmail ?? input.userEmail?.trim().toLowerCase() ?? databaseUser.email;
-  const requestKey = metadata?.requestKey ?? randomUUID();
+  try {
+    const session = await prisma.$transaction(async (database) => {
+      const user = await database.user.findFirst({
+        where: { id: input.userId, active: true },
+        select: { id: true, email: true },
+      });
+      if (!user) throw new Error(`Actieve gebruiker ${input.userId} niet gevonden.`);
 
-  await prisma.$transaction([
-    prisma.userLoginSession.upsert({
-      where: { requestKey },
-      update: {},
-      create: {
-        userId: databaseUser.id,
-        requestKey,
-        loginAt,
-        provider,
-        email: compactOptional(email, 191),
-        ipAddress: metadata?.ipAddress,
-        userAgent: metadata?.userAgent,
-      },
-    }),
-    prisma.user.update({
-      where: { id: databaseUser.id },
-      data: {
-        lastLoginAt: loginAt,
-        ...(provider === "microsoft" && microsoftEmail
-          ? { microsoftEmail }
-          : {}),
-      },
-    }),
-  ]);
+      const stored = await database.userLoginSession.upsert({
+        where: { sessionId },
+        update: {},
+        create: {
+          userId: user.id,
+          requestKey,
+          sessionId,
+          loginAt,
+          lastActivityAt: loginAt,
+          expiresAt,
+          provider,
+          email: compactOptional(input.userEmail ?? user.email, 191),
+          ipAddress: metadata?.ipAddress,
+          userAgent: metadata?.userAgent,
+          browser: client.browser,
+          operatingSystem: client.operatingSystem,
+          deviceType: client.deviceType,
+        },
+        select: { id: true, sessionId: true },
+      });
+      await database.user.update({
+        where: { id: user.id },
+        data: {
+          lastLoginAt: loginAt,
+          ...(provider === "microsoft" && input.userEmail
+            ? { microsoftEmail: compactOptional(input.userEmail.toLowerCase(), 191) }
+            : {}),
+        },
+      });
+      return stored;
+    });
+    console.info("[auth:login-audit] LoginSession opgeslagen.", {
+      userId: input.userId,
+      provider,
+      sessionId: session.sessionId,
+      recordId: session.id,
+    });
+    return session;
+  } catch (error) {
+    console.error("[auth:login-audit] KRITIEK: LoginSession kon niet worden opgeslagen; login wordt afgebroken.", {
+      userId: input.userId,
+      provider,
+      sessionId,
+      database: databaseIdentity(),
+      error: describeError(error),
+    });
+    throw error;
+  }
+}
+
+export async function touchLoginSession(sessionId: string) {
+  const now = new Date();
+  const session = await prisma.userLoginSession.findUnique({
+    where: { sessionId },
+    select: { loginAt: true, logoutAt: true },
+  });
+  if (!session || session.logoutAt) return false;
+  await prisma.userLoginSession.update({
+    where: { sessionId },
+    data: {
+      lastActivityAt: now,
+      durationSeconds: durationBetween(session.loginAt, now),
+    },
+  });
+  return true;
+}
+
+export async function closeLoginSession(sessionId: string) {
+  const now = new Date();
+  const session = await prisma.userLoginSession.findUnique({
+    where: { sessionId },
+    select: { loginAt: true, logoutAt: true },
+  });
+  if (!session || session.logoutAt) return false;
+  await prisma.userLoginSession.update({
+    where: { sessionId },
+    data: {
+      logoutAt: now,
+      lastActivityAt: now,
+      durationSeconds: durationBetween(session.loginAt, now),
+    },
+  });
+  console.info("[auth:login-audit] Sessie afgemeld.", { sessionId });
+  return true;
 }
 
 export async function listUserLoginSessions({
-  userId,
-  from,
-  to,
-  page,
-  pageSize = 25,
+  userId, from, to, provider, browser, ipAddress, deviceType, status, page, pageSize = 25,
 }: {
   userId: string;
   from?: string;
   to?: string;
+  provider?: string;
+  browser?: string;
+  ipAddress?: string;
+  deviceType?: string;
+  status?: LoginSessionStatus;
   page: number;
   pageSize?: number;
 }) {
+  const now = new Date();
   const loginAt = {
     ...(from ? { gte: parseDateBoundary(from) } : {}),
     ...(to ? { lt: addDays(parseDateBoundary(to), 1) } : {}),
   };
-  const where = {
+  const where: Prisma.UserLoginSessionWhereInput = {
     userId,
     ...(Object.keys(loginAt).length ? { loginAt } : {}),
+    ...(provider ? { provider } : {}),
+    ...(browser ? { browser } : {}),
+    ...(deviceType ? { deviceType } : {}),
+    ...(ipAddress ? { ipAddress: { contains: ipAddress } } : {}),
+    ...(status === "logged-out" ? { logoutAt: { not: null } } : {}),
+    ...(status === "expired" ? { logoutAt: null, expiresAt: { lte: now } } : {}),
+    ...(status === "active" ? { logoutAt: null, expiresAt: { gt: now } } : {}),
   };
   const [sessions, total] = await Promise.all([
     prisma.userLoginSession.findMany({
@@ -138,32 +192,48 @@ export async function listUserLoginSessions({
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
-        id: true,
-        loginAt: true,
-        provider: true,
-        email: true,
-        ipAddress: true,
-        userAgent: true,
+        id: true, sessionId: true, loginAt: true, logoutAt: true,
+        lastActivityAt: true, expiresAt: true, durationSeconds: true,
+        provider: true, email: true, ipAddress: true, userAgent: true,
+        browser: true, operatingSystem: true, deviceType: true,
       },
     }),
     prisma.userLoginSession.count({ where }),
   ]);
-
   return {
-    sessions,
-    pagination: {
-      page,
-      pageSize,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / pageSize)),
-    },
+    sessions: sessions.map((session) => ({
+      ...session,
+      status: session.logoutAt ? "logged-out" : session.expiresAt <= now ? "expired" : "active",
+      durationSeconds: session.logoutAt || session.expiresAt <= now
+        ? session.durationSeconds
+        : durationBetween(session.loginAt, session.lastActivityAt),
+    })),
+    pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
   };
 }
 
+function normalizeProvider(provider?: string | null) {
+  return provider === "microsoft-entra-id" ? "microsoft" : provider || "unknown";
+}
+
+function parseUserAgent(userAgent?: string) {
+  if (!userAgent) return {};
+  const browser = /Edg\//.test(userAgent) ? "Edge"
+    : /Firefox\//.test(userAgent) ? "Firefox"
+      : /(?:Chrome|CriOS)\//.test(userAgent) ? "Chrome"
+        : /Safari\//.test(userAgent) ? "Safari" : "Other";
+  const operatingSystem = /Windows NT/.test(userAgent) ? "Windows"
+    : /Android/.test(userAgent) ? "Android"
+      : /iPhone|iPad|iPod/.test(userAgent) ? "iOS"
+        : /Mac OS X|Macintosh/.test(userAgent) ? "macOS"
+          : /Linux/.test(userAgent) ? "Linux" : "Other";
+  const deviceType = /iPad|Tablet/.test(userAgent) ? "Tablet"
+    : /Mobile|iPhone|iPod|Android/.test(userAgent) ? "Mobile" : "Desktop";
+  return { browser, operatingSystem, deviceType };
+}
+
 function parseDateBoundary(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error("Ongeldige datumfilter.");
-  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Ongeldige datumfilter.");
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   if (Number.isNaN(date.getTime())) throw new Error("Ongeldige datumfilter.");
@@ -176,15 +246,25 @@ function addDays(value: Date, days: number) {
   return result;
 }
 
-function uniqueStrings(...values: unknown[]) {
-  return [...new Set(values.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim()))];
-}
-
-function firstString(...values: unknown[]) {
-  return uniqueStrings(...values)[0];
+function durationBetween(start: Date, end: Date) {
+  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
 }
 
 function compactOptional(value: string | null | undefined, maxLength: number) {
   const normalized = value?.trim();
   return normalized ? normalized.slice(0, maxLength) : undefined;
+}
+
+function databaseIdentity() {
+  try {
+    const url = new URL(process.env.DATABASE_URL ?? "");
+    return `${url.hostname}${url.port ? `:${url.port}` : ""}${url.pathname}`;
+  } catch {
+    return "DATABASE_URL ongeldig of ontbrekend";
+  }
+}
+
+function describeError(error: unknown) {
+  if (error instanceof Error) return { name: error.name, message: error.message, stack: error.stack };
+  return { message: String(error) };
 }

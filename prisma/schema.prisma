@@ -156,11 +156,11 @@ model MicrosoftAuthToken {
   accessTokenEncrypted  String   @db.LongText
   refreshTokenEncrypted String?  @db.LongText
   expiresAt             DateTime
-  scopes                 String   @db.VarChar(512)
-  lastError              String?  @db.Text
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  scopes                String   @db.VarChar(512)
+  lastError             String?  @db.Text
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@index([expiresAt])
 }
@@ -178,18 +178,29 @@ model UserLoginAlias {
 }
 
 model UserLoginSession {
-  id         String   @id @default(cuid())
-  userId     String
-  requestKey String   @unique
-  loginAt    DateTime @default(now())
-  provider   String
-  email      String?
-  ipAddress  String?
-  userAgent  String?  @db.Text
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  id              String    @id @default(cuid())
+  userId          String
+  requestKey      String    @unique
+  sessionId       String    @unique
+  loginAt         DateTime  @default(now())
+  logoutAt        DateTime?
+  lastActivityAt  DateTime  @default(now())
+  expiresAt       DateTime
+  durationSeconds Int       @default(0)
+  provider        String
+  email           String?
+  ipAddress       String?
+  userAgent       String?   @db.Text
+  browser         String?
+  operatingSystem String?
+  deviceType      String?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([userId, loginAt])
+  @@index([userId, provider])
+  @@index([userId, lastActivityAt])
 }
 
 model Team {
@@ -322,9 +333,9 @@ model Intervention {
   deletedAt            DateTime?
   outlookEventId       String?
   outlookICalUId       String?
-  outlookSyncStatus    OutlookSyncStatus        @default(NOT_SYNCED)
+  outlookSyncStatus    OutlookSyncStatus         @default(NOT_SYNCED)
   lastSyncedAt         DateTime?
-  syncError            String?                  @db.Text
+  syncError            String?                   @db.Text
   representative       User                      @relation("RepresentativeInterventions", fields: [representativeId], references: [id])
   initiator            User                      @relation("InitiatedInterventions", fields: [initiatorId], references: [id])
   owner                User                      @relation("OwnedInterventions", fields: [ownerId], references: [id])

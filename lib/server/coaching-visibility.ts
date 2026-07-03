@@ -4,7 +4,7 @@ import type { MockUser } from "@/lib/types";
 export function buildCoachingVisibilityFilter(
   currentUser: MockUser
 ): Prisma.InterventionWhereInput {
-  if (currentUser.role === "SUPER_ADMIN") return {};
+  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return {};
   if (currentUser.role === "SALES_LEADER") {
     return {
       OR: [

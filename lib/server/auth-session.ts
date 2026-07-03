@@ -1,6 +1,10 @@
 import type { JWT } from "next-auth/jwt";
 
-export function compactSessionToken(token: JWT, databaseUserId?: string): JWT {
+export function compactSessionToken(
+  token: JWT,
+  databaseUserId?: string,
+  loginSessionId?: string
+): JWT {
   return {
     ...(token.sub ? { sub: token.sub } : {}),
     ...(token.name ? { name: token.name } : {}),
@@ -10,6 +14,9 @@ export function compactSessionToken(token: JWT, databaseUserId?: string): JWT {
     ...(token.jti ? { jti: token.jti } : {}),
     ...(databaseUserId || token.databaseUserId
       ? { databaseUserId: databaseUserId ?? token.databaseUserId }
+      : {}),
+    ...(loginSessionId || token.loginSessionId
+      ? { loginSessionId: loginSessionId ?? token.loginSessionId }
       : {}),
   };
 }

@@ -8,6 +8,7 @@ import {
   BookOpenCheck,
   CalendarCheck,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   ClipboardCheck,
@@ -77,6 +78,7 @@ import {
   representativeForCoaching,
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
+import type { MyTeamMember } from "@/lib/my-team";
 import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, WorkflowScore } from "@/lib/types";
 import {
   completedCoachingStatuses,
@@ -113,6 +115,9 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "mijn-team") {
     if (!canViewTeamDashboard(user)) {
       return <EmptyState title="Geen toegang" description="Mijn Team is alleen beschikbaar voor gebruikers met een team- of beheerscope." />;
+    }
+    if (segments[1] === "gebruiker" && segments[2]) {
+      return <TeamMemberDetail id={segments[2]} />;
     }
     return segments[1]
       ? <RepresentativeDetail id={segments[1]} teamMode />
@@ -356,19 +361,30 @@ function Dashboard() {
 
 function MyTeamPage() {
   const { user } = useSession();
-  const { error, loading, representatives } = useRepresentatives();
-  const { dataset, error: performanceError } = usePerformance();
-  const visibleRepresentatives = dedupeById(
-    representatives.filter((representative) => canAccessRepresentative(user, representative))
-  ).sort((left, right) =>
-    left.country.localeCompare(right.country) ||
-    left.team.localeCompare(right.team, "nl") ||
-    left.lastName.localeCompare(right.lastName, "nl") ||
-    left.firstName.localeCompare(right.firstName, "nl")
-  );
-  const countries = [...new Set(visibleRepresentatives.map((item) => item.country))];
+  const { error, loading, members } = useMyTeamMembers();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const countries = useMemo(() => groupMyTeamMembers(members), [members]);
 
-  if (loading) return <EmptyState title="Mijn Team laden" description="De toegestane vertegenwoordigers worden veilig opgehaald." />;
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(`mext:my-team:collapsed:${user.id}`);
+      if (stored) setCollapsed(new Set(JSON.parse(stored) as string[]));
+    } catch {
+      setCollapsed(new Set());
+    }
+  }, [user.id]);
+
+  function toggle(key: string) {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      window.localStorage.setItem(`mext:my-team:collapsed:${user.id}`, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  if (loading) return <EmptyState title="Mijn Team laden" description="De toegestane teamleden worden veilig opgehaald." />;
   if (error) return <EmptyState title="Mijn Team kon niet worden geladen" description={error} />;
 
   return (
@@ -376,58 +392,114 @@ function MyTeamPage() {
       <PageHeader
         eyebrow="Mensen"
         title="Mijn Team"
-        description="Vertegenwoordigers binnen jouw toegestane team- en landscope, gegroepeerd per land en team."
+        description="Actieve teamleden binnen jouw toegestane team- en landscope, gegroepeerd per land en team."
       />
-      {performanceError && <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Scores konden niet volledig worden geladen.</p>}
-      {visibleRepresentatives.length === 0 && <EmptyState title="Geen vertegenwoordigers gevonden" description="Er zijn geen actieve vertegenwoordigers binnen jouw huidige scope." />}
+      {members.length === 0 && <EmptyState title="Geen teamleden gevonden" description="Er zijn geen actieve teamleden binnen jouw huidige scope." />}
 
-      {countries.map((country) => {
-        const countryRepresentatives = visibleRepresentatives.filter((item) => item.country === country);
-        const teams = [...new Set(countryRepresentatives.map((item) => item.team || "Geen team"))];
-        return (
-          <section key={country} className="space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div><p className="eyebrow">Land</p><h2 className="text-xl font-bold text-slate-950">{countryName(country)}</h2></div>
-              <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{countryRepresentatives.length}</span>
-            </div>
+      {countries.map(({ country, teams, count }) => {
+        const countryKey = `country:${country}`;
+        const countryOpen = !collapsed.has(countryKey);
+        return <section key={country} className="card overflow-hidden">
+          <button type="button" onClick={() => toggle(countryKey)} aria-expanded={countryOpen} className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5">
+            {countryOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
+            <div className="min-w-0 flex-1"><p className="eyebrow">Land</p><h2 className="truncate text-lg font-bold text-slate-950">{countryName(country)}</h2></div>
+            <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{count} {count === 1 ? "persoon" : "personen"}</span>
+          </button>
+          {countryOpen && <div className="space-y-3 border-t border-slate-100 p-3 sm:p-4">
             {teams.map((team) => {
-              const teamRepresentatives = countryRepresentatives.filter((item) => (item.team || "Geen team") === team);
-              return (
-                <div key={`${country}-${team}`} className="card overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3 sm:px-5">
-                    <div className="flex items-center gap-2"><UsersRound className="h-4 w-4 text-brand-700" /><h3 className="font-bold text-slate-900">{team}</h3></div>
-                    <span className="text-xs font-semibold text-slate-500">{teamRepresentatives.length} vertegenwoordiger{teamRepresentatives.length === 1 ? "" : "s"}</span>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {teamRepresentatives.map((representative) => {
-                      const latestCompleted = latestHistoricalCoaching(dataset, representative.id);
-                      const latest = latestScoredCoaching(dataset, representative.id);
-                      const score = latest ? coachingScoreOutOfFive(latest) : undefined;
-                      return (
-                        <Link
-                          key={representative.id}
-                          href={`/mijn-team/${representative.id}`}
-                          className="grid gap-3 p-4 transition hover:bg-slate-50 sm:grid-cols-[minmax(200px,1.4fr)_minmax(130px,0.8fr)_minmax(140px,0.8fr)_auto] sm:items-center sm:px-5"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <Avatar initials={representative.initials} />
-                            <div className="min-w-0"><p className="truncate font-semibold text-slate-900">{representative.firstName} {representative.lastName}</p><p className="text-xs text-slate-500">Vertegenwoordiger · {representative.country}</p></div>
-                          </div>
-                          <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Laatste score</p><p className="mt-1 text-sm font-bold text-slate-900">{score === undefined ? "Nog geen score" : `${score.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`}</p>{latestCompleted && !latest && <p className="mt-1 text-xs leading-4 text-amber-700">Afgewerkt, maar nog geen score geregistreerd.</p>}</div>
-                          <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Laatste begeleiding met score</p><p className="mt-1 text-sm text-slate-700">{latest ? formatShortDate(latest.date) : latestCompleted ? formatShortDate(latestCompleted.date) : "Nog geen begeleiding"}</p>{(latest ?? latestCompleted) && <div className="mt-1"><StatusBadge status={(latest ?? latestCompleted)!.status} label={coachingPerformanceStatus((latest ?? latestCompleted)!)} /></div>}</div>
-                          <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">Details <ChevronRight className="h-4 w-4" /></span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
+              const teamKey = `team:${team.id}`;
+              const teamOpen = !collapsed.has(teamKey);
+              return <section key={team.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <button type="button" onClick={() => toggle(teamKey)} aria-expanded={teamOpen} className="flex w-full items-center gap-2.5 px-3 py-3 text-left transition hover:bg-slate-50 sm:px-4">
+                  {teamOpen ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+                  <UsersRound className="h-4 w-4 text-brand-700" />
+                  <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{team.name}</h3>
+                  <span className="text-xs font-semibold text-slate-500">{team.members.length} {team.members.length === 1 ? "persoon" : "personen"}</span>
+                </button>
+                {teamOpen && <div className="divide-y divide-slate-100 border-t border-slate-100">
+                  {team.members.map((member) => <MyTeamMemberRow key={member.id} member={member} />)}
+                </div>}
+              </section>;
             })}
-          </section>
-        );
+          </div>}
+        </section>;
       })}
     </div>
   );
+}
+
+function MyTeamMemberRow({ member }: { member: MyTeamMember }) {
+  return <Link href={member.profileHref} className="grid gap-3 p-3.5 transition hover:bg-brand-50/40 sm:grid-cols-[minmax(210px,1.4fr)_minmax(125px,0.7fr)_minmax(145px,0.8fr)_auto] sm:items-center sm:px-4">
+    <div className="flex min-w-0 items-center gap-3">
+      <Avatar initials={member.initials} />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5"><p className="truncate text-sm font-semibold text-slate-900">{member.firstName} {member.lastName}</p>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>}</div>
+        <p className="mt-0.5 text-xs text-slate-500">{roleLabels[member.role]}</p>
+      </div>
+    </div>
+    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Algemene score</p><p className="mt-1 text-sm font-bold text-slate-800">{member.role !== "REPRESENTATIVE" ? "—" : member.overallScore === undefined ? "Nog geen score" : `${member.overallScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`}</p></div>
+    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Laatste begeleiding</p><p className="mt-1 text-sm text-slate-700">{member.role !== "REPRESENTATIVE" ? "Niet van toepassing" : member.lastCoaching ? formatShortDate(member.lastCoaching) : "Nog geen begeleiding"}</p></div>
+    <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">Fiche <ChevronRight className="h-4 w-4" /></span>
+  </Link>;
+}
+
+function useMyTeamMembers() {
+  const { user } = useSession();
+  const [members, setMembers] = useState<MyTeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(undefined);
+    fetch(`/api/my-team?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { members?: MyTeamMember[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Teamleden konden niet worden geladen.");
+        if (active) setMembers(payload.members ?? []);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setMembers([]);
+        setError(cause instanceof Error ? cause.message : "Teamleden konden niet worden geladen.");
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [user.id]);
+  return { members, loading, error };
+}
+
+function groupMyTeamMembers(members: MyTeamMember[]) {
+  const countries = new Map<string, Map<string, { id: string; name: string; members: MyTeamMember[] }>>();
+  for (const member of members) {
+    const teams = countries.get(member.country) ?? new Map();
+    const team = teams.get(member.teamId) ?? { id: member.teamId, name: member.team, members: [] };
+    team.members.push(member);
+    teams.set(member.teamId, team);
+    countries.set(member.country, teams);
+  }
+  return [...countries.entries()].map(([country, teams]) => ({
+    country,
+    teams: [...teams.values()],
+    count: new Set([...teams.values()].flatMap((team) => team.members.map((member) => member.id))).size,
+  }));
+}
+
+function TeamMemberDetail({ id }: { id: string }) {
+  const { members, loading, error } = useMyTeamMembers();
+  const member = members.find((item) => item.id === id);
+  if (loading) return <EmptyState title="Gebruikersfiche laden" description="Het teamlid wordt veilig opgehaald." />;
+  if (error || !member) return <EmptyState title="Geen toegang" description={error ?? "Dit teamlid valt niet binnen jouw huidige scope."} />;
+  return <div className="space-y-5">
+    <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← Terug naar Mijn Team</Link>
+    <div className="card p-5 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <Avatar initials={member.initials} className="h-16 w-16 text-lg" />
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-extrabold text-slate-950">{member.firstName} {member.lastName}</h1>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">Verkoopleider</span>}</div><p className="mt-1 text-sm text-slate-500">{roleLabels[member.role]} · {member.team} · {countryName(member.country)}</p></div>
+      </div>
+    </div>
+  </div>;
 }
 
 function countryName(country: string) {

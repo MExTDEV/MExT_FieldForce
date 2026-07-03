@@ -6,7 +6,11 @@ import MicrosoftEntraID, {
 import { prisma } from "@/lib/server/db";
 import { authPayloadDiagnostics, compactSessionToken } from "@/lib/server/auth-session";
 import { storeMicrosoftTokens } from "@/lib/server/microsoft-token-store";
-import { recordSuccessfulLogin } from "@/lib/server/login-history";
+import {
+  closeLoginSession,
+  getLoginRequestSessionId,
+  recordSuccessfulLogin,
+} from "@/lib/server/login-history";
 import { verifyPassword } from "@/lib/server/password";
 
 const entraConfigured = Boolean(
@@ -184,7 +188,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
         }
       }
-      const compactToken = compactSessionToken(token, databaseUserId);
+      let loginSessionId = token.loginSessionId;
+      if (account && databaseUserId) {
+        const auditSessionId = getLoginRequestSessionId();
+        try {
+          const loginSession = await recordSuccessfulLogin({
+            provider: account.provider,
+            userId: databaseUserId,
+            userEmail: user?.email ?? token.email,
+            sessionId: auditSessionId,
+          });
+          loginSessionId = loginSession.sessionId;
+        } catch (error) {
+          console.error("[auth] Login afgebroken omdat de verplichte auditregistratie mislukte.", {
+            userId: databaseUserId,
+            provider: account.provider,
+            sessionId: auditSessionId,
+            error,
+          });
+          throw error;
+        }
+      }
+      const compactToken = compactSessionToken(token, databaseUserId, loginSessionId);
       authPayloadDiagnostics("jwt", compactToken);
       return compactToken;
     },
@@ -192,23 +217,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.databaseUserId =
           typeof token.databaseUserId === "string" ? token.databaseUserId : undefined;
+        session.user.loginSessionId =
+          typeof token.loginSessionId === "string" ? token.loginSessionId : undefined;
       }
       authPayloadDiagnostics("session", session);
       return session;
     },
   },
   events: {
-    async signIn({ user, account, profile }) {
+    async signOut(message) {
+      const sessionId = "token" in message && typeof message.token?.loginSessionId === "string"
+        ? message.token.loginSessionId
+        : undefined;
+      if (!sessionId) return;
       try {
-        await recordSuccessfulLogin({
-          provider: account?.provider,
-          providerAccountId: account?.providerAccountId,
-          userId: user.id,
-          userEmail: user.email,
-          profile: profile as Record<string, unknown> | undefined,
-        });
+        await closeLoginSession(sessionId);
       } catch (error) {
-        console.error("[auth:login-history] Succesvolle login kon niet worden geregistreerd.", error);
+        console.error("[auth:login-audit] Logout kon niet worden geregistreerd.", { sessionId, error });
       }
     },
   },

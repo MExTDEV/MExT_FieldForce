@@ -1270,6 +1270,11 @@ function MicrosoftStatusBadge({
 function LoginSessions({ actorId, userId }: { actorId: string; userId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [provider, setProvider] = useState("");
+  const [browser, setBrowser] = useState("");
+  const [ipAddress, setIpAddress] = useState("");
+  const [device, setDevice] = useState("");
+  const [sessionStatus, setSessionStatus] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<UserLoginSessionPage>();
   const [loading, setLoading] = useState(true);
@@ -1287,6 +1292,11 @@ function LoginSessions({ actorId, userId }: { actorId: string; userId: string })
         });
         if (from) parameters.set("from", from);
         if (to) parameters.set("to", to);
+        if (provider) parameters.set("provider", provider);
+        if (browser) parameters.set("browser", browser);
+        if (ipAddress) parameters.set("ip", ipAddress);
+        if (device) parameters.set("device", device);
+        if (sessionStatus) parameters.set("status", sessionStatus);
         const response = await fetch(
           `/api/users/${encodeURIComponent(userId)}/login-sessions?${parameters}`,
           { cache: "no-store", signal: controller.signal }
@@ -1303,7 +1313,7 @@ function LoginSessions({ actorId, userId }: { actorId: string; userId: string })
     }
     void loadSessions();
     return () => controller.abort();
-  }, [actorId, from, page, to, userId]);
+  }, [actorId, browser, device, from, ipAddress, page, provider, sessionStatus, to, userId]);
 
   const sessions = data?.sessions ?? [];
   const pagination = data?.pagination;
@@ -1318,7 +1328,7 @@ function LoginSessions({ actorId, userId }: { actorId: string; userId: string })
         <p className="mt-1 text-sm text-slate-500">
           Succesvolle aanmeldingen, met de nieuwste login bovenaan.
         </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,180px)_minmax(0,180px)_auto] sm:items-end">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="Van datum">
             <input
               type="date"
@@ -1343,13 +1353,50 @@ function LoginSessions({ actorId, userId }: { actorId: string; userId: string })
               }}
             />
           </Field>
-          {(from || to) && (
+          <Field label="Provider">
+            <select className="field" value={provider} onChange={(event) => { setProvider(event.target.value); setPage(1); }}>
+              <option value="">Alle providers</option>
+              <option value="microsoft">Microsoft</option>
+              <option value="credentials">Wachtwoord</option>
+            </select>
+          </Field>
+          <Field label="Browser">
+            <select className="field" value={browser} onChange={(event) => { setBrowser(event.target.value); setPage(1); }}>
+              <option value="">Alle browsers</option>
+              {["Edge", "Chrome", "Firefox", "Safari", "Other"].map((value) => <option key={value} value={value}>{value === "Other" ? "Andere" : value}</option>)}
+            </select>
+          </Field>
+          <Field label="IP-adres">
+            <input className="field" value={ipAddress} placeholder="Zoek op IP-adres" onChange={(event) => { setIpAddress(event.target.value); setPage(1); }} />
+          </Field>
+          <Field label="Device">
+            <select className="field" value={device} onChange={(event) => { setDevice(event.target.value); setPage(1); }}>
+              <option value="">Alle devices</option>
+              <option value="Desktop">Desktop</option>
+              <option value="Mobile">Mobiel</option>
+              <option value="Tablet">Tablet</option>
+            </select>
+          </Field>
+          <Field label="Status">
+            <select className="field" value={sessionStatus} onChange={(event) => { setSessionStatus(event.target.value); setPage(1); }}>
+              <option value="">Alle statussen</option>
+              <option value="active">Actief</option>
+              <option value="logged-out">Afgemeld</option>
+              <option value="expired">Verlopen</option>
+            </select>
+          </Field>
+          {(from || to || provider || browser || ipAddress || device || sessionStatus) && (
             <button
               type="button"
-              className="btn-secondary min-h-10 px-3 py-2 text-xs"
+              className="btn-secondary min-h-10 self-end px-3 py-2 text-xs"
               onClick={() => {
                 setFrom("");
                 setTo("");
+                setProvider("");
+                setBrowser("");
+                setIpAddress("");
+                setDevice("");
+                setSessionStatus("");
                 setPage(1);
               }}
             >
@@ -1374,12 +1421,12 @@ function LoginSessions({ actorId, userId }: { actorId: string; userId: string })
         </div>
       ) : (
         <>
-          <div className="hidden grid-cols-[170px_110px_minmax(180px,1fr)_140px_minmax(180px,1fr)] gap-3 border-b border-slate-100 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 lg:grid">
+          <div className="hidden grid-cols-[155px_105px_minmax(180px,1fr)_140px_minmax(210px,1fr)] gap-3 border-b border-slate-100 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 lg:grid">
             <span>Datum en uur</span>
             <span>Provider</span>
-            <span>E-mailadres</span>
+            <span>Browser / device</span>
             <span>IP-adres</span>
-            <span>Browser / toestel</span>
+            <span>Sessie</span>
           </div>
           <div className="divide-y divide-slate-100">
             {sessions.map((session) => (
@@ -1416,22 +1463,43 @@ function LoginSessions({ actorId, userId }: { actorId: string; userId: string })
 }
 
 function LoginSessionRow({ session }: { session: UserLoginSessionRecord }) {
+  const status = session.status === "active"
+    ? { label: "Actief", className: "bg-emerald-50 text-emerald-700" }
+    : session.status === "logged-out"
+      ? { label: "Afgemeld", className: "bg-slate-100 text-slate-600" }
+      : { label: "Verlopen", className: "bg-amber-50 text-amber-700" };
   return (
-    <div className="grid gap-2 px-4 py-4 text-sm lg:grid-cols-[170px_110px_minmax(180px,1fr)_140px_minmax(180px,1fr)] lg:items-center lg:gap-3 lg:px-5">
+    <div className="grid gap-2 px-4 py-4 text-sm lg:grid-cols-[155px_105px_minmax(180px,1fr)_140px_minmax(210px,1fr)] lg:items-center lg:gap-3 lg:px-5">
       <div className="font-semibold text-slate-800">{formatLoginDate(session.loginAt)}</div>
       <div>
         <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${session.provider === "microsoft" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
           {session.provider === "microsoft" ? "Microsoft" : session.provider === "credentials" ? "Wachtwoord" : session.provider}
         </span>
       </div>
-      <div className="min-w-0 truncate text-slate-600" title={session.email ?? undefined}>{session.email || "Niet beschikbaar"}</div>
-      <div className="font-mono text-xs text-slate-600">{session.ipAddress || "Niet beschikbaar"}</div>
       <div className="flex min-w-0 items-center gap-2 text-slate-600" title={session.userAgent ?? undefined}>
         <UserCog className="h-4 w-4 shrink-0 text-slate-400" />
-        <span className="truncate">{describeUserAgent(session.userAgent)}</span>
+        <span className="truncate">{session.browser || "Onbekend"} · {session.operatingSystem || "Onbekend"} · {session.deviceType || "Onbekend"}</span>
+      </div>
+      <div className="font-mono text-xs text-slate-600">{session.ipAddress || "Niet beschikbaar"}</div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${status.className}`}>{status.label}</span>
+          <span className="text-xs text-slate-500">{formatDuration(session.durationSeconds)}</span>
+        </div>
+        <div className="mt-1 truncate text-xs text-slate-500" title={session.sessionId}>
+          {session.email || "Geen e-mail"} · {session.sessionId}
+        </div>
       </div>
     </div>
   );
+}
+
+function formatDuration(seconds: number) {
+  if (seconds < 60) return `${seconds} sec`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours} u ${minutes} min`;
 }
 
 function formatLoginDate(value: string) {
@@ -1444,31 +1512,6 @@ function formatLoginDate(value: string) {
     hour12: false,
     timeZone: "Europe/Brussels",
   }).format(new Date(value));
-}
-
-function describeUserAgent(userAgent?: string | null) {
-  if (!userAgent) return "Niet beschikbaar";
-  const browser = userAgent.includes("Edg/")
-    ? "Edge"
-    : userAgent.includes("Firefox/")
-      ? "Firefox"
-      : userAgent.includes("Chrome/")
-        ? "Chrome"
-        : userAgent.includes("Safari/")
-          ? "Safari"
-          : "Onbekende browser";
-  const device = userAgent.includes("iPhone")
-    ? "iPhone"
-    : userAgent.includes("iPad")
-      ? "iPad"
-      : userAgent.includes("Android")
-        ? "Android"
-        : userAgent.includes("Macintosh")
-          ? "Mac"
-          : userAgent.includes("Windows")
-            ? "Windows"
-            : "Onbekend toestel";
-  return `${browser} · ${device}`;
 }
 
 function TeamCreationDialog({

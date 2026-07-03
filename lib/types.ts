@@ -186,11 +186,20 @@ export type ManagedUser = {
 
 export type UserLoginSessionRecord = {
   id: string;
+  sessionId: string;
   loginAt: string;
+  logoutAt?: string | null;
+  lastActivityAt: string;
+  expiresAt: string;
+  durationSeconds: number;
   provider: string;
   email?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+  browser?: string | null;
+  operatingSystem?: string | null;
+  deviceType?: string | null;
+  status: "active" | "logged-out" | "expired";
 };
 
 export type UserLoginSessionPage = {
