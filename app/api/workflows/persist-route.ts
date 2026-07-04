@@ -8,6 +8,8 @@ import { buildVisibleCoachingWhere } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
 import {
   requireAuthenticatedUser,
+  requireCoachingParticipantScope,
+  requireCoachingOwnerScope,
   requirePermission,
   requireRepresentativeScope,
   requireRole,
@@ -16,6 +18,7 @@ import {
   recordOutlookSyncFailure,
   requireMicrosoftAccessToken,
   syncCoachingsToOutlook,
+  transferCoachingsBetweenOwners,
 } from "@/lib/server/microsoft-graph";
 
 export async function persistWorkflowPatch(
@@ -28,20 +31,33 @@ export async function persistWorkflowPatch(
     const selectedPatch = selectPatch(payload);
     const actor = await requireAuthenticatedUser(actorIdFromPatch(selectedPatch));
     requireWorkflowPermission(routeName, actor);
-    await requireRepresentativeScope(actor, representativeIdsFromPatch(selectedPatch));
+    if (routeName === "coaching") {
+      await requireCoachingParticipantScope(actor, selectedPatch.interventions?.map((item) => item.representativeId) ?? []);
+      await requireCoachingOwnerScope(actor, selectedPatch.interventions?.map((item) => item.ownerId) ?? []);
+    } else {
+      await requireRepresentativeScope(actor, representativeIdsFromPatch(selectedPatch));
+    }
     if (selectedPatch.interventions?.length) {
-      await requireExistingCoachingsVisible(actor, selectedPatch.interventions.map((item) => item.id));
+      await requireExistingCoachingsMutable(actor, selectedPatch.interventions);
     }
     const coachingBefore = routeName === "coaching"
       ? await loadCoachingSnapshots(selectedPatch.interventions?.map((item) => item.id) ?? [])
       : new Map<string, Record<string, unknown>>();
     const patch = await applyAuthenticatedActor(selectedPatch, actor.id);
     await saveWorkflowPatchToDatabase(patch);
+    if (routeName === "coaching") {
+      await writeCoachingChangeLogs(actor.id, patch.interventions ?? [], coachingBefore);
+    }
     await writeAuditLogs(auditEntriesFromWorkflowPatch(routeName, patch, actor.id, coachingBefore));
     let outlookSync = undefined;
     if (routeName === "coaching" && patch.interventions?.length) {
       try {
         const accessToken = await requireMicrosoftAccessToken(request);
+        await transferCoachingsBetweenOwners(accessToken, actor.id, patch.interventions.flatMap((item) => {
+          const old = coachingBefore.get(item.id);
+          const oldOwnerId = typeof old?.ownerId === "string" ? old.ownerId : item.ownerId;
+          return oldOwnerId !== item.ownerId ? [{ interventionId: item.id, oldOwnerId, newOwnerId: item.ownerId, outlookEventId: typeof old?.outlookEventId === "string" ? old.outlookEventId : undefined }] : [];
+        }));
         outlookSync = await syncCoachingsToOutlook(accessToken, actor.id, patch.interventions);
       } catch (error) {
         console.error("[outlook-sync] Fieldforce-opslag is behouden.", error);
@@ -52,19 +68,52 @@ export async function persistWorkflowPatch(
   }, "Workflowgegevens konden niet worden opgeslagen.");
 }
 
-async function requireExistingCoachingsVisible(
+async function requireExistingCoachingsMutable(
   actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
-  interventionIds: string[]
+  incoming: NonNullable<WorkflowPersistencePatch["interventions"]>
 ) {
+  const interventionIds = incoming.map((item) => item.id);
   const ids = [...new Set(interventionIds)];
   const existing = await prisma.intervention.findMany({
     where: { id: { in: ids }, type: "BEGELEIDING" },
-    select: { id: true, status: true },
+    select: {
+      id: true, status: true, representativeId: true, ownerId: true, plannedAt: true,
+      representative: { select: { representativeId: true } },
+      startTime: true, endTime: true, notifyRepresentative: true,
+      scores: { select: { id: true, score: true, comment: true } },
+      coachingDetail: { select: { id: true, arrivalTime: true, departureTime: true, kilometers: true, area: true, sector: true, groupAttentionPoints: true, individualAttentionPoint: true, appointments: { select: { id: true, remarks: true, scoreRows: { select: { score: true, comment: true } } } } } },
+    },
     distinct: ["id"],
   });
   if (existing.length === 0) return;
-  if (existing.some((item) => ["VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"].includes(item.status))) {
-    forbidden("Deze begeleiding werd doorgestuurd ter akkoord en kan niet meer aangepast worden.");
+  for (const stored of existing) {
+    const next = incoming.find((item) => item.id === stored.id)!;
+    if (["VOLTOOID", "GEFINALISEERD", "GESLOTEN", "AFGESLOTEN", "VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"].includes(stored.status)) {
+      forbidden("Een uitgevoerde begeleiding is volledig read-only.");
+    }
+    let groupAttentionFilled = false;
+    try { groupAttentionFilled = JSON.parse(stored.coachingDetail?.groupAttentionPoints ?? "[]").some((value: unknown) => typeof value === "string" && value.trim()); } catch { groupAttentionFilled = false; }
+    const hasData = stored.scores.some((score) => score.score !== null || score.comment?.trim()) || Boolean(stored.coachingDetail && (
+      stored.coachingDetail.arrivalTime || stored.coachingDetail.departureTime || stored.coachingDetail.kilometers ||
+      stored.coachingDetail.area || stored.coachingDetail.sector || stored.coachingDetail.individualAttentionPoint ||
+      groupAttentionFilled || stored.coachingDetail.appointments.some((appointment) =>
+        appointment.remarks.trim() || appointment.scoreRows.some((score) => score.score !== null || score.comment.trim())
+      )
+    ));
+    const storedParticipantId = stored.representative.representativeId ?? stored.representativeId;
+    const planningChanged = storedParticipantId !== next.representativeId ||
+      stored.plannedAt?.toISOString().slice(0, 10) !== next.plannedDate ||
+      stored.startTime !== next.startTime || stored.endTime !== next.endTime ||
+      stored.notifyRepresentative !== Boolean(next.notifyRepresentative);
+    if ((next.status === "geannuleerd" || planningChanged) && (stored.status !== "GEPLAND" || hasData)) {
+      forbidden("Alleen een lege, geplande begeleiding kan gewijzigd of verwijderd worden.");
+    }
+    if (["voltooid", "gefinaliseerd", "gesloten"].includes(next.status) && next.actionPoints.filter((item) => item.isNew && item.title.trim()).length < 1) {
+      forbidden("Voeg minstens één nieuw actiepunt toe voordat je de begeleiding afsluit.");
+    }
+    if (["voltooid", "gefinaliseerd", "gesloten"].includes(next.status) && next.actionPoints.some((item) => item.isNew && (!item.title.trim() || !item.tipsAndTricks?.trim() || !item.priority))) {
+      forbidden("Titel, prioriteit en Tips & Tricks zijn verplicht voor nieuwe actiepunten.");
+    }
   }
 
   const visible = await prisma.intervention.findMany({
@@ -75,6 +124,31 @@ async function requireExistingCoachingsVisible(
   if (visible.length !== existing.length) {
     forbidden("Deze begeleiding bestaat niet binnen je toegestane zichtbaarheid.");
   }
+}
+
+async function writeCoachingChangeLogs(
+  actorId: string,
+  interventions: NonNullable<WorkflowPersistencePatch["interventions"]>,
+  before: Map<string, Record<string, unknown>>
+) {
+  const tracked = ["status", "representativeId", "ownerId", "plannedDate", "startTime", "endTime", "notifyRepresentative", "deletedAt"] as const;
+  const rows = interventions.flatMap((item) => {
+    const old = before.get(item.id) ?? {};
+    return tracked.flatMap((field) => {
+      const newValue = item[field as keyof typeof item];
+      const oldKey = field === "plannedDate" ? "plannedAt" : field;
+      const oldValue = old[oldKey];
+      const normalizedOld = typeof oldValue === "string" && field === "plannedDate" ? oldValue.slice(0, 10) : oldValue;
+      return JSON.stringify(normalizedOld ?? null) === JSON.stringify(newValue ?? null) ? [] : [{
+        interventionId: item.id,
+        userId: actorId,
+        field,
+        oldValue: normalizedOld === undefined ? null : JSON.stringify(normalizedOld),
+        newValue: newValue === undefined ? null : JSON.stringify(newValue),
+      }];
+    });
+  });
+  if (rows.length) await prisma.coachingChangeLog.createMany({ data: rows });
 }
 
 async function loadCoachingSnapshots(ids: string[]) {
@@ -88,6 +162,11 @@ async function loadCoachingSnapshots(ids: string[]) {
       startTime: true,
       endTime: true,
       notifyRepresentative: true,
+      deletedAt: true,
+      representativeId: true,
+      representative: { select: { representativeId: true } },
+      ownerId: true,
+      outlookEventId: true,
       updatedAt: true,
       scores: { select: { category: true, label: true, score: true, comment: true } },
       actionPoints: { select: { id: true, title: true, status: true, description: true } },
@@ -107,6 +186,10 @@ async function loadCoachingSnapshots(ids: string[]) {
     startTime: item.startTime,
     endTime: item.endTime,
     notifyRepresentative: item.notifyRepresentative,
+    deletedAt: item.deletedAt?.toISOString(),
+    representativeId: item.representative.representativeId ?? item.representativeId,
+    ownerId: item.ownerId,
+    outlookEventId: item.outlookEventId,
     updatedAt: item.updatedAt.toISOString(),
     scores: Object.fromEntries(item.scores.map((score) => [
       `${score.category ?? ""}::${score.label ?? ""}`,
@@ -196,7 +279,7 @@ async function applyAuthenticatedActor(patch: WorkflowPersistencePatch, actorId:
       return {
         ...item,
         initiatorId: existing?.initiatorId ?? actorId,
-        ownerId: existing?.ownerId ?? actorId,
+        ownerId: item.ownerId || existing?.ownerId || actorId,
       };
     }),
     contactMoments: patch.contactMoments?.map((item) => ({ ...item, initiatorId: actorId, ownerId: actorId })),

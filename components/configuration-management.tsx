@@ -5,8 +5,11 @@ import { Check, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import { useSession } from "@/components/session-provider";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { fieldForcePermissionGroups } from "@/lib/user-management";
+import { kpiEvaluationLabels, kpiUnitOptions } from "@/lib/kpi-settings";
 import type {
   Country,
+  KpiEvaluationDirection,
+  KpiUnit,
   ManagementConfiguration,
 } from "@/lib/types";
 
@@ -17,7 +20,7 @@ type Mutation = (
 ) => Promise<boolean>;
 type EditorState =
   | { kind: "team"; id?: string; name: string; country: Country; primaryLeaderId: string }
-  | { kind: "kpi"; id?: string; code: string; name: string; description: string; country: Country | null; unit: string }
+  | { kind: "kpi"; id?: string; code: string; name: string; description: string; country: Country | null; unit: KpiUnit; targetValue: string; minValue: string; maxValue: string; evaluationDirection: KpiEvaluationDirection }
   | { kind: "focus"; id?: string; code: string; name: string; sortOrder: number }
   | { kind: "criterion"; id?: string; focusId: string; name: string; sortOrder: number }
   | { kind: "deactivate"; entity: string; id: string; name: string }
@@ -193,7 +196,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
             <Card
               key={item.id}
               title={item.name}
-              detail={`${item.code} | ${item.unit} | ${item.country ?? "Globaal"}`}
+              detail={`${item.code} | Doel ${formatKpiSetting(item.targetValue, item.unit)} | ${kpiEvaluationLabels[item.evaluationDirection]} | ${item.country ?? "Globaal"}`}
               active={item.active}
               onEdit={() => setEditor({
                 kind: "kpi",
@@ -203,6 +206,10 @@ export function ConfigurationManagement({ section }: { section: Section }) {
                 description: item.description,
                 country: item.country,
                 unit: item.unit,
+                targetValue: String(item.targetValue),
+                minValue: item.minValue === null ? "" : String(item.minValue),
+                maxValue: item.maxValue === null ? "" : String(item.maxValue),
+                evaluationDirection: item.evaluationDirection,
               })}
               onDelete={() => setEditor({
                 kind: "deactivate",
@@ -226,7 +233,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
             <Card
               key={item.id}
               title={item.name}
-              detail={`${item.code} | ${item.unit} | ${item.country ?? "Globaal"}`}
+              detail={`${item.code} | Doel ${formatKpiSetting(item.targetValue, item.unit)} | ${kpiEvaluationLabels[item.evaluationDirection]} | ${item.country ?? "Globaal"}`}
               active={item.active}
               onEdit={() => setEditor({
                 kind: "kpi",
@@ -236,6 +243,10 @@ export function ConfigurationManagement({ section }: { section: Section }) {
                 description: item.description,
                 country: item.country,
                 unit: item.unit,
+                targetValue: String(item.targetValue),
+                minValue: item.minValue === null ? "" : String(item.minValue),
+                maxValue: item.maxValue === null ? "" : String(item.maxValue),
+                evaluationDirection: item.evaluationDirection,
               })}
               onDelete={() => setEditor({
                 kind: "deactivate",
@@ -608,6 +619,10 @@ function newEditor(
       description: "",
       country,
       unit: "number",
+      targetValue: "",
+      minValue: "",
+      maxValue: "",
+      evaluationDirection: "HIGHER_IS_BETTER",
     };
   }
   if (section === "kapstok") {
@@ -619,6 +634,16 @@ function newEditor(
     };
   }
   return undefined;
+}
+
+function formatKpiSetting(value: number, unit: KpiUnit) {
+  const formatted = value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
+  if (unit === "%") return `${formatted}%`;
+  if (unit === "EUR") return `€ ${formatted}`;
+  if (unit === "minutes") return `${formatted} min`;
+  if (unit === "hours") return `${formatted} u`;
+  if (unit === "km") return `${formatted} km`;
+  return formatted;
 }
 
 function ManagementEditor({
@@ -666,7 +691,14 @@ function ManagementEditor({
     editor.kind === "team"
       ? Boolean(editor.name.trim() && editor.primaryLeaderId)
       : editor.kind === "kpi"
-        ? Boolean(editor.code.trim() && editor.name.trim() && editor.unit.trim())
+        ? Boolean(
+            editor.code.trim() &&
+            editor.name.trim() &&
+            editor.targetValue.trim() &&
+            Number.isFinite(Number(editor.targetValue)) &&
+            (!editor.minValue.trim() || Number.isFinite(Number(editor.minValue))) &&
+            (!editor.maxValue.trim() || Number.isFinite(Number(editor.maxValue)))
+          )
         : Boolean(
             editor.name.trim() &&
             (editor.kind === "criterion" || editor.code.trim()) &&
@@ -760,12 +792,50 @@ function ManagementEditor({
               <select
                 className="field"
                 value={editor.unit}
-                onChange={(event) => onChange({ ...editor, unit: event.target.value })}
+                onChange={(event) => onChange({ ...editor, unit: event.target.value as KpiUnit })}
               >
-                <option value="number">Getal</option>
-                <option value="%">Percentage</option>
-                <option value="EUR">EUR</option>
+                {kpiUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Doelwaarde">
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  className="field"
+                  value={editor.targetValue}
+                  onChange={(event) => onChange({ ...editor, targetValue: event.target.value })}
+                />
+              </Field>
+              <Field label="Minimum (optioneel)">
+                <input
+                  type="number"
+                  step="any"
+                  className="field"
+                  value={editor.minValue}
+                  onChange={(event) => onChange({ ...editor, minValue: event.target.value })}
+                />
+              </Field>
+              <Field label="Maximum (optioneel)">
+                <input
+                  type="number"
+                  step="any"
+                  className="field"
+                  value={editor.maxValue}
+                  onChange={(event) => onChange({ ...editor, maxValue: event.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="Beoordeling">
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(Object.entries(kpiEvaluationLabels) as [KpiEvaluationDirection, string][]).map(([value, label]) => (
+                  <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${editor.evaluationDirection === value ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                    <input type="radio" name="evaluationDirection" value={value} checked={editor.evaluationDirection === value} onChange={() => onChange({ ...editor, evaluationDirection: value })} />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </Field>
           </>
         )}

@@ -65,6 +65,48 @@ export async function requireRepresentativeScope(
   if (!allowed) forbidden("Deze vertegenwoordiger valt buiten je toegestane scope.");
 }
 
+export async function requireCoachingParticipantScope(
+  actor: MockUser,
+  participantIds: string[]
+) {
+  const uniqueIds = [...new Set(participantIds.filter(Boolean))];
+  if (!uniqueIds.length) return;
+  const participants = await prisma.user.findMany({
+    where: {
+      active: true,
+      role: { in: ["REPRESENTATIVE", "SALES_LEADER"] },
+      OR: [{ id: { in: uniqueIds } }, { representativeId: { in: uniqueIds } }],
+    },
+    select: { id: true, representativeId: true, role: true, country: true, teamId: true },
+  });
+  if (participants.length !== uniqueIds.length) forbidden("De geselecteerde begeleide persoon is ongeldig.");
+  const allowed = participants.every((participant) => {
+    if (participant.id === actor.id) return false;
+    if (actor.role === "SALES_LEADER") {
+      return participant.role === "REPRESENTATIVE" && Boolean(actor.teamId && participant.teamId === actor.teamId);
+    }
+    if (["COUNTRY_MANAGER", "ADMIN"].includes(actor.role)) return participant.country === actor.country;
+    return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
+  });
+  if (!allowed) forbidden("Deze persoon valt buiten je toegestane begeleidingsscope.");
+}
+
+export async function requireCoachingOwnerScope(actor: MockUser, ownerIds: string[]) {
+  const ids = [...new Set(ownerIds.filter(Boolean))];
+  if (!ids.length) return;
+  const owners = await prisma.user.findMany({
+    where: { id: { in: ids }, active: true, role: { in: ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"] } },
+    select: { id: true, country: true },
+  });
+  if (owners.length !== ids.length) forbidden("De geselecteerde begeleider is ongeldig.");
+  const allowed = owners.every((owner) => {
+    if (actor.role === "SALES_LEADER") return owner.id === actor.id;
+    if (["COUNTRY_MANAGER", "ADMIN"].includes(actor.role)) return owner.country === actor.country;
+    return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
+  });
+  if (!allowed) forbidden("De begeleider valt buiten je toegestane scope.");
+}
+
 async function findActiveUser(id: string): Promise<MockUser | undefined> {
   const user = await prisma.user.findFirst({
     where: {

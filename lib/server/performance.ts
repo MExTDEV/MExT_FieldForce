@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/server/db";
+import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
 import type {
   HistoricalActionPoint,
   HistoricalCoaching,
@@ -11,10 +12,8 @@ import {
   mergeCriterionScores,
   normalizePerformanceScore,
 } from "@/lib/performance-data";
-import type { Status, WorkflowActionPoint } from "@/lib/types";
+import type { KpiUnit, Status, WorkflowActionPoint } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
-
-type KpiUnit = "%" | "EUR" | "number";
 
 export async function loadPerformanceDatasetFromDatabase(
   options: { coachingWhere?: Prisma.InterventionWhereInput } = {}
@@ -211,7 +210,7 @@ async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
   const snapshots = await prisma.kpiSnapshot.findMany({
     include: {
       user: true,
-      kpiDefinition: true,
+      kpiDefinition: { include: { targetOverrides: true } },
     },
     orderBy: [{ periodStart: "asc" }, { kpiDefinition: { name: "asc" } }],
   });
@@ -227,10 +226,15 @@ async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
       month,
       values: [],
     };
+    const effectiveTarget = resolveKpiTargetFromDefinition(snapshot.kpiDefinition, {
+      country: snapshot.user.country,
+      teamId: snapshot.user.teamId ?? undefined,
+      userId: snapshot.userId,
+    });
     current.values.push({
       label: snapshot.kpiDefinition.name,
       value: Number(snapshot.value),
-      target: snapshot.target ? Number(snapshot.target) : 0,
+      target: Number(snapshot.target ?? effectiveTarget.targetValue),
       unit: toKpiUnit(snapshot.kpiDefinition.unit),
     });
     grouped.set(key, current);
@@ -280,6 +284,7 @@ function progressForStatus(status: WorkflowActionPoint["status"]) {
 function toKpiUnit(unit: string): KpiUnit {
   if (unit === "%") return "%";
   if (unit === "EUR") return "EUR";
+  if (["count", "minutes", "hours", "km"].includes(unit)) return unit as KpiUnit;
   return "number";
 }
 

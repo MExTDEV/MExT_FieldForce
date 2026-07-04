@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -79,7 +79,7 @@ import {
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
 import type { MyTeamMember } from "@/lib/my-team";
-import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, WorkflowScore } from "@/lib/types";
+import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
   completedCoachingStatuses,
   dedupeById,
@@ -157,8 +157,6 @@ function Dashboard() {
   const { dataset: performanceDataset } = usePerformance();
   const {
     visibleInterventions,
-    openReflections,
-    pendingApprovals,
     visibleContactMoments,
     visibleHelpRequests,
     visibleRetrainings,
@@ -234,12 +232,12 @@ function Dashboard() {
     )
     .sort((left, right) => (left.startTime ?? "00:00").localeCompare(right.startTime ?? "00:00"));
   const openActionCount = actionPointsEnabled ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) : 0;
-  const reflectionCount = user.role === "REPRESENTATIVE"
-    ? openReflections(user).length
-    : scopedInterventions.filter((item) => item.status === "wacht_op_vt").length;
-  const approvalCount = user.role === "REPRESENTATIVE"
-    ? pendingApprovals(user).length
-    : scopedInterventions.filter((item) => item.status === "wacht_op_akkoord").length;
+  const awaitingApproval = scopedInterventions.filter((item) => ["wacht_op_akkoord", "verzonden_ter_akkoord"].includes(item.status));
+  const approvalCount = awaitingApproval.length;
+  const attentionRequiredCount = awaitingApproval.filter((item) => {
+    const since = item.sentForApprovalAt ?? item.updatedAt;
+    return Date.now() - new Date(since).getTime() > 2 * 24 * 60 * 60 * 1000;
+  }).length;
   const metrics = [
     coachingEnabled && user.role === "REPRESENTATIVE" && { label: "Mijn Begeleidingen", value: scopedInterventions.length, icon: ClipboardCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
     coachingEnabled && { label: "Geplande begeleidingen", value: scopedInterventions.filter((item) => item.status === "gepland").length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
@@ -248,13 +246,12 @@ function Dashboard() {
     contactsEnabled && { label: "Wachtend op VT-input", value: scopedContacts.filter((item) => item.status === "wacht_op_vt_input").length, icon: Contact, tone: "bg-violet-50 text-violet-700", href: "/contactmomenten" },
     helpEnabled && { label: "Nieuwe hulpaanvragen", value: scopedHelpRequests.filter((item) => item.status === "nieuw").length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/hulpaanvragen" },
     helpEnabled && { label: "Zonder vervolgactie", value: scopedHelpRequests.filter((item) => !item.followUpType && !["afgesloten", "geannuleerd"].includes(item.status)).length, icon: Clock3, tone: "bg-amber-50 text-amber-700", href: "/hulpaanvragen" },
-    coachingEnabled && { label: "Reflecties wachtend op VT", value: reflectionCount, icon: Clock3, tone: "bg-cyan-50 text-cyan-700", href: user.role === "REPRESENTATIVE" && actionPointsEnabled ? "/mijn-reflecties" : "/begeleidingen" },
     coachingEnabled && { label: "Verslagen wachtend op akkoord", value: approvalCount, icon: ClipboardCheck, tone: "bg-fuchsia-50 text-fuchsia-700", href: user.role === "REPRESENTATIVE" && actionPointsEnabled ? "/mijn-verslagen" : "/begeleidingen" },
     retrainingEnabled && { label: "Geplande retrainingen", value: scopedRetrainings.filter((item) => item.status === "gepland").length, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700", href: "/retrainingen" },
     salesTrainingEnabled && { label: "Geplande sales trainingen", value: scopedSalesTrainings.filter((item) => item.status === "gepland").length, icon: Sparkles, tone: "bg-cyan-50 text-cyan-700", href: "/sales-trainingen" },
     (retrainingEnabled || salesTrainingEnabled) && { label: "Openstaande trainingen", value: [...scopedRetrainings, ...scopedSalesTrainings].filter((item) => !["afgerond", "geannuleerd"].includes(item.status)).length, icon: BookOpenCheck, tone: "bg-blue-50 text-blue-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
     (retrainingEnabled || salesTrainingEnabled) && { label: "Trainingen zonder opvolgactie", value: scopedRetrainings.filter((item) => item.actionPoints.length === 0).length + scopedSalesTrainings.filter((item) => !item.followUpAction.trim()).length, icon: Target, tone: "bg-amber-50 text-amber-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
-    actionPointsEnabled && { label: "Aandacht vereist", value: user.role === "REPRESENTATIVE" ? Number(smartResult.insights[0]?.risk !== "green") : smartResult.alerts.length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "#smart-alerts" },
+    coachingEnabled && { label: "Aandacht vereist", value: attentionRequiredCount, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/begeleidingen" },
   ].filter(Boolean) as { label: string; value: number; icon: typeof CalendarCheck; tone: string; href: string }[];
 
   return (
@@ -1080,9 +1077,9 @@ function CoachingDetail({ id }: { id: string }) {
   const historical = coachingById(performanceDataset, id);
   const workflow = workflowApi.visibleInterventions(user).find((item) => item.id === id);
   const representativeId = historical?.representativeId ?? workflow?.representativeId;
-  const representative = representatives.find((item) => item.id === representativeId);
+  const representative = representatives.find((item) => item.id === representativeId) ?? (workflow?.subject ? coachingSubjectAsRepresentative(workflow.subject) : undefined);
 
-  if (!representative || !canAccessRepresentative(user, representative)) {
+  if (!representative || (!workflow && !canAccessRepresentative(user, representative))) {
     return <EmptyState title="Begeleiding niet gevonden" description="Deze begeleiding bestaat niet of valt buiten jouw huidige scope." />;
   }
 
@@ -1201,30 +1198,35 @@ function CoachingDossierDetail({
 }) {
   const { user, managedUsers } = useSession();
   const { coachingFramework } = useConfiguration();
-  const appointmentCriteria = coachingFramework.flatMap((focus) =>
-    focus.criteria.map((criterion) => `${focus.name} - ${criterion}`)
-  );
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
   const [openAppointmentId, setOpenAppointmentId] = useState<string>();
   const [isExportingReport, setIsExportingReport] = useState(false);
   const [reportMessage, setReportMessage] = useState<{ type: "success" | "error"; text: string }>();
-  const [editingCompleted, setEditingCompleted] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const updateActionTips = useCallback((actionId: string, tipsAndTricks: string) => {
+    setLocal((current) => ({
+      ...current,
+      actionPoints: current.actionPoints.map((item) => item.id === actionId ? { ...item, tipsAndTricks } : item),
+    }));
+  }, []);
+  const appointmentCriteria = coachingFramework
+    .filter((focus) => local.focusNames.includes(focus.name))
+    .flatMap((focus) => focus.criteria.map((criterion) => `${focus.name} - ${criterion}`));
 
   const dossier = local.dossier ?? defaultDossierState();
   const appointments = (local.appointments ?? []).filter((item) => !item.isDeleted);
   const totalCoachingScore = calculateTotalCoachingScore(dossier, appointments);
   const isCompleted = ["voltooid", "gefinaliseerd", "gesloten", "afgesloten"].includes(local.status);
   const isApprovalLocked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(local.status);
-  const canManageCompleted = user.role === "SUPER_ADMIN" ||
-    user.role === "ADMIN" ||
+  const canManageCompleted = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role) ||
+    (["ADMIN", "COUNTRY_MANAGER"].includes(user.role) && user.country === local.country) ||
     (user.role === "SALES_LEADER" && (
       local.ownerId === user.id ||
       local.initiatorId === user.id ||
       local.teamId === user.teamId
     ));
-  const readOnly = user.role === "REPRESENTATIVE" || isApprovalLocked || (isCompleted && !editingCompleted) || local.status === "geannuleerd";
+  const readOnly = user.role === "REPRESENTATIVE" || isApprovalLocked || isCompleted || local.status === "geannuleerd";
 
   async function transition(action: "reopen" | "send_for_approval" | "approve") {
     setTransitioning(true);
@@ -1232,11 +1234,7 @@ function CoachingDossierDetail({
     try {
       const updated = await workflowApi.transitionCoaching(local.id, action);
       setLocal(updated);
-      if (action === "reopen") {
-        setEditingCompleted(true);
-        setMessage("De begeleiding is opnieuw geopend. Sla je wijzigingen op om ze opnieuw als afgewerkt te bewaren.");
-      } else if (action === "send_for_approval") {
-        setEditingCompleted(false);
+      if (action === "send_for_approval") {
         setMessage("De begeleiding is verstuurd naar de vertegenwoordiger en is nu definitief vergrendeld.");
       } else {
         setMessage("Je hebt deze begeleiding voor akkoord bevestigd.");
@@ -1293,6 +1291,17 @@ function CoachingDossierDetail({
   }
 
   function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "voltooid" | "geannuleerd") {
+    if (["gesloten", "gefinaliseerd", "voltooid"].includes(status)) {
+      const newActions = local.actionPoints.filter((action) => action.isNew && action.title.trim());
+      if (newActions.length < 1) {
+        setMessage("Voeg minstens één nieuw actiepunt toe voordat je de begeleiding afsluit.");
+        return;
+      }
+      if (newActions.some((action) => !action.tipsAndTricks?.trim() || !action.priority)) {
+        setMessage("Titel, prioriteit en Tips & Tricks zijn verplicht voor elk nieuw actiepunt.");
+        return;
+      }
+    }
     const saved = workflowApi.saveCoachingStatus({
       id: local.id,
       representativeId: local.representativeId,
@@ -1316,7 +1325,6 @@ function CoachingDossierDetail({
       appointments: local.appointments,
     }, status);
     setLocal(saved);
-    if (status === "voltooid") setEditingCompleted(false);
     setMessage(
       status === "gefinaliseerd"
         ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger."
@@ -1345,7 +1353,7 @@ function CoachingDossierDetail({
       ...current,
       actionPoints: [
         ...current.actionPoints,
-        { id: `action-${Date.now()}`, title: "", type: "vaardigheid", due: "", status: "open", owner: user.id, priority: "normaal" },
+        { id: `action-${Date.now()}`, title: "", type: "vaardigheid", due: "", status: "open", owner: user.id, priority: "normaal", tipsAndTricks: "", isNew: true },
       ],
     }));
   }
@@ -1382,7 +1390,7 @@ function CoachingDossierDetail({
     setOpenAppointmentId((current) => current === id ? undefined : current);
   }
 
-  if ((isCompleted && !editingCompleted) || isApprovalLocked) {
+  if (isCompleted || isApprovalLocked) {
     return (
       <CompletedCoachingSummary
         intervention={local}
@@ -1391,10 +1399,9 @@ function CoachingDossierDetail({
         totalScore={totalCoachingScore}
         canManage={canManageCompleted}
         showHistory={["ADMIN", "SUPER_ADMIN"].includes(user.role)}
-        isRepresentative={user.role === "REPRESENTATIVE"}
+        isRepresentative={local.subject?.userId === user.id || local.representativeId === user.id || local.representativeId === user.representativeId}
         isBusy={transitioning || isExportingReport}
         message={message}
-        onReopen={() => void transition("reopen")}
         onSendForApproval={() => void transition("send_for_approval")}
         onApprove={() => void transition("approve")}
         onDownload={() => void downloadProfessionalReport()}
@@ -1457,8 +1464,6 @@ function CoachingDossierDetail({
           <ReadOnlyField label="Datum" value={formatShortDate(local.plannedDate)} />
           <ReadOnlyField label="Vertegenwoordiger" value={`${representative.firstName} ${representative.lastName}`} />
           <ReadOnlyField label="Team" value={representative.team} />
-          <TextField label="Gebied" value={dossier.area} disabled={readOnly} onChange={(area) => updateDossier({ area })} />
-          <TextField label="Sector" value={dossier.sector} disabled={readOnly} onChange={(sector) => updateDossier({ sector })} />
           <ReadOnlyField label="Niveau" value={representative.level} />
           <ReadOnlyField label="Verkoopleider" value={reportingUserName(local.ownerId, managedUsers)} />
           <TextField label="Aankomsttijd" type="time" value={dossier.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => updateDossier({ arrivalTime })} />
@@ -1469,14 +1474,9 @@ function CoachingDossierDetail({
 
       <section className="card p-5 sm:p-6">
         <h2 className="text-lg font-bold text-slate-950">I. Voorbereiding</h2>
+        <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Categorieën</p><p className="mt-1 text-xs text-slate-500">Vooraf gekozen categorieën staan aan. Tijdens de begeleiding kun je altijd categorieën toevoegen.</p><div className="mt-3 flex flex-wrap gap-2">{coachingFramework.map((focus) => { const active = local.focusNames.includes(focus.name); return <button key={focus.name} type="button" disabled={readOnly} onClick={() => setLocal((current) => ({ ...current, focusNames: active ? current.focusNames.filter((name) => name !== focus.name) : [...current.focusNames, focus.name] }))} className={`rounded-full border px-3 py-2 text-xs font-bold ${active ? "border-brand-700 bg-brand-50 text-brand-800" : "border-slate-200 text-slate-500"}`}>{active ? "✓ " : "+ "}{focus.name}</button>; })}</div></div>
         <div className="mt-4 grid gap-4 md:grid-cols-4">
           {representative.kpis.map((kpi) => <ReadOnlyField key={kpi.label} label={kpi.label} value={`${kpi.value} / doel ${kpi.target}`} />)}
-        </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {dossier.groupAttentionPoints.map((value, index) => (
-            <TextField key={index} label={`Groepsaandachtspunt ${index + 1}`} value={value} disabled={readOnly} onChange={(next) => updateDossier({ groupAttentionPoints: dossier.groupAttentionPoints.map((item, itemIndex) => itemIndex === index ? next : item) })} />
-          ))}
-          <TextField label="Individueel aandachtspunt" value={dossier.individualAttentionPoint} disabled={readOnly} onChange={(individualAttentionPoint) => updateDossier({ individualAttentionPoint })} />
         </div>
       </section>
 
@@ -1531,11 +1531,14 @@ function CoachingDossierDetail({
         </div>
         <div className="mt-4 grid gap-3">
           {local.actionPoints.map((action, index) => (
-            <div key={action.id} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_160px_150px_140px]">
-              <TextField label="Omschrijving" value={action.title} disabled={readOnly} onChange={(title) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item) }))} />
-              <TextField label="Deadline" type="date" value={action.due} disabled={readOnly} onChange={(due) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, due } : item) }))} />
-              <ReadOnlyField label="Prioriteit" value={action.priority ?? "normaal"} />
-              <StatusBadge status={action.status} />
+            <div key={action.id} className={`rounded-2xl border p-4 ${action.isNew ? "border-brand-200 bg-brand-50/40" : "border-slate-200 bg-slate-50"}`}>
+              <div className="grid gap-3 md:grid-cols-[1fr_150px_150px]">
+                {action.isNew ? <TextField label="Titel *" value={action.title} disabled={readOnly} onChange={(title) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item) }))} /> : <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Actiepunt</p><p className="mt-2 font-bold text-slate-900">{action.title}</p><p className="mt-1 text-sm text-slate-500">{action.description}</p></div>}
+                <ReadOnlyField label="Target" value={action.targetValue === undefined ? "Geen target" : String(action.targetValue)} />
+                {action.isNew ? <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Prioriteit *</span><select disabled={readOnly} className="field" value={action.priority ?? "normaal"} onChange={(event) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, priority: event.target.value as "laag" | "normaal" | "hoog" } : item) }))}><option value="hoog">Hoog</option><option value="normaal">Normaal</option><option value="laag">Laag</option></select></label> : <ReadOnlyField label="Prioriteit" value={action.priority ?? "normaal"} />}
+              </div>
+              {!action.isNew && <div className="mt-3 max-w-xs"><TextField label="Behaalde score" type="number" value={action.achievedScore === undefined ? "" : String(action.achievedScore)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, achievedScore: value === "" ? undefined : Number(value) } : item) }))} /></div>}
+              {action.isNew && <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr]"><TextField label="Target (optioneel)" type="number" value={action.targetValue === undefined ? "" : String(action.targetValue)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, targetValue: value === "" ? undefined : Number(value) } : item) }))} /><ActionTipsEditor actionId={action.id} value={action.tipsAndTricks ?? ""} disabled={readOnly} onChange={updateActionTips} /></div>}
             </div>
           ))}
           {local.actionPoints.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Nog geen actiepunten.</p>}
@@ -1544,16 +1547,10 @@ function CoachingDossierDetail({
 
       {!readOnly && (
         <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:justify-end">
-          <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>Annuleren</button>
+          {local.status === "gepland" && <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>Begeleiding verwijderen</button>}
           <button type="button" className="btn-secondary" onClick={() => persist("in_uitvoering")}>Opslaan</button>
-          {editingCompleted ? (
-            <button type="button" className="btn-primary" onClick={() => persist("voltooid")}>Wijzigingen opslaan als afgewerkt</button>
-          ) : (
-            <>
-              <button type="button" className="btn-secondary" onClick={() => persist("gesloten")}>Sluiten</button>
-              <button type="button" className="btn-primary" onClick={() => persist("voltooid")}>Afwerken</button>
-            </>
-          )}
+          <button type="button" className="btn-secondary" onClick={() => persist("gesloten")}>Sluiten</button>
+          <button type="button" className="btn-primary" onClick={() => persist("voltooid")}>Afwerken</button>
         </div>
       )}
     </div>
@@ -1570,7 +1567,6 @@ function CompletedCoachingSummary({
   isRepresentative,
   isBusy,
   message,
-  onReopen,
   onSendForApproval,
   onApprove,
   onDownload,
@@ -1585,7 +1581,6 @@ function CompletedCoachingSummary({
   isRepresentative: boolean;
   isBusy: boolean;
   message?: string;
-  onReopen: () => void;
   onSendForApproval: () => void;
   onApprove: () => void;
   onDownload: () => void;
@@ -1629,7 +1624,6 @@ function CompletedCoachingSummary({
         <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← Terug naar begeleidingen</Link>
         <div className="flex flex-wrap gap-2">
           {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={onDownload}><FileDown className="h-4 w-4" /> PDF-rapport</button>}
-          {canManage && !locked && <button type="button" className="btn-secondary" disabled={isBusy} onClick={onReopen}>Opnieuw openen en aanpassen</button>}
           {canManage && !locked && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("send")}>Versturen naar vertegenwoordiger ter akkoord</button>}
           {isRepresentative && intervention.status === "verzonden_ter_akkoord" && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("approve")}>Voor akkoord bevestigen</button>}
           <StatusBadge status={intervention.status} />
@@ -1844,6 +1838,57 @@ function TextField({ label, value, onChange, type = "text", disabled = false }: 
   return <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span><input type={type} className="field" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
+function coachingSubjectAsRepresentative(subject: NonNullable<CoachingWorkflowItem["subject"]>): Representative {
+  return { id: subject.id, firstName: subject.firstName, lastName: subject.lastName, initials: subject.initials, country: subject.country, team: subject.team, teamId: subject.teamId, level: "Vertegenwoordiger", levelColor: "bg-brand-100 text-brand-800", lastCoaching: "Nog niet", openActions: 0, email: "", phone: "", kpis: [] };
+}
+
+const RichTextEditor = memo(function RichTextEditor({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const lastEmittedValue = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // A parent render after local typing must never rewrite the editable DOM:
+    // doing so destroys the browser selection and moves the caret to the start.
+    if (value === lastEmittedValue.current) {
+      lastEmittedValue.current = undefined;
+      return;
+    }
+    if (editor.innerHTML !== value) editor.innerHTML = value;
+  }, [value]);
+
+  const emitChange = useCallback(() => {
+    const nextValue = editorRef.current?.innerHTML ?? "";
+    lastEmittedValue.current = nextValue;
+    onChange(nextValue);
+  }, [onChange]);
+
+  const command = useCallback((name: string, commandValue?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(name, false, commandValue);
+  }, []);
+  const controls = [
+    ["B", "bold"], ["I", "italic"], ["U", "underline"], ["•", "insertUnorderedList"],
+    ["1.", "insertOrderedList"], ["←", "justifyLeft"], ["↔", "justifyCenter"], ["→", "justifyRight"],
+  ] as const;
+  return <div><p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    {!disabled && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 p-2">{controls.map(([text, name]) => <button key={name} type="button" title={name} className="grid h-8 min-w-8 place-items-center rounded-md px-2 text-xs font-bold hover:bg-white" onMouseDown={(event) => { event.preventDefault(); command(name); }}>{text}</button>)}<button type="button" className="h-8 rounded-md px-2 text-xs font-bold hover:bg-white" onMouseDown={(event) => { event.preventDefault(); const url = window.prompt("Link (https://…)"); if (url) command("createLink", url); }}>Link</button><input type="color" title="Tekstkleur" className="h-8 w-8" onChange={(event) => command("foreColor", event.target.value)} /></div>}
+    <div ref={editorRef} className="min-h-28 p-3 text-sm leading-6 outline-none" contentEditable={!disabled} suppressContentEditableWarning onInput={emitChange} />
+  </div></div>;
+});
+
+const ActionTipsEditor = memo(function ActionTipsEditor({ actionId, value, disabled, onChange }: {
+  actionId: string;
+  value: string;
+  disabled: boolean;
+  onChange: (actionId: string, value: string) => void;
+}) {
+  const handleChange = useCallback((nextValue: string) => onChange(actionId, nextValue), [actionId, onChange]);
+  return <RichTextEditor label="Tips & Tricks *" value={value} disabled={disabled} onChange={handleChange} />;
+});
+
 function CoachingOutlookSyncStatus({ intervention }: { intervention: CoachingWorkflowItem }) {
   const label = intervention.outlookSyncStatus === "SYNCED"
     ? "Gesynchroniseerd met Outlook"
@@ -2037,7 +2082,7 @@ function InterventionList({ kind }: { kind: string }) {
       return {
         id: item.id,
         type: "begeleiding",
-        person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
+        person: representative ? `${representative.firstName} ${representative.lastName}` : item.subject ? `${item.subject.firstName} ${item.subject.lastName}` : "Onbekend",
         date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
         owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
@@ -2099,7 +2144,7 @@ function InterventionList({ kind }: { kind: string }) {
             <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Begeleidingsdossier</span>
               {item.editable ? (
-                <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">Open dossier</Link>
+                <div className="flex items-center gap-3">{item.status === "gepland" && <Link href={`/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`} className="text-sm font-semibold text-slate-600">Wijzig planning</Link>}<Link href={item.detailHref} className="text-sm font-semibold text-brand-700">Open dossier</Link></div>
               ) : item.detailHref ? (
                 <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">Bekijk verslag</Link>
               ) : (
@@ -2210,6 +2255,41 @@ function workflowCoachingAsHistory(
 }
 
 function ActionPoints() {
+  return <ScopedActionPoints />;
+}
+
+function ScopedActionPoints() {
+  const { user, managedUsers } = useSession();
+  const canManage = user.role !== "REPRESENTATIVE";
+  const [definitions, setDefinitions] = useState<ScopedActionDefinition[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [overrideFor, setOverrideFor] = useState<ScopedActionDefinition>();
+  const [overrideDraft, setOverrideDraft] = useState({ scope: "COUNTRY" as "COUNTRY" | "TEAM" | "USER", country: user.country, teamId: user.teamId ?? "", userId: "", targetValue: "" });
+  const [error, setError] = useState<string>();
+  const [draft, setDraft] = useState({ title: "", description: "", tipsAndTricks: "", targetValue: "", priority: "normaal" as "laag" | "normaal" | "hoog", scope: (user.role === "SALES_LEADER" ? "TEAM" : "COUNTRY") as "GLOBAL" | "COUNTRY" | "TEAM" | "USER", country: user.country, teamId: user.teamId ?? "", userId: "", validFrom: new Date().toISOString().slice(0, 10), validUntil: "" });
+  const refresh = () => fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" }).then(async (response) => { const payload = await response.json() as { definitions?: ScopedActionDefinition[]; error?: string }; if (!response.ok) throw new Error(payload.error); setDefinitions(payload.definitions ?? []); });
+  useEffect(() => { void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : "Actiepunten konden niet worden geladen.")); }, [user.id]);
+  async function save() {
+    setError(undefined);
+    const response = await fetch("/api/action-definitions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, actorId: user.id, targetValue: draft.targetValue === "" ? undefined : draft.targetValue }) });
+    const payload = await response.json() as { error?: string };
+    if (!response.ok) { setError(payload.error ?? "Actiepunt kon niet worden opgeslagen."); return; }
+    setEditing(false); await refresh();
+  }
+  async function remove(id: string) { await fetch("/api/action-definitions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: user.id, id }) }); await refresh(); }
+  async function saveOverride() { if (!overrideFor) return; const response = await fetch("/api/action-definitions/target-override", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...overrideDraft, actorId: user.id, actionDefinitionId: overrideFor.id }) }); const payload = await response.json() as { error?: string }; if (!response.ok) { setError(payload.error ?? "Targetafwijking kon niet worden opgeslagen."); return; } setOverrideFor(undefined); }
+  const teamOptions = [...new Map(managedUsers.filter((item) => item.teamId).map((item) => [item.teamId, item.teamName])).entries()];
+  const priorityTone = (priority: string) => priority === "HIGH" || priority === "hoog" ? "bg-rose-100 text-rose-800" : priority === "LOW" || priority === "laag" ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-800";
+  return <div className="space-y-6">
+    <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Beheer globale, land-, team- en persoonsgebonden actiepunten met overerving en geldigheid." actions={canManage ? <button type="button" className="btn-primary" onClick={() => setEditing(true)}><Plus className="h-4 w-4" /> Actiepunt</button> : undefined} />
+    {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
+    <div className="grid gap-4 lg:grid-cols-2">{definitions.map((item) => <article key={item.id} className="card p-5"><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap gap-2"><span className="rounded-full bg-brand-50 px-2 py-1 text-[10px] font-bold text-brand-800">{item.scope}</span><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${priorityTone(item.priority)}`}>{item.priority}</span></div><h2 className="mt-3 font-bold text-slate-950">{item.title}</h2><p className="mt-1 text-sm text-slate-500">{item.description}</p></div><p className="text-right text-sm font-bold text-brand-800">{item.targetValue === undefined ? "Geen target" : `Target ${item.targetValue}`}</p></div><p className="mt-4 text-xs text-slate-500">Geldig {formatShortDate(item.validFrom)} t/m {item.validUntil ? formatShortDate(item.validUntil) : "onbepaald"}</p>{canManage && <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3"><button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOverrideFor(item)}>Targetafwijking</button><button type="button" className="btn-secondary py-2 text-xs text-rose-700" onClick={() => void remove(item.id)}>Deactiveren</button></div>}</article>)}</div>
+    {editing && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">Nieuw actiepunt</h2><button type="button" onClick={() => setEditing(false)}>✕</button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><TextField label="Titel *" value={draft.title} onChange={(title) => setDraft({ ...draft, title })} /><TextField label="Target (optioneel)" type="number" value={draft.targetValue} onChange={(targetValue) => setDraft({ ...draft, targetValue })} /><label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Prioriteit *</span><select className="field" value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as typeof draft.priority })}><option value="hoog">Hoog</option><option value="normaal">Normaal</option><option value="laag">Laag</option></select></label><label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Niveau</span><select className="field" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as typeof draft.scope })}>{["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role) && <option value="GLOBAL">Globaal</option>}<option value="COUNTRY">Land</option><option value="TEAM">Team</option><option value="USER">Gebruiker</option></select></label><TextField label="VAN *" type="date" value={draft.validFrom} onChange={(validFrom) => setDraft({ ...draft, validFrom })} /><TextField label="TOT (optioneel)" type="date" value={draft.validUntil} onChange={(validUntil) => setDraft({ ...draft, validUntil })} />{draft.scope === "TEAM" && <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Team</span><select className="field" value={draft.teamId} onChange={(event) => setDraft({ ...draft, teamId: event.target.value })}><option value="">Selecteer</option>{teamOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>}{draft.scope === "USER" && <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Gebruiker</span><select className="field" value={draft.userId} onChange={(event) => { const selected = managedUsers.find((item) => item.id === event.target.value); setDraft({ ...draft, userId: event.target.value, teamId: selected?.teamId ?? "", country: selected?.country ?? user.country }); }}><option value="">Selecteer</option>{managedUsers.filter((item) => item.active && ["REPRESENTATIVE", "SALES_LEADER"].includes(item.role)).map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select></label>}<div className="sm:col-span-2"><label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Omschrijving</span><textarea className="field min-h-20 py-3" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label></div><div className="sm:col-span-2"><RichTextEditor label="Tips & Tricks *" value={draft.tipsAndTricks} disabled={false} onChange={(tipsAndTricks) => setDraft({ ...draft, tipsAndTricks })} /></div></div><div className="mt-5 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setEditing(false)}>Annuleren</button><button type="button" className="btn-primary" onClick={() => void save()}>Opslaan</button></div></div></div>}
+    {overrideFor && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5"><h2 className="text-xl font-bold">Targetafwijking · {overrideFor.title}</h2><div className="mt-4 grid gap-4"><label><span className="mb-2 block text-xs font-bold uppercase text-slate-500">Niveau</span><select className="field" value={overrideDraft.scope} onChange={(event) => setOverrideDraft({ ...overrideDraft, scope: event.target.value as typeof overrideDraft.scope })}><option value="COUNTRY">Land</option><option value="TEAM">Team</option><option value="USER">Gebruiker</option></select></label>{overrideDraft.scope === "TEAM" && <select className="field" value={overrideDraft.teamId} onChange={(event) => setOverrideDraft({ ...overrideDraft, teamId: event.target.value })}><option value="">Selecteer team</option>{teamOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>}{overrideDraft.scope === "USER" && <select className="field" value={overrideDraft.userId} onChange={(event) => { const selected = managedUsers.find((item) => item.id === event.target.value); setOverrideDraft({ ...overrideDraft, userId: event.target.value, teamId: selected?.teamId ?? "", country: selected?.country ?? user.country }); }}><option value="">Selecteer gebruiker</option>{managedUsers.filter((item) => ["REPRESENTATIVE", "SALES_LEADER"].includes(item.role)).map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select>}<TextField label="Nieuwe target" type="number" value={overrideDraft.targetValue} onChange={(targetValue) => setOverrideDraft({ ...overrideDraft, targetValue })} /></div><div className="mt-5 flex justify-end gap-2"><button className="btn-secondary" onClick={() => setOverrideFor(undefined)}>Annuleren</button><button className="btn-primary" onClick={() => void saveOverride()}>Opslaan</button></div></div></div>}
+  </div>;
+}
+
+function LegacyActionPoints() {
   const { user } = useSession();
   const { visibleInterventions, visibleContactMoments, visibleRetrainings, visibleSalesTrainings } = useWorkflow();
   const { representatives } = useRepresentatives();
@@ -2628,9 +2708,12 @@ function executionTimestamp(value?: string) {
   return new Date(Number(match[3]), monthIndex[match[2]], Number(match[1]), 12).getTime();
 }
 
-function formatKpiValue(value: number, unit: "%" | "EUR" | "number") {
+function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number") {
   if (unit === "%") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}%`;
   if (unit === "EUR") return `€ ${value.toLocaleString("nl-BE", { maximumFractionDigits: 0 })}`;
+  if (unit === "minutes") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} min`;
+  if (unit === "hours") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} u`;
+  if (unit === "km") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} km`;
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
 }
 

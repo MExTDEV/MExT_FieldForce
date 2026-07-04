@@ -72,7 +72,7 @@ export type MonthlyKpiSnapshot = {
     label: string;
     value: number;
     target: number;
-    unit: "%" | "EUR" | "number";
+    unit: "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number";
   }[];
 };
 

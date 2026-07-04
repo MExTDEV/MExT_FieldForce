@@ -107,20 +107,20 @@ async function main() {
   );
 
   const kpiData = [
-    ["PV_PERCENT", "PV %", "%"],
-    ["KV_PERCENT", "KV %", "%"],
-    ["Q_PERCENT", "Q %", "%"],
-    ["SALES_DAY", "Sales / Day", "EUR"],
-    ["FM_ORDER", "FM / Order", "number"],
-    ["SALES_ORDER", "Sales / Order", "EUR"],
-    ["TOTAL_SALES", "Total Sales", "EUR"],
-    ["LEADS", "Leadgeneratie", "number"],
-    ["PROSPECT_CUSTOMER", "Prospect vs Klant verkoop", "%"],
-    ["CASH_TRANSFER", "Cash vs Overschrijving", "%"],
+    ["PV_PERCENT", "PV %", "%", 75],
+    ["KV_PERCENT", "KV %", "%", 75],
+    ["Q_PERCENT", "Q %", "%", 75],
+    ["SALES_DAY", "Sales / Day", "EUR", 7500],
+    ["FM_ORDER", "FM / Order", "number", 1],
+    ["SALES_ORDER", "Sales / Order", "EUR", 750],
+    ["TOTAL_SALES", "Total Sales", "EUR", 7500],
+    ["LEADS", "Leadgeneratie", "count", 12],
+    ["PROSPECT_CUSTOMER", "Prospect vs Klant verkoop", "%", 50],
+    ["CASH_TRANSFER", "Cash vs Overschrijving", "%", 75],
   ];
   const kpis = await Promise.all(
-    kpiData.map(([code, name, unit]) =>
-      prisma.kpiDefinition.create({ data: { code, name, description: `${name} coaching KPI`, unit } })
+    kpiData.map(([code, name, unit, targetValue]) =>
+      prisma.kpiDefinition.create({ data: { code: String(code), name: String(name), description: `${name} coaching KPI`, unit: String(unit), targetValue: Number(targetValue) } })
     )
   );
 
@@ -378,23 +378,23 @@ async function seedConfiguration() {
   }
 
   const kpis = [
-    ["PV_PERCENT", "PV %", "%"],
-    ["KV_PERCENT", "KV %", "%"],
-    ["Q_PERCENT", "Q %", "%"],
-    ["SALES_DAY", "Sales / Day", "EUR"],
-    ["FM_ORDER", "FM / Order", "number"],
-    ["SALES_ORDER", "Sales / Order", "EUR"],
-    ["TOTAL_SALES", "Total Sales", "EUR"],
-    ["LEADS", "Leadgeneratie", "number"],
-    ["PROSPECT_CUSTOMER", "Prospect vs Klant verkoop", "%"],
-    ["CASH_TRANSFER", "Cash vs Overschrijving", "%"],
+    ["PV_PERCENT", "PV %", "%", 75],
+    ["KV_PERCENT", "KV %", "%", 75],
+    ["Q_PERCENT", "Q %", "%", 75],
+    ["SALES_DAY", "Sales / Day", "EUR", 7500],
+    ["FM_ORDER", "FM / Order", "number", 1],
+    ["SALES_ORDER", "Sales / Order", "EUR", 750],
+    ["TOTAL_SALES", "Total Sales", "EUR", 7500],
+    ["LEADS", "Leadgeneratie", "count", 12],
+    ["PROSPECT_CUSTOMER", "Prospect vs Klant verkoop", "%", 50],
+    ["CASH_TRANSFER", "Cash vs Overschrijving", "%", 75],
   ] as const;
 
-  for (const [code, name, unit] of kpis) {
+  for (const [code, name, unit, targetValue] of kpis) {
     await prisma.kpiDefinition.upsert({
       where: { code },
-      update: { name, description: `${name} coaching KPI`, unit, active: true },
-      create: { code, name, description: `${name} coaching KPI`, unit },
+      update: { name, description: `${name} coaching KPI`, unit, targetValue, active: true },
+      create: { code, name, description: `${name} coaching KPI`, unit, targetValue },
     });
   }
 

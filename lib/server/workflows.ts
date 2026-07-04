@@ -26,6 +26,8 @@ import type {
 } from "@/lib/types";
 import type { Country } from "@/lib/types";
 import { dedupeById, dedupeWorkflowState } from "@/lib/coaching/visibility";
+import { toPriority as toActionDefinitionPriority } from "@/lib/server/action-definitions";
+import { sanitizeRichText } from "@/lib/rich-text";
 
 type JsonArray = string[];
 
@@ -58,6 +60,7 @@ export async function loadWorkflowStateFromDatabase(
         trainingDetail: true,
         trainingParticipants: { include: { representative: true } },
         actionPoints: { include: { assignments: { include: { representative: true } } } },
+        coachingActions: true,
         reflection: true,
         approval: true,
       },
@@ -75,13 +78,17 @@ export async function loadWorkflowStateFromDatabase(
   const coachingIds = interventions
     .filter((item) => item.type === "BEGELEIDING")
     .map((item) => item.id);
-  const auditLogs = coachingIds.length
-    ? await prisma.auditLog.findMany({
+  const [auditLogs, changeLogs] = coachingIds.length
+    ? await Promise.all([prisma.auditLog.findMany({
         where: { entityType: "Intervention", entityId: { in: coachingIds } },
         include: { user: { select: { firstName: true, lastName: true } } },
         orderBy: { createdAt: "desc" },
-      })
-    : [];
+      }), prisma.coachingChangeLog.findMany({
+        where: { interventionId: { in: coachingIds } },
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+      })])
+    : [[], []];
   const auditByIntervention = new Map<string, CoachingIntervention["auditTrail"]>();
   for (const audit of auditLogs) {
     const entries = auditByIntervention.get(audit.entityId) ?? [];
@@ -97,6 +104,16 @@ export async function loadWorkflowStateFromDatabase(
     });
     auditByIntervention.set(audit.entityId, entries);
   }
+  for (const change of changeLogs) {
+    const entries = auditByIntervention.get(change.interventionId) ?? [];
+    entries.push({
+      id: change.id, at: change.createdAt.toISOString(), userId: change.userId,
+      userName: `${change.user.firstName} ${change.user.lastName}`.trim(), action: `coaching.changed.${change.field}`,
+      summary: `${change.field} gewijzigd.`,
+      oldValue: { value: parseChangeLogValue(change.oldValue) }, newValue: { value: parseChangeLogValue(change.newValue) },
+    });
+    auditByIntervention.set(change.interventionId, entries);
+  }
   for (const item of interventions) {
     const representativeId = publicRepresentativeId(item.representative);
     if (item.type === "BEGELEIDING") {
@@ -108,6 +125,17 @@ export async function loadWorkflowStateFromDatabase(
         country: item.country as Country,
         teamId: item.teamId ?? item.representative.teamId ?? "",
         title: item.title,
+        subject: {
+          id: representativeId,
+          userId: item.representative.id,
+          firstName: item.representative.firstName,
+          lastName: item.representative.lastName,
+          initials: `${item.representative.firstName[0] ?? ""}${item.representative.lastName[0] ?? ""}`,
+          role: item.representative.role as "REPRESENTATIVE" | "SALES_LEADER",
+          country: item.representative.country as Country,
+          teamId: item.representative.teamId ?? "",
+          team: item.representative.team?.name ?? "Geen team",
+        },
         status: fromInterventionStatus(item.status),
         plannedDate: dateOnly(item.plannedAt),
         startTime: item.startTime ?? undefined,
@@ -122,7 +150,9 @@ export async function loadWorkflowStateFromDatabase(
         internalNotes: item.description ?? undefined,
         focusNames: item.focuses.map((focus) => focus.focus.name),
         scores: item.scores.filter((score) => !score.category?.startsWith("Dossier:")).map(toWorkflowScore),
-        actionPoints: item.actionPoints.map(toWorkflowActionPoint),
+        actionPoints: item.coachingActions.length
+          ? item.coachingActions.map(toCoachingWorkflowAction)
+          : item.actionPoints.map(toWorkflowActionPoint),
         dossier: item.coachingDetail
           ? {
               arrivalTime: item.coachingDetail.arrivalTime ?? "",
@@ -342,6 +372,57 @@ async function upsertCoaching(tx: Transaction, item: CoachingIntervention) {
   await replaceScores(tx, item.id, item.scores, item.dossier);
   await upsertCoachingDetail(tx, item.id, item);
   await replaceActionPoints(tx, item.id, item.actionPoints, item.representativeId, item.ownerId);
+  await syncCoachingActions(tx, item, representative);
+}
+
+async function syncCoachingActions(tx: Transaction, item: CoachingIntervention, user: { id: string; country: Country; teamId: string | null }) {
+  const userId = user.id;
+  const plannedAt = dateFromString(item.plannedDate) ?? new Date();
+  const existingCount = await tx.coachingAction.count({ where: { interventionId: item.id } });
+  if (existingCount === 0 && item.status === "gepland") {
+    await tx.actionDefinition.updateMany({
+      where: { userId, active: true, deletedAt: null, validUntil: null, validFrom: { lt: plannedAt } },
+      data: { validUntil: plannedAt },
+    });
+    const keys = ["GLOBAL", `COUNTRY:${user.country}`, ...(user.teamId ? [`TEAM:${user.teamId}`] : []), `USER:${userId}`];
+    const definitions = await tx.actionDefinition.findMany({
+      where: { active: true, deletedAt: null, scopeKey: { in: keys }, validFrom: { lte: plannedAt }, OR: [{ validUntil: null }, { validUntil: { gte: plannedAt } }] },
+      include: { targetOverrides: { where: { scopeKey: { in: keys } } } },
+    });
+    const inherited = definitions.map((definition) => {
+      const override = [`USER:${userId}`, ...(user.teamId ? [`TEAM:${user.teamId}`] : []), `COUNTRY:${user.country}`].map((key) => definition.targetOverrides.find((item) => item.scopeKey === key)).find(Boolean);
+      return { ...definition, targetValue: override?.targetValue ?? definition.targetValue };
+    });
+    if (inherited.length) {
+      await tx.coachingAction.createMany({ data: inherited.map((action) => ({
+        interventionId: item.id, actionDefinitionId: action.id, userId, title: action.title,
+        description: action.description, tipsAndTricks: action.tipsAndTricks, targetValue: action.targetValue,
+        priority: action.priority, isNew: false,
+      })) });
+    }
+  }
+  if (!item.actionPoints.length) return;
+  await tx.coachingAction.deleteMany({ where: { interventionId: item.id } });
+  for (const action of item.actionPoints.filter((entry) => entry.title.trim())) {
+    let definitionId = action.definitionId;
+    if (action.isNew && ["voltooid", "gefinaliseerd", "gesloten"].includes(item.status)) {
+      const definition = await tx.actionDefinition.create({
+        data: {
+          title: action.title.trim(), description: action.description?.trim() ?? "", tipsAndTricks: sanitizeRichText(action.tipsAndTricks ?? ""),
+          targetValue: action.targetValue, priority: toActionDefinitionPriority(action.priority ?? "normaal"), scope: "USER",
+          scopeKey: `USER:${userId}`, userId, country: item.country, teamId: item.teamId,
+          active: true, validFrom: plannedAt, createdById: item.ownerId, updatedById: item.ownerId,
+        },
+      });
+      definitionId = definition.id;
+    }
+    await tx.coachingAction.create({ data: {
+      interventionId: item.id, actionDefinitionId: definitionId, userId, title: action.title,
+      description: action.description ?? "", tipsAndTricks: sanitizeRichText(action.tipsAndTricks ?? ""),
+      targetValue: action.targetValue, achievedScore: action.achievedScore,
+      priority: toActionDefinitionPriority(action.priority ?? "normaal"), isNew: Boolean(action.isNew),
+    } });
+  }
 }
 
 async function upsertContactMoment(tx: Transaction, item: ContactMoment) {
@@ -823,6 +904,25 @@ function toWorkflowActionPoint(item: {
     owner: item.ownerId,
     priority: fromPriority(item.priority),
     description: item.description || undefined,
+  };
+}
+
+function parseChangeLogValue(value: string | null) {
+  if (value === null) return null;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+function toCoachingWorkflowAction(item: {
+  id: string; actionDefinitionId: string | null; title: string; description: string; tipsAndTricks: string;
+  targetValue: { toString(): string } | null; achievedScore: { toString(): string } | null;
+  priority: DbPriority; isNew: boolean;
+}): WorkflowActionPoint {
+  return {
+    id: item.id, definitionId: item.actionDefinitionId ?? undefined, title: item.title,
+    description: item.description, tipsAndTricks: item.tipsAndTricks,
+    targetValue: item.targetValue === null ? undefined : Number(item.targetValue),
+    achievedScore: item.achievedScore === null ? undefined : Number(item.achievedScore),
+    type: "vaardigheid", due: "", status: "open", priority: fromPriority(item.priority), isNew: item.isNew,
   };
 }
 

@@ -4,12 +4,15 @@ import {
   fieldForcePermissionKeys,
   roleTemplates,
 } from "@/lib/user-management";
+import { isKpiUnit, validateKpiRange } from "@/lib/kpi-settings";
 import type {
   Country,
   FieldForcePermissionKey,
   ManagementConfiguration,
   MockUser,
   Role,
+  KpiEvaluationDirection,
+  KpiUnit,
 } from "@/lib/types";
 
 const roles = Object.keys(roleLabels) as Role[];
@@ -76,7 +79,11 @@ export async function getManagementConfiguration(
       name: kpi.name,
       description: kpi.description,
       country: kpi.country as Country | null,
-      unit: kpi.unit,
+      unit: isKpiUnit(kpi.unit) ? kpi.unit : "number",
+      targetValue: Number(kpi.targetValue),
+      minValue: kpi.minValue === null ? null : Number(kpi.minValue),
+      maxValue: kpi.maxValue === null ? null : Number(kpi.maxValue),
+      evaluationDirection: kpi.evaluationDirection,
       active: kpi.active,
     })),
     focuses: focuses.map((focus) => ({
@@ -183,9 +190,21 @@ export async function saveKpi(
     name: string;
     description: string;
     country: Country | null;
-    unit: string;
+    unit: KpiUnit;
+    targetValue: number;
+    minValue: number | null;
+    maxValue: number | null;
+    evaluationDirection: KpiEvaluationDirection;
   }
 ) {
+  if (!input.code.trim()) throw new Error("Code is verplicht.");
+  if (!input.name.trim()) throw new Error("Naam is verplicht.");
+  if (!Number.isFinite(input.targetValue)) throw new Error("Doelwaarde moet numeriek zijn.");
+  if (!isKpiUnit(input.unit)) throw new Error("Selecteer een geldige eenheid.");
+  if (!["HIGHER_IS_BETTER", "LOWER_IS_BETTER", "TARGET"].includes(input.evaluationDirection)) {
+    throw new Error("Selecteer een geldige beoordelingsrichting.");
+  }
+  validateKpiRange(input.targetValue, input.minValue, input.maxValue);
   const country = actor.role === "SUPER_ADMIN" ? input.country : actor.country;
   assertCountryScope(actor, country);
   const data = {
@@ -194,6 +213,10 @@ export async function saveKpi(
     description: input.description.trim(),
     country,
     unit: input.unit.trim(),
+    targetValue: input.targetValue,
+    minValue: input.minValue,
+    maxValue: input.maxValue,
+    evaluationDirection: input.evaluationDirection,
     active: true,
   };
   return input.id

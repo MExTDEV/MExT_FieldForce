@@ -24,6 +24,7 @@ export type CoachingWorkflowInput = {
   id?: string;
   representativeId: string;
   initiatorId: string;
+  ownerId?: string;
   plannedDate?: string;
   startTime?: string;
   endTime?: string;
@@ -513,7 +514,7 @@ export function saveCoaching(
     id,
     representativeId: representative.id,
     initiatorId: input.initiatorId,
-    ownerId: input.initiatorId,
+    ownerId: input.ownerId ?? input.initiatorId,
     country: representative.country,
     teamId: representative.teamId,
     title: `Begeleiding ${representative.firstName} ${representative.lastName}`,
@@ -532,6 +533,7 @@ export function saveCoaching(
     sentForApprovalById: previous?.sentForApprovalById,
     approvedByRepAt: previous?.approvedByRepAt,
     approvedByRepId: previous?.approvedByRepId,
+    deletedAt: status === "geannuleerd" ? now : previous?.deletedAt,
     focusNames: input.focusNames,
     scores: input.scores,
     actionPoints: input.actionPoints

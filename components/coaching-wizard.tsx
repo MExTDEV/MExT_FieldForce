@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   Info,
   ListChecks,
@@ -25,9 +27,8 @@ import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import { coachingsForRepresentative, latestHistoricalCoaching } from "@/lib/performance-data";
 import { getPerformanceWheelData, type PerformanceWheelCriterion } from "@/lib/performance/performance-wheel";
-import { canAccessRepresentative } from "@/lib/permissions";
 import { offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
-import type { CoachingFrameworkFocus, Representative, ScoreValue } from "@/lib/types";
+import type { CoachingFrameworkFocus, CoachingParticipant, Representative, ScoreValue } from "@/lib/types";
 
 type ScoreCriterion = {
   key: string;
@@ -42,6 +43,7 @@ type ScoreCriterion = {
 type Draft = {
   id?: string;
   representativeId: string;
+  ownerId: string;
   plannedDate: string;
   startTime: string;
   endTime: string;
@@ -51,36 +53,29 @@ type Draft = {
   actions: EditableActionPoint[];
 };
 
-const steps = [
-  "Vertegenwoordiger",
-  "Voorbereiding",
-  "Afronden",
-];
+const wizardSteps = [
+  { id: "representative", label: "Vertegenwoordiger" },
+  { id: "focus", label: "Focusfasen" },
+  { id: "preparation", label: "Voorbereiding" },
+  { id: "summary", label: "Afronden" },
+] as const;
+
+type WizardStep = (typeof wizardSteps)[number]["id"];
 
 export function CoachingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
-  const { user } = useSession();
-  const { state, saveCoachingStatus, finalizeCoaching } = useWorkflow();
+  const { user, managedUsers } = useSession();
+  const { state, saveCoachingStatus } = useWorkflow();
   const { isModuleEnabled } = useModules();
-  const { coachingFramework } = useConfiguration();
   const { representatives } = useRepresentatives();
-  const available = representatives.filter((representative) => canAccessRepresentative(user, representative));
-  const existing = editId ? state.interventions.find((item) => {
-    if (item.id !== editId || [
-      "gefinaliseerd",
-      "voltooid",
-      "verzonden_ter_akkoord",
-      "akkoord_door_vertegenwoordiger",
-      "afgesloten",
-    ].includes(item.status)) return false;
-    const representative = representatives.find((person) => person.id === item.representativeId);
-    return representative ? canAccessRepresentative(user, representative) : false;
-  }) : undefined;
-  const [step, setStep] = useState(1);
+  const [participants, setParticipants] = useState<CoachingParticipant[]>([]);
+  const existing = editId ? state.interventions.find((item) => item.id === editId && item.status === "gepland") : undefined;
+  const [step, setStep] = useState<WizardStep>("representative");
   const [draft, setDraft] = useState<Draft>({
-    representativeId: available[0]?.id ?? "",
+    representativeId: "",
+    ownerId: user.id,
     plannedDate: new Date().toISOString().slice(0, 10),
     startTime: "09:00",
     endTime: "11:00",
@@ -91,14 +86,28 @@ export function CoachingWizard() {
   });
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string>();
-  const [, setCompletedFor] = useState<string>();
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/coaching-participants?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { participants?: CoachingParticipant[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Begeleidbare personen konden niet worden geladen.");
+        if (!active) return;
+        setParticipants(payload.participants ?? []);
+        setDraft((current) => ({ ...current, representativeId: current.representativeId || payload.participants?.[0]?.id || "" }));
+      })
+      .catch((cause) => active && setError(cause instanceof Error ? cause.message : "Begeleidbare personen konden niet worden geladen."));
+    return () => { active = false; };
+  }, [user.id]);
 
   useEffect(() => {
     if (!existing || loadedId === existing.id) return;
     setDraft({
       id: existing.id,
       representativeId: existing.representativeId,
+      ownerId: existing.ownerId,
       plannedDate: existing.plannedDate ?? new Date().toISOString().slice(0, 10),
       startTime: existing.startTime ?? "09:00",
       endTime: existing.endTime ?? "11:00",
@@ -110,9 +119,9 @@ export function CoachingWizard() {
     setLoadedId(existing.id);
   }, [existing, loadedId]);
 
-  const representative = representatives.find((item) => item.id === draft.representativeId);
-  const criteria: ScoreCriterion[] = [];
-  const scoredCount = 0;
+  const selectedParticipant = participants.find((item) => item.id === draft.representativeId);
+  const representative = representatives.find((item) => item.id === draft.representativeId) ?? (selectedParticipant ? participantAsRepresentative(selectedParticipant) : undefined);
+  const currentStepIndex = wizardSteps.findIndex((item) => item.id === step);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -126,8 +135,8 @@ export function CoachingWizard() {
     return <EmptyState title="Module niet actief" description="Begeleidingen is momenteel gedeactiveerd in FieldForce." />;
   }
 
-  if (!["SALES_LEADER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
-    return <EmptyState title="Geen rechten om een begeleiding te maken" description="Een begeleiding kan in deze fase worden aangemaakt door een verkoopleider of Super Admin." />;
+  if (!["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
+    return <EmptyState title="Geen rechten om een begeleiding te maken" description="Je rol mag geen begeleiding aanmaken." />;
   }
 
   function workflowInput() {
@@ -135,11 +144,12 @@ export function CoachingWizard() {
       id: draft.id,
       representativeId: draft.representativeId,
       initiatorId: user.id,
+      ownerId: draft.ownerId,
       plannedDate: draft.plannedDate,
       startTime: draft.startTime,
       endTime: draft.endTime,
       notifyRepresentative: draft.notifyRepresentative,
-      focusNames: [],
+      focusNames: draft.focusNames,
       scores: [],
       actionPoints: [],
     };
@@ -148,7 +158,7 @@ export function CoachingWizard() {
   function handleSchedule() {
     setError(undefined);
     if (!draft.representativeId) {
-      setError("Selecteer eerst een vertegenwoordiger.");
+      setError("Selecteer eerst een persoon.");
       return;
     }
     saveCoachingStatus(workflowInput(), "gepland");
@@ -160,19 +170,24 @@ export function CoachingWizard() {
     router.push("/dashboard");
   }
 
-  function handleFinalize() {
+  function goToNextStep() {
     setError(undefined);
-    if (!representative || draft.focusNames.length === 0) {
-      setError("Kies een vertegenwoordiger en minstens één focusfase.");
+    if (step === "representative" && !draft.representativeId) {
+      setError("Selecteer eerst een vertegenwoordiger of verkoopleider.");
       return;
     }
-    if (scoredCount !== criteria.length) {
-      setError(`Vul alle ${criteria.length} criteria in. Er ontbreken nog ${criteria.length - scoredCount} scores.`);
-      setStep(5);
+    if (step === "focus" && draft.focusNames.length === 0) {
+      setError("Selecteer minstens één focusfase voordat je verdergaat.");
       return;
     }
-    finalizeCoaching(workflowInput());
-    setCompletedFor(`${representative.firstName} ${representative.lastName}`);
+    const nextStep = wizardSteps[currentStepIndex + 1];
+    if (nextStep) setStep(nextStep.id);
+  }
+
+  function goToPreviousStep() {
+    setError(undefined);
+    const previousStep = wizardSteps[currentStepIndex - 1];
+    if (previousStep) setStep(previousStep.id);
   }
 
   return (
@@ -191,13 +206,13 @@ export function CoachingWizard() {
 
       <div className="card overflow-x-auto p-3">
         <div className="flex min-w-[520px] items-center">
-          {steps.map((label, index) => {
+          {wizardSteps.map(({ id, label }, index) => {
             const number = index + 1;
-            const done = number < step;
-            const active = number === step;
+            const done = index < currentStepIndex;
+            const active = id === step;
             return (
-              <div key={label} className="flex flex-1 items-center last:flex-none">
-                <button type="button" onClick={() => number <= step && setStep(number)} className="flex items-center gap-2">
+              <div key={id} className="flex flex-1 items-center last:flex-none">
+                <button type="button" onClick={() => index <= currentStepIndex && setStep(id)} className="flex items-center gap-2">
                   <span className={`grid h-9 w-9 place-items-center rounded-full text-sm font-bold ${
                     done ? "bg-emerald-600 text-white" : active ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-400"
                   }`}>
@@ -205,7 +220,7 @@ export function CoachingWizard() {
                   </span>
                   <span className={`text-xs font-semibold ${active ? "text-brand-700" : "text-slate-500"}`}>{label}</span>
                 </button>
-                {number < steps.length && <div className={`mx-3 h-px flex-1 ${done ? "bg-emerald-300" : "bg-slate-200"}`} />}
+                {index < wizardSteps.length - 1 && <div className={`mx-3 h-px flex-1 ${done ? "bg-emerald-300" : "bg-slate-200"}`} />}
               </div>
             );
           })}
@@ -215,10 +230,12 @@ export function CoachingWizard() {
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">{error}</div>}
 
       <div className="card min-h-[480px] p-5 sm:p-7">
-        {step === 1 && (
+        {step === "representative" && (
           <RepresentativeStep
-            available={available}
+            available={participants}
+            coaches={managedUsers.filter((profile) => profile.active && ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(profile.role) && (user.role === "SALES_LEADER" ? profile.id === user.id : ["COUNTRY_MANAGER", "ADMIN"].includes(user.role) ? profile.country === user.country : true))}
             selected={draft.representativeId}
+            ownerId={draft.ownerId}
             onSelect={(representativeId) => setDraft((current) => ({ ...current, representativeId }))}
             plannedDate={draft.plannedDate}
             startTime={draft.startTime}
@@ -227,8 +244,11 @@ export function CoachingWizard() {
             onPlanningChange={(planning) => setDraft((current) => ({ ...current, ...planning }))}
           />
         )}
-        {step === 2 && representative && <PreparationStep representative={representative} />}
-        {step === 3 && representative && (
+        {step === "focus" && representative && (
+          <FocusStep selected={draft.focusNames} onToggle={(name) => setDraft((current) => ({ ...current, focusNames: current.focusNames.includes(name) ? current.focusNames.filter((item) => item !== name) : [...current.focusNames, name] }))} />
+        )}
+        {step === "preparation" && representative && <PreparationStep representative={representative} />}
+        {step === "summary" && representative && (
           <SummaryStep
             representative={representative}
             plannedDate={draft.plannedDate}
@@ -239,18 +259,14 @@ export function CoachingWizard() {
       </div>
 
       <div className="flex flex-col-reverse justify-between gap-3 sm:flex-row">
-        <button type="button" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1} className="btn-secondary">
+        <button type="button" onClick={goToPreviousStep} disabled={currentStepIndex === 0} className="btn-secondary">
           <ArrowLeft className="h-4 w-4" /> Vorige
         </button>
         <div className="flex flex-col gap-3 sm:flex-row">
-          {step < steps.length ? (
+          {currentStepIndex < wizardSteps.length - 1 ? (
             <button
               type="button"
-              onClick={() => {
-                setError(undefined);
-                setStep((current) => Math.min(steps.length, current + 1));
-              }}
-              disabled={step === 1 && !draft.representativeId}
+              onClick={goToNextStep}
               className="btn-primary"
             >
               Volgende
@@ -273,7 +289,9 @@ export function CoachingWizard() {
 
 function RepresentativeStep({
   available,
+  coaches,
   selected,
+  ownerId,
   onSelect,
   plannedDate,
   startTime,
@@ -281,19 +299,21 @@ function RepresentativeStep({
   notifyRepresentative,
   onPlanningChange,
 }: {
-  available: Representative[];
+  available: CoachingParticipant[];
+  coaches: ReturnType<typeof useSession>["managedUsers"];
   selected: string;
+  ownerId: string;
   onSelect: (id: string) => void;
   plannedDate: string;
   startTime: string;
   endTime: string;
   notifyRepresentative: boolean;
-  onPlanningChange: (planning: Partial<Pick<Draft, "plannedDate" | "startTime" | "endTime" | "notifyRepresentative">>) => void;
+  onPlanningChange: (planning: Partial<Pick<Draft, "plannedDate" | "startTime" | "endTime" | "notifyRepresentative" | "ownerId">>) => void;
 }) {
   return (
     <div>
-      <StepHeading icon={UserRound} title="Wie ga je begeleiden?" description="Je ziet alleen vertegenwoordigers binnen jouw huidige teamscope." />
-      <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-4">
+      <StepHeading icon={UserRound} title="Wie ga je begeleiden?" description="Je ziet alleen vertegenwoordigers en verkoopleiders binnen jouw toegestane scope." />
+      <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-5">
         <label>
           <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Datum</span>
           <input type="date" className="field" value={plannedDate} onChange={(event) => onPlanningChange({ plannedDate: event.target.value })} />
@@ -308,32 +328,35 @@ function RepresentativeStep({
         </label>
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
           <input type="checkbox" checked={notifyRepresentative} onChange={(event) => onPlanningChange({ notifyRepresentative: event.target.checked })} />
-          Vertegenwoordiger vooraf verwittigen
+          Begeleide vooraf verwittigen
         </label>
+        <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Begeleider</span><select className="field" value={ownerId} onChange={(event) => onPlanningChange({ ownerId: event.target.value })}>{coaches.map((coach) => <option key={coach.id} value={coach.id}>{coach.firstName} {coach.lastName}</option>)}</select></label>
       </div>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {available.map((representative) => (
-          <button
-            type="button"
-            key={representative.id}
-            onClick={() => onSelect(representative.id)}
-            className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
-              selected === representative.id
-                ? "border-brand-700 bg-brand-50 ring-4 ring-brand-50"
-                : "border-slate-200 hover:border-brand-200"
-            }`}
-          >
-            <Avatar initials={representative.initials} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold text-slate-900">{representative.firstName} {representative.lastName}</p>
-              <p className="mt-1 text-xs text-slate-500">{representative.team} · {representative.level}</p>
-            </div>
-            {selected === representative.id && <CheckCircle2 className="h-5 w-5 text-brand-700" />}
-          </button>
-        ))}
-      </div>
+      <ParticipantTree available={available} selected={selected} onSelect={onSelect} />
     </div>
   );
+}
+
+function ParticipantTree({ available, selected, onSelect }: { available: CoachingParticipant[]; selected: string; onSelect: (id: string) => void }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const countries = [...new Set(available.map((item) => item.country))];
+  const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  return <div className="mt-6 space-y-3">{countries.map((country) => {
+    const countryKey = `country:${country}`; const countryOpen = !collapsed.has(countryKey);
+    const countryPeople = available.filter((item) => item.country === country);
+    const teams = [...new Map(countryPeople.map((item) => [item.teamId, item.team])).entries()];
+    return <section key={country} className="overflow-hidden rounded-2xl border border-slate-200">
+      <button type="button" onClick={() => toggle(countryKey)} className="flex w-full items-center gap-2 bg-slate-50 px-4 py-3 text-left font-bold text-slate-900">{countryOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}<span className="flex-1">{country === "BE" ? "België" : country === "NL" ? "Nederland" : "Duitsland"}</span><span className="text-xs text-slate-500">{countryPeople.length}</span></button>
+      {countryOpen && <div className="space-y-2 p-3">{teams.map(([teamId, team]) => { const key = `team:${teamId}`; const open = !collapsed.has(key); const people = countryPeople.filter((item) => item.teamId === teamId); return <section key={teamId} className="overflow-hidden rounded-xl border border-slate-200">
+        <button type="button" onClick={() => toggle(key)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-bold">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}<span className="flex-1">{team}</span><span className="text-xs text-slate-400">{people.length}</span></button>
+        {open && <div className="grid gap-2 border-t border-slate-100 p-2 sm:grid-cols-2 xl:grid-cols-3">{people.map((person) => <button type="button" key={person.id} onClick={() => onSelect(person.id)} className={`flex items-center gap-3 rounded-xl border p-3 text-left ${selected === person.id ? "border-brand-700 bg-brand-50" : "border-slate-200 hover:border-brand-200"}`}><Avatar initials={person.initials} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{person.firstName} {person.lastName}</p><p className="mt-0.5 text-xs text-slate-500">{person.role === "SALES_LEADER" ? "Verkoopleider" : "Vertegenwoordiger"}</p></div>{person.role === "SALES_LEADER" && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>}</button>)}</div>}
+      </section>; })}</div>}
+    </section>;
+  })}</div>;
+}
+
+function participantAsRepresentative(person: CoachingParticipant): Representative {
+  return { id: person.id, firstName: person.firstName, lastName: person.lastName, initials: person.initials, country: person.country, team: person.team, teamId: person.teamId, level: "Vertegenwoordiger", levelColor: "bg-brand-100 text-brand-800", lastCoaching: "Nog niet", openActions: 0, email: "", phone: "", kpis: [] };
 }
 
 function PreparationStep({ representative }: { representative: Representative }) {

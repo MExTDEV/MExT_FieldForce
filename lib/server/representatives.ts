@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/server/db";
+import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
 import type { Country, Representative } from "@/lib/types";
 
 const levelColors: Record<string, string> = {
@@ -33,7 +34,7 @@ async function fetchRepresentativeUsers() {
       team: true,
       level: true,
       kpiSnapshots: {
-        include: { kpiDefinition: true },
+        include: { kpiDefinition: { include: { targetOverrides: true } } },
         orderBy: [{ periodEnd: "desc" }, { kpiDefinition: { name: "asc" } }],
       },
     },
@@ -98,9 +99,10 @@ function toRepresentative(
     kpis: latestByKpi.map(({ current, previous }) => ({
       label: current.kpiDefinition.name,
       value: formatKpiValue(Number(current.value), current.kpiDefinition.unit),
-      target: current.target
-        ? formatKpiValue(Number(current.target), current.kpiDefinition.unit)
-        : "",
+      target: formatKpiValue(Number(current.target ?? resolveKpiTargetFromDefinition(
+        current.kpiDefinition,
+        { country: user.country, teamId: user.teamId ?? undefined, userId: user.id }
+      ).targetValue), current.kpiDefinition.unit),
       trend:
         previous && Number(current.value) > Number(previous.value)
           ? 1
@@ -127,6 +129,9 @@ function latestSnapshotsByKpi(snapshots: RepresentativeUser["kpiSnapshots"]) {
 function formatKpiValue(value: number, unit: string) {
   if (unit === "%") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}%`;
   if (unit === "EUR") return `€ ${value.toLocaleString("nl-BE", { maximumFractionDigits: 0 })}`;
+  if (unit === "minutes") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} min`;
+  if (unit === "hours") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} u`;
+  if (unit === "km") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} km`;
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
 }
 

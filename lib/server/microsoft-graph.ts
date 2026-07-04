@@ -102,22 +102,24 @@ export async function syncCoachingsToOutlook(
         ownerId: true,
         outlookEventId: true,
         outlookICalUId: true,
+        representative: { select: { email: true, firstName: true, lastName: true } },
       },
     });
     if (!stored || stored.type !== "BEGELEIDING") continue;
-    if (stored.ownerId !== actorId) {
+    const ownerAccessToken = stored.ownerId === actorId ? accessToken : await getValidMicrosoftAccessToken(stored.ownerId);
+    if (!ownerAccessToken) {
       results.push(await storeSyncError(
         stored.id,
         stored.outlookEventId,
         stored.outlookICalUId,
-        "Alleen de eigenaar kan deze begeleiding met de eigen Outlook-agenda synchroniseren."
+        "De begeleider heeft geen geldige Microsoft-agendakoppeling."
       ));
       continue;
     }
     try {
       if (coaching.deletedAt || coaching.status === "geannuleerd") {
         if (stored.outlookEventId) {
-          await deleteGraphEvent(accessToken, stored.outlookEventId);
+          await deleteGraphEvent(ownerAccessToken, stored.outlookEventId);
         }
         const synced = await prisma.intervention.update({
           where: { id: stored.id },
@@ -138,17 +140,17 @@ export async function syncCoachingsToOutlook(
         continue;
       }
 
-      const payload = graphEventPayload(coaching);
+      const payload = graphEventPayload(coaching, stored.representative);
       let event: GraphEvent;
       if (stored.outlookEventId) {
         try {
-          event = await updateGraphEvent(accessToken, stored.outlookEventId, payload);
+          event = await updateGraphEvent(ownerAccessToken, stored.outlookEventId, payload);
         } catch (error) {
           if (!(error instanceof GraphRequestError) || error.status !== 404) throw error;
-          event = await createGraphEvent(accessToken, coaching.id, payload);
+          event = await createGraphEvent(ownerAccessToken, coaching.id, payload);
         }
       } else {
-        event = await createGraphEvent(accessToken, coaching.id, payload);
+        event = await createGraphEvent(ownerAccessToken, coaching.id, payload);
       }
       const synced = await prisma.intervention.update({
         where: { id: stored.id },
@@ -172,6 +174,20 @@ export async function syncCoachingsToOutlook(
     }
   }
   return results;
+}
+
+export async function transferCoachingsBetweenOwners(
+  actorAccessToken: string,
+  actorId: string,
+  changes: { interventionId: string; oldOwnerId: string; newOwnerId: string; outlookEventId?: string }[]
+) {
+  for (const change of changes) {
+    if (change.oldOwnerId === change.newOwnerId || !change.outlookEventId) continue;
+    const oldOwnerToken = change.oldOwnerId === actorId ? actorAccessToken : await getValidMicrosoftAccessToken(change.oldOwnerId);
+    if (!oldOwnerToken) throw new Error("De oude begeleider heeft geen geldige Microsoft-agendakoppeling.");
+    await deleteGraphEvent(oldOwnerToken, change.outlookEventId);
+    await prisma.intervention.update({ where: { id: change.interventionId }, data: { outlookEventId: null, outlookICalUId: null, outlookSyncStatus: "NOT_SYNCED", syncError: null } });
+  }
 }
 
 export async function recordOutlookSyncFailure(
@@ -206,7 +222,7 @@ const syncSelection = {
   syncError: true,
 } as const;
 
-function graphEventPayload(coaching: CoachingIntervention) {
+function graphEventPayload(coaching: CoachingIntervention, participant: { email: string; firstName: string; lastName: string }) {
   const timeZone = process.env.OUTLOOK_TIME_ZONE || "Romance Standard Time";
   return {
     subject: `Fieldforce: ${coaching.title}`,
@@ -218,6 +234,7 @@ function graphEventPayload(coaching: CoachingIntervention) {
     end: { dateTime: `${coaching.plannedDate}T${coaching.endTime}:00`, timeZone },
     showAs: "busy",
     sensitivity: "normal",
+    attendees: coaching.notifyRepresentative ? [{ emailAddress: { address: participant.email, name: `${participant.firstName} ${participant.lastName}`.trim() }, type: "required" }] : [],
   };
 }
 

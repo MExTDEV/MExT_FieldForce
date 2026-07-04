@@ -23,10 +23,13 @@ import {
   requireRole,
 } from "@/lib/server/authenticated-user";
 import { writeAuditLog } from "@/lib/server/audit";
+import { parseOptionalKpiNumber, parseRequiredKpiNumber } from "@/lib/kpi-settings";
 import type {
   Country,
   FieldForcePermissionKey,
   Role,
+  KpiEvaluationDirection,
+  KpiUnit,
 } from "@/lib/types";
 
 export async function GET() {
@@ -90,7 +93,11 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
             name: String(payload.name ?? ""),
             description: String(payload.description ?? ""),
             country: payload.country ? String(payload.country) as Country : null,
-            unit: String(payload.unit ?? "number"),
+            unit: String(payload.unit ?? "number") as KpiUnit,
+            targetValue: parseRequiredKpiNumber(payload.targetValue, "Doelwaarde"),
+            minValue: parseOptionalKpiNumber(payload.minValue, "Minimumwaarde"),
+            maxValue: parseOptionalKpiNumber(payload.maxValue, "Maximumwaarde"),
+            evaluationDirection: String(payload.evaluationDirection ?? "HIGHER_IS_BETTER") as KpiEvaluationDirection,
           });
     } else if (entity === "focus") {
       result = operation === "delete"

@@ -40,26 +40,7 @@ export async function POST(
     const now = new Date();
     const oldValue = transitionSnapshot(coaching);
     if (payload.action === "reopen") {
-      requireManager(actor, coaching);
-      if (!completedStatuses.includes(coaching.status as typeof completedStatuses[number])) {
-        badRequest("Alleen een afgewerkte begeleiding kan opnieuw geopend worden.");
-      }
-      await prisma.$transaction(async (tx) => {
-        await tx.intervention.update({
-          where: { id },
-          data: { status: "IN_UITVOERING" },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: actor.id,
-            entityType: "Intervention",
-            entityId: id,
-            action: "coaching.reopened",
-            oldValue: JSON.stringify(oldValue),
-            newValue: JSON.stringify({ status: "IN_UITVOERING" }),
-          },
-        });
-      });
+      badRequest("Een uitgevoerde begeleiding is definitief read-only en kan niet heropend worden.");
     } else if (payload.action === "send_for_approval") {
       requireManager(actor, coaching);
       if (!completedStatuses.includes(coaching.status as typeof completedStatuses[number])) {
@@ -95,8 +76,8 @@ export async function POST(
         });
       });
     } else {
-      if (actor.role !== "REPRESENTATIVE" || coaching.representativeId !== actor.id) {
-        forbidden("Alleen de betrokken vertegenwoordiger kan voor akkoord bevestigen.");
+      if (!["REPRESENTATIVE", "SALES_LEADER"].includes(actor.role) || coaching.representativeId !== actor.id) {
+        forbidden("Alleen de betrokken begeleide gebruiker kan voor akkoord bevestigen.");
       }
       if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
         badRequest("Deze begeleiding staat niet klaar voor akkoord.");
@@ -140,8 +121,8 @@ function requireManager(
   actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
   coaching: { initiatorId: string; ownerId: string; teamId: string | null; country: string }
 ) {
-  const allowed = actor.role === "SUPER_ADMIN" ||
-    (actor.role === "ADMIN" && actor.country === coaching.country) ||
+  const allowed = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ||
+    (["ADMIN", "COUNTRY_MANAGER"].includes(actor.role) && actor.country === coaching.country) ||
     (actor.role === "SALES_LEADER" && (
       actor.id === coaching.initiatorId ||
       actor.id === coaching.ownerId ||

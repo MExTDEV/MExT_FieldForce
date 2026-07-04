@@ -378,8 +378,11 @@ function previousKpiValue(current: string, trend: number) {
   return `${prefix}${previous.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}${suffix}`;
 }
 
-function formatKpiValue(value: number, unit: "%" | "EUR" | "number") {
+function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number") {
   if (unit === "%") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}%`;
   if (unit === "EUR") return `EUR ${value.toLocaleString("nl-BE", { maximumFractionDigits: 0 })}`;
+  if (unit === "minutes") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} min`;
+  if (unit === "hours") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} u`;
+  if (unit === "km") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} km`;
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
 }

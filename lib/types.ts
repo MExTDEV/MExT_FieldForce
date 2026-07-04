@@ -9,6 +9,8 @@ export type Role =
 
 export type Country = "BE" | "NL" | "DE";
 export type Language = "nl" | "fr" | "de";
+export type KpiEvaluationDirection = "HIGHER_IS_BETTER" | "LOWER_IS_BETTER" | "TARGET";
+export type KpiUnit = "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number";
 
 export type MockUser = {
   id: string;
@@ -127,7 +129,11 @@ export type ManagementKpi = {
   name: string;
   description: string;
   country: Country | null;
-  unit: string;
+  unit: KpiUnit;
+  targetValue: number;
+  minValue: number | null;
+  maxValue: number | null;
+  evaluationDirection: KpiEvaluationDirection;
   active: boolean;
 };
 
@@ -229,6 +235,18 @@ export type Representative = {
   kpis: { label: string; value: string; target: string; trend: number }[];
 };
 
+export type CoachingParticipant = {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  initials: string;
+  role: "REPRESENTATIVE" | "SALES_LEADER";
+  country: Country;
+  teamId: string;
+  team: string;
+};
+
 export type InterventionKind =
   | "begeleiding"
   | "contactmoment"
@@ -313,6 +331,28 @@ export type WorkflowActionPoint = {
   owner?: string;
   priority?: "laag" | "normaal" | "hoog";
   description?: string;
+  tipsAndTricks?: string;
+  targetValue?: number;
+  achievedScore?: number;
+  definitionId?: string;
+  isNew?: boolean;
+};
+
+export type ScopedActionDefinition = {
+  id: string;
+  title: string;
+  description: string;
+  tipsAndTricks: string;
+  targetValue?: number;
+  priority: "laag" | "normaal" | "hoog";
+  scope: "GLOBAL" | "COUNTRY" | "TEAM" | "USER";
+  scopeKey: string;
+  country?: Country;
+  teamId?: string;
+  userId?: string;
+  active: boolean;
+  validFrom: string;
+  validUntil?: string;
 };
 
 export type CoachingSimpleScore = {
@@ -368,6 +408,7 @@ export type CoachingIntervention = {
   country: Country;
   teamId: string;
   title: string;
+  subject?: CoachingParticipant;
   status: Status;
   plannedDate?: string;
   startTime?: string;

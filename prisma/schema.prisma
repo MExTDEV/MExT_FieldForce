@@ -80,6 +80,25 @@ enum Priority {
   HIGH
 }
 
+enum KpiEvaluationDirection {
+  HIGHER_IS_BETTER
+  LOWER_IS_BETTER
+  TARGET
+}
+
+enum KpiTargetScope {
+  COUNTRY
+  TEAM
+  USER
+}
+
+enum ActionScope {
+  GLOBAL
+  COUNTRY
+  TEAM
+  USER
+}
+
 enum ReflectionStatus {
   NIET_GESTART
   INGEDIEND
@@ -126,6 +145,7 @@ model User {
   initiatedItems           Intervention[]              @relation("InitiatedInterventions")
   ownedItems               Intervention[]              @relation("OwnedInterventions")
   kpiSnapshots             KpiSnapshot[]
+  kpiTargetOverrides       KpiTargetOverride[]
   actionPoints             ActionPoint[]               @relation("RepresentativeActions")
   ownedActionPoints        ActionPoint[]               @relation("OwnedActions")
   reflections              Reflection[]
@@ -143,6 +163,12 @@ model User {
   trainingParticipants     TrainingParticipant[]
   actionAssignments        ActionPointAssignment[]
   interventionParticipants InterventionParticipant[]
+  scopedActionDefinitions   ActionDefinition[]        @relation("ActionDefinitionUser")
+  createdActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionCreatedBy")
+  updatedActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionUpdatedBy")
+  actionTargetOverrides     ActionTargetOverride[]
+  coachingActions           CoachingAction[]
+  coachingChangeLogs        CoachingChangeLog[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -213,6 +239,9 @@ model Team {
   members          User[]                      @relation("TeamMembers")
   leaders          TeamLeader[]
   personalCriteria PersonalCoachingCriterion[]
+  kpiTargetOverrides KpiTargetOverride[]
+  actionDefinitions ActionDefinition[]
+  actionTargetOverrides ActionTargetOverride[]
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -277,17 +306,46 @@ model Level {
 }
 
 model KpiDefinition {
-  id           String        @id @default(cuid())
-  code         String        @unique
-  name         String
-  description  String
-  country      Country?
-  active       Boolean       @default(true)
-  unit         String
-  snapshots    KpiSnapshot[]
-  actionPoints ActionPoint[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                  String                 @id @default(cuid())
+  code                String                 @unique
+  name                String
+  description         String
+  country             Country?
+  active              Boolean                @default(true)
+  unit                String
+  targetValue         Decimal                @default(0) @db.Decimal(14, 2)
+  minValue            Decimal?               @db.Decimal(14, 2)
+  maxValue            Decimal?               @db.Decimal(14, 2)
+  evaluationDirection KpiEvaluationDirection @default(HIGHER_IS_BETTER)
+  snapshots           KpiSnapshot[]
+  actionPoints        ActionPoint[]
+  targetOverrides     KpiTargetOverride[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+}
+
+model KpiTargetOverride {
+  id                  String                 @id @default(cuid())
+  kpiDefinitionId     String
+  scope               KpiTargetScope
+  scopeKey            String
+  country             Country?
+  teamId              String?
+  userId              String?
+  targetValue         Decimal                @db.Decimal(14, 2)
+  minValue            Decimal?               @db.Decimal(14, 2)
+  maxValue            Decimal?               @db.Decimal(14, 2)
+  evaluationDirection KpiEvaluationDirection
+  kpiDefinition       KpiDefinition          @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+  team                Team?                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user                User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@unique([kpiDefinitionId, scopeKey])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
 }
 
 model KpiSnapshot {
@@ -350,6 +408,8 @@ model Intervention {
   trainingDetail       TrainingDetail?
   participants         InterventionParticipant[]
   trainingParticipants TrainingParticipant[]
+  coachingActions      CoachingAction[]
+  coachingChangeLogs   CoachingChangeLog[]
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 
@@ -601,6 +661,98 @@ model ActionPointAssignment {
 
   @@unique([actionPointId, representativeId])
   @@index([representativeId])
+}
+
+model ActionDefinition {
+  id              String                 @id @default(cuid())
+  title           String
+  description     String                 @db.Text
+  tipsAndTricks   String                 @db.LongText
+  targetValue     Decimal?               @db.Decimal(14, 2)
+  priority        Priority               @default(NORMAL)
+  scope           ActionScope            @default(GLOBAL)
+  scopeKey        String
+  country         Country?
+  teamId          String?
+  userId          String?
+  active          Boolean                @default(true)
+  validFrom       DateTime
+  validUntil      DateTime?
+  deletedAt       DateTime?
+  createdById     String
+  updatedById     String
+  team            Team?                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user            User?                  @relation("ActionDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy       User                   @relation("ActionDefinitionCreatedBy", fields: [createdById], references: [id])
+  updatedBy       User                   @relation("ActionDefinitionUpdatedBy", fields: [updatedById], references: [id])
+  targetOverrides ActionTargetOverride[]
+  coachingActions CoachingAction[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([scope, scopeKey, active])
+  @@index([validFrom, validUntil])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model ActionTargetOverride {
+  id                 String           @id @default(cuid())
+  actionDefinitionId String
+  scope              ActionScope
+  scopeKey           String
+  country            Country?
+  teamId             String?
+  userId             String?
+  targetValue        Decimal          @db.Decimal(14, 2)
+  actionDefinition   ActionDefinition @relation(fields: [actionDefinitionId], references: [id], onDelete: Cascade)
+  team               Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user               User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([actionDefinitionId, scopeKey])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model CoachingAction {
+  id                 String            @id @default(cuid())
+  interventionId     String
+  actionDefinitionId String?
+  userId             String
+  title              String
+  description        String            @db.Text
+  tipsAndTricks      String            @db.LongText
+  targetValue        Decimal?          @db.Decimal(14, 2)
+  achievedScore      Decimal?          @db.Decimal(14, 2)
+  priority           Priority
+  isNew              Boolean           @default(false)
+  intervention       Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  actionDefinition   ActionDefinition? @relation(fields: [actionDefinitionId], references: [id], onDelete: SetNull)
+  user               User              @relation(fields: [userId], references: [id])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([interventionId, actionDefinitionId])
+  @@index([userId])
+}
+
+model CoachingChangeLog {
+  id             String       @id @default(cuid())
+  interventionId String
+  userId         String
+  field          String
+  oldValue       String?      @db.LongText
+  newValue       String?      @db.LongText
+  intervention   Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([interventionId, createdAt])
+  @@index([userId])
 }
 
 model Reflection {

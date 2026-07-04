@@ -11,8 +11,8 @@ export const permissionsByRole: Record<Role, string[]> = {
     "action:update",
   ],
   SERVICE_OPERATOR: ["self:read", "service:write"],
-  COUNTRY_MANAGER: ["country:read", "reporting:read"],
-  GROUP_MANAGER: ["group:read", "reporting:read"],
+  COUNTRY_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update"],
+  GROUP_MANAGER: ["group:read", "reporting:read", "intervention:create", "action:create", "action:update"],
   ADMIN: ["scope:configure", "reporting:read", "intervention:create", "action:create", "action:update"],
   SUPER_ADMIN: ["*"],
 };

@@ -125,7 +125,8 @@ export async function permanentlyDeleteKpi(
   return prisma.$transaction(async (tx) => {
     const kpi = await tx.kpiDefinition.findUniqueOrThrow({ where: { id } });
     assertConfirmation(kpi.name, confirmation);
-    let deletedRecords = (await tx.actionPoint.deleteMany({ where: { kpiDefinitionId: id } })).count;
+    let deletedRecords = (await tx.kpiTargetOverride.deleteMany({ where: { kpiDefinitionId: id } })).count;
+    deletedRecords += (await tx.actionPoint.deleteMany({ where: { kpiDefinitionId: id } })).count;
     deletedRecords += (await tx.kpiSnapshot.deleteMany({ where: { kpiDefinitionId: id } })).count;
     await tx.kpiDefinition.delete({ where: { id } });
     return { entity: "kpi", id, name: kpi.name, deletedRecords: deletedRecords + 1 };
