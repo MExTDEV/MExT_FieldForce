@@ -1,6 +1,17 @@
-import type { Prisma } from "@prisma/client";
+import type { InterventionStatus, Prisma } from "@prisma/client";
 import type { MockUser } from "@/lib/types";
-import { actorCountryWhere } from "@/lib/server/authenticated-user";
+import { actorCanAccessCountry, actorCountryWhere } from "@/lib/server/authenticated-user";
+import { canCreateIntervention } from "@/lib/permissions";
+
+const representativeReviewStatuses = [
+  "WACHT_OP_AKKOORD",
+  "VERZONDEN_TER_AKKOORD",
+  "AKKOORD_DOOR_VERTEGENWOORDIGER",
+  "GESLOTEN",
+  "GEFINALISEERD",
+  "AFGESLOTEN",
+  "VOLTOOID",
+] as readonly InterventionStatus[];
 
 export function buildCoachingVisibilityFilter(
   currentUser: MockUser
@@ -20,10 +31,25 @@ export function buildCoachingVisibilityFilter(
   if (currentUser.role === "REPRESENTATIVE") {
     return {
       representativeId: currentUser.id,
-      status: { in: ["VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"] },
+      OR: [
+        { status: { in: [...representativeReviewStatuses] } },
+        { status: "GEPLAND", notifyRepresentative: true },
+      ],
     };
   }
   return { country: currentUser.country };
+}
+
+export function buildCoachingDetailAccessFilter(
+  currentUser: MockUser
+): Prisma.InterventionWhereInput {
+  if (currentUser.role === "REPRESENTATIVE") {
+    return {
+      representativeId: currentUser.id,
+      status: { in: [...representativeReviewStatuses] },
+    };
+  }
+  return buildCoachingVisibilityFilter(currentUser);
 }
 
 export function buildWorkflowInterventionVisibilityFilter(
@@ -49,4 +75,43 @@ export function buildVisibleCoachingWhere(
     deletedAt: null,
     AND: [buildCoachingVisibilityFilter(currentUser), extra],
   };
+}
+
+export function buildOpenableCoachingWhere(
+  currentUser: MockUser,
+  extra: Prisma.InterventionWhereInput = {}
+): Prisma.InterventionWhereInput {
+  return {
+    type: "BEGELEIDING",
+    deletedAt: null,
+    AND: [buildCoachingDetailAccessFilter(currentUser), extra],
+  };
+}
+
+export function canManageStoredCoaching(
+  actor: MockUser,
+  coaching: {
+    representative: { role: string };
+    initiatorId: string;
+    ownerId: string;
+    teamId: string | null;
+    country: string;
+  }
+) {
+  if (!canCreateIntervention(actor)) return false;
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return true;
+
+  if (actor.role === "SALES_LEADER") {
+    if (coaching.representative.role === "SALES_LEADER") return false;
+    return actor.id === coaching.initiatorId ||
+      actor.id === coaching.ownerId ||
+      Boolean(actor.teamId && actor.teamId === coaching.teamId);
+  }
+
+  if (["COUNTRY_MANAGER", "SALES_MANAGER", "ADMIN"].includes(actor.role)) {
+    return coaching.representative.role === "SALES_LEADER" &&
+      actorCanAccessCountry(actor, coaching.country);
+  }
+
+  return false;
 }

@@ -33,7 +33,7 @@ type Filters = {
   representativeId: string;
 };
 
-const pageSize = 25;
+const pageSize = 15;
 
 export function ActivityHistoryCard({ user }: { user: MockUser }) {
   const defaults = useMemo(defaultFilters, []);

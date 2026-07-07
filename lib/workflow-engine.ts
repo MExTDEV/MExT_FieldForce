@@ -17,6 +17,7 @@ import type {
   Status,
   CoachingDossier,
   CoachingAppointment,
+  CoachingParticipant,
   Representative,
 } from "@/lib/types";
 
@@ -29,6 +30,7 @@ export type CoachingWorkflowInput = {
   startTime?: string;
   endTime?: string;
   notifyRepresentative?: boolean;
+  subject?: CoachingParticipant;
   internalNotes?: string;
   focusNames: string[];
   scores: WorkflowScore[];
@@ -504,8 +506,10 @@ export function saveCoaching(
   status: Status,
   representatives: Representative[]
 ): { state: WorkflowState; intervention: CoachingIntervention } {
-  const representative = representatives.find((item) => item.id === input.representativeId);
-  if (!representative) throw new Error("Vertegenwoordiger niet gevonden.");
+  const representative =
+    representatives.find((item) => item.id === input.representativeId) ??
+    (input.subject ? coachingParticipantAsRepresentative(input.subject) : undefined);
+  if (!representative) throw new Error("Begeleide persoon niet gevonden.");
 
   const now = new Date().toISOString();
   const id = input.id ?? createId("coaching");
@@ -518,6 +522,7 @@ export function saveCoaching(
     country: representative.country,
     teamId: representative.teamId,
     title: `Begeleiding ${representative.firstName} ${representative.lastName}`,
+    subject: input.subject ?? previous?.subject,
     status,
     plannedDate: input.plannedDate ?? previous?.plannedDate ?? now.slice(0, 10),
     startTime: input.startTime ?? previous?.startTime ?? "09:00",
@@ -585,6 +590,25 @@ export function saveCoaching(
         reflection,
       ],
     },
+  };
+}
+
+function coachingParticipantAsRepresentative(subject: CoachingParticipant): Representative {
+  return {
+    id: subject.id,
+    firstName: subject.firstName,
+    lastName: subject.lastName,
+    initials: subject.initials,
+    country: subject.country,
+    team: subject.team,
+    teamId: subject.teamId,
+    level: "Vertegenwoordiger",
+    levelColor: subject.role === "SALES_LEADER" ? "bg-brand-100 text-brand-800" : "bg-sky-100 text-sky-800",
+    lastCoaching: "Nog niet",
+    openActions: 0,
+    email: "",
+    phone: "",
+    kpis: [],
   };
 }
 

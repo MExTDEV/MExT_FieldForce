@@ -135,11 +135,22 @@ Open question:
 
 Priority: High
 
-Current issue:
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Nieuwe begeleidingen gebruiken effectieve `intervention:create`-rechten voordat de targetselectie beschikbaar is.
+- De targetselectie ondersteunt actieve Verkoopleiders naast Vertegenwoordigers binnen de bestaande land/team/scope-regels.
+- Een gewone Verkoopleider blijft beperkt tot actieve Vertegenwoordigers van het eigen team.
+- De workflow bewaart het geselecteerde begeleidingsdoelwit mee, zodat Verkoopleiders correct zichtbaar blijven in Dashboard, Planning en Begeleidingen.
+- Uitvoeren, opslaan en ter akkoord versturen blijven permission- en lifecycle-driven; managementrollen zonder effectieve create/execute-permissie blijven read-only.
+- Er is geen aparte formulierflow toegevoegd; de bestaande coaching form blijft de single source of truth.
+
+Original issue:
 
 - Het inplannen van een begeleiding op een Verkoopleider werkt momenteel niet.
 
-Required change:
+Original required change:
 
 - Een gebruiker die functioneel boven een Verkoopleider staat, moet een begeleiding kunnen inplannen op die Verkoopleider.
 - Die gebruiker moet de begeleiding op de Verkoopleider ook kunnen uitvoeren.
@@ -200,6 +211,24 @@ Purpose:
 ## Role-Based Visibility
 
 Priority: High
+
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Begeleidingen visibility now uses the shared coaching visibility helpers for list data.
+- Representatives can see announced planned coachings, but cannot open unfinished coachings.
+- Surprise coachings remain hidden for representatives until Wachten op akkoord / approval stage.
+- Direct detail access uses a stricter open-detail access check than list visibility.
+- Server-side coaching detail and mutation routes enforce the same visibility and manage rules.
+- Country Manager, Sales Manager and Admin users can view representative coachings in scope but cannot edit them by default.
+- Higher-level users with effective intervention rights can still plan and execute coachings on Verkoopleiders within scope.
+- Super Admin and Group Manager keep global operational access.
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation remains to be performed through the externally managed local devserver.
+- Grouping by country/team/user is tracked separately under Grouping by Scope.
 
 Current issue:
 
@@ -269,6 +298,13 @@ Additional required rule:
 
 Priority: Medium
 
+Status: Future / Restpunt after 2026-07-07
+
+Reason:
+
+- The current Begeleidingen card grid can safely show scope-filtered data, but grouping by country -> team -> user requires UI restructuring of the overview sections.
+- This was not forced in the role-visibility task to avoid introducing a larger layout change alongside access-control changes.
+
 Required behaviour:
 
 - Country Manager, Sales Manager, Admin and Super Admin see coachings grouped by:
@@ -289,6 +325,19 @@ Purpose:
 ## Representative Notification Logic
 
 Priority: High
+
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- The existing "representative must be informed" planning value now controls representative list visibility.
+- If enabled, the planned coaching appears in representative Dashboard, Planning and Begeleidingen data because those surfaces use the shared workflow visibility state.
+- If disabled, the planned coaching stays hidden from the representative until Wachten op akkoord / approval stage.
+- Direct detail access remains blocked for representatives while the coaching is unfinished, even when the planned coaching is announced.
+
+Remaining checks or known limitations:
+
+- No separate notification delivery channel was added; this task only implemented visibility behaviour behind the existing checkbox.
 
 Required change:
 
@@ -315,6 +364,16 @@ Purpose:
 
 Priority: High
 
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Future planned coachings open through the existing planning/preparation wizard for users who may edit that coaching.
+- The wizard preserves the original representative, date, start time, end time, notification flag and selected focus areas when reopening a planned coaching.
+- Begeleidingen and Planning links now route editable future coachings to the planning/preparation flow instead of the execution dossier.
+- The wizard blocks direct edit-mode access when the coaching is not visible, not planned, or outside the user's edit scope.
+- Existing preparation data in the planning/preparation screen remains available.
+
 Required change:
 
 - When a Verkoopleider or Super Admin opens a future coaching, open the planning/preparation screen.
@@ -339,6 +398,14 @@ The user must also be able to view:
 ## Management View Mode
 
 Priority: Medium
+
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Country Manager, Sales Manager and Admin users open representative coachings in read-only preparation/detail mode by default.
+- These users cannot save execution data, change focus areas, change representative/target or modify planning details for representative coachings through the UI or API.
+- The exception for coachings on Verkoopleiders remains permission- and scope-driven.
 
 Required change:
 
@@ -493,6 +560,45 @@ Topics to define:
 
 Priority: High
 
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Planning items now have an internal source classification:
+  - `FIELD_FORCE`
+  - `EXTERNAL_CALENDAR`
+- Planning items now have a stable type classification for:
+  - `COACHING`
+  - `CONTACT_MOMENT`
+  - `RETRAINING`
+  - `SALES_TRAINING`
+  - `HELP_REQUEST`
+  - `OUTLOOK_APPOINTMENT`
+- Planning sorting now uses one shared comparator:
+  - date / day grouping first
+  - FieldForce-created business items before external calendar items
+  - start time ascending within the same source group
+  - end time ascending as tie-breaker
+  - item type and id as deterministic tie-breaker
+- Planning day, week and month views use the same source-priority ordering.
+- Outlook calendar items linked to existing FieldForce coachings are filtered by `outlookEventId` and `outlookICalUId` so synced FieldForce items are not duplicated as external appointments.
+- Begeleiding items keep using the existing coaching open logic; no Planning-specific coaching form was added.
+- Undefined module workflows were not implemented.
+
+Validation performed:
+
+- `npm run test:planning-items`
+- `npm run test:coaching-visibility`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached Prisma generate and was blocked by the known Windows Prisma query-engine file lock before Next.js compilation.
+- `npx next build` completed successfully with the existing Prisma client.
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+- Contactmomenten, Retrainingen, Salestrainingen and Hulpaanvragen still require business clarification for their final create/open/edit workflows.
+
 Current issue:
 
 - Items planned from within the FieldForce app are currently displayed after already existing appointments in the Planning menu item.
@@ -536,6 +642,38 @@ Important:
 - Do not change the ownership of Planning items.
 - Planning may display synced calendar appointments, but FieldForce business items must remain visually prioritised.
 - Do not break Outlook synchronisation.
+
+---
+
+## Day and Week Agenda Items Must Use Actual Duration
+
+Priority: High
+
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Dag- en weekweergave gebruiken opnieuw tijdgebaseerde positionering.
+- Elk item berekent `top` op basis van starttijd binnen de zichtbare dagkolom.
+- Elk item berekent `height` op basis van de werkelijke duur tussen start- en eindtijd.
+- Zeer korte afspraken krijgen alleen een minimale leesbare hoogte; langere afspraken blijven zichtbaar hoger.
+- De berekening gebruikt dezelfde pixels-per-minuut als de uurgrid, zodat 08:00, 09:30 en langere blokken op de juiste verticale positie vallen.
+- Overlappende items worden per dag in lanes verdeeld zodat ze niet volledig over elkaar vallen.
+- FieldForce-items behouden prioriteit in overlapgroepen tegenover Outlook-only items.
+- Maandweergave blijft de bestaande compacte lijstweergave gebruiken.
+
+Validation performed:
+
+- `npm run test:planning-items`
+- `npm run typecheck`
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+
+Original issue:
+
+- Na de FieldForce-first sorteerwijziging kregen agenda-items in dag- en weekweergave een vaste uniforme hoogte, waardoor een afspraak van 1 uur even hoog werd getoond als een afspraak van meerdere uren.
 
 ---
 # Undefined Coaching Modules

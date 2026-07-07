@@ -1,12 +1,15 @@
 import { handleApi } from "@/lib/server/api";
-import { actorCountryWhere, requireAuthenticatedUser, requireRole } from "@/lib/server/authenticated-user";
+import { actorCountryWhere, requireAuthenticatedUser } from "@/lib/server/authenticated-user";
 import { prisma } from "@/lib/server/db";
+import { canCreateIntervention } from "@/lib/permissions";
 
 export async function GET(request: Request) {
   return handleApi("api/coaching-participants:get", async () => {
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
-    requireRole(actor, ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    if (!canCreateIntervention(actor)) {
+      return { participants: [] };
+    }
     const users = await prisma.user.findMany({
       where: {
         active: true,

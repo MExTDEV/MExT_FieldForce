@@ -7,7 +7,7 @@ import type { Country, MockUser, Role } from "@/lib/types";
 
 export function actorCountryWhere(user: MockUser) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return {};
-  if (user.role === "SALES_MANAGER") {
+  if (["ADMIN", "SALES_MANAGER"].includes(user.role)) {
     return { country: { in: user.countryAccess ?? [] } };
   }
   return { country: user.country };
@@ -15,7 +15,7 @@ export function actorCountryWhere(user: MockUser) {
 
 export function actorCanAccessCountry(user: MockUser, country: string) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return true;
-  if (user.role === "SALES_MANAGER") return (user.countryAccess ?? []).includes(country as Country);
+  if (["ADMIN", "SALES_MANAGER"].includes(user.role)) return (user.countryAccess ?? []).includes(country as Country);
   return user.country === country;
 }
 
@@ -137,19 +137,32 @@ async function findActiveUser(id: string): Promise<MockUser | undefined> {
       language: true,
       teamId: true,
       representativeId: true,
-      countryAccess: { select: { country: true } },
     },
   });
   if (!user) return undefined;
+  const countryAccess = await findUserCountryAccess(user.id);
   return {
     id: user.id,
     name: `${user.firstName} ${user.lastName}`.trim(),
     email: user.email,
     role: user.role,
     country: user.country,
-    countryAccess: user.countryAccess.map((scope) => scope.country),
+    countryAccess,
     language: user.language,
     teamId: user.teamId ?? undefined,
     representativeId: user.representativeId ?? undefined,
   };
+}
+
+async function findUserCountryAccess(userId: string): Promise<Country[]> {
+  try {
+    const scopes = await prisma.userCountryAccess.findMany({
+      where: { userId },
+      select: { country: true },
+    });
+    return scopes.map((scope) => scope.country as Country);
+  } catch (error) {
+    console.warn("[auth] UserCountryAccess kon niet worden geladen; lege scope gebruikt.", error);
+    return [];
+  }
 }

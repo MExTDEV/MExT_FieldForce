@@ -172,7 +172,8 @@ Allow a coach to schedule a new coaching session.
 - Automatic login is preferred whenever possible.
 - Separate application credentials should be avoided.
 - User has permission to create coachings.
-- User can only select representatives within the effective visibility scope.
+- User can only select coaching targets within the effective visibility scope.
+- Allowed coaching targets are Vertegenwoordigers and, when effective permissions and scope allow it, Verkoopleiders.
 
 ---
 

@@ -390,10 +390,11 @@ Supports filtering by:
 - team
 - representative
 
-Required improvement:
+Current implemented behaviour:
 
-- add pagination
-- show 15 items per page
+- pagination is available
+- 15 items are shown per page
+- existing filters remain active while navigating pages
 
 Preferred future location:
 

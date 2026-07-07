@@ -27,6 +27,8 @@ import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import { coachingsForRepresentative, latestHistoricalCoaching } from "@/lib/performance-data";
 import { getPerformanceWheelData, type PerformanceWheelCriterion } from "@/lib/performance/performance-wheel";
+import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
+import { canCreateIntervention } from "@/lib/permissions";
 import { offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
 import type { CoachingFrameworkFocus, CoachingParticipant, Representative, ScoreValue } from "@/lib/types";
 
@@ -67,7 +69,7 @@ export function CoachingWizard() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
   const { user, managedUsers } = useSession();
-  const { state, saveCoachingStatus } = useWorkflow();
+  const { hydrated, state, saveCoachingStatus } = useWorkflow();
   const { isModuleEnabled } = useModules();
   const { representatives } = useRepresentatives();
   const [participants, setParticipants] = useState<CoachingParticipant[]>([]);
@@ -87,6 +89,8 @@ export function CoachingWizard() {
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string>();
   const [error, setError] = useState<string>();
+  const editMissing = Boolean(editId && hydrated && !existing);
+  const editForbidden = Boolean(existing && !canEditFutureCoachingPlanning(user, existing));
 
   useEffect(() => {
     let active = true;
@@ -112,7 +116,7 @@ export function CoachingWizard() {
       startTime: existing.startTime ?? "09:00",
       endTime: existing.endTime ?? "11:00",
       notifyRepresentative: existing.notifyRepresentative ?? false,
-      focusNames: [],
+      focusNames: existing.focusNames,
       scores: {},
       actions: [],
     });
@@ -135,8 +139,20 @@ export function CoachingWizard() {
     return <EmptyState title="Module niet actief" description="Begeleidingen is momenteel gedeactiveerd in FieldForce." />;
   }
 
-  if (!["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
+  if (!canCreateIntervention(user)) {
     return <EmptyState title="Geen rechten om een begeleiding te maken" description="Je rol mag geen begeleiding aanmaken." />;
+  }
+
+  if (editId && !hydrated) {
+    return <EmptyState title="Begeleiding laden" description="De bestaande planning wordt opgehaald." />;
+  }
+
+  if (editMissing) {
+    return <EmptyState title="Begeleiding niet gevonden" description="Deze begeleiding bestaat niet, is niet gepland of valt buiten jouw bewerkingsscope." />;
+  }
+
+  if (editForbidden) {
+    return <EmptyState title="Alleen bekijken" description="Deze geplande begeleiding mag door jouw rol niet worden aangepast." />;
   }
 
   function workflowInput() {
@@ -149,6 +165,7 @@ export function CoachingWizard() {
       startTime: draft.startTime,
       endTime: draft.endTime,
       notifyRepresentative: draft.notifyRepresentative,
+      subject: selectedParticipant,
       focusNames: draft.focusNames,
       scores: [],
       actionPoints: [],

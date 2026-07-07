@@ -18,6 +18,18 @@ import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import type { Representative } from "@/lib/types";
 import { dedupeById } from "@/lib/coaching/visibility";
+import { coachingOpenHref } from "@/lib/coaching/access";
+import {
+  createExternalCalendarDedupeKeys,
+  isLinkedExternalCalendarItem,
+  layoutOverlappingPlanningItems,
+  planningEndMinutes,
+  planningStartMinutes,
+  sortPlanningItems,
+  type PlanningLayoutItem,
+  type PlanningItemSource,
+  type PlanningItemType,
+} from "@/lib/planning-items";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -29,10 +41,14 @@ type CalendarEvent = {
   hour: number;
   duration: number;
   type: string;
+  planningType: PlanningItemType;
   status: string;
   href?: string;
   color: string;
-  source: "fieldforce" | "outlook";
+  source: PlanningItemSource;
+  planningSource: PlanningItemSource;
+  startMinutes: number;
+  endMinutes: number;
   syncStatus?: "NOT_SYNCED" | "SYNCED" | "ERROR";
   syncError?: string;
 };
@@ -65,6 +81,13 @@ const MONTH_NAMES = [
   "december",
 ];
 const HOURS = Array.from({ length: 11 }, (_, index) => index + 8);
+const CALENDAR_START_HOUR = HOURS[0];
+const CALENDAR_END_HOUR = HOURS[HOURS.length - 1] + 1;
+const HOUR_ROW_HEIGHT = 56;
+const PX_PER_MINUTE = HOUR_ROW_HEIGHT / 60;
+const MIN_EVENT_HEIGHT = 26;
+const DAY_EVENT_GAP = 6;
+const WEEK_EVENT_GAP = 4;
 
 const EVENT_COLORS: Record<string, string> = {
   Begeleiding: "border-blue-500 bg-blue-50 text-blue-950",
@@ -157,6 +180,10 @@ function durationFromTimes(start?: string, end?: string) {
   return Math.max(0.5, Math.min(11, endHour - startHour));
 }
 
+function minutesFromHour(hour: number) {
+  return Math.round(hour * 60);
+}
+
 function decimalHour(value?: string) {
   const [hours, minutes] = (value ?? "").split(":").map(Number);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return Number.NaN;
@@ -178,6 +205,44 @@ function representativeName(representatives: Representative[], id?: string) {
 
 function eventColor(type: string) {
   return EVENT_COLORS[type] ?? "border-[#003B83] bg-blue-50 text-blue-950";
+}
+
+function calendarEventStyle(
+  event: PlanningLayoutItem<CalendarEvent>,
+  horizontalPadding: number,
+  laneGap: number,
+): React.CSSProperties {
+  const laneWidth = 100 / event.layoutColumnCount;
+  const left = `calc(${laneWidth * event.layoutColumn}% + ${horizontalPadding}px)`;
+  const width = `calc(${laneWidth}% - ${horizontalPadding * 2 + (event.layoutColumnCount > 1 ? laneGap : 0)}px)`;
+  const sourceLayer = event.source === "FIELD_FORCE" ? 30 : 20;
+
+  return {
+    top: `${eventTop(event)}px`,
+    left,
+    width,
+    height: `${eventHeight(event)}px`,
+    zIndex: sourceLayer + Math.max(0, event.layoutColumnCount - event.layoutOrder),
+  };
+}
+
+function eventTop(event: CalendarEvent) {
+  const visibleStart = clampCalendarMinute(planningStartMinutes(event));
+  return (visibleStart - CALENDAR_START_HOUR * 60) * PX_PER_MINUTE;
+}
+
+function eventHeight(event: CalendarEvent) {
+  const start = planningStartMinutes(event);
+  const end = Math.max(planningEndMinutes(event), start + 1);
+  const visibleStart = clampCalendarMinute(start);
+  const visibleEnd = clampCalendarMinute(end);
+  return Math.max(MIN_EVENT_HEIGHT, (visibleEnd - visibleStart) * PX_PER_MINUTE);
+}
+
+function clampCalendarMinute(value: number) {
+  const start = CALENDAR_START_HOUR * 60;
+  const end = CALENDAR_END_HOUR * 60;
+  return Math.max(start, Math.min(end, value));
 }
 
 export function PlanningCalendar() {
@@ -219,22 +284,36 @@ export function PlanningCalendar() {
   }, [outlookRange.end, outlookRange.start]);
 
   const events = useMemo<CalendarEvent[]>(() => {
-    const coachingEvents = dedupeById(workflow.visibleInterventions(user))
-      .map((item) => ({
-        id: `coaching-${item.id}`,
-        title: "Begeleiding",
-        subtitle: `${representativeName(representatives, item.representativeId)} · ${item.ownerId ? "Verkoopleider" : ""}`,
-        date: dateKey(parseDate(item.plannedDate ?? item.finalizedAt ?? item.createdAt)),
-        hour: hourFromTime(item.startTime) ?? deterministicHour(item.id),
-        duration: durationFromTimes(item.startTime, item.endTime),
-        type: "Begeleiding",
-        status: item.status,
-        href: `/begeleidingen/${item.id}`,
-        color: eventColor("Begeleiding"),
-        source: "fieldforce" as const,
-        syncStatus: item.outlookSyncStatus,
-        syncError: item.syncError,
-      }));
+    const today = dateKey(REFERENCE_DATE);
+    const visibleInterventions = dedupeById(workflow.visibleInterventions(user));
+    const coachingEvents = visibleInterventions
+      .map((item) => {
+        const participantName = item.subject
+          ? `${item.subject.firstName} ${item.subject.lastName}`
+          : representativeName(representatives, item.representativeId);
+        const href = coachingOpenHref(user, item, today);
+        const hour = hourFromTime(item.startTime) ?? deterministicHour(item.id);
+        const duration = durationFromTimes(item.startTime, item.endTime);
+        return {
+          id: `coaching-${item.id}`,
+          title: "Begeleiding",
+          subtitle: `${participantName} · ${item.ownerId ? "Verkoopleider" : ""}`,
+          date: dateKey(parseDate(item.plannedDate ?? item.finalizedAt ?? item.createdAt)),
+          hour,
+          duration,
+          type: "Begeleiding",
+          planningType: "COACHING" as const,
+          status: item.status,
+          href,
+          color: eventColor("Begeleiding"),
+          source: "FIELD_FORCE" as const,
+          planningSource: "FIELD_FORCE" as const,
+          startMinutes: minutesFromHour(hour),
+          endMinutes: minutesFromHour(hour + duration),
+          syncStatus: item.outlookSyncStatus,
+          syncError: item.syncError,
+        };
+      });
 
     const contactEvents = isModuleEnabled("CONTACTMOMENTEN") ? workflow.visibleContactMoments(user).map((item) => ({
       id: `contact-${item.id}`,
@@ -244,10 +323,14 @@ export function PlanningCalendar() {
       hour: deterministicHour(item.id),
       duration: 1,
       type: "Contactmoment",
+      planningType: "CONTACT_MOMENT" as const,
       status: item.status,
       href: `/contactmomenten/${item.id}`,
       color: eventColor("Contactmoment"),
-      source: "fieldforce" as const,
+      source: "FIELD_FORCE" as const,
+      planningSource: "FIELD_FORCE" as const,
+      startMinutes: minutesFromHour(deterministicHour(item.id)),
+      endMinutes: minutesFromHour(deterministicHour(item.id) + 1),
     })) : [];
 
     const retrainingEvents = isModuleEnabled("RETRAININGEN") ? workflow.visibleRetrainings(user).map((item) => ({
@@ -258,10 +341,14 @@ export function PlanningCalendar() {
       hour: deterministicHour(item.id),
       duration: 1,
       type: "Retraining",
+      planningType: "RETRAINING" as const,
       status: item.status,
       href: `/retrainingen/${item.id}`,
       color: eventColor("Retraining"),
-      source: "fieldforce" as const,
+      source: "FIELD_FORCE" as const,
+      planningSource: "FIELD_FORCE" as const,
+      startMinutes: minutesFromHour(deterministicHour(item.id)),
+      endMinutes: minutesFromHour(deterministicHour(item.id) + 1),
     })) : [];
 
     const salesTrainingEvents = isModuleEnabled("SALESTRAININGEN") ? workflow.visibleSalesTrainings(user).map((item) => ({
@@ -272,10 +359,14 @@ export function PlanningCalendar() {
       hour: deterministicHour(item.id),
       duration: 1,
       type: "Sales training",
+      planningType: "SALES_TRAINING" as const,
       status: item.status,
       href: `/sales-trainingen/${item.id}`,
       color: eventColor("Sales training"),
-      source: "fieldforce" as const,
+      source: "FIELD_FORCE" as const,
+      planningSource: "FIELD_FORCE" as const,
+      startMinutes: minutesFromHour(deterministicHour(item.id)),
+      endMinutes: minutesFromHour(deterministicHour(item.id) + 1),
     })) : [];
 
     const helpRequestEvents = isModuleEnabled("HULPAANVRAGEN") ? workflow.visibleHelpRequests(user).map((item) => ({
@@ -286,17 +377,19 @@ export function PlanningCalendar() {
       hour: deterministicHour(item.id),
       duration: 1,
       type: "Hulpaanvraag",
+      planningType: "HELP_REQUEST" as const,
       status: item.status,
       href: `/hulpaanvragen/${item.id}`,
       color: eventColor("Hulpaanvraag"),
-      source: "fieldforce" as const,
+      source: "FIELD_FORCE" as const,
+      planningSource: "FIELD_FORCE" as const,
+      startMinutes: minutesFromHour(deterministicHour(item.id)),
+      endMinutes: minutesFromHour(deterministicHour(item.id) + 1),
     })) : [];
 
-    const linkedOutlookIds = new Set(
-      dedupeById(workflow.visibleInterventions(user)).map((item) => item.outlookEventId).filter(Boolean)
-    );
+    const linkedOutlookKeys = createExternalCalendarDedupeKeys(visibleInterventions);
     const externalEvents = outlookEvents
-      .filter((item) => !linkedOutlookIds.has(item.id))
+      .filter((item) => !isLinkedExternalCalendarItem(item, linkedOutlookKeys))
       .map((item) => {
         const start = new Date(item.start);
         const end = new Date(item.end);
@@ -304,21 +397,26 @@ export function PlanningCalendar() {
         const duration = item.isAllDay
           ? 1
           : Math.max(0.5, Math.min(11, (end.getTime() - start.getTime()) / 3_600_000));
+        const hour = Math.max(8, Math.min(18, startHour));
         return {
           id: `outlook-${item.id}`,
           title: item.title,
           subtitle: item.location ? `Outlook · ${item.location}` : "Outlook · Alleen lezen",
           date: dateKey(start),
-          hour: Math.max(8, Math.min(18, startHour)),
+          hour,
           duration,
           type: "Outlook",
+          planningType: "OUTLOOK_APPOINTMENT" as const,
           status: "read_only",
           color: eventColor("Outlook"),
-          source: "outlook" as const,
+          source: "EXTERNAL_CALENDAR" as const,
+          planningSource: "EXTERNAL_CALENDAR" as const,
+          startMinutes: minutesFromHour(hour),
+          endMinutes: minutesFromHour(hour + duration),
         };
       });
 
-    return [
+    return sortPlanningItems([
       ...coachingEvents,
       ...contactEvents,
       ...retrainingEvents,
@@ -328,7 +426,7 @@ export function PlanningCalendar() {
     ].filter(
       (event, index, list) =>
         list.findIndex((candidate) => candidate.id === event.id) === index,
-    );
+    ));
   }, [
     user,
     workflow,
@@ -459,7 +557,7 @@ export function PlanningCalendar() {
 }
 
 function DayView({ date, events }: { date: Date; events: CalendarEvent[] }) {
-  const dayEvents = events.filter((event) => event.date === dateKey(date));
+  const dayEvents = layoutOverlappingPlanningItems(events.filter((event) => event.date === dateKey(date)));
 
   return (
     <div className="min-h-[620px] overflow-x-auto">
@@ -476,25 +574,20 @@ function DayView({ date, events }: { date: Date; events: CalendarEvent[] }) {
         <div className="relative grid grid-cols-[72px_1fr]">
           <div className="border-r border-slate-200">
             {HOURS.map((hour) => (
-              <div key={hour} className="h-14 border-b border-slate-100 pr-3 pt-1 text-right text-xs text-slate-400">
+              <div key={hour} style={{ height: HOUR_ROW_HEIGHT }} className="border-b border-slate-100 pr-3 pt-1 text-right text-xs text-slate-400">
                 {String(hour).padStart(2, "0")}:00
               </div>
             ))}
           </div>
-          <div className="relative">
+          <div className="relative overflow-hidden">
             {HOURS.map((hour) => (
-              <div key={hour} className="h-14 border-b border-slate-100" />
+              <div key={hour} style={{ height: HOUR_ROW_HEIGHT }} className="border-b border-slate-100" />
             ))}
-            {dayEvents.map((event, index) => (
+            {dayEvents.map((event) => (
               <CalendarEventCard
                 key={event.id}
                 event={event}
-                style={{
-                  top: `${(event.hour - 8) * 56 + 3}px`,
-                  left: `${12 + (index % 3) * 10}px`,
-                  right: `${12 + ((index + 1) % 3) * 8}px`,
-                  height: `${event.duration * 56 - 6}px`,
-                }}
+                style={calendarEventStyle(event, 12, DAY_EVENT_GAP)}
                 spacious
               />
             ))}
@@ -540,28 +633,23 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
         <div className="grid grid-cols-[58px_repeat(7,minmax(126px,1fr))]">
           <div className="border-r border-slate-200">
             {HOURS.map((hour) => (
-              <div key={hour} className="h-14 border-b border-slate-100 pr-2 pt-1 text-right text-[11px] text-slate-400">
+              <div key={hour} style={{ height: HOUR_ROW_HEIGHT }} className="border-b border-slate-100 pr-2 pt-1 text-right text-[11px] text-slate-400">
                 {String(hour).padStart(2, "0")}
               </div>
             ))}
           </div>
           {days.map((day) => {
-            const dayEvents = events.filter((event) => event.date === dateKey(day));
+            const dayEvents = layoutOverlappingPlanningItems(events.filter((event) => event.date === dateKey(day)));
             return (
-              <div key={dateKey(day)} className="relative border-r border-slate-200 last:border-r-0">
+              <div key={dateKey(day)} className="relative overflow-hidden border-r border-slate-200 last:border-r-0">
                 {HOURS.map((hour) => (
-                  <div key={hour} className="h-14 border-b border-slate-100" />
+                  <div key={hour} style={{ height: HOUR_ROW_HEIGHT }} className="border-b border-slate-100" />
                 ))}
-                {dayEvents.map((event, index) => (
+                {dayEvents.map((event) => (
                   <CalendarEventCard
                     key={event.id}
                     event={event}
-                    style={{
-                      top: `${(event.hour - 8) * 56 + 2}px`,
-                      left: `${3 + (index % 2) * 4}px`,
-                      right: `${3 + ((index + 1) % 2) * 4}px`,
-                      height: `${event.duration * 56 - 4}px`,
-                    }}
+                    style={calendarEventStyle(event, 3, WEEK_EVENT_GAP)}
                   />
                 ))}
               </div>
@@ -598,7 +686,7 @@ function MonthView({
         </div>
         <div className="grid grid-cols-7">
           {days.map((day) => {
-            const dayEvents = events.filter((event) => event.date === dateKey(day));
+            const dayEvents = sortPlanningItems(events.filter((event) => event.date === dateKey(day)));
             const inMonth = day.getMonth() === date.getMonth();
             const isToday = dateKey(day) === dateKey(REFERENCE_DATE);
             return (
@@ -660,7 +748,7 @@ function CalendarEventCard({
         {formatEventTime(event.hour)} {event.title}
       </p>
       <p className="truncate text-[10px] opacity-80">{event.subtitle}</p>
-      {event.source === "outlook" && (
+      {event.source === "EXTERNAL_CALENDAR" && (
         <span className="mt-1 inline-flex rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-700">
           Outlook · read-only
         </span>
@@ -672,13 +760,13 @@ function CalendarEventCard({
             <Clock3 className="h-2.5 w-2.5" />
             {event.duration} uur
           </span>
-          {event.source === "fieldforce" && <StatusBadge status={event.status} />}
+          {event.source === "FIELD_FORCE" && <StatusBadge status={event.status} />}
         </div>
       )}
     </>
   );
   const className = `absolute z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 shadow-sm ${event.color}`;
-  if (event.source === "outlook" || !event.href) {
+  if (event.source === "EXTERNAL_CALENDAR" || !event.href) {
     return <div style={style} className={className} title={`${event.title} - externe Outlook-afspraak, alleen lezen`}>{content}</div>;
   }
   return (

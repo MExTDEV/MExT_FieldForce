@@ -317,7 +317,7 @@ export function normalizeManagedUser(user: ManagedUser): ManagedUser {
   return {
     ...user,
     mobile: user.mobile ?? "",
-    countryAccess: user.countryAccess?.length ? user.countryAccess : [user.country],
+    countryAccess: user.countryAccess ?? [],
     teamId: user.teamId ?? "",
     teamName: user.teamName ?? "",
     teamSupervisor: Boolean(user.teamSupervisor),

@@ -59,6 +59,10 @@ export function canAccessCoaching(user: MockUser) {
   return Boolean(user.id);
 }
 
+export function canCreateIntervention(user: MockUser) {
+  return user.role === "SUPER_ADMIN" || can(user, "intervention:create");
+}
+
 export function canAccessSalesday(user: MockUser) {
   return [
     "SALES_LEADER",

@@ -4,6 +4,16 @@ import type {
   WorkflowState,
 } from "@/lib/types";
 
+export const representativeReviewStatuses = new Set([
+  "wacht_op_akkoord",
+  "verzonden_ter_akkoord",
+  "akkoord_door_vertegenwoordiger",
+  "gesloten",
+  "gefinaliseerd",
+  "afgesloten",
+  "voltooid",
+]);
+
 export const completedCoachingStatuses = new Set([
   "gesloten",
   "gefinaliseerd",
@@ -36,10 +46,31 @@ export function canViewCoaching(
       intervention.teamId === currentUser.teamId;
   }
   if (currentUser.role === "REPRESENTATIVE") {
-    return [currentUser.id, currentUser.representativeId].includes(intervention.representativeId) &&
-      ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(intervention.status);
+    return isCurrentUserCoachingTarget(currentUser, intervention) && (
+      representativeReviewStatuses.has(intervention.status) ||
+      (intervention.status === "gepland" && intervention.notifyRepresentative === true)
+    );
   }
   return intervention.country === currentUser.country;
+}
+
+export function canOpenCoachingDetail(
+  currentUser: MockUser,
+  intervention: CoachingIntervention
+) {
+  if (currentUser.role === "REPRESENTATIVE") {
+    return isCurrentUserCoachingTarget(currentUser, intervention) &&
+      representativeReviewStatuses.has(intervention.status);
+  }
+  return canViewCoaching(currentUser, intervention);
+}
+
+export function isCurrentUserCoachingTarget(
+  currentUser: MockUser,
+  intervention: CoachingIntervention
+) {
+  return [currentUser.id, currentUser.representativeId].includes(intervention.representativeId) ||
+    intervention.subject?.userId === currentUser.id;
 }
 
 export function visibleCoachings(

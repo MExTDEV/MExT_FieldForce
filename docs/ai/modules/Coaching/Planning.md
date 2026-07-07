@@ -251,6 +251,51 @@ Business rule:
 - Planning is the in-application calendar view.
 - Outlook is the external calendar representation.
 - The coaching record remains the source of truth for coaching-specific data.
+- A FieldForce-created item that is synchronised to Outlook remains a FieldForce Planning item.
+- Existing Outlook appointments are external calendar items and must not visually take priority over FieldForce business items.
+
+---
+
+## Planning Order
+
+Planning items are ordered deterministically inside the current date or day grouping.
+
+Sort order:
+
+1. Date / day grouping.
+2. Source priority:
+   - FieldForce-created business items first.
+   - External Outlook/calendar appointments second.
+3. Start time ascending within the same source group.
+4. End time ascending as tie-breaker.
+5. Stable deterministic tie-breaker by item type and id.
+
+FieldForce-created items include existing business objects such as:
+
+- Begeleiding
+- Contactmoment
+- Retraining
+- Salestraining
+- Hulpaanvraag
+
+This ordering is display-only. It must not create duplicate Outlook items, change Outlook ownership or move workflow ownership into Planning.
+
+---
+
+## Day and Week Layout
+
+In day and week views, Planning items must be positioned against the visible time grid.
+
+Layout rules:
+
+- `top` is based on the item's start time within the day column.
+- `height` is based on the actual duration between start and end time.
+- The pixels-per-minute calculation must match the hour-row height used by the grid.
+- Very short items may use a minimum readable height, but longer items must remain visibly taller.
+- Overlapping items in the same day column must be distributed into lanes so they do not fully cover each other.
+- FieldForce items keep visual priority over Outlook-only items when timing is equal or overlapping.
+
+Month view may continue to show compact item summaries and does not need duration-based item height.
 
 ---
 

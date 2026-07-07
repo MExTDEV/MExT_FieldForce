@@ -324,10 +324,11 @@ Action history is not part of the operational dashboard workflow.
 
 It should eventually be moved to an administrative logging section.
 
-Open implementation note:
+Current implemented behaviour:
 
-- Add pagination.
-- Show 15 items per page.
+- Pagination is available.
+- 15 items are shown per page.
+- Existing filters remain active while navigating pages.
 
 ---
 

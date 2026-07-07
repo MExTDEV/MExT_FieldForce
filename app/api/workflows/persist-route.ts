@@ -4,7 +4,7 @@ import {
 } from "@/lib/server/workflows";
 import { forbidden, handleApi } from "@/lib/server/api";
 import { writeAuditLogs } from "@/lib/server/audit";
-import { buildVisibleCoachingWhere } from "@/lib/server/coaching-visibility";
+import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
 import {
   requireAuthenticatedUser,
@@ -14,6 +14,7 @@ import {
   requireRepresentativeScope,
   requireRole,
 } from "@/lib/server/authenticated-user";
+import { canCreateIntervention } from "@/lib/permissions";
 import {
   recordOutlookSyncFailure,
   requireMicrosoftAccessToken,
@@ -77,8 +78,8 @@ async function requireExistingCoachingsMutable(
   const existing = await prisma.intervention.findMany({
     where: { id: { in: ids }, type: "BEGELEIDING" },
     select: {
-      id: true, status: true, representativeId: true, ownerId: true, plannedAt: true,
-      representative: { select: { representativeId: true } },
+      id: true, status: true, representativeId: true, initiatorId: true, ownerId: true, teamId: true, country: true, plannedAt: true,
+      representative: { select: { representativeId: true, role: true } },
       startTime: true, endTime: true, notifyRepresentative: true,
       scores: { select: { id: true, score: true, comment: true } },
       coachingDetail: { select: { id: true, arrivalTime: true, departureTime: true, kilometers: true, area: true, sector: true, groupAttentionPoints: true, individualAttentionPoint: true, appointments: { select: { id: true, remarks: true, scoreRows: { select: { score: true, comment: true } } } } } },
@@ -88,6 +89,9 @@ async function requireExistingCoachingsMutable(
   if (existing.length === 0) return;
   for (const stored of existing) {
     const next = incoming.find((item) => item.id === stored.id)!;
+    if (!canManageStoredCoaching(actor, stored)) {
+      forbidden("Je mag deze begeleiding niet beheren.");
+    }
     if (["VOLTOOID", "GEFINALISEERD", "GESLOTEN", "AFGESLOTEN", "VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"].includes(stored.status)) {
       forbidden("Een uitgevoerde begeleiding is volledig read-only.");
     }
@@ -215,7 +219,7 @@ function requireWorkflowPermission(
   actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>
 ) {
   if (["coaching", "contact-moments"].includes(routeName)) {
-    requirePermission(actor, "intervention:create");
+    if (!canCreateIntervention(actor)) forbidden("Je mag geen interventies aanmaken of uitvoeren.");
     return;
   }
   if (routeName === "help-requests") {
@@ -255,7 +259,8 @@ function representativeIdsFromPatch(patch: WorkflowPersistencePatch) {
 }
 
 function actorIdFromPatch(patch: WorkflowPersistencePatch) {
-  return patch.interventions?.[0]?.ownerId ??
+  return patch.interventions?.[0]?.initiatorId ??
+    patch.interventions?.[0]?.ownerId ??
     patch.contactMoments?.[0]?.ownerId ??
     patch.helpRequests?.[0]?.requesterId ??
     patch.retrainings?.[0]?.initiatorId ??

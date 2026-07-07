@@ -220,11 +220,11 @@ When adding a new menu item, also update:
 
 Status:
 
-Confirmed Open
+Historical / Verify
 
 Description:
 
-Most permission rules for Begeleidingen still need to be implemented or verified.
+Begeleidingen role visibility has been implemented in the shared client and server coaching access helpers. Browser-based visual verification and grouping by scope remain tracked in `docs/ai/modules/Coaching/TODO.md`.
 
 Expected behaviour:
 
@@ -290,28 +290,6 @@ The section should contain:
 - Uitgevoerd
 
 It should automatically display every relevant item planned for today.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Dashboard.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-## Actiehistoriek should have pagination
-
-Status:
-
-Confirmed Open
-
-Description:
-
-The activity history table on the Dashboard needs pagination.
-
-Expected behaviour:
-
-- 15 items per page
-- filters should ideally remain active when navigating pages
 
 Related documents:
 
@@ -458,7 +436,7 @@ Related documents:
 
 Status:
 
-Confirmed Open
+Historical / Verify
 
 Description:
 
@@ -468,7 +446,7 @@ Current status:
 
 - Checkbox exists.
 
-Missing behaviour:
+Implemented behaviour:
 
 If enabled:
 
@@ -492,11 +470,11 @@ Related documents:
 
 Status:
 
-Confirmed Open
+Historical / Verify
 
 Description:
 
-When a Verkoopleider opens a future coaching, the planning/preparation screen should open.
+When a Verkoopleider or Super Admin opens a future coaching, Begeleidingen and Planning now route to the existing planning/preparation screen.
 
 Expected editable fields:
 
@@ -524,11 +502,11 @@ Related documents:
 
 Status:
 
-Confirmed Open
+Historical / Verify
 
 Description:
 
-Country Managers, Sales Managers and Admins should be able to view coachings within their scope, but not fill in or modify them unless explicitly granted.
+Country Managers, Sales Managers and Admins can view representative coachings within their scope, but cannot fill in or modify representative coachings by default. The API enforces the same manage rule.
 
 Expected behaviour:
 
@@ -786,7 +764,25 @@ A task is not complete if related documentation is outdated.
 
 # Resolved Issues
 
-No resolved issues are documented yet.
+## Actiehistoriek dashboard pagination
+
+Date fixed:
+
+2026-07-07
+
+Description:
+
+The Dashboard action history table now uses pagination with 15 items per page. Existing date, team and representative filters remain active while navigating pages.
+
+Verification:
+
+- `npm run lint`
+- `npm run build`
+
+Related documents:
+
+- `docs/ai/modules/Coaching/Dashboard.md`
+- `docs/ai/modules/Coaching/TODO.md`
 
 When an issue is fixed, move it here with:
 

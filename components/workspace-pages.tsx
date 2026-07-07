@@ -81,6 +81,12 @@ import type { HistoricalCoaching } from "@/lib/performance-data";
 import type { MyTeamMember } from "@/lib/my-team";
 import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
+  canEditFutureCoachingPlanning,
+  canManageCoaching,
+  coachingOpenHref,
+} from "@/lib/coaching/access";
+import {
+  canOpenCoachingDetail,
   completedCoachingStatuses,
   dedupeById,
   localDateKey,
@@ -211,10 +217,15 @@ function Dashboard() {
       .map((item) => {
         const representative = representatives.find((person) => person.id === item.representativeId);
         const sortAt = `${item.plannedDate ?? item.updatedAt.slice(0, 10)}T${item.startTime ?? "00:00"}`;
+        const personName = representative
+          ? `${representative.firstName} ${representative.lastName}`
+          : item.subject
+            ? `${item.subject.firstName} ${item.subject.lastName}`
+            : "Onbekend";
         return {
           id: `coaching-${item.id}`,
           type: "begeleiding",
-          person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
+          person: personName,
           date: new Date(sortAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }),
           sortAt,
           owner: reportingUserName(item.ownerId, managedUsers),
@@ -339,10 +350,15 @@ function Dashboard() {
           <div className="divide-y divide-slate-100">
             {completedToday.map((item) => {
               const representative = representatives.find((person) => person.id === item.representativeId);
+              const personName = representative
+                ? `${representative.firstName} ${representative.lastName}`
+                : item.subject
+                  ? `${item.subject.firstName} ${item.subject.lastName}`
+                  : "Onbekend";
               return (
                 <Link key={item.id} href={`/begeleidingen/${item.id}`} className="flex items-center gap-4 px-5 py-4 transition hover:bg-slate-50">
                   <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><ClipboardCheck className="h-5 w-5" /></div>
-                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend"}</p><p className="mt-1 text-xs text-slate-500">{item.startTime ?? "--:--"}–{item.endTime ?? "--:--"} · {reportingUserName(item.ownerId, managedUsers)}</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{personName}</p><p className="mt-1 text-xs text-slate-500">{item.startTime ?? "--:--"}–{item.endTime ?? "--:--"} · {reportingUserName(item.ownerId, managedUsers)}</p></div>
                   <StatusBadge status={item.status} />
                 </Link>
               );
@@ -1073,7 +1089,6 @@ function CoachingDetail({ id }: { id: string }) {
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
   const workflowApi = useWorkflow();
-  const { state } = workflowApi;
   const historical = coachingById(performanceDataset, id);
   const workflow = workflowApi.visibleInterventions(user).find((item) => item.id === id);
   const representativeId = historical?.representativeId ?? workflow?.representativeId;
@@ -1084,6 +1099,12 @@ function CoachingDetail({ id }: { id: string }) {
   }
 
   if (workflow) {
+    if (!canOpenCoachingDetail(user, workflow)) {
+      return <EmptyState title="Begeleiding niet beschikbaar" description="Deze begeleiding is nog niet openbaar voor jouw rol of status." />;
+    }
+    if (canEditFutureCoachingPlanning(user, workflow)) {
+      return <CoachingPlanningRedirect id={workflow.id} />;
+    }
     return <CoachingDossierDetail intervention={workflow} representative={representative} workflowApi={workflowApi} />;
   }
 
@@ -1129,6 +1150,16 @@ function CoachingDetail({ id }: { id: string }) {
       </section>
     </div>
   );
+}
+
+function CoachingPlanningRedirect({ id }: { id: string }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace(`/begeleidingen/nieuw?id=${encodeURIComponent(id)}`);
+  }, [id, router]);
+
+  return <EmptyState title="Planning openen" description="Deze toekomstige begeleiding wordt geopend in de planning- en voorbereidingsflow." />;
 }
 
 type WorkflowApi = ReturnType<typeof useWorkflow>;
@@ -1219,15 +1250,9 @@ function CoachingDossierDetail({
   const totalCoachingScore = calculateTotalCoachingScore(dossier, appointments);
   const isCompleted = ["voltooid", "gefinaliseerd", "gesloten", "afgesloten"].includes(local.status);
   const isApprovalLocked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(local.status);
-  const canManageCompleted = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role) ||
-    (["ADMIN", "COUNTRY_MANAGER"].includes(user.role) && user.country === local.country) ||
-    (user.role === "SALES_MANAGER" && user.countryAccess?.includes(local.country)) ||
-    (user.role === "SALES_LEADER" && (
-      local.ownerId === user.id ||
-      local.initiatorId === user.id ||
-      local.teamId === user.teamId
-    ));
-  const readOnly = user.role === "REPRESENTATIVE" || isApprovalLocked || isCompleted || local.status === "geannuleerd";
+  const canManageCurrentCoaching = canManageCoaching(user, local);
+  const canManageCompleted = canManageCurrentCoaching;
+  const readOnly = !canManageCurrentCoaching || isApprovalLocked || isCompleted || local.status === "geannuleerd";
 
   async function transition(action: "reopen" | "send_for_approval" | "approve") {
     setTransitioning(true);
@@ -1307,10 +1332,12 @@ function CoachingDossierDetail({
       id: local.id,
       representativeId: local.representativeId,
       initiatorId: user.id,
+      ownerId: local.ownerId,
       plannedDate: local.plannedDate,
       startTime: local.startTime,
       endTime: local.endTime,
       notifyRepresentative: local.notifyRepresentative,
+      subject: local.subject,
       internalNotes: local.internalNotes,
       focusNames: local.focusNames,
       scores: local.scores,
@@ -2067,19 +2094,34 @@ function InterventionList({ kind }: { kind: string }) {
           owner: item.ownerName,
           status: item.status,
           editable: false,
-          detailHref: `/begeleidingen/${item.id}`,
           plannedDate: item.date,
           startTime: "",
           endTime: "",
           executionAt: executionTimestamp(item.date),
           outlookSyncStatus: undefined,
           syncError: undefined,
+          detailHref: `/begeleidingen/${item.id}`,
+          openLabel: "Bekijk verslag",
+          editPlanningHref: undefined,
         };
       })
     : [];
   const workflowRows = kind === "begeleidingen"
     ? visibleInterventions(user).map((item) => {
       const representative = representatives.find((person) => person.id === item.representativeId);
+      const openHref = coachingOpenHref(user, item, todayKey);
+      const editPlanningHref = canEditFutureCoachingPlanning(user, item, todayKey)
+        ? `/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`
+        : undefined;
+      const openLabel = editPlanningHref
+        ? "Wijzig planning"
+        : completedCoachingStatuses.has(item.status)
+          ? "Bekijk verslag"
+          : canManageCoaching(user, item)
+            ? "Open dossier"
+            : openHref
+              ? "Bekijk voorbereiding"
+              : "Ingepland";
       return {
         id: item.id,
         type: "begeleiding",
@@ -2087,8 +2129,10 @@ function InterventionList({ kind }: { kind: string }) {
         date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
         owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
-        editable: !completedCoachingStatuses.has(item.status),
-        detailHref: `/begeleidingen/${item.id}`,
+        editable: Boolean(openHref),
+        detailHref: openHref,
+        openLabel,
+        editPlanningHref,
         plannedDate: item.plannedDate ?? item.updatedAt.slice(0, 10),
         startTime: item.startTime ?? "",
         endTime: item.endTime ?? "",
@@ -2144,12 +2188,10 @@ function InterventionList({ kind }: { kind: string }) {
             )}
             <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Begeleidingsdossier</span>
-              {item.editable ? (
-                <div className="flex items-center gap-3">{item.status === "gepland" && <Link href={`/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`} className="text-sm font-semibold text-slate-600">Wijzig planning</Link>}<Link href={item.detailHref} className="text-sm font-semibold text-brand-700">Open dossier</Link></div>
-              ) : item.detailHref ? (
-                <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">Bekijk verslag</Link>
+              {item.detailHref ? (
+                <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">{item.openLabel}</Link>
               ) : (
-                <span className="text-sm font-semibold text-slate-400">Bewaard</span>
+                <span className="text-sm font-semibold text-slate-400">{item.openLabel}</span>
               )}
             </div>
           </article>
@@ -2511,12 +2553,9 @@ function TodayTasksPage() {
         <div className="divide-y divide-slate-100">
           {todayCoachings.length > 0 ? todayCoachings.map((intervention) => {
             const representative = representatives.find((item) => item.id === intervention.representativeId);
-            return (
-              <Link
-                key={intervention.id}
-                href={`/begeleidingen/${intervention.id}`}
-                className="flex flex-col gap-3 p-5 transition hover:bg-slate-50 md:flex-row md:items-center md:justify-between"
-              >
+            const href = coachingOpenHref(user, intervention, today);
+            const content = (
+              <>
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">
                     {intervention.startTime ?? "00:00"} - {intervention.endTime ?? "--:--"} · {intervention.status.replaceAll("_", " ")}
@@ -2529,6 +2568,25 @@ function TodayTasksPage() {
                   </p>
                 </div>
                 <StatusBadge status={intervention.status} />
+              </>
+            );
+            if (!href) {
+              return (
+                <div
+                  key={intervention.id}
+                  className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between"
+                >
+                  {content}
+                </div>
+              );
+            }
+            return (
+              <Link
+                key={intervention.id}
+                href={href}
+                className="flex flex-col gap-3 p-5 transition hover:bg-slate-50 md:flex-row md:items-center md:justify-between"
+              >
+                {content}
               </Link>
             );
           }) : (

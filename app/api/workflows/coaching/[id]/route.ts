@@ -1,6 +1,6 @@
 import { handleApi, notFound } from "@/lib/server/api";
 import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
-import { buildVisibleCoachingWhere } from "@/lib/server/coaching-visibility";
+import { buildOpenableCoachingWhere } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
 
@@ -12,7 +12,7 @@ export async function GET(
     const { id } = await context.params;
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
-    const where = buildVisibleCoachingWhere(actor, { id });
+    const where = buildOpenableCoachingWhere(actor, { id });
 
     // Authoriseer eerst uitsluitend op de begeleiding zelf. Relaties worden pas
     // daarna geladen, zodat een directe URL nooit detaildata kan lekken.

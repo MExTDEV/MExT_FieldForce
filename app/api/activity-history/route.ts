@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const from = parseDate(url.searchParams.get("from"), defaultFrom, false);
     const to = parseDate(url.searchParams.get("to"), now, true);
     const page = positiveInteger(url.searchParams.get("page"), 1, 10_000);
-    const pageSize = positiveInteger(url.searchParams.get("pageSize"), 25, 100);
+    const pageSize = positiveInteger(url.searchParams.get("pageSize"), 15, 100);
     return listActivityHistory(actor, {
       from,
       to,
