@@ -37,14 +37,17 @@ Purpose:
 
 Priority: Medium
 
-Required changes:
+Status: Completed on 2026-07-07
 
-- Add pagination to the table.
-- Show 15 items per page.
+Implemented changes:
+
+- Pagination has been added to the table.
+- The Dashboard shows 15 action history items per page.
+- Existing filters are preserved while navigating between pages.
 
 Future:
 
-- Remember selected filters while navigating pages.
+- Move Actiehistoriek to Beheer -> Log when the administrative logging section is defined.
 
 Architecture note:
 
@@ -128,6 +131,56 @@ Open question:
 
 # Begeleidingen
 
+## Begeleiding op Verkoopleider kunnen inplannen
+
+Priority: High
+
+Current issue:
+
+- Het inplannen van een begeleiding op een Verkoopleider werkt momenteel niet.
+
+Required change:
+
+- Een gebruiker die functioneel boven een Verkoopleider staat, moet een begeleiding kunnen inplannen op die Verkoopleider.
+- Die gebruiker moet de begeleiding op de Verkoopleider ook kunnen uitvoeren.
+- Verkoopleiders moeten dus ook als mogelijk begeleidingsdoelwit kunnen worden geselecteerd, niet enkel Vertegenwoordigers.
+
+Business rules:
+
+- Een Verkoopleider is niet enkel coach, maar kan zelf ook gecoacht worden.
+- Rollen boven Verkoopleider moeten Verkoopleiders kunnen selecteren als begeleidingsdoelwit binnen hun toegestane land- en rechten-scope.
+- De bestaande rechtenstructuur, landenscope en user-level overrides moeten gerespecteerd worden.
+- Een gewone Verkoopleider mag enkel vertegenwoordigers van zijn eigen team begeleiden, tenzij expliciet anders toegestaan.
+- Een Vertegenwoordiger mag geen begeleidingen inplannen.
+
+Affected roles:
+
+- Sales Manager
+- Country Manager
+- Admin
+- Super Admin
+
+Required checks:
+
+- Nieuwe begeleiding inplannen
+- Selectie van land
+- Selectie van team
+- Selectie van Verkoopleider als begeleidingsdoelwit
+- Begeleiding tonen in Dashboard, Planning en Begeleidingen waar van toepassing
+- Begeleidingsformulier openen
+- Begeleiding uitvoeren
+- Begeleiding opslaan
+- Begeleiding op status Wachten op akkoord zetten
+- Rechten en scope respecteren
+
+Documentation impact:
+
+- Update `docs/ai/modules/Coaching/FLOW.md`.
+- Update `docs/ai/03_ROLES.md`.
+- Update `docs/ai/modules/Coaching/Navigation.md` if navigation or selection behaviour changes.
+
+---
+
 ## Empty Sections
 
 Priority: Medium
@@ -153,6 +206,10 @@ Current issue:
 - Most permission rules for Begeleidingen still need to be implemented or verified.
 
 Required rules:
+
+Additional required rule:
+
+- Users with a role above Verkoopleider must be able to plan and execute coachings on Verkoopleiders within their effective country and permission scope.
 
 ### Vertegenwoordiger
 

@@ -69,6 +69,8 @@ The main scopes are:
 - multiple assigned countries
 - all countries
 
+A user's role can also determine whether the user is allowed to act as a coach, a coaching target or both.
+
 Business rule:
 
 When showing lists, dashboards or reports, the system must always filter data to the user's effective scope.
@@ -113,6 +115,8 @@ Coaching visibility rules:
 
 A Verkoopleider is the direct sales manager of a team.
 
+A Verkoopleider can also be the target of a coaching by a user who is functionally above Verkoopleider level.
+
 Primary scope:
 
 - own team
@@ -120,7 +124,8 @@ Primary scope:
 Main purpose:
 
 - plan coachings for representatives in own team
-- execute coachings
+- execute coachings for representatives in own team
+- be coached by higher-level users
 - create action points
 - follow up team members
 - view team coaching history
@@ -128,12 +133,14 @@ Main purpose:
 General rules:
 
 - Sees only own team in Mijn Team.
-- Can plan coachings for own team members.
+- Can plan coachings for representatives in own team.
 - Can open today's coachings in the coaching input form.
 - Can open future coachings in planning/preparation mode.
 - Can edit future coachings within own team when lifecycle status allows it.
 - Can modify representative, date, time and focus areas for future coachings when allowed.
 - Can view previous scores, previous Performance Circle and previous action points as preparation.
+- Can review and approve own coaching when the Verkoopleider is the coaching target.
+- Cannot plan coachings on another Verkoopleider unless explicitly allowed.
 
 Coaching rules:
 
@@ -157,6 +164,7 @@ Main purpose:
 
 - management follow-up across one or more countries
 - view teams, representatives and coaching activity within assigned countries
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured
 - monitor action points, risks and reports
 
 Business rules:
@@ -172,9 +180,10 @@ Coaching navigation rules:
 
 - Can view coachings within assigned country scope.
 - Can view today's coachings, future coachings and historical coachings.
-- Opens today and future coachings in preparation/view mode unless explicitly granted edit rights.
-- Does not fill in coaching forms by default.
-- Does not modify planning by default.
+- Opens representative coachings in preparation/view mode unless explicitly granted edit rights.
+- Must be able to plan and execute coachings on Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
+- Does not fill in representative coaching forms by default.
+- Does not modify representative coaching planning by default.
 
 Grouping rules:
 
@@ -195,6 +204,7 @@ Main purpose:
 
 - country-level coaching follow-up
 - view teams and representatives within own country
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured
 - monitor risks, action points and reports
 
 General rules:
@@ -203,9 +213,10 @@ General rules:
 - Sees teams and users within assigned country scope.
 - Can view coachings within assigned country scope.
 - Can view today's coachings, future coachings and historical coachings.
-- Opens today and future coachings in preparation/view mode.
-- Does not edit coaching forms by default.
-- Does not modify planning by default.
+- Opens representative coachings in preparation/view mode.
+- Must be able to plan and execute coachings on Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
+- Does not edit representative coaching forms by default.
+- Does not modify representative coaching planning by default.
 
 Grouping rules:
 
@@ -228,14 +239,16 @@ Main purpose:
 - manage teams within assigned scope
 - manage configuration within assigned scope
 - view coaching data within assigned scope
+- plan and execute coachings on Verkoopleiders within assigned scope when explicitly configured
 
 General rules:
 
 - Sees data within assigned country scope.
 - Can view coachings within assigned country scope.
-- Opens today and future coachings in preparation/view mode.
-- Does not edit coaching forms by default.
-- Does not modify planning by default.
+- Opens representative coachings in preparation/view mode.
+- Must be able to plan and execute coachings on Verkoopleiders within assigned scope when explicitly configured.
+- Does not edit representative coaching forms by default.
+- Does not modify representative coaching planning by default.
 - Cannot grant Admin or Super Admin rights unless explicitly allowed by Super Admin policy.
 
 Configuration rules:
@@ -268,6 +281,7 @@ General rules:
 
 - Sees everything.
 - Can open coachings with the same access level as a Verkoopleider.
+- Can plan and execute coachings on Verkoopleiders across all countries and teams.
 - Can open today's coachings in the coaching input form.
 - Can open future coachings in planning/preparation mode.
 - Can open historical coachings in report mode.
@@ -386,33 +400,38 @@ The exact inclusion rules still need to be specified.
 ### Verkoopleider
 
 - own team
-- can open today's coachings in input form
+- can open today's coachings in input form for representatives in own team
 - can open future coachings in planning/preparation mode
 - can edit future coachings when allowed by lifecycle
 - can view historical coachings
+- can be the target of a coaching by higher-level users
 
 ### Sales Manager
 
 - assigned country scope
-- view mode by default
+- view mode by default for representative coachings
+- can plan and execute coachings on Verkoopleiders within assigned country scope when configured
 - grouped by country, team and user when multiple countries
 - country grouping hidden when only one country is available
 
 ### Country Manager
 
 - assigned country scope
-- view mode by default
+- view mode by default for representative coachings
+- can plan and execute coachings on Verkoopleiders within assigned country scope when configured
 - grouped by team and user when only one country is available
 
 ### Admin
 
 - assigned country scope
-- view mode by default
+- view mode by default for representative coachings
+- can plan and execute coachings on Verkoopleiders within assigned country scope when explicitly configured
 
 ### Super Admin
 
 - all coachings
 - can open coachings like a Verkoopleider
+- can plan and execute coachings on Verkoopleiders across all countries and teams
 
 ---
 
@@ -486,6 +505,44 @@ Detailed action point workflow still needs business clarification.
 
 ---
 
+# Coaching Verkoopleiders
+
+Verkoopleiders can be coaching targets.
+
+This means the system must support coachings where the person being coached has the role:
+
+- Verkoopleider
+
+Business rules:
+
+- A Verkoopleider is not only a coach; a Verkoopleider can also be coached.
+- A user who is functionally above a Verkoopleider must be able to plan and execute coachings on Verkoopleiders within the user's effective scope.
+- The selection flow for a new coaching must allow Verkoopleiders as possible coaching targets when permissions allow it.
+- The approval lifecycle must work for Verkoopleiders as coached persons.
+- The system must not assume that the coached person is always a Vertegenwoordiger.
+
+Roles expected to support coaching Verkoopleiders, subject to permissions and scope:
+
+- Sales Manager
+- Country Manager
+- Admin
+- Super Admin
+
+Scope rules:
+
+- Sales Manager: assigned country or countries.
+- Country Manager: assigned country scope.
+- Admin: assigned country scope when explicitly configured.
+- Super Admin: all countries and teams.
+
+Restrictions:
+
+- A regular Verkoopleider may only plan and execute coachings for representatives in own team unless explicitly allowed otherwise.
+- A Vertegenwoordiger may not plan coachings.
+- User-level overrides must be respected.
+
+---
+
 # Lifecycle-Based Permissions
 
 Coaching access also depends on lifecycle status.
@@ -534,4 +591,6 @@ AI assistants must follow these rules when implementing role or permission chang
 - Never allow modification of a coaching in Pending Approval unless the status is withdrawn first.
 - Do not invent workflows for undefined modules.
 - When adding a new menu item, also add permission configuration and user-level override support.
+- Do not assume that the coached person is always a Vertegenwoordiger.
+- Support Verkoopleiders as coaching targets where permissions allow it.
 - When changing visibility, update this document and the relevant module documentation.

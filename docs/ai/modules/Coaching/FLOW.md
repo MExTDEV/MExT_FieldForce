@@ -17,7 +17,7 @@ This document covers the lifecycle of a coaching session:
 3. Executing the coaching
 4. Saving an incomplete coaching
 5. Submitting the coaching for approval
-6. Representative approval
+6. Review and approval by the coaching target
 7. Final completion and historical use
 
 Related documents:
@@ -48,6 +48,7 @@ Business workflows must never be duplicated.
 - No separate duplicate forms per page.
 - No hidden business logic.
 - Status determines what can be viewed, edited or approved.
+- A coaching target can be a Vertegenwoordiger or a Verkoopleider when the user's effective permissions allow it.
 
 ---
 
@@ -75,10 +76,14 @@ Scope:
 
 Main coaching actions:
 
-- plan coachings for own team
-- execute coachings for own team
+- plan coachings for representatives in own team
+- execute coachings for representatives in own team
 - edit planned coachings for own team
 - submit coachings for representative approval
+
+Additional rule:
+
+- A Verkoopleider can also be the target of a coaching by a user above Verkoopleider level.
 
 ## Country Manager
 
@@ -92,7 +97,8 @@ Main coaching actions:
 
 - view coachings within assigned country scope
 - view preparation and reports
-- no coaching form editing unless explicitly granted by permissions
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured for this role
+- no coaching form editing for representative coachings unless explicitly granted by permissions
 
 ## Sales Manager
 
@@ -109,7 +115,8 @@ Main coaching actions:
 
 - view coachings within assigned country scope
 - view preparation and reports
-- no coaching form editing unless explicitly granted by permissions
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured for this role
+- no coaching form editing for representative coachings unless explicitly granted by permissions
 
 Business rules:
 
@@ -129,7 +136,8 @@ Scope:
 Main coaching actions:
 
 - view coachings within assigned scope
-- no coaching form editing unless explicitly granted by permissions
+- plan and execute coachings on Verkoopleiders within assigned scope when configured for this role
+- no coaching form editing for representative coachings unless explicitly granted by permissions
 
 ## Super Admin
 
@@ -144,6 +152,7 @@ Scope:
 Main coaching actions:
 
 - can open and manage coachings with the same functional access as a Verkoopleider
+- can plan and execute coachings on Verkoopleiders across all countries and teams
 - can see all coachings
 
 ---
@@ -216,39 +225,55 @@ Open implementation note:
 
 ---
 
-## Step 3 – Representative Selection
+## Step 3 – Target Person Selection
+
+The coach selects the person who will be coached.
 
 Selection hierarchy:
 
 Country  
 → Team  
-→ Representative
+→ Person
 
-Visibility depends on permissions.
+Allowed target roles:
+
+- Vertegenwoordiger
+- Verkoopleider, when the user is functionally above the Verkoopleider and the effective permissions allow it
+
+Visibility depends on permissions and scope.
 
 ### Verkoopleider
 
 - Own team only.
+- Can select representatives in own team.
+- Cannot select another Verkoopleider as coaching target unless explicitly allowed.
 
 ### Country Manager
 
 - Assigned country scope.
+- Must be able to select Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
 
 ### Sales Manager
 
 - One or more assigned countries.
+- Must be able to select Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
 
 ### Admin
 
 - Assigned countries.
+- Must be able to select Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
 
 ### Super Admin
 
 - All countries.
+- Must be able to select Verkoopleiders as coaching target across all countries and teams.
 
 Business rules:
 
-- Users must never be able to select a representative outside their effective permission scope.
+- Users must never be able to select a person outside their effective permission scope.
+- Verkoopleiders can be coached by users above Verkoopleider level.
+- A Verkoopleider is both a possible coach and a possible coaching target.
+- A Vertegenwoordiger must never be able to plan coachings.
 - If the user has access to only one country, the interface may omit redundant country selection or grouping where appropriate.
 
 ---
@@ -411,10 +436,17 @@ Allow the coach to execute a planned coaching session.
 
 Typical users with execution rights:
 
-- Verkoopleider for own team
-- Super Admin
+- Verkoopleider for representatives in own team
+- Sales Manager for Verkoopleiders within assigned country scope, when configured
+- Country Manager for Verkoopleiders within assigned country scope, when configured
+- Admin for Verkoopleiders within assigned country scope, when configured
+- Super Admin for all allowed coaching targets
 
-Management users such as Country Manager, Sales Manager and Admin normally open coachings in view/preparation mode only unless permissions explicitly allow editing.
+Management users such as Country Manager, Sales Manager and Admin normally open representative coachings in view/preparation mode only unless permissions explicitly allow editing.
+
+Required exception:
+
+- A user above Verkoopleider level must be able to plan and execute a coaching on a Verkoopleider within the user's effective country and permission scope.
 
 ---
 
@@ -578,6 +610,22 @@ Business rules:
 ---
 
 # Flow 6 – Representative Review and Approval
+
+## Coaching Target Approval
+
+The person who was coached must review and approve the coaching.
+
+For most coachings, this will be the Vertegenwoordiger.
+
+When the coaching target is a Verkoopleider, the Verkoopleider must be able to review and approve the coaching in the same approval lifecycle.
+
+Business rules:
+
+- Approval belongs to the coached person.
+- The approval lifecycle must not assume that the coached person is always a Vertegenwoordiger.
+- A Verkoopleider who is being coached must have approval access for own coaching once it reaches `Pending Approval`.
+
+---
 
 ## Objective
 
@@ -784,16 +832,18 @@ Cannot:
 
 Can:
 
-- plan coachings for own team
-- execute coachings for own team
+- plan coachings for representatives in own team
+- execute coachings for representatives in own team
 - edit planned and in-progress coachings for own team
 - submit coachings for approval
 - withdraw `Pending Approval` when changes are needed
 - resubmit for approval
+- review and approve own coaching when the Verkoopleider is the coaching target
 
 Cannot:
 
 - access coachings outside own team unless additional permissions explicitly allow it
+- plan coachings on another Verkoopleider unless explicitly allowed
 
 ---
 
@@ -804,13 +854,14 @@ Can:
 - view coachings within assigned country scope
 - view preparation data
 - view historical reports
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured
 
 Cannot by default:
 
-- fill in coaching forms
-- edit planning details
-- change focus areas
-- change representative
+- fill in representative coaching forms
+- edit representative coaching planning details
+- change focus areas for representative coachings
+- change representative for representative coachings
 
 ---
 
@@ -822,13 +873,14 @@ Can:
 - view coachings across one or more assigned countries
 - view preparation data
 - view historical reports
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured
 
 Cannot by default:
 
-- fill in coaching forms
-- edit planning details
-- change focus areas
-- change representative
+- fill in representative coaching forms
+- edit representative coaching planning details
+- change focus areas for representative coachings
+- change representative for representative coachings
 
 ---
 
@@ -839,13 +891,14 @@ Can:
 - view coachings within assigned country scope
 - view preparation data
 - view historical reports
+- plan and execute coachings on Verkoopleiders within assigned country scope when configured
 
 Cannot by default:
 
-- fill in coaching forms
-- edit planning details
-- change focus areas
-- change representative
+- fill in representative coaching forms
+- edit representative coaching planning details
+- change focus areas for representative coachings
+- change representative for representative coachings
 
 ---
 
@@ -855,6 +908,7 @@ Can:
 
 - see all coachings
 - open coachings with Verkoopleider-level access
+- plan and execute coachings on Verkoopleiders across all countries and teams
 - manage coachings across all countries and teams
 
 ---
@@ -880,6 +934,8 @@ Can:
 - Representatives must not see surprise coachings before Pending Approval.
 - Country Manager, Sales Manager and Admin have view/preparation access by default, not edit access.
 - Super Admin can open coachings with Verkoopleider-level access.
+- Verkoopleiders can be coaching targets when the coach is functionally above Verkoopleider level and has the required permission.
+- The coaching target approval lifecycle must support Verkoopleiders as coached persons.
 
 ---
 
@@ -897,4 +953,6 @@ When implementing or modifying Coaching flows:
 - require withdrawal before editing a submitted coaching
 - never mark a coaching completed without representative approval
 - never include undefined workflows based on assumptions
+- never assume the coached person is always a Vertegenwoordiger
+- support Verkoopleider as coaching target where required by permissions
 - update related documentation when the flow changes
