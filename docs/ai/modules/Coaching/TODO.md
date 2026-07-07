@@ -486,6 +486,58 @@ Topics to define:
 
 ---
 
+
+# Planning
+
+## FieldForce Items Must Appear Before Existing Calendar Appointments
+
+Priority: High
+
+Current issue:
+
+- Items planned from within the FieldForce app are currently displayed after already existing appointments in the Planning menu item.
+
+Required change:
+
+- Items created in FieldForce and synced to the calendar must be shown before all other existing calendar appointments in Planning.
+
+Business rule:
+
+- FieldForce-created planning items are operationally leading inside the FieldForce Planning view.
+- Synced external calendar appointments may still be shown, but they must not visually take priority over FieldForce-created items.
+
+Affected item types:
+
+- Begeleiding
+- Contactmoment
+- Retraining
+- Salestraining
+- Hulpaanvraag
+
+Required checks:
+
+- Planning day view
+- Planning week view, if available
+- Planning list view, if available
+- Outlook-synced FieldForce items
+- Existing Outlook appointments
+- Sorting when FieldForce items and existing appointments have the same date or start time
+- Role and scope visibility
+
+Expected result:
+
+- FieldForce-created items appear first.
+- Existing calendar appointments appear after FieldForce-created items.
+- The visual order remains stable after refresh or sync.
+- No duplicate calendar items are created.
+
+Important:
+
+- Do not change the ownership of Planning items.
+- Planning may display synced calendar appointments, but FieldForce business items must remain visually prioritised.
+- Do not break Outlook synchronisation.
+
+---
 # Undefined Coaching Modules
 
 Priority: High
