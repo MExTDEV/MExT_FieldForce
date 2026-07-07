@@ -12,13 +12,13 @@ This document does not contain secrets, passwords, connection strings or product
 
 This document covers:
 
-- local development startup checks
+- local development validation without AI-managed devserver startup
 - build validation
 - Git workflow before deployment
 - VPS / Plesk deployment principles
 - Prisma and database migration deployment
 - environment configuration principles
-- webserver validation
+- production webserver validation and local devserver ownership rules
 - troubleshooting rules
 
 Detailed server-specific documentation may exist in:
@@ -45,7 +45,8 @@ A change is only finished when:
 - role and permission behaviour is checked;
 - database changes are migrated correctly;
 - documentation is updated when needed;
-- the application starts correctly after deployment.
+- production deployment is validated when deployment work is explicitly requested.
+- local devserver startup is handled outside AI/Codex.
 
 ---
 
@@ -55,22 +56,44 @@ A change is only finished when:
 
 Local development is used to build, test and validate changes before they are merged or deployed.
 
-Expected local validation:
+The local development webserver is **not** managed by AI assistants or Codex.
 
-- install dependencies when needed;
+The local devserver is managed externally through:
+
+```text
+keep-fieldforce-dev.ps1
+```
+
+AI assistants must not start, stop, restart or repeatedly check the local devserver.
+
+AI assistants must not spend time or credits on:
+
+- `npm run dev`
+- starting the local devserver
+- restarting the local devserver
+- checking whether the browser opens
+- checking whether the application is reachable on port 3000
+- repeated server startup attempts
+- browser-based visual verification unless explicitly requested
+
+Allowed local validation for AI assistants:
+
+- install dependencies when explicitly needed;
 - generate Prisma client when needed;
-- run database migration commands only when required;
-- start the webserver;
-- verify the application is reachable;
-- verify the changed workflow manually.
+- run database migration commands only when required and explicitly in scope;
+- run `npm run lint`;
+- run `npm run build`;
+- run relevant automated tests if available.
 
-The application should normally run on:
+Manual browser validation is performed by the user unless explicitly requested.
+
+The preferred local development port remains:
 
 - `localhost:3000`
 
-If port 3000 is not available, the server may temporarily run on another port, but this must be considered a development exception.
+However, AI assistants must not manage this port during normal coding tasks.
 
-The preferred target for validation remains port 3000.
+If the local devserver is not running, the user handles it outside Codex using the PowerShell watchdog script.
 
 ---
 
@@ -228,32 +251,41 @@ AI assistants must not replace Microsoft login with a separate login flow unless
 
 ---
 
-# Webserver Validation
+# Local Devserver and Production Validation
 
-After deployment or after Codex has modified the application, the webserver must be checked.
+## Local Devserver
 
-Required validation:
+The local development server is managed outside Codex by:
 
-- verify that the application starts;
-- verify that it responds on the expected port;
-- verify that the login page loads;
-- verify that an authenticated user can reach the Dashboard.
+```text
+keep-fieldforce-dev.ps1
+```
 
-Preferred development port:
+AI assistants must not start, stop, restart or repeatedly verify the local devserver during coding tasks.
 
-- `3000`
+This avoids unnecessary credit usage.
 
-If the webserver is not running on port 3000:
+For normal development tasks, validation should be limited to:
 
-1. Check whether another process is using port 3000.
-2. Stop the wrong process if appropriate.
-3. Restart the development server.
-4. Confirm the application is reachable on port 3000.
-5. If another port is used temporarily, note this clearly.
+- `npm run lint`
+- `npm run build`
+- relevant automated checks
 
-AI rule:
+The user is responsible for browser-based local validation unless explicitly requested.
 
-When a task includes deployment or server restart instructions, always verify the application is actually reachable after restart.
+---
+
+## Production / Deployment Validation
+
+When the task explicitly concerns production deployment, server restart or Plesk troubleshooting, runtime validation may be required.
+
+In that case, validation must follow the technical deployment documentation and the user’s explicit instruction.
+
+AI assistants must not assume local devserver responsibilities from production deployment rules.
+
+Reference:
+
+- `docs/technical/vps-deployment.md`
 
 ---
 
@@ -352,8 +384,8 @@ AI assistants must:
 - never broaden permissions;
 - preserve Microsoft authentication;
 - validate build when possible;
-- validate the application starts;
 - document unresolved deployment risks.
+- avoid local devserver management unless explicitly requested.
 
 AI assistants must not:
 
@@ -363,6 +395,7 @@ AI assistants must not:
 - replace Microsoft authentication;
 - ignore failed builds;
 - claim deployment succeeded without validation.
+- start or restart the local devserver during normal coding tasks.
 
 ---
 

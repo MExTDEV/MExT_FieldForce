@@ -18,6 +18,14 @@ Prefer one focused task at a time.
 
 Before asking Codex to modify code, always tell it which documentation to read.
 
+Server rule for all prompts:
+
+- Do not ask Codex to start, stop or restart the local devserver.
+- The local devserver is managed externally through `keep-fieldforce-dev.ps1`.
+- Do not ask Codex to spend credits on `npm run dev`, server startup, port checks or browser validation unless explicitly required for the task.
+- Codex may run `npm run lint`, `npm run build` and relevant automated checks.
+
+
 ---
 
 # Standard Codex Preamble
@@ -55,6 +63,11 @@ After the change:
 - run the relevant checks where possible
 - ensure the project remains buildable
 - update documentation if behaviour, architecture, roles or database logic changed
+
+Server rule:
+- Do not start, stop or restart the local devserver.
+- The local devserver is managed externally through keep-fieldforce-dev.ps1.
+- Do not spend time or credits on npm run dev, server startup, port checks or browser validation unless explicitly requested.
 ```
 
 ---
@@ -495,8 +508,8 @@ Validate:
 8. Translations/user-facing text are handled consistently.
 9. Lint/build have been run where possible.
 10. Documentation was updated where needed.
-11. App can run locally.
-12. Webserver runs on the expected port.
+11. Codex did not start, stop or restart the local devserver unless explicitly requested.
+12. Validation remained limited to lint/build/automated checks unless browser validation was explicitly requested.
 
 If everything is valid:
 - merge with main if requested
@@ -509,32 +522,29 @@ If not valid:
 
 ---
 
-# Prompt 13 - Webserver / Port 3000 Recovery
+# Prompt 13 - Local Devserver Is Managed Outside Codex
 
-Use when Codex has stopped or broken the local dev server.
+Do not normally send server recovery tasks to Codex.
+
+The local development server is managed externally by:
 
 ```text
-TASK: Diagnose and recover the local MExT FieldForce development server.
-
-Goal:
-The application must run locally on port 3000.
-
-Steps:
-1. Check whether a process is already using port 3000.
-2. If port 3000 is occupied by a stale process, identify it.
-3. Stop only the stale or incorrect process.
-4. Start the development server using the project scripts.
-5. Confirm the application is reachable on port 3000.
-6. If it starts on another port, explain why and correct it if possible.
-
-Do not change application code unless required to fix a configuration issue.
-
-Report:
-- what was running
-- what was stopped
-- what command was used to restart
-- which port is active
+keep-fieldforce-dev.ps1
 ```
+
+Use this note in prompts when you want to explicitly prevent Codex from wasting credits on devserver handling.
+
+```text
+Serverregel:
+Start, stop of herstart de lokale webserver niet.
+De lokale devserver wordt extern beheerd via keep-fieldforce-dev.ps1.
+Verspil geen tijd of credits aan npm run dev, server startup, poortcontroles of browsercontrole.
+Voer enkel codewijzigingen, documentatiewijzigingen, lint/build checks en Git-acties uit.
+```
+
+If the local devserver is down, the user must handle it outside Codex through PowerShell.
+
+Codex may only diagnose server issues when explicitly asked to do so.
 
 ---
 
@@ -662,9 +672,13 @@ Before merge:
 
 - Prompt 12
 
-Server issue:
+Local devserver rule:
 
 - Prompt 13
+
+Server issue:
+
+- Do not use Codex unless explicitly needed; handle locally with keep-fieldforce-dev.ps1
 
 New menu item:
 

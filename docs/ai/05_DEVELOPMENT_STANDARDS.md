@@ -340,13 +340,19 @@ Relevant documentation must be updated before the task is considered finished.
 
 Once approved:
 
-- merge into the main branch
-- push to Git
-- verify deployment
-- verify application startup
-- verify documentation when applicable
+- merge into the main branch;
+- push to Git;
+- verify documentation when applicable.
 
-A feature is only considered complete after passing all validation stages.
+Local devserver startup, restart and browser validation are not part of AI completion unless explicitly requested.
+
+The local devserver is managed externally using:
+
+```text
+keep-fieldforce-dev.ps1
+```
+
+A feature is only considered complete after passing all validation stages that are relevant to the requested scope.
 
 ---
 
@@ -585,31 +591,44 @@ This applies especially to:
 
 ---
 
-# Deployment and Webserver Checks
+# Local Development Server
 
-After Codex or AI-assisted development work, the application must be verified locally.
+The local development server is not managed by AI assistants.
 
-Required checks:
-
-- verify that dependencies are installed
-- verify that the build or dev server can start
-- verify that the application is reachable
-- verify that the expected port is used
-
-For local development, the expected webserver port is:
+The devserver is kept alive externally using:
 
 ```text
-3000
+keep-fieldforce-dev.ps1
 ```
 
-If the application does not run on port 3000:
+AI assistants must not start, stop, restart or repeatedly check the local devserver during normal development tasks.
 
-- check whether another process is using the port
-- stop the conflicting process if appropriate
-- restart the webserver
-- verify that the app is reachable on port 3000
+AI assistants must not spend time or credits on:
 
-Do not spend implementation effort on unrelated port issues unless explicitly requested.
+- `npm run dev`
+- local devserver startup
+- local devserver restart
+- browser launch checks
+- repeated port 3000 checks
+- visual browser validation unless explicitly requested
+
+Allowed validation:
+
+- `npm run lint`
+- `npm run build`
+- relevant automated tests if available
+- Prisma generation or migration checks when database work is explicitly in scope
+
+Manual browser validation is performed by the user unless explicitly requested.
+
+If the local devserver is not running, the user handles this outside Codex using the PowerShell watchdog script.
+
+Production deployment or Plesk troubleshooting may require separate validation, but only when explicitly requested.
+
+Reference:
+
+- `docs/ai/06_DEPLOYMENT.md`
+- `docs/technical/vps-deployment.md`
 
 ---
 
@@ -655,5 +674,5 @@ Before marking a task as complete, verify:
 - Was the UI consistent?
 - Was build/lint checked where possible?
 - Was documentation updated?
-- Was the webserver checked if relevant?
+- Was local devserver management avoided unless explicitly requested?
 - Are any remaining open points documented?
