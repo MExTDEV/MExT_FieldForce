@@ -1,0 +1,330 @@
+# Mijn Team
+
+## Purpose
+
+`Mijn Team` is the team overview page within the Coaching module.
+
+The page gives coaches and management users a structured overview of the field employees they are allowed to follow up.
+
+The main goal is to quickly identify:
+
+- who belongs to which country and team;
+- which people require attention;
+- whether a coaching is planned;
+- whether there are open coaching-related actions;
+- which employee profile can be opened for deeper follow-up.
+
+`Mijn Team` is not intended for representatives.
+
+---
+
+## Scope
+
+This document describes the functional behaviour of `Mijn Team`.
+
+It does not describe:
+
+- technical routes;
+- React components;
+- database models;
+- API endpoints.
+
+Navigation visibility is permission-driven and depends on:
+
+- role configuration;
+- user-level overrides.
+
+---
+
+## Included People
+
+`Mijn Team` contains field employees.
+
+Current intended roles:
+
+- Vertegenwoordiger
+- Verkoopleider
+- Service Operator
+
+Open implementation note:
+
+The exact inclusion rules still need to be specified further.
+
+Reference:
+
+- `TODO.md` → `Mijn Team` → `Included Roles`
+
+---
+
+## Primary Users
+
+The page is intended for users who manage, coach or follow up field employees.
+
+Primary users:
+
+- Verkoopleider
+- Country Manager
+- Sales Manager
+- Admin
+- Super Admin
+
+Not intended for:
+
+- Vertegenwoordiger
+
+---
+
+## Visibility Rules
+
+### Vertegenwoordiger
+
+A representative must not see the `Mijn Team` main menu item.
+
+Business rule:
+
+- Representatives only work with their own data and assigned actions.
+- They do not get a team overview.
+
+---
+
+### Verkoopleider
+
+A Verkoopleider sees only their own team.
+
+Business rule:
+
+- A Verkoopleider may follow up the people in their own team.
+- A Verkoopleider must not see other teams unless explicitly granted through another role or override.
+
+---
+
+### Country Manager
+
+A Country Manager sees only the country scope for which access has been granted.
+
+Business rule:
+
+- A Country Manager can see teams and field employees within the assigned country scope.
+- Country Manager access must respect role configuration and user-level overrides.
+
+---
+
+### Sales Manager
+
+A Sales Manager is a separate application role.
+
+A Sales Manager is positioned above the Verkoopleider level and can have access to one or more countries.
+
+Business rules:
+
+- Sales Manager is not the same as Verkoopleider.
+- Sales Manager is not the same as Country Manager.
+- A Sales Manager sees teams and field employees within assigned countries.
+- Sales Manager access must respect role configuration and user-level overrides.
+
+---
+
+### Admin
+
+An Admin sees the countries for which access has been granted.
+
+Business rule:
+
+- Admin visibility is country-scoped.
+- Admin access must respect role configuration and user-level overrides.
+
+---
+
+### Super Admin
+
+A Super Admin sees everything.
+
+Business rule:
+
+- Super Admin has full visibility across all countries, teams and field employees.
+
+---
+
+## Grouping
+
+People are grouped in the following hierarchy:
+
+Country  
+→ Team  
+→ Person
+
+Business rules:
+
+- Countries must remain visually grouped.
+- Teams must remain visually grouped within each country.
+- People must remain grouped within their team.
+- Within each team, the Verkoopleider must be shown first.
+- Other team members are listed below the Verkoopleider.
+
+---
+
+## Main Navigation
+
+### Fiche
+
+Each row contains a `Fiche` action.
+
+Target:
+
+- Employee / Representative profile page
+
+Description:
+
+Clicking `Fiche` opens the profile page of the selected field employee.
+
+The fiche is the central place to view details about the employee and related coaching information.
+
+Business rule:
+
+- The fiche must respect the active module configuration.
+- Only information from active modules should be visible.
+- If a module is disabled for the user or role, related sections must not appear on the fiche.
+
+Reference:
+
+- `TODO.md` → `Mijn Team` → `Fiche Filtering`
+
+---
+
+## Opening a Coaching from Mijn Team
+
+A coaching may be opened from the representative profile.
+
+Functional path:
+
+`Mijn Team`  
+→ `Fiche`  
+→ Employee / Representative profile  
+→ Coaching  
+→ Coaching Form
+
+Business rule:
+
+- `Mijn Team` does not own the coaching workflow.
+- Opening a coaching from `Mijn Team` must route to the single existing Coaching Form.
+- No duplicate coaching form or duplicate coaching logic may be created.
+
+Reference:
+
+- `Navigation.md` → `Opening an Existing Coaching`
+- `FLOW.md` → Coaching lifecycle
+
+---
+
+## Visual Status Indicators
+
+The `Mijn Team` page should communicate status visually, without requiring the user to open every fiche.
+
+### Planned Coaching Indicator
+
+If a coaching is planned for a person:
+
+- the row should be highlighted light blue;
+- a badge should be shown on the row.
+
+Purpose:
+
+Make planned follow-up immediately visible.
+
+Reference:
+
+- `TODO.md` → `Mijn Team` → `Planned Coaching Visual Indicator`
+
+---
+
+### Score-Based Indicator
+
+If a representative has a bad score:
+
+- the row should be highlighted light red.
+
+The threshold between a bad and good score must be configurable.
+
+Expected configuration location:
+
+- `Beheer`
+- `Instellingen`
+
+Open implementation note:
+
+The default score threshold still needs to be defined.
+
+Reference:
+
+- `TODO.md` → `Mijn Team` → `Score-Based Visual Indicator`
+
+---
+
+### Action-Required Indicator
+
+If action is expected from the current user, this should be visually clear.
+
+Planned behaviour:
+
+- the initials badge should indicate whether action is expected from the current user.
+
+Examples of possible attention states:
+
+- overdue approval request;
+- open action point requiring follow-up;
+- planned coaching;
+- incomplete coaching;
+- other coaching-related attention item.
+
+Exact visual rules may be refined later, but the page must clearly show when a person requires attention.
+
+---
+
+## Relationship with Dashboard
+
+The Dashboard can show a `Team in beeld` widget.
+
+That widget gives a compact management overview of team members and status indicators.
+
+`Mijn Team` is the full team overview page.
+
+Business rule:
+
+- Dashboard may link towards team or representative information.
+- `Mijn Team` remains the main page for structured country/team/person overview.
+
+---
+
+## Business Rules
+
+- `Mijn Team` must respect role permissions.
+- `Mijn Team` must respect user-level overrides.
+- Representatives must never see the `Mijn Team` main menu item.
+- Verkoopleiders only see their own team.
+- Country Managers see only their assigned country scope.
+- Sales Managers see their assigned country scope and are a separate role.
+- Admins see their assigned country scope.
+- Super Admins see all countries, teams and people.
+- People are grouped by country, team and person.
+- The Verkoopleider must be shown first within each team.
+- Clicking `Fiche` opens the employee / representative profile page.
+- The fiche must only display information from active modules.
+- Planned coachings should be visually visible from the list.
+- Bad scores should be visually visible from the list.
+- Score thresholds must be configurable.
+- `Mijn Team` must not duplicate coaching logic.
+- Opening a coaching through `Mijn Team` must use the existing Coaching Form.
+
+---
+
+## Open Implementation Notes
+
+The following items are not yet fully defined or implemented and are tracked in `TODO.md`.
+
+- Define exactly which roles count as field employees for this page.
+- Filter the fiche based on active modules.
+- Add visual indicator for planned coachings.
+- Add planned coaching badge.
+- Add score-based row colouring.
+- Define configurable score threshold.
+- Define final visual rules for action-required indicators.
