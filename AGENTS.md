@@ -426,32 +426,53 @@ A coaching is only completed after representative approval.
 
 Unless a different workflow is explicitly requested, use the current simple workflow:
 
-1. Implement requested change.
-2. Validate visually.
-3. Validate functionality.
-4. Run build/lint where possible.
-5. Merge with main.
-6. Push to Git.
-7. Verify application startup.
+1. Implement the requested change.
+2. Run build/lint where possible.
+3. Update documentation when required.
+4. Merge with main when the user requested or approved this.
+5. Push to Git when the user requested or approved this.
 
 Do not introduce a branch-based workflow unless explicitly requested.
 
+Do not start, stop or restart the local development webserver as part of this workflow.
+
 ---
 
-# Deployment and Webserver Check
+# Local Development Server Rule
 
-After changes that affect runtime behaviour, verify that the application starts correctly.
+Do not start, stop or restart the local development webserver.
 
-The local development webserver must run on port 3000 unless explicitly changed.
+The local devserver is managed externally by the user through:
 
-If the app does not run on port 3000:
+- `keep-fieldforce-dev.ps1`
 
-- identify the issue
-- stop conflicting processes if needed
-- restart the webserver
-- verify that the app is reachable
+AI assistants must not spend time or credits on:
 
-See:
+- `npm run dev`
+- starting the local devserver
+- stopping the local devserver
+- restarting the local devserver
+- checking whether the browser opens
+- checking whether the application is reachable on port 3000
+- repeated server startup attempts
+- browser-based visual verification unless explicitly requested
+
+AI assistants may run:
+
+- `npm run lint`
+- `npm run build`
+- relevant automated tests, if available
+
+The AI must focus on:
+
+- code changes
+- documentation changes
+- lint/build validation
+- Git actions when requested or approved
+
+If the local devserver is not running, the user will handle it outside Codex using the PowerShell watchdog script.
+
+For deployment-specific rules, see:
 
 - `docs/ai/06_DEPLOYMENT.md`
 
