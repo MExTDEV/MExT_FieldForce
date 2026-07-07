@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useSession } from "@/components/session-provider";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { fieldForcePermissionGroups } from "@/lib/user-management";
@@ -288,17 +296,17 @@ export function ConfigurationManagement({ section }: { section: Section }) {
 
       {section === "rollen" && (
         <>
-          <StatusGroup title="Actieve rollen" count={data.roles.filter((role) => role.userCount > 0).length} description="Rollen die momenteel aan gebruikers zijn toegewezen.">
+          <StatusGroup title="Actieve rollen" count={data.roles.filter((role) => role.active).length} description="Rollen die beschikbaar zijn voor nieuwe toewijzingen.">
             <div className="space-y-4">
-              {data.roles.filter((role) => role.userCount > 0).map((role) => (
-                <RolePermissions key={role.role} role={role} mutate={mutate} />
+              {data.roles.filter((role) => role.active).map((role) => (
+                <RolePermissions key={role.role} role={role} canManage={user.role === "SUPER_ADMIN"} mutate={mutate} />
               ))}
             </div>
           </StatusGroup>
-          <StatusGroup title="Niet-actieve rollen" count={data.roles.filter((role) => role.userCount === 0).length} description="Vaste systeemrollen die momenteel niet in gebruik zijn.">
+          <StatusGroup title="Inactieve rollen" count={data.roles.filter((role) => !role.active).length} description="Rollen blijven zichtbaar, maar kunnen niet nieuw worden toegewezen.">
             <div className="space-y-4">
-              {data.roles.filter((role) => role.userCount === 0).map((role) => (
-                <RolePermissions key={role.role} role={role} mutate={mutate} />
+              {data.roles.filter((role) => !role.active).map((role) => (
+                <RolePermissions key={role.role} role={role} canManage={user.role === "SUPER_ADMIN"} mutate={mutate} />
               ))}
             </div>
           </StatusGroup>
@@ -493,51 +501,128 @@ function FocusCard({
 
 function RolePermissions({
   role,
+  canManage,
   mutate,
 }: {
   role: ManagementConfiguration["roles"][number];
+  canManage: boolean;
   mutate: Mutation;
 }) {
   const [permissions, setPermissions] = useState(role.permissions);
+  const [active, setActive] = useState(role.active);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setPermissions(role.permissions);
+    setActive(role.active);
+  }, [role.role, role.permissions, role.active]);
+
+  const hasChanges =
+    active !== role.active ||
+    Object.entries(role.permissions).some(
+      ([key, value]) =>
+        permissions[key as keyof typeof permissions] !== value
+    );
+  const userCountLabel = `${role.userCount} ${
+    role.userCount === 1 ? "gebruiker" : "gebruikers"
+  }`;
+
+  async function save() {
+    const saved = await mutate("PATCH", {
+      entity: "role",
+      role: role.role,
+      active,
+      permissions,
+    });
+    if (saved) setExpanded(false);
+  }
+
   return (
-    <section className="card overflow-hidden">
-      <div className="flex items-center justify-between border-b p-5">
-        <div>
-          <h2 className="font-bold">{role.label}</h2>
-          <p className="text-sm text-slate-500">{role.userCount} gebruikers | vaste systeemrol</p>
-        </div>
+    <section className={`card overflow-hidden transition ${active ? "" : "bg-slate-50/70 opacity-85"}`}>
+      <div className={`flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between ${expanded ? "border-b" : ""}`}>
         <button
           type="button"
-          className="btn-primary"
-          onClick={() => void mutate("PATCH", {
-            entity: "role",
-            role: role.role,
-            permissions,
-          })}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
         >
-          <Check className="h-4 w-4" /> Opslaan
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-slate-500">
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-slate-950">{role.label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? "bg-emerald-50 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                {active ? "Actief" : "Inactief"}
+              </span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                Vaste systeemrol
+              </span>
+              {hasChanges && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                  Niet opgeslagen
+                </span>
+              )}
+            </span>
+            <span className="mt-1 block text-sm text-slate-500">{userCountLabel}</span>
+          </span>
         </button>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <button
+            type="button"
+            className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-bold ${
+              active
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-slate-200 bg-white text-slate-600"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+            disabled={!canManage}
+            onClick={() => setActive((current) => !current)}
+            title={canManage ? "Rol activeren of deactiveren" : "Alleen Super Admin kan rollen activeren of deactiveren"}
+          >
+            {active ? "Actief" : "Inactief"}
+          </button>
+          {hasChanges && canManage && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void save()}
+            >
+              <Check className="h-4 w-4" /> Opslaan
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setExpanded((current) => !current)}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Verbergen" : "Bekijken"}
+          </button>
+        </div>
       </div>
-      <div className="grid gap-5 p-5 lg:grid-cols-2">
-        {fieldForcePermissionGroups.map((group) => (
-          <fieldset key={group.title}>
-            <legend className="mb-2 font-bold">{group.title}</legend>
-            {group.permissions.map((permission) => (
-              <label key={permission.key} className="mb-2 flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={permissions[permission.key]}
-                  onChange={(event) => setPermissions({
-                    ...permissions,
-                    [permission.key]: event.target.checked,
-                  })}
-                />
-                {permission.label}
-              </label>
-            ))}
-          </fieldset>
-        ))}
-      </div>
+      {expanded && (
+        <div className="grid gap-5 p-5 lg:grid-cols-2">
+          {fieldForcePermissionGroups.map((group) => (
+            <fieldset key={group.title}>
+              <legend className="mb-2 font-bold">{group.title}</legend>
+              {group.permissions.map((permission) => (
+                <label key={permission.key} className="mb-2 flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={permissions[permission.key]}
+                    disabled={!canManage}
+                    onChange={(event) => setPermissions({
+                      ...permissions,
+                      [permission.key]: event.target.checked,
+                    })}
+                  />
+                  {permission.label}
+                </label>
+              ))}
+            </fieldset>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

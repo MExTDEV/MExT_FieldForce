@@ -159,6 +159,7 @@ export type ManagementRole = {
   role: Role;
   label: string;
   userCount: number;
+  active: boolean;
   permissions: Record<FieldForcePermissionKey, boolean>;
 };
 

@@ -265,6 +265,26 @@ Business rule:
 
 Adding a new main navigation item requires corresponding role permission configuration and user-level override support.
 
+## Role Configuration
+
+The application roles themselves are fixed enum values.
+
+Role-level metadata that must be configurable at runtime is stored separately in
+`RoleConfiguration`.
+
+Current fields:
+
+- `role`: the fixed application role identifier.
+- `active`: whether the role can be newly assigned.
+
+Business rules:
+
+- Missing role configuration records are treated as active for backwards compatibility.
+- Existing role configuration records default to active.
+- Inactive roles remain visible for management and keep existing users unchanged.
+- Inactive roles must not be assigned to new users or to users who do not already have the role.
+- Existing users with an inactive role can still be loaded and saved for other safe profile changes.
+
 ---
 
 # Sales Manager Role

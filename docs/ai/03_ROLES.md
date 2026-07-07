@@ -44,6 +44,19 @@ Role permissions determine default visibility for:
 - management screens
 - reporting
 
+## Role Active Status
+
+Roles are fixed system roles, but each role has a configurable active status.
+
+Business rules:
+
+- All existing roles are active by default.
+- Inactive roles remain visible in role management.
+- Inactive roles keep their configured permissions visible for review.
+- Making a role inactive must not remove or change the role of existing users.
+- Inactive roles must not be assignable to new users or to users who do not already have that role.
+- Existing users with an inactive role must remain editable for other safe profile changes.
+
 ## User-Level Overrides
 
 A user-level override can overrule the default role configuration.

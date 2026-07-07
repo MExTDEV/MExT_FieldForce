@@ -295,6 +295,16 @@ model RolePermission {
   @@index([permissionId])
 }
 
+model RoleConfiguration {
+  id        String   @id @default(cuid())
+  role      Role     @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
 model UserPermission {
   id           String     @id @default(cuid())
   userId       String

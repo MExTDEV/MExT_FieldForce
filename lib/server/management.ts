@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/server/db";
 import { roleLabels } from "@/lib/permissions";
 import {
+  applicationRoles,
+  listRoleConfigurations,
+} from "@/lib/server/role-configuration";
+import {
   fieldForcePermissionKeys,
   roleTemplates,
 } from "@/lib/user-management";
@@ -15,7 +19,7 @@ import type {
   KpiUnit,
 } from "@/lib/types";
 
-const roles = Object.keys(roleLabels) as Role[];
+const roles = applicationRoles;
 
 export async function listManagementTeams(
   actor: MockUser,
@@ -49,7 +53,7 @@ export async function listManagementTeams(
 export async function getManagementConfiguration(
   actor: MockUser
 ): Promise<ManagementConfiguration> {
-  const [teams, kpis, focuses, permissions, roleGrants, roleCounts] = await Promise.all([
+  const [teams, kpis, focuses, permissions, roleGrants, roleCounts, roleConfigurations] = await Promise.all([
     listManagementTeams(actor),
     prisma.kpiDefinition.findMany({
       where: actor.role === "SUPER_ADMIN"
@@ -64,12 +68,19 @@ export async function getManagementConfiguration(
     prisma.permission.findMany({ orderBy: [{ group: "asc" }, { label: "asc" }] }),
     prisma.rolePermission.findMany(),
     prisma.user.groupBy({ by: ["role"], _count: { id: true } }),
+    listRoleConfigurations(),
   ]);
 
   const grantMap = new Map(
     roleGrants.map((grant) => [`${grant.role}:${grant.permissionId}`, grant.enabled])
   );
   const countMap = new Map(roleCounts.map((item) => [item.role, item._count.id]));
+  const activeMap = new Map(
+    roleConfigurations.map((configuration) => [
+      configuration.role,
+      configuration.active,
+    ])
+  );
 
   return {
     teams,
@@ -103,6 +114,7 @@ export async function getManagementConfiguration(
       role,
       label: roleLabels[role],
       userCount: countMap.get(role) ?? 0,
+      active: activeMap.get(role) ?? true,
       permissions: Object.fromEntries(
         fieldForcePermissionKeys.map((key) => {
           const permission = permissions.find((item) => item.key === key);
@@ -279,16 +291,21 @@ export async function deactivateCriterion(actor: MockUser, id: string) {
 export async function saveRolePermissions(
   actor: MockUser,
   role: Role,
-  permissions: Partial<Record<FieldForcePermissionKey, boolean>>
+  permissions: Partial<Record<FieldForcePermissionKey, boolean>>,
+  active?: boolean
 ) {
   if (actor.role !== "SUPER_ADMIN") {
     throw new Error("Rollen en globale rechten kunnen alleen door een Super Admin worden gewijzigd.");
+  }
+  if (!roles.includes(role)) {
+    throw new Error("Onbekende rol.");
   }
   const records = await prisma.permission.findMany({
     where: { key: { in: fieldForcePermissionKeys } },
   });
   await prisma.$transaction(
-    records.map((permission) =>
+    [
+      ...records.map((permission) =>
       prisma.rolePermission.upsert({
         where: { role_permissionId: { role, permissionId: permission.id } },
         update: { enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]) },
@@ -298,6 +315,16 @@ export async function saveRolePermissions(
           enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]),
         },
       })
-    )
+      ),
+      ...(typeof active === "boolean"
+        ? [
+            prisma.roleConfiguration.upsert({
+              where: { role },
+              update: { active },
+              create: { role, active },
+            }),
+          ]
+        : []),
+    ]
   );
 }

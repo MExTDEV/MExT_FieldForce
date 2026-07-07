@@ -36,6 +36,7 @@ import type {
   Country,
   FieldForcePermissionKey,
   ManagedUser,
+  ManagementConfiguration,
   ManagementTeam,
   Role,
   UserLoginSessionPage,
@@ -77,6 +78,10 @@ export function UsersManagementPage() {
   const [teamOptions, setTeamOptions] = useState<ManagementTeam[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState<string>();
+  const [managementRoles, setManagementRoles] = useState<
+    ManagementConfiguration["roles"]
+  >([]);
+  const [rolesError, setRolesError] = useState<string>();
   const [deleteTarget, setDeleteTarget] = useState<ManagedUser>();
 
   const visibleUsers = useMemo(
@@ -158,6 +163,36 @@ export function UsersManagementPage() {
       cancelled = true;
     };
   }, [draft.country, mode]);
+
+  useEffect(() => {
+    if (!["ADMIN", "SUPER_ADMIN"].includes(user.role)) return;
+    let cancelled = false;
+    async function loadRoles() {
+      setRolesError(undefined);
+      try {
+        const response = await fetch("/api/management", { cache: "no-store" });
+        const payload = (await response.json()) as ManagementConfiguration & {
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Rollen konden niet worden geladen.");
+        }
+        if (!cancelled) setManagementRoles(payload.roles ?? []);
+      } catch (cause) {
+        if (!cancelled) {
+          setRolesError(
+            cause instanceof Error
+              ? cause.message
+              : "Rollen konden niet worden geladen."
+          );
+        }
+      }
+    }
+    void loadRoles();
+    return () => {
+      cancelled = true;
+    };
+  }, [user.role]);
 
   if (!canAccessUserManagement(user)) {
     return <EmptyState title="Geen toegang" description="Gebruikersbeheer is niet beschikbaar voor jouw FieldForce-rol." />;
@@ -254,6 +289,8 @@ export function UsersManagementPage() {
           teamOptions={teamOptions}
           teamsLoading={teamsLoading}
           teamsError={teamsError}
+          managementRoles={managementRoles}
+          rolesError={rolesError}
           managedUsers={managedUsers}
           onChange={setDraft}
           onTeamCreated={(team) =>
@@ -575,6 +612,8 @@ function UserForm({
   teamOptions,
   teamsLoading,
   teamsError,
+  managementRoles,
+  rolesError,
   managedUsers,
   onChange,
   onTeamCreated,
@@ -591,6 +630,8 @@ function UserForm({
   teamOptions: ManagementTeam[];
   teamsLoading: boolean;
   teamsError?: string;
+  managementRoles: ManagementConfiguration["roles"];
+  rolesError?: string;
   managedUsers: ManagedUser[];
   onChange: (draft: ManagedUser) => void;
   onTeamCreated: (team: ManagementTeam) => void;
@@ -609,9 +650,21 @@ function UserForm({
   const teamRequired = ["REPRESENTATIVE", "SALES_LEADER", "SERVICE_OPERATOR"].includes(
     draft.role
   );
-  const availableRoles = roles.filter(
-    (role) => actor.role === "SUPER_ADMIN" || role !== "SUPER_ADMIN"
+  const roleActiveByRole = useMemo(
+    () =>
+      Object.fromEntries(
+        managementRoles.map((role) => [role.role, role.active])
+      ) as Partial<Record<Role, boolean>>,
+    [managementRoles]
   );
+  const isRoleActive = (role: Role) => roleActiveByRole[role] ?? true;
+  const availableRoles = roles.filter(
+    (role) =>
+      (actor.role === "SUPER_ADMIN" || role !== "SUPER_ADMIN") &&
+      (isRoleActive(role) || (mode === "edit" && original?.role === role))
+  );
+  const selectedRoleAvailable = availableRoles.includes(draft.role);
+  const selectedRoleInactive = roleActiveByRole[draft.role] === false;
   const availableTeams = teamOptions
     .filter((team) => team.active && team.country === draft.country)
     .sort((left, right) => left.name.localeCompare(right.name, "nl"));
@@ -939,16 +992,32 @@ function UserForm({
               <Field label="Rol" required>
                 <select
                   className="field font-semibold disabled:bg-slate-100 disabled:text-slate-500"
-                  value={draft.role}
+                  value={selectedRoleAvailable ? draft.role : ""}
                   disabled={!capabilities.canEditRoleRights}
                   onChange={(event) => applyRole(event.target.value as Role)}
                 >
+                  {!selectedRoleAvailable && (
+                    <option value="" disabled>
+                      Selecteer een actieve rol
+                    </option>
+                  )}
                   {availableRoles.map((role) => (
                     <option key={role} value={role}>
                       {roleLabels[role]}
+                      {isRoleActive(role) ? "" : " (inactief)"}
                     </option>
                   ))}
                 </select>
+                {selectedRoleInactive && (
+                  <span className="mt-1.5 block text-xs font-semibold text-amber-700">
+                    Deze gebruiker heeft een inactieve rol. Je kunt andere velden veilig bewaren, maar deze rol kan niet nieuw worden toegewezen.
+                  </span>
+                )}
+                {rolesError && capabilities.canEditRoleRights && (
+                  <span className="mt-1.5 block text-xs font-semibold text-rose-600">
+                    {rolesError}
+                  </span>
+                )}
               </Field>
               {draft.role === "SALES_MANAGER" && (
                 <div className="sm:col-span-2">

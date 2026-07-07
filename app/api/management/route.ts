@@ -121,9 +121,10 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
       await saveRolePermissions(
         actor,
         String(payload.role) as Role,
-        (payload.permissions ?? {}) as Partial<Record<FieldForcePermissionKey, boolean>>
+        (payload.permissions ?? {}) as Partial<Record<FieldForcePermissionKey, boolean>>,
+        typeof payload.active === "boolean" ? payload.active : undefined
       );
-      result = { role: payload.role };
+      result = { role: payload.role, active: payload.active };
     } else {
       badRequest("Onbekende beheeractie.");
     }

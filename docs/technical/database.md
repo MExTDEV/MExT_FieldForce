@@ -88,3 +88,20 @@ Rules:
 - Sales Manager is an explicit `Role` enum value.
 - A Sales Manager may have one or more `UserCountryAccess` records.
 - A Sales Manager without country access records must not be treated as global.
+
+## Role configuration
+
+Application roles are fixed `Role` enum values. Runtime metadata for those roles
+is stored in `RoleConfiguration`.
+
+Fields:
+
+- `role`: unique `Role` enum value.
+- `active`: defaults to `true`.
+
+Rules:
+
+- All system roles are active by default.
+- Inactive roles remain visible in role management.
+- Inactive roles are not available for new user-role assignments.
+- Existing users keep inactive roles until an authorised user changes them.

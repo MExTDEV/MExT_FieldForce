@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/server/db";
+import { assertRoleAssignable } from "@/lib/server/role-configuration";
 import {
   fieldForcePermissionKeys,
   normalizeManagedUser,
@@ -34,6 +35,7 @@ export async function createManagedUserInDatabase(
   if (!actor) throw new Error("Actieve gebruiker niet gevonden.");
 
   const prepared = prepareManagedUserSave(actor, users, draft);
+  await assertRoleAssignable(prepared.role);
   if (newTeamName?.trim()) {
     return createSalesLeaderWithTeam(prepared, newTeamName.trim());
   }
@@ -132,6 +134,7 @@ export async function updateManagedUserInDatabase(
   if (!existing) throw new Error("Gebruiker niet gevonden.");
 
   const prepared = prepareManagedUserSave(actor, users, draft, existing);
+  await assertRoleAssignable(prepared.role, existing.role);
   await validateManagedUserTeam(prepared);
   const updated = await prisma.user.update({
     where: { id: userId },

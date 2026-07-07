@@ -469,6 +469,12 @@ async function seedPermissions() {
   );
 
   for (const [role, template] of Object.entries(roleTemplates)) {
+    await prisma.roleConfiguration.upsert({
+      where: { role: role as Role },
+      update: {},
+      create: { role: role as Role, active: true },
+    });
+
     for (const [permissionKey, enabled] of Object.entries(template.permissions)) {
       const permission = permissionByKey.get(permissionKey);
       if (!permission) continue;
