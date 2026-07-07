@@ -10,6 +10,7 @@ export const permissionsByRole: Record<Role, string[]> = {
     "action:create",
     "action:update",
   ],
+  SALES_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update"],
   SERVICE_OPERATOR: ["self:read", "service:write"],
   COUNTRY_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update"],
   GROUP_MANAGER: ["group:read", "reporting:read", "intervention:create", "action:create", "action:update"],
@@ -26,7 +27,9 @@ export function can(user: MockUser, permission: string) {
 }
 
 export function canAccessCountry(user: MockUser, country: Country) {
-  return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role) || user.country === country;
+  if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return true;
+  if (user.role === "SALES_MANAGER") return (user.countryAccess ?? []).includes(country);
+  return user.country === country;
 }
 
 export function canAccessRepresentative(user: MockUser, representative: Representative) {
@@ -40,6 +43,7 @@ export function canManageSystem(user: MockUser) {
 export function canAccessUserManagement(user: MockUser) {
   return [
     "SALES_LEADER",
+    "SALES_MANAGER",
     "COUNTRY_MANAGER",
     "GROUP_MANAGER",
     "ADMIN",
@@ -58,6 +62,7 @@ export function canAccessCoaching(user: MockUser) {
 export function canAccessSalesday(user: MockUser) {
   return [
     "SALES_LEADER",
+    "SALES_MANAGER",
     "COUNTRY_MANAGER",
     "GROUP_MANAGER",
     "ADMIN",
@@ -77,6 +82,7 @@ export function canAccessService(user: MockUser) {
   return [
     "SERVICE_OPERATOR",
     "SALES_LEADER",
+    "SALES_MANAGER",
     "COUNTRY_MANAGER",
     "GROUP_MANAGER",
     "ADMIN",
@@ -87,6 +93,7 @@ export function canAccessService(user: MockUser) {
 export function canViewTeamDashboard(user: MockUser) {
   return [
     "SALES_LEADER",
+    "SALES_MANAGER",
     "COUNTRY_MANAGER",
     "GROUP_MANAGER",
     "ADMIN",
@@ -97,6 +104,7 @@ export function canViewTeamDashboard(user: MockUser) {
 export const roleLabels: Record<Role, string> = {
   REPRESENTATIVE: "Vertegenwoordiger",
   SALES_LEADER: "Verkoopleider",
+  SALES_MANAGER: "Sales Manager",
   SERVICE_OPERATOR: "Service Operator",
   COUNTRY_MANAGER: "Country Manager",
   GROUP_MANAGER: "Group Manager",

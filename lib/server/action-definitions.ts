@@ -2,6 +2,7 @@ import { prisma } from "@/lib/server/db";
 import type { Country, MockUser, ScopedActionDefinition } from "@/lib/types";
 import type { ActionScope, Priority } from "@prisma/client";
 import { sanitizeRichText } from "@/lib/rich-text";
+import { actorCanAccessCountry, actorCountryWhere } from "@/lib/server/authenticated-user";
 
 export async function listEffectiveActionDefinitions(userId: string, date: Date): Promise<ScopedActionDefinition[]> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, country: true, teamId: true } });
@@ -33,7 +34,9 @@ export async function listVisibleActionDefinitions(actor: MockUser) {
   return prisma.actionDefinition.findMany({
     where: {
       deletedAt: null,
-      ...(["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ? {} : {
+      ...(["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ? {} : actor.role === "SALES_MANAGER" ? {
+        OR: [{ scope: "GLOBAL" }, actorCountryWhere(actor), ...(actor.teamId ? [{ teamId: actor.teamId }] : []), { userId: actor.id }],
+      } : {
         OR: [{ scope: "GLOBAL" }, { country: actor.country }, ...(actor.teamId ? [{ teamId: actor.teamId }] : []), { userId: actor.id }],
       }),
     },
@@ -54,7 +57,7 @@ export async function saveActionDefinition(actor: MockUser, input: {
   const scopeData = actionScopeData(input.scope, input);
   if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
     if (input.scope === "GLOBAL") throw new Error("Alleen globaal beheer kan globale actiepunten aanmaken.");
-    if (scopeData.country && scopeData.country !== actor.country) throw new Error("Dit actiepunt valt buiten je landenscope.");
+    if (scopeData.country && !actorCanAccessCountry(actor, scopeData.country)) throw new Error("Dit actiepunt valt buiten je landenscope.");
     if (actor.role === "SALES_LEADER" && scopeData.teamId !== actor.teamId && scopeData.userId !== actor.id) throw new Error("Dit actiepunt valt buiten je teamscope.");
   }
   const data = {
@@ -69,7 +72,7 @@ export async function saveActionDefinition(actor: MockUser, input: {
 
 export async function softDeleteActionDefinition(actor: MockUser, id: string) {
   const item = await prisma.actionDefinition.findUniqueOrThrow({ where: { id } });
-  if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) && item.country !== actor.country) throw new Error("Geen toegang tot dit actiepunt.");
+  if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) && item.country && !actorCanAccessCountry(actor, item.country)) throw new Error("Geen toegang tot dit actiepunt.");
   return prisma.actionDefinition.update({ where: { id }, data: { active: false, deletedAt: new Date(), updatedById: actor.id } });
 }
 

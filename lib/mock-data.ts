@@ -29,6 +29,15 @@ export const mockUsers: MockUser[] = [
     language: "de",
   },
   {
+    id: "user-sales-manager",
+    name: "Eva Laurent",
+    email: "eva.laurent@mext.local",
+    role: "SALES_MANAGER",
+    country: "BE",
+    countryAccess: ["BE", "NL"],
+    language: "nl",
+  },
+  {
     id: "user-group",
     name: "Marc Dubois",
     email: "marc.dubois@mext.local",

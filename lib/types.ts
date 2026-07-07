@@ -1,6 +1,7 @@
 export type Role =
   | "REPRESENTATIVE"
   | "SALES_LEADER"
+  | "SALES_MANAGER"
   | "SERVICE_OPERATOR"
   | "COUNTRY_MANAGER"
   | "GROUP_MANAGER"
@@ -18,6 +19,7 @@ export type MockUser = {
   email: string;
   role: Role;
   country: Country;
+  countryAccess?: Country[];
   language: Language;
   teamId?: string;
   representativeId?: string;
@@ -175,6 +177,7 @@ export type ManagedUser = {
   mobile: string;
   language: Language;
   country: Country;
+  countryAccess: Country[];
   teamId: string;
   teamName: string;
   role: Role;

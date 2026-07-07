@@ -1,12 +1,12 @@
 import { handleApi } from "@/lib/server/api";
-import { requireAuthenticatedUser, requireRole } from "@/lib/server/authenticated-user";
+import { actorCountryWhere, requireAuthenticatedUser, requireRole } from "@/lib/server/authenticated-user";
 import { prisma } from "@/lib/server/db";
 
 export async function GET(request: Request) {
   return handleApi("api/coaching-participants:get", async () => {
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
-    requireRole(actor, ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    requireRole(actor, ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
     const users = await prisma.user.findMany({
       where: {
         active: true,
@@ -14,8 +14,8 @@ export async function GET(request: Request) {
         role: actor.role === "SALES_LEADER" ? "REPRESENTATIVE" : { in: ["REPRESENTATIVE", "SALES_LEADER"] },
         ...(actor.role === "SALES_LEADER"
           ? { teamId: actor.teamId ?? "__geen_team__" }
-          : ["COUNTRY_MANAGER", "ADMIN"].includes(actor.role)
-            ? { country: actor.country }
+          : ["COUNTRY_MANAGER", "SALES_MANAGER", "ADMIN"].includes(actor.role)
+            ? actorCountryWhere(actor)
             : {}),
       },
       include: { team: { select: { name: true } } },

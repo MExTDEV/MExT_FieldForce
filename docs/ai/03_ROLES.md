@@ -172,6 +172,8 @@ Business rules:
 - Sales Manager is not the same as Verkoopleider.
 - Sales Manager is not the same as Country Manager.
 - Sales Manager can have access to one or more countries.
+- Sales Manager country scope is stored separately from the primary user country.
+- A Sales Manager without assigned country rights must not see country-scoped Coaching data.
 - Sales Manager sees teams and users within assigned countries.
 - Sales Manager permissions must be configurable through role management.
 - Sales Manager permissions must support user-level overrides.

@@ -45,6 +45,7 @@ import type {
 const roles: Role[] = [
   "REPRESENTATIVE",
   "SALES_LEADER",
+  "SALES_MANAGER",
   "SERVICE_OPERATOR",
   "COUNTRY_MANAGER",
   "GROUP_MANAGER",
@@ -634,9 +635,13 @@ function UserForm({
 
   function applyRole(role: Role) {
     const template = roleTemplates[role];
+    const countryAccess = role === "SALES_MANAGER"
+      ? (draft.countryAccess.length ? draft.countryAccess : [draft.country])
+      : [draft.country];
     onChange({
       ...draft,
       role,
+      countryAccess,
       ...(draft.teamId === newTeamSelectionId && role !== "SALES_LEADER" && !draft.teamSupervisor
         ? { teamId: "", teamName: "" }
         : {}),
@@ -860,6 +865,7 @@ function UserForm({
                     onChange({
                       ...draft,
                       country,
+                      countryAccess: draft.role === "SALES_MANAGER" ? draft.countryAccess : [country],
                       teamId: "",
                       teamName: "",
                     });
@@ -944,6 +950,34 @@ function UserForm({
                   ))}
                 </select>
               </Field>
+              {draft.role === "SALES_MANAGER" && (
+                <div className="sm:col-span-2">
+                  <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Landrechten
+                  </span>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {(Object.keys(countryLabels) as Country[]).map((country) => (
+                      <Toggle
+                        key={country}
+                        label={`${countryLabels[country]} (${country})`}
+                        checked={draft.countryAccess.includes(country)}
+                        disabled={!capabilities.canEditScope}
+                        onChange={(checked) => {
+                          const countryAccess = checked
+                            ? [...new Set([...draft.countryAccess, country])]
+                            : draft.countryAccess.filter((item) => item !== country);
+                          onChange({ ...draft, countryAccess });
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {!draft.countryAccess.length && (
+                    <span className="mt-1.5 block text-xs font-semibold text-rose-600">
+                      Selecteer minstens één landrecht voor Sales Manager.
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Toggle

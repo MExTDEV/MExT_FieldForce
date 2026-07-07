@@ -1221,6 +1221,7 @@ function CoachingDossierDetail({
   const isApprovalLocked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(local.status);
   const canManageCompleted = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role) ||
     (["ADMIN", "COUNTRY_MANAGER"].includes(user.role) && user.country === local.country) ||
+    (user.role === "SALES_MANAGER" && user.countryAccess?.includes(local.country)) ||
     (user.role === "SALES_LEADER" && (
       local.ownerId === user.id ||
       local.initiatorId === user.id ||

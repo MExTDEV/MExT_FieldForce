@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { loadPerformanceDatasetFromDatabase } from "@/lib/server/performance";
 import { buildCoachingVisibilityFilter } from "@/lib/server/coaching-visibility";
+import { actorCountryWhere } from "@/lib/server/authenticated-user";
 import { latestHistoricalCoaching, latestScoredCoaching } from "@/lib/performance-data";
 import { sortMyTeamMembers, type MyTeamMember } from "@/lib/my-team";
 import type { MockUser } from "@/lib/types";
@@ -13,7 +14,13 @@ export function myTeamScopeWhere(actor: MockUser): Prisma.TeamWhereInput {
   if (actor.role === "COUNTRY_MANAGER") {
     return { country: actor.country };
   }
-  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
+  if (actor.role === "SALES_MANAGER") {
+    return actorCountryWhere(actor);
+  }
+  if (actor.role === "ADMIN") {
+    return { country: actor.country };
+  }
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
     return {};
   }
   return { id: "__geen_toegang__" };

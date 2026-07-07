@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   REPRESENTATIVE
   SALES_LEADER
+  SALES_MANAGER
   SERVICE_OPERATOR
   COUNTRY_MANAGER
   GROUP_MANAGER
@@ -169,11 +170,23 @@ model User {
   actionTargetOverrides     ActionTargetOverride[]
   coachingActions           CoachingAction[]
   coachingChangeLogs        CoachingChangeLog[]
+  countryAccess             UserCountryAccess[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
   @@index([country, role])
   @@index([teamId])
+}
+
+model UserCountryAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  country   Country
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, country])
+  @@index([country])
 }
 
 model MicrosoftAuthToken {

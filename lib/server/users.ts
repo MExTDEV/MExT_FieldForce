@@ -41,6 +41,7 @@ export async function createManagedUserInDatabase(
   const created = await prisma.user.create({
     data: userDataFromManagedUser(prepared),
   });
+  await replaceUserCountryAccess(created.id, prepared.countryAccess);
   await replaceUserPermissions(created.id, prepared.permissions);
   return toManagedUser(
     await fetchUserWithAccess(created.id),
@@ -85,6 +86,7 @@ async function createSalesLeaderWithTeam(
       where: { id: created.id },
       data: { teamId: team.id },
     });
+    await replaceUserCountryAccessInTransaction(tx, created.id, prepared.countryAccess);
     await Promise.all(
       permissionRecords.map((permission) =>
         tx.userPermission.upsert({
@@ -135,6 +137,7 @@ export async function updateManagedUserInDatabase(
     where: { id: userId },
     data: userDataFromManagedUser(prepared),
   });
+  await replaceUserCountryAccess(updated.id, prepared.countryAccess);
   await replaceUserPermissions(updated.id, prepared.permissions);
   return toManagedUser(
     await fetchUserWithAccess(updated.id),
@@ -152,6 +155,7 @@ async function fetchUsersWithAccess() {
   return prisma.user.findMany({
     include: {
       team: true,
+      countryAccess: true,
       permissions: { include: { permission: true } },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -163,6 +167,7 @@ async function fetchUserWithAccess(id: string) {
     where: { id },
     include: {
       team: true,
+      countryAccess: true,
       permissions: { include: { permission: true } },
     },
   });
@@ -191,6 +196,7 @@ function toManagedUser(
     mobile: user.mobile ?? "",
     language: user.language as Language,
     country: user.country as Country,
+    countryAccess: user.countryAccess.map((scope) => scope.country as Country),
     teamId: user.teamId ?? "",
     teamName: user.team?.name ?? "",
     role,
@@ -218,6 +224,7 @@ function actorFromManagedUser(user?: ManagedUser): MockUser | undefined {
     email: user.email,
     role: user.role,
     country: user.country,
+    countryAccess: user.countryAccess,
     language: user.language,
     teamId: user.teamId || undefined,
     representativeId: user.representativeId,
@@ -291,4 +298,24 @@ async function replaceUserPermissions(
       })
     )
   );
+}
+
+async function replaceUserCountryAccess(userId: string, countries: Country[]) {
+  await prisma.$transaction(async (tx) => {
+    await replaceUserCountryAccessInTransaction(tx, userId, countries);
+  });
+}
+
+async function replaceUserCountryAccessInTransaction(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  userId: string,
+  countries: Country[]
+) {
+  await tx.userCountryAccess.deleteMany({ where: { userId } });
+  const uniqueCountries = [...new Set(countries)];
+  if (uniqueCountries.length) {
+    await tx.userCountryAccess.createMany({
+      data: uniqueCountries.map((country) => ({ userId, country })),
+    });
+  }
 }

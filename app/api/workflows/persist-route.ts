@@ -226,6 +226,7 @@ function requireWorkflowPermission(
     requireRole(actor, [
       "REPRESENTATIVE",
       "SALES_LEADER",
+      "SALES_MANAGER",
       "COUNTRY_MANAGER",
       "GROUP_MANAGER",
       "SUPER_ADMIN",

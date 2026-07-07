@@ -12,12 +12,15 @@ function actor(role: Role, country: MockUser["country"] = "BE"): MockUser {
     country,
     language: "nl",
     teamId: role === "SALES_LEADER" ? "team-eigen" : undefined,
+    countryAccess: role === "SALES_MANAGER" ? ["BE", "NL"] : undefined,
   };
 }
 
 assert.deepEqual(myTeamScopeWhere(actor("SALES_LEADER")), { id: "team-eigen" });
 assert.deepEqual(myTeamScopeWhere(actor("COUNTRY_MANAGER", "NL")), { country: "NL" });
-assert.deepEqual(myTeamScopeWhere(actor("ADMIN")), {});
+assert.deepEqual(myTeamScopeWhere(actor("SALES_MANAGER")), { country: { in: ["BE", "NL"] } });
+assert.deepEqual(myTeamScopeWhere({ ...actor("SALES_MANAGER"), countryAccess: [] }), { country: { in: [] } });
+assert.deepEqual(myTeamScopeWhere(actor("ADMIN")), { country: "BE" });
 assert.deepEqual(myTeamScopeWhere(actor("SUPER_ADMIN")), {});
 assert.deepEqual(myTeamScopeWhere(actor("REPRESENTATIVE")), { id: "__geen_toegang__" });
 

@@ -27,6 +27,7 @@ function user(role: Role): MockUser {
     email: `${role.toLowerCase()}@example.test`,
     role,
     country: "BE",
+    countryAccess: role === "SALES_MANAGER" ? ["BE", "NL"] : undefined,
     language: "nl",
     teamId: role === "SALES_LEADER" || role === "REPRESENTATIVE" ? "team-1" : undefined,
     permissions: { ...roleTemplates[role].permissions },
@@ -37,7 +38,7 @@ function expect(condition: unknown, message: string) {
   if (!condition) throw new Error(message);
 }
 
-for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_LEADER"] as Role[]) {
+for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER", "SALES_LEADER"] as Role[]) {
   const domains = getAvailableDomains(user(role), modules);
   expect(domains.length === 5, `${role} moet vijf toegestane hoofditems krijgen.`);
 }
@@ -78,4 +79,4 @@ expect(
   "Een inactieve module mag geen directe link tonen."
 );
 
-console.log("Menu-rechten gecontroleerd voor Super Admin, Admin, Country Manager, Verkoopleider en Vertegenwoordiger.");
+console.log("Menu-rechten gecontroleerd voor Super Admin, Admin, Country Manager, Sales Manager, Verkoopleider en Vertegenwoordiger.");

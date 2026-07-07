@@ -16,12 +16,27 @@ export type VisibleUserScope = {
   isGlobal: boolean;
 };
 
+export function scopedCountries(currentUser: MockUser): Set<string> | undefined {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return undefined;
+  if (currentUser.role === "SALES_MANAGER") return new Set(currentUser.countryAccess ?? []);
+  return new Set([currentUser.country]);
+}
+
+export function canAccessCountryScope(currentUser: MockUser, country: string) {
+  const countries = scopedCountries(currentUser);
+  return countries === undefined || countries.has(country);
+}
+
 export function getVisibleRepresentatives(
   currentUser: MockUser,
   source: Representative[]
 ) {
-  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) {
     return source;
+  }
+  if (currentUser.role === "SALES_MANAGER") {
+    const countries = scopedCountries(currentUser) ?? new Set<string>();
+    return source.filter((representative) => countries.has(representative.country));
   }
   if (currentUser.role === "REPRESENTATIVE") {
     return source.filter(
@@ -50,7 +65,6 @@ export function getVisibleUserScope(
     teamIds: new Set(visible.map((item) => item.teamId)),
     countries: new Set(visible.map((item) => item.country)),
     isGlobal:
-      currentUser.role === "ADMIN" ||
       currentUser.role === "SUPER_ADMIN" ||
       currentUser.role === "GROUP_MANAGER",
   };
@@ -60,7 +74,8 @@ export function canAccessRepresentativeData(
   currentUser: MockUser,
   representative: Representative
 ) {
-  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return true;
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return true;
+  if (currentUser.role === "SALES_MANAGER") return canAccessCountryScope(currentUser, representative.country);
   if (currentUser.role === "REPRESENTATIVE") {
     return representative.id === currentUser.representativeId;
   }

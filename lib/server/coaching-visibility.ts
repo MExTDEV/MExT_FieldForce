@@ -1,10 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import type { MockUser } from "@/lib/types";
+import { actorCountryWhere } from "@/lib/server/authenticated-user";
 
 export function buildCoachingVisibilityFilter(
   currentUser: MockUser
 ): Prisma.InterventionWhereInput {
-  if (["ADMIN", "SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return {};
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return {};
+  if (currentUser.role === "SALES_MANAGER") return actorCountryWhere(currentUser);
+  if (currentUser.role === "ADMIN") return { country: currentUser.country };
   if (currentUser.role === "SALES_LEADER") {
     return {
       OR: [

@@ -76,3 +76,15 @@ Before implementing a feature or change, verify:
 - Do existing queries, server actions or route handlers need updates?
 - Do existing records need a safe migration or backfill?
 - Is audit logging required for the mutation?
+
+## Role country scope
+
+`User.country` stores the primary country context for a user. Additional country
+scope for roles that may cover more than one country, such as Sales Manager, is
+stored in `UserCountryAccess`.
+
+Rules:
+
+- Sales Manager is an explicit `Role` enum value.
+- A Sales Manager may have one or more `UserCountryAccess` records.
+- A Sales Manager without country access records must not be treated as global.

@@ -3,7 +3,21 @@ import { unauthorized } from "@/lib/server/api";
 import { forbidden } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
 import { can } from "@/lib/permissions";
-import type { MockUser, Role } from "@/lib/types";
+import type { Country, MockUser, Role } from "@/lib/types";
+
+export function actorCountryWhere(user: MockUser) {
+  if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return {};
+  if (user.role === "SALES_MANAGER") {
+    return { country: { in: user.countryAccess ?? [] } };
+  }
+  return { country: user.country };
+}
+
+export function actorCanAccessCountry(user: MockUser, country: string) {
+  if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return true;
+  if (user.role === "SALES_MANAGER") return (user.countryAccess ?? []).includes(country as Country);
+  return user.country === country;
+}
 
 export async function requireAuthenticatedUser(
   requestedActorId?: string | null
@@ -60,7 +74,7 @@ export async function requireRepresentativeScope(
       return [representative.id, representative.representativeId].includes(user.representativeId ?? user.id);
     }
     if (user.role === "SALES_LEADER") return representative.teamId === user.teamId;
-    return representative.country === user.country;
+    return actorCanAccessCountry(user, representative.country);
   });
   if (!allowed) forbidden("Deze vertegenwoordiger valt buiten je toegestane scope.");
 }
@@ -85,7 +99,7 @@ export async function requireCoachingParticipantScope(
     if (actor.role === "SALES_LEADER") {
       return participant.role === "REPRESENTATIVE" && Boolean(actor.teamId && participant.teamId === actor.teamId);
     }
-    if (["COUNTRY_MANAGER", "ADMIN"].includes(actor.role)) return participant.country === actor.country;
+    if (["COUNTRY_MANAGER", "SALES_MANAGER", "ADMIN"].includes(actor.role)) return actorCanAccessCountry(actor, participant.country);
     return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
   });
   if (!allowed) forbidden("Deze persoon valt buiten je toegestane begeleidingsscope.");
@@ -95,13 +109,13 @@ export async function requireCoachingOwnerScope(actor: MockUser, ownerIds: strin
   const ids = [...new Set(ownerIds.filter(Boolean))];
   if (!ids.length) return;
   const owners = await prisma.user.findMany({
-    where: { id: { in: ids }, active: true, role: { in: ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"] } },
+    where: { id: { in: ids }, active: true, role: { in: ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"] } },
     select: { id: true, country: true },
   });
   if (owners.length !== ids.length) forbidden("De geselecteerde begeleider is ongeldig.");
   const allowed = owners.every((owner) => {
     if (actor.role === "SALES_LEADER") return owner.id === actor.id;
-    if (["COUNTRY_MANAGER", "ADMIN"].includes(actor.role)) return owner.country === actor.country;
+    if (["COUNTRY_MANAGER", "SALES_MANAGER", "ADMIN"].includes(actor.role)) return actorCanAccessCountry(actor, owner.country);
     return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
   });
   if (!allowed) forbidden("De begeleider valt buiten je toegestane scope.");
@@ -123,6 +137,7 @@ async function findActiveUser(id: string): Promise<MockUser | undefined> {
       language: true,
       teamId: true,
       representativeId: true,
+      countryAccess: { select: { country: true } },
     },
   });
   if (!user) return undefined;
@@ -132,6 +147,7 @@ async function findActiveUser(id: string): Promise<MockUser | undefined> {
     email: user.email,
     role: user.role,
     country: user.country,
+    countryAccess: user.countryAccess.map((scope) => scope.country),
     language: user.language,
     teamId: user.teamId ?? undefined,
     representativeId: user.representativeId ?? undefined,

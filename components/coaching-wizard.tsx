@@ -135,7 +135,7 @@ export function CoachingWizard() {
     return <EmptyState title="Module niet actief" description="Begeleidingen is momenteel gedeactiveerd in FieldForce." />;
   }
 
-  if (!["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
+  if (!["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
     return <EmptyState title="Geen rechten om een begeleiding te maken" description="Je rol mag geen begeleiding aanmaken." />;
   }
 
@@ -233,7 +233,7 @@ export function CoachingWizard() {
         {step === "representative" && (
           <RepresentativeStep
             available={participants}
-            coaches={managedUsers.filter((profile) => profile.active && ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(profile.role) && (user.role === "SALES_LEADER" ? profile.id === user.id : ["COUNTRY_MANAGER", "ADMIN"].includes(user.role) ? profile.country === user.country : true))}
+            coaches={managedUsers.filter((profile) => profile.active && ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(profile.role) && (user.role === "SALES_LEADER" ? profile.id === user.id : ["COUNTRY_MANAGER", "ADMIN"].includes(user.role) ? profile.country === user.country : user.role === "SALES_MANAGER" ? user.countryAccess?.includes(profile.country) : true))}
             selected={draft.representativeId}
             ownerId={draft.ownerId}
             onSelect={(representativeId) => setDraft((current) => ({ ...current, representativeId }))}

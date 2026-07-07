@@ -22,6 +22,8 @@ teamLeader.teamId = "team-be";
 const representativeB = user("user-rep-b", "REPRESENTATIVE", "BE", "rep-b");
 const adminBe = user("admin-be", "ADMIN", "BE");
 const adminNl = user("admin-nl", "ADMIN", "NL");
+const salesManagerBeNl = { ...user("sales-manager", "SALES_MANAGER", "BE"), countryAccess: ["BE", "NL"] as MockUser["country"][] };
+const salesManagerNoCountries = { ...user("sales-manager-empty", "SALES_MANAGER", "BE"), countryAccess: [] as MockUser["country"][] };
 const superAdmin = user("super", "SUPER_ADMIN", "NL");
 
 const coaching: CoachingIntervention = {
@@ -54,6 +56,8 @@ assert.equal(visibleCoachings(teamLeader, duplicated).length, 1);
 assert.equal(visibleCoachings(representativeB, duplicated).length, 0);
 assert.equal(visibleCoachings(adminBe, duplicated).length, 1);
 assert.equal(visibleCoachings(adminNl, duplicated).length, 0);
+assert.equal(visibleCoachings(salesManagerBeNl, duplicated).length, 1);
+assert.equal(visibleCoachings(salesManagerNoCountries, duplicated).length, 0);
 assert.equal(visibleCoachings(superAdmin, duplicated).length, 1);
 
 const notified = duplicated.map((item) => ({ ...item, notifyRepresentative: true }));

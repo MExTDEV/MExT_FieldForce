@@ -64,6 +64,7 @@ async function main() {
   ({ representatives: developmentRepresentatives } = await import("../lib/mock-data"));
 
   await prisma.userPermission.deleteMany();
+  await prisma.userCountryAccess.deleteMany();
   await prisma.rolePermission.deleteMany();
   await prisma.permission.deleteMany();
   await prisma.appModule.deleteMany();
@@ -143,6 +144,26 @@ async function main() {
       );
     }
     leadersByCountry.set(country, leaders);
+  }
+
+  for (let index = 0; index < 3; index++) {
+    const primaryCountry = Object.values(Country)[index % 3];
+    const salesManager = await prisma.user.create({
+      data: {
+        firstName: "Sales",
+        lastName: `Manager ${index + 1}`,
+        email: `sales.manager.${index + 1}@mext.local`,
+        role: Role.SALES_MANAGER,
+        country: primaryCountry,
+        language: primaryCountry === Country.DE ? Language.de : Language.nl,
+      },
+    });
+    await prisma.userCountryAccess.createMany({
+      data: Object.values(Country).slice(0, index + 1).map((country) => ({
+        userId: salesManager.id,
+        country,
+      })),
+    });
   }
 
   const teamsByCountry = new Map<Country, { id: string; primaryLeaderId: string }[]>();
@@ -563,6 +584,13 @@ async function seedPrototypeUsers() {
         levelId: level?.id ?? null,
       },
     });
+    await prisma.userCountryAccess.deleteMany({ where: { userId: user.id } });
+    const countryAccess = [...new Set(profile.countryAccess.length ? profile.countryAccess : [profile.country])];
+    if (countryAccess.length) {
+      await prisma.userCountryAccess.createMany({
+        data: countryAccess.map((country) => ({ userId: user.id, country: country as Country })),
+      });
+    }
 
     for (const [permissionKey, enabled] of Object.entries(profile.permissions)) {
       const permission = permissionByKey.get(permissionKey);

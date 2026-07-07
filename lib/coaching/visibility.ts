@@ -26,6 +26,10 @@ export function canViewCoaching(
   intervention: CoachingIntervention
 ) {
   if (currentUser.role === "SUPER_ADMIN") return true;
+  if (currentUser.role === "GROUP_MANAGER") return true;
+  if (currentUser.role === "SALES_MANAGER") {
+    return (currentUser.countryAccess ?? []).includes(intervention.country);
+  }
   if (currentUser.role === "SALES_LEADER") {
     return intervention.initiatorId === currentUser.id ||
       intervention.ownerId === currentUser.id ||

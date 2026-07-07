@@ -123,6 +123,7 @@ Business rules:
 - Sales Manager is not the same as Verkoopleider.
 - Sales Manager is not the same as Country Manager.
 - Sales Manager access must respect role configuration and user-level overrides.
+- Sales Manager access must respect explicitly assigned country rights; without country rights, no country-scoped Coaching data is visible.
 
 ## Admin
 

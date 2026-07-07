@@ -1,5 +1,5 @@
 import { badRequest, forbidden, handleApi, notFound } from "@/lib/server/api";
-import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
+import { actorCanAccessCountry, requireAuthenticatedUser } from "@/lib/server/authenticated-user";
 import { buildVisibleCoachingWhere } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
@@ -122,7 +122,7 @@ function requireManager(
   coaching: { initiatorId: string; ownerId: string; teamId: string | null; country: string }
 ) {
   const allowed = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ||
-    (["ADMIN", "COUNTRY_MANAGER"].includes(actor.role) && actor.country === coaching.country) ||
+    (["ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER"].includes(actor.role) && actorCanAccessCountry(actor, coaching.country)) ||
     (actor.role === "SALES_LEADER" && (
       actor.id === coaching.initiatorId ||
       actor.id === coaching.ownerId ||

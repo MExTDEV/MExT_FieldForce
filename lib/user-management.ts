@@ -180,6 +180,26 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       ...internalMenuPermissions
     ),
   },
+  SALES_MANAGER: {
+    permissions: permissions(
+      "moduleDashboard",
+      "moduleAgenda",
+      "modulePreparation",
+      "moduleVisitRecord",
+      "moduleMyTeam",
+      "moduleReporting",
+      "modulePdfExport",
+      "performanceView",
+      "performanceCompare",
+      "performanceScoresView",
+      "performanceScoresExport",
+      "usersView",
+      "reportingOwn",
+      "reportingTeam",
+      "reportingExport",
+      ...internalMenuPermissions
+    ),
+  },
   SERVICE_OPERATOR: {
     permissions: permissions(
       "moduleDashboard",
@@ -271,6 +291,7 @@ export function createEmptyManagedUser(actor: MockUser): ManagedUser {
     mobile: "",
     language: actor.language,
     country: actor.country,
+    countryAccess: actor.role === "SALES_MANAGER" ? actor.countryAccess ?? [] : [actor.country],
     teamId: actor.teamId ?? "",
     teamName: "",
     role,
@@ -296,6 +317,7 @@ export function normalizeManagedUser(user: ManagedUser): ManagedUser {
   return {
     ...user,
     mobile: user.mobile ?? "",
+    countryAccess: user.countryAccess?.length ? user.countryAccess : [user.country],
     teamId: user.teamId ?? "",
     teamName: user.teamName ?? "",
     teamSupervisor: Boolean(user.teamSupervisor),
@@ -320,6 +342,7 @@ export function managedUserToMockUser(profile: ManagedUser): MockUser {
     email: profile.email,
     role: profile.role,
     country: profile.country,
+    countryAccess: profile.countryAccess,
     language: profile.language,
     teamId: profile.teamId || undefined,
     representativeId: profile.representativeId,
@@ -406,6 +429,17 @@ export function userManagementCapabilities(
       canEditActive: false,
     };
   }
+  if (actor.role === "SALES_MANAGER") {
+    const countries = new Set(actor.countryAccess ?? []);
+    return {
+      canView: Boolean(target && countries.has(target.country)),
+      canCreate: false,
+      canEditPersonal: false,
+      canEditScope: false,
+      canEditRoleRights: false,
+      canEditActive: false,
+    };
+  }
   if (actor.role === "COUNTRY_MANAGER") {
     return {
       canView: Boolean(target && target.country === actor.country),
@@ -471,6 +505,7 @@ export function prepareManagedUserSave(
   }
   if (capabilities.canEditScope) {
     for (const field of scopeFields) next[field] = draft[field] as never;
+    next.countryAccess = draft.countryAccess?.length ? [...draft.countryAccess] : [draft.country];
   }
   if (capabilities.canEditActive) next.active = draft.active;
   if (capabilities.canEditRoleRights) {
@@ -507,6 +542,9 @@ export function prepareManagedUserSave(
     !next.teamId
   ) {
     throw new Error("Selecteer een team voor deze rol.");
+  }
+  if (next.role === "SALES_MANAGER" && !next.countryAccess.length) {
+    throw new Error("Selecteer minstens één landrecht voor Sales Manager.");
   }
 
   return normalizeManagedUser({

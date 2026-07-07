@@ -574,6 +574,8 @@ AI rule:
 
 Priority: High
 
+Status: Completed on 2026-07-07
+
 Required change:
 
 - Add Sales Manager as a separate application role.
@@ -601,6 +603,20 @@ Required checks:
 - Planning visibility
 - Action point visibility
 - Reporting visibility
+
+Implemented:
+
+- Added `SALES_MANAGER` as a distinct application role.
+- Added separate country-scope storage for roles with multi-country access.
+- Made Sales Manager available in user management with configurable role permissions and user-level overrides.
+- Applied assigned-country scope to Coaching visibility, Mijn Team, coaching participant selection and action-point definitions.
+- Kept Sales Manager separate from Admin and Super Admin; no technical management, role management or module management rights are granted by default.
+- Added focused tests for menu visibility, Mijn Team scope and Coaching visibility.
+
+Restpunten:
+
+- Browser-based visual validation remains to be performed by the user through the externally managed local devserver.
+- `prisma generate` may need to be rerun after the external devserver releases the Prisma engine file lock.
 
 ---
 

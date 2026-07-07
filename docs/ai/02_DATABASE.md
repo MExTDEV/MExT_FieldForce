@@ -315,6 +315,12 @@ A Sales Manager sees data within assigned country scope.
 
 A Sales Manager can have access to one or more countries.
 
+Implementation note:
+
+- The primary `User.country` remains available for default user context.
+- Additional Sales Manager country rights are stored as assigned country-scope records.
+- A Sales Manager with no assigned country-scope records must not receive global data visibility.
+
 ---
 
 ## Country Manager

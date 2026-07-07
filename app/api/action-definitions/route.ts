@@ -7,7 +7,7 @@ import type { Country } from "@/lib/types";
 export async function GET(request: Request) {
   return handleApi("api/action-definitions:get", async () => {
     const actor = await requireAuthenticatedUser(new URL(request.url).searchParams.get("actorId"));
-    requireRole(actor, ["REPRESENTATIVE", "SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    requireRole(actor, ["REPRESENTATIVE", "SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
     const definitions = await listVisibleActionDefinitions(actor);
     return { definitions: definitions.map((item) => ({ ...item, targetValue: item.targetValue === null ? undefined : Number(item.targetValue), priority: item.priority.toLowerCase(), validFrom: item.validFrom.toISOString().slice(0, 10), validUntil: item.validUntil?.toISOString().slice(0, 10) })) };
   });
@@ -17,7 +17,7 @@ async function mutate(request: Request, method: "POST" | "PATCH" | "DELETE") {
   return handleApi(`api/action-definitions:${method.toLowerCase()}`, async () => {
     const body = await request.json() as Record<string, unknown>;
     const actor = await requireAuthenticatedUser(String(body.actorId ?? ""));
-    requireRole(actor, ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    requireRole(actor, ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
     if (method === "DELETE") return { definition: await softDeleteActionDefinition(actor, String(body.id)) };
     const target = body.targetValue === "" || body.targetValue === undefined ? undefined : Number(body.targetValue);
     if (target !== undefined && !Number.isFinite(target)) badRequest("Target moet numeriek zijn.");
