@@ -651,6 +651,7 @@ Implemented changes:
   - Team
   - Persoonlijk
 - The Gebruikers tab shows the same open / to-do action points grouped per visible user.
+- For the Vertegenwoordiger role, the Gebruikers tab is hidden so the screen only shows the Actiepunten view.
 - Action point rows now use a compact list layout aligned with the Mijn Team list pattern.
 - The page no longer exposes create, deactivate or target-override actions.
 - Direct page access requires the active Actiepunten module and effective `modulePreparation` plus `menu.coaching.actionPoints` permissions.
@@ -766,6 +767,7 @@ Implemented changes:
 - Sees global action points when Actiepunten is active and allowed.
 - Only sees own personal action points.
 - Does not see team, country or personal action points of others.
+- Does not see the Gebruikers tab or user-grouped management view.
 
 ### Verkoopleider
 

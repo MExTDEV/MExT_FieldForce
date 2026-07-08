@@ -1086,6 +1086,7 @@ Current implemented behaviour:
 - open / to-do action points are shown in two tabs:
   - Actiepunten
   - Gebruikers
+- for the Vertegenwoordiger role, only the Actiepunten view is shown; the Gebruikers tab is hidden.
 - both tabs have a search field
 - the Actiepunten tab groups visible open action points in collapsible scope groups:
   - Globaal
@@ -1183,6 +1184,8 @@ This includes:
 - personal action points assigned to the representative
 
 Representatives do not see team, country or personal action points of others from this overview.
+
+Representatives also do not see the Gebruikers tab or user-grouped management view on the Actiepunten page.
 
 ---
 

@@ -71,6 +71,10 @@ export function canAccessActionPointsOverview(
   );
 }
 
+export function canViewActionPointUserTab(user: MockUser) {
+  return user.role !== "REPRESENTATIVE";
+}
+
 export function visibleActionPointCountries(user: MockUser): Country[] | undefined {
   if (globalScopedRoles.has(user.role)) return undefined;
   if (countryScopedRoles.has(user.role)) {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  canViewActionPointUserTab,
   canViewScopedActionDefinition,
   groupActionPointsByRepresentative,
   splitActionPointSections,
@@ -129,11 +130,13 @@ assert.equal(canViewScopedActionDefinition(representative, personalOwnAction), t
 assert.equal(canViewScopedActionDefinition(representative, personalOtherTeamAction), false, "Vertegenwoordiger ziet geen persoonlijke actiepunten van anderen.");
 assert.equal(canViewScopedActionDefinition(representative, teamOtherAction), false, "Vertegenwoordiger ziet geen teamactiepunten buiten toegestane scope.");
 assert.equal(canViewScopedActionDefinition(representative, globalAction), true, "Vertegenwoordiger ziet globale actiepunten wanneer de module dat ondersteunt.");
+assert.equal(canViewActionPointUserTab(representative), false, "Vertegenwoordiger ziet geen Gebruikers-tab in Actiepunten.");
 
 const leader = user("SALES_LEADER");
 assert.equal(canViewScopedActionDefinition(leader, teamBeAction), true, "Verkoopleider ziet actiepunten voor eigen team.");
 assert.equal(canViewScopedActionDefinition(leader, personalOwnAction), true, "Verkoopleider ziet actiepunten voor teamleden.");
 assert.equal(canViewScopedActionDefinition(leader, teamOtherAction), false, "Verkoopleider ziet geen actiepunten van andere teams.");
+assert.equal(canViewActionPointUserTab(leader), true, "Verkoopleider behoudt de Gebruikers-tab in Actiepunten.");
 
 const countryManager = user("COUNTRY_MANAGER", { countryAccess: ["BE"] });
 assert.equal(canViewScopedActionDefinition(countryManager, countryBeAction), true, "Country Manager ziet actiepunten binnen toegewezen landenscope.");

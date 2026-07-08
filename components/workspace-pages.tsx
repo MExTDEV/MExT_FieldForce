@@ -122,6 +122,7 @@ import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-p
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  canViewActionPointUserTab,
   groupActionPointsByRepresentative,
   groupActionPointsByScope,
   splitActionPointSections,
@@ -2693,6 +2694,8 @@ function ScopedActionPoints() {
   const [actionSearch, setActionSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const allowed = canAccessActionPointsOverview(user, modules);
+  const showActionPointUserTab = canViewActionPointUserTab(user);
+  const visibleActionTab = showActionPointUserTab ? activeActionTab : "actions";
   const workflowActionItems = useMemo<ActionPointOverviewItem[]>(() => {
     if (!allowed) return [];
     const scopedState = getVisibleWorkflowState(user, state, representatives);
@@ -2744,14 +2747,16 @@ function ScopedActionPoints() {
   const filteredActionItems = openActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
   const actionScopeGroups = groupActionPointsByScope(filteredActionItems);
   const visibleActionPointRepresentatives = getVisibleRepresentatives(user, representatives);
-  const userGroups = groupActionPointsByRepresentative(openActionPointItems, visibleActionPointRepresentatives, managedUsers)
-    .flatMap((group) => {
-      const groupMatches = matchesText(`${group.title} ${group.subtitle}`, userSearch);
-      const items = groupMatches
-        ? group.items
-        : group.items.filter((item) => matchesActionPointSearch(item, userSearch));
-      return items.length ? [{ ...group, items }] : [];
-    });
+  const userGroups = showActionPointUserTab
+    ? groupActionPointsByRepresentative(openActionPointItems, visibleActionPointRepresentatives, managedUsers)
+      .flatMap((group) => {
+        const groupMatches = matchesText(`${group.title} ${group.subtitle}`, userSearch);
+        const items = groupMatches
+          ? group.items
+          : group.items.filter((item) => matchesActionPointSearch(item, userSearch));
+        return items.length ? [{ ...group, items }] : [];
+      })
+    : [];
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" });
     const payload = await response.json() as { definitions?: ScopedActionDefinition[]; error?: string };
@@ -2772,7 +2777,7 @@ function ScopedActionPoints() {
     <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Uit te voeren opvolgacties binnen jouw globale, land-, team- of persoonlijke scope." />
     {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
 
-    <section className="card p-2">
+    {showActionPointUserTab && <section className="card p-2">
       <div className="grid gap-2 sm:grid-cols-2">
         {[
           { id: "actions" as const, label: "Actiepunten", count: filteredActionItems.length },
@@ -2792,9 +2797,9 @@ function ScopedActionPoints() {
           );
         })}
       </div>
-    </section>
+    </section>}
 
-    {activeActionTab === "actions" ? renderActionsTab() : renderUsersTab()}
+    {visibleActionTab === "actions" ? renderActionsTab() : renderUsersTab()}
   </div>;
 
   function toggleGroup(key: string) {

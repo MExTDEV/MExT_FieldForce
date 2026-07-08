@@ -524,6 +524,7 @@ Visibility rules:
 ### Vertegenwoordiger
 
 - own action points only
+- sees only the Actiepunten view on the Actiepunten page, not the Gebruikers tab
 
 ### Verkoopleider
 
