@@ -342,6 +342,7 @@ Business rules:
 - User-level overrides can overrule role defaults.
 - Representatives must not see Mijn Team.
 - New main menu items require role permission configuration and user-level override support.
+- Beheer subitems also require explicit menu permission keys and user-level override support.
 
 ---
 
@@ -353,7 +354,26 @@ The Dashboard is available for authenticated users.
 
 Dashboard content depends on effective permissions.
 
-Management widgets such as Team Heatmap, Coaching Trends, Management Alerts and Activity History are intended for management users only.
+Management widgets such as Team Heatmap, Coaching Trends and Management Alerts are intended for management users only.
+
+## Beheer -> Log
+
+Actiehistoriek is administrative logging and belongs under Beheer -> Log.
+
+Permission:
+
+- `menu.coaching.log`
+
+Default visibility:
+
+- Super Admin
+- Admin
+
+Business rules:
+
+- Sales Manager, Country Manager, Verkoopleider and Vertegenwoordiger have no default log access.
+- User-level overrides can enable or disable log access for a specific user.
+- Direct route access and `/api/activity-history` reads must use the same effective log permission.
 
 ## Nieuwe begeleiding
 

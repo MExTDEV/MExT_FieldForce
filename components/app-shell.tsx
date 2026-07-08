@@ -12,6 +12,7 @@ import {
   Contact,
   GraduationCap,
   LayoutDashboard,
+  ListChecks,
   Menu,
   MessageSquareText,
   PanelLeftClose,
@@ -24,12 +25,12 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { getVisibleManagementSections } from "@/lib/management-access";
 import {
-  can,
-  canAccessTechnicalManagement,
-  canAccessUserManagement,
-  canViewTeamDashboard,
-} from "@/lib/permissions";
+  canAccessCoachingModuleNavigation,
+  canAccessDashboard,
+  canAccessMyTeamNavigation,
+} from "@/lib/navigation-access";
 import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
 import { SessionFailure } from "@/components/session-state";
@@ -58,13 +59,14 @@ const dashboardNav = { href: "/dashboard", key: "nav.dashboard", icon: LayoutDas
 const myTeamNav = { href: "/mijn-team", key: "nav.myTeam", icon: UsersRound };
 
 const manageNav = [
-  { href: "/beheer/gebruikers", key: "nav.users", icon: UserCog },
-  { href: "/beheer/teams", key: "nav.teams", icon: UsersRound },
-  { href: "/beheer/rollen", key: "nav.roles", icon: ShieldCheck },
-  { href: "/beheer/kpis", key: "nav.kpis", icon: BarChart3 },
-  { href: "/beheer/kapstok", key: "nav.framework", icon: MessageSquareText },
-  { href: "/beheer/modules", key: "nav.modules", icon: Settings },
-  { href: "/beheer/instellingen", key: "nav.settings", icon: Settings },
+  { section: "gebruikers", icon: UserCog },
+  { section: "teams", icon: UsersRound },
+  { section: "rollen", icon: ShieldCheck },
+  { section: "kpis", icon: BarChart3 },
+  { section: "kapstok", icon: MessageSquareText },
+  { section: "modules", icon: Settings },
+  { section: "instellingen", icon: Settings },
+  { section: "log", icon: ListChecks },
 ] as const;
 
 const representativeNav = [
@@ -73,11 +75,7 @@ const representativeNav = [
 ] as const;
 
 function canSeeModuleNav(user: MockUser, code: AppModuleCode) {
-  if (code === "PLANNING") return can(user, "menu.coaching.planning") && can(user, "moduleAgenda");
-  if (code === "BEGELEIDINGEN") return can(user, "menu.coaching.coachings") && can(user, "moduleVisitRecord");
-  if (code === "ACTIEPUNTEN") return can(user, "menu.coaching.actionPoints") && can(user, "modulePreparation");
-  if (code === "RAPPORTERING") return can(user, "menu.coaching.reporting") && can(user, "moduleReporting");
-  return can(user, "modulePreparation");
+  return canAccessCoachingModuleNavigation(user, code);
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -87,8 +85,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const canSeeManagement = canAccessTechnicalManagement(user);
-  const canSeeUsers = canAccessUserManagement(user);
+  const visibleManagementSections = getVisibleManagementSections(user);
+  const visibleManagementNav = visibleManagementSections.flatMap((section) => {
+    const item = manageNav.find((candidate) => candidate.section === section.section);
+    return item ? [{ ...section, icon: item.icon }] : [];
+  });
   const activeModuleNav = appModuleRegistry
     .filter((module) => isModuleEnabled(module.code) && canSeeModuleNav(user, module.code))
     .map((module) => ({
@@ -96,11 +97,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       key: module.navKey,
       icon: iconMap[module.icon as keyof typeof iconMap] ?? LayoutDashboard,
     }));
+  const canSeeDashboard = canAccessDashboard(user);
   const canSeeMyTeam =
-    isModuleEnabled("BEGELEIDINGEN") &&
-    canViewTeamDashboard(user) &&
-    can(user, "moduleMyTeam");
-  const mainNav = [dashboardNav, ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
+    isModuleEnabled("BEGELEIDINGEN") && canAccessMyTeamNavigation(user);
+  const mainNav = [...(canSeeDashboard ? [dashboardNav] : []), ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
 
   if (pathname === "/login") return <>{children}</>;
   if (status === "loading") {
@@ -161,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
         ))}
-        {user.role === "REPRESENTATIVE" && isModuleEnabled("ACTIEPUNTEN") && representativeNav.map((item) => (
+        {user.role === "REPRESENTATIVE" && isModuleEnabled("ACTIEPUNTEN") && canAccessCoachingModuleNavigation(user, "ACTIEPUNTEN") && representativeNav.map((item) => (
           <NavItem
             key={item.href}
             href={item.href}
@@ -172,16 +172,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
         ))}
-        {canSeeUsers && (
+        {visibleManagementNav.length > 0 && (
           <>
             {!collapsed && <p className="px-3 pb-1 pt-5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Beheer</p>}
-            {manageNav.filter((item) => canSeeManagement || item.href === "/beheer/gebruikers").map((item) => (
+            {visibleManagementNav.map((item) => (
               <NavItem
                 key={item.href}
                 href={item.href}
                 icon={item.icon}
-                label={translate(language, item.key as TranslationKey)}
-                active={pathname === item.href}
+                label={translate(language, item.navKey as TranslationKey)}
+                active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
                 collapsed={collapsed}
                 onClick={() => setMobileOpen(false)}
               />

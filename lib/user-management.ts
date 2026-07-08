@@ -4,9 +4,9 @@ import type {
   MockUser,
   Role,
 } from "@/lib/types";
-import { menuPermissionKeys } from "@/lib/app-switcher";
+import { menuPermissionGroups, menuPermissionKeys } from "@/lib/app-switcher";
 
-export const fieldForcePermissionGroups: {
+export const fieldForceBasePermissionGroups: {
   title: string;
   description: string;
   permissions: { key: FieldForcePermissionKey; label: string }[];
@@ -77,7 +77,12 @@ export const fieldForcePermissionGroups: {
   },
 ];
 
-export const fieldForceBasePermissionKeys = fieldForcePermissionGroups.flatMap(
+export const fieldForcePermissionGroups = [
+  ...fieldForceBasePermissionGroups,
+  ...menuPermissionGroups,
+];
+
+export const fieldForceBasePermissionKeys = fieldForceBasePermissionGroups.flatMap(
   (group) => group.permissions.map((permission) => permission.key)
 );
 
@@ -273,6 +278,9 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingTeam",
       "reportingExport",
       ...internalMenuPermissions,
+      "menu.coaching.teams",
+      "menu.coaching.kpis",
+      "menu.coaching.log",
       "menu.coaching.modules",
       "menu.coaching.roles"
     ),

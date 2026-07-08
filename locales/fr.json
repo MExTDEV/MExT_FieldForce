@@ -20,6 +20,7 @@
   "nav.framework": "Structure",
   "nav.modules": "Modules",
   "nav.settings": "Paramètres",
+  "nav.log": "Journal",
   "action.newCoaching": "Nouvel accompagnement",
   "action.view": "Voir",
   "action.saveDraft": "Enregistrer le brouillon",

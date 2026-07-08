@@ -8,6 +8,8 @@ import {
   Contact,
   GraduationCap,
   LayoutDashboard,
+  ListChecks,
+  MessageSquareText,
   Settings,
   ShieldCheck,
   Target,
@@ -26,10 +28,13 @@ import {
   canAccessPST,
   canAccessSalesday,
   canAccessService,
-  canAccessTechnicalManagement,
-  canAccessUserManagement,
-  canViewTeamDashboard,
 } from "@/lib/permissions";
+import { canAccessManagementSection } from "@/lib/management-access";
+import {
+  canAccessCoachingModuleNavigation,
+  canAccessDashboard,
+  canAccessMyTeamNavigation,
+} from "@/lib/navigation-access";
 
 export type AppSwitcherDomainKey =
   | "coaching"
@@ -100,7 +105,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
         permission: "menu.coaching.dashboard",
         tone: coachingLinkTone,
         isAvailable: (user, modules) =>
-          moduleEnabled(modules, "BEGELEIDINGEN") && can(user, "moduleDashboard"),
+          moduleEnabled(modules, "BEGELEIDINGEN") && canAccessDashboard(user),
       },
       {
         key: "planning",
@@ -111,7 +116,8 @@ export const appSwitcherDomains: DomainDefinition[] = [
         permission: "menu.coaching.planning",
         tone: coachingLinkTone,
         isAvailable: (user, modules) =>
-          moduleEnabled(modules, "PLANNING") && can(user, "moduleAgenda"),
+          moduleEnabled(modules, "PLANNING") &&
+          canAccessCoachingModuleNavigation(user, "PLANNING"),
       },
       {
         key: "coachings",
@@ -122,7 +128,56 @@ export const appSwitcherDomains: DomainDefinition[] = [
         permission: "menu.coaching.coachings",
         tone: coachingLinkTone,
         isAvailable: (user, modules) =>
-          moduleEnabled(modules, "BEGELEIDINGEN") && can(user, "moduleVisitRecord"),
+          moduleEnabled(modules, "BEGELEIDINGEN") &&
+          canAccessCoachingModuleNavigation(user, "BEGELEIDINGEN"),
+      },
+      {
+        key: "contacts",
+        label: "Contactmomenten",
+        description: "Opvolgmomenten",
+        href: "/contactmomenten",
+        icon: Contact,
+        permission: "menu.coaching.contacts",
+        tone: coachingLinkTone,
+        isAvailable: (user, modules) =>
+          moduleEnabled(modules, "CONTACTMOMENTEN") &&
+          canAccessCoachingModuleNavigation(user, "CONTACTMOMENTEN"),
+      },
+      {
+        key: "retrainings",
+        label: "Retrainingen",
+        description: "Gerichte bijscholing",
+        href: "/retrainingen",
+        icon: BookOpenCheck,
+        permission: "menu.coaching.retrainings",
+        tone: coachingLinkTone,
+        isAvailable: (user, modules) =>
+          moduleEnabled(modules, "RETRAININGEN") &&
+          canAccessCoachingModuleNavigation(user, "RETRAININGEN"),
+      },
+      {
+        key: "trainings",
+        label: "Sales trainingen",
+        description: "Trainingen en opvolging",
+        href: "/sales-trainingen",
+        icon: GraduationCap,
+        permission: "menu.coaching.trainings",
+        tone: coachingLinkTone,
+        isAvailable: (user, modules) =>
+          moduleEnabled(modules, "SALESTRAININGEN") &&
+          canAccessCoachingModuleNavigation(user, "SALESTRAININGEN"),
+      },
+      {
+        key: "help",
+        label: "Hulpaanvragen",
+        description: "Ondersteuningsvragen",
+        href: "/hulpaanvragen",
+        icon: CircleHelp,
+        permission: "menu.coaching.help",
+        tone: coachingLinkTone,
+        isAvailable: (user, modules) =>
+          moduleEnabled(modules, "HULPAANVRAGEN") &&
+          canAccessCoachingModuleNavigation(user, "HULPAANVRAGEN"),
       },
       {
         key: "myTeam",
@@ -134,8 +189,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
         tone: coachingLinkTone,
         isAvailable: (user, modules) =>
           moduleEnabled(modules, "BEGELEIDINGEN") &&
-          canViewTeamDashboard(user) &&
-          can(user, "moduleMyTeam"),
+          canAccessMyTeamNavigation(user),
       },
       {
         key: "actionPoints",
@@ -146,7 +200,8 @@ export const appSwitcherDomains: DomainDefinition[] = [
         permission: "menu.coaching.actionPoints",
         tone: coachingLinkTone,
         isAvailable: (user, modules) =>
-          moduleEnabled(modules, "ACTIEPUNTEN") && can(user, "modulePreparation"),
+          moduleEnabled(modules, "ACTIEPUNTEN") &&
+          canAccessCoachingModuleNavigation(user, "ACTIEPUNTEN"),
       },
       {
         key: "reporting",
@@ -157,7 +212,8 @@ export const appSwitcherDomains: DomainDefinition[] = [
         permission: "menu.coaching.reporting",
         tone: coachingLinkTone,
         isAvailable: (user, modules) =>
-          moduleEnabled(modules, "RAPPORTERING") && can(user, "moduleReporting"),
+          moduleEnabled(modules, "RAPPORTERING") &&
+          canAccessCoachingModuleNavigation(user, "RAPPORTERING"),
       },
       {
         key: "users",
@@ -167,7 +223,17 @@ export const appSwitcherDomains: DomainDefinition[] = [
         icon: Users,
         permission: "menu.coaching.users",
         tone: coachingLinkTone,
-        isAvailable: (user) => canAccessUserManagement(user),
+        isAvailable: (user) => canAccessManagementSection(user, "gebruikers"),
+      },
+      {
+        key: "teams",
+        label: "Teams",
+        description: "Teamstructuur beheren",
+        href: "/beheer/teams",
+        icon: UsersRound,
+        permission: "menu.coaching.teams",
+        tone: coachingLinkTone,
+        isAvailable: (user) => canAccessManagementSection(user, "teams"),
       },
       {
         key: "modules",
@@ -177,7 +243,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
         icon: Settings,
         permission: "menu.coaching.modules",
         tone: coachingLinkTone,
-        isAvailable: (user) => canAccessTechnicalManagement(user),
+        isAvailable: (user) => canAccessManagementSection(user, "modules"),
       },
       {
         key: "roles",
@@ -187,7 +253,47 @@ export const appSwitcherDomains: DomainDefinition[] = [
         icon: ShieldCheck,
         permission: "menu.coaching.roles",
         tone: coachingLinkTone,
-        isAvailable: (user) => canAccessTechnicalManagement(user),
+        isAvailable: (user) => canAccessManagementSection(user, "rollen"),
+      },
+      {
+        key: "kpis",
+        label: "KPI's",
+        description: "KPI-definities beheren",
+        href: "/beheer/kpis",
+        icon: BarChart3,
+        permission: "menu.coaching.kpis",
+        tone: coachingLinkTone,
+        isAvailable: (user) => canAccessManagementSection(user, "kpis"),
+      },
+      {
+        key: "framework",
+        label: "Kapstok",
+        description: "Coachingkapstok beheren",
+        href: "/beheer/kapstok",
+        icon: MessageSquareText,
+        permission: "menu.coaching.framework",
+        tone: coachingLinkTone,
+        isAvailable: (user) => canAccessManagementSection(user, "kapstok"),
+      },
+      {
+        key: "settings",
+        label: "Instellingen",
+        description: "Algemene instellingen",
+        href: "/beheer/instellingen",
+        icon: Settings,
+        permission: "menu.coaching.settings",
+        tone: coachingLinkTone,
+        isAvailable: (user) => canAccessManagementSection(user, "instellingen"),
+      },
+      {
+        key: "log",
+        label: "Log",
+        description: "Actiehistoriek",
+        href: "/beheer/log",
+        icon: ListChecks,
+        permission: "menu.coaching.log",
+        tone: coachingLinkTone,
+        isAvailable: (user) => canAccessManagementSection(user, "log"),
       },
     ],
   },

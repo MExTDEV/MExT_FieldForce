@@ -52,12 +52,18 @@ import { branding } from "@/config/branding";
 import {
   can,
   canAccessRepresentative,
-  canAccessTechnicalManagement,
-  canAccessUserManagement,
-  canManageSystem,
   canViewTeamDashboard,
   roleLabels,
 } from "@/lib/permissions";
+import {
+  canAccessManagementSection,
+  getDefaultManagementSection,
+} from "@/lib/management-access";
+import {
+  canAccessCoachingModuleNavigation,
+  canAccessDashboard,
+  canAccessMyTeamNavigation,
+} from "@/lib/navigation-access";
 import { buildReportingDataset, filterReportingDataset, emptyReportingFilters, reportingUserName } from "@/lib/reporting";
 import { buildSmartCoaching } from "@/lib/smart-coaching";
 import {
@@ -137,8 +143,15 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (routeModule && !isModuleEnabled(routeModule.code)) {
     return <ModuleInactive moduleName={routeModule.name} />;
   }
+  if (routeModule && !canAccessCoachingModuleNavigation(user, routeModule.code)) {
+    return <EmptyState title="Geen toegang" description={`${routeModule.name} is niet beschikbaar voor jouw huidige rechten.`} />;
+  }
 
-  if (path === "dashboard") return <Dashboard />;
+  if (path === "dashboard") {
+    return canAccessDashboard(user)
+      ? <Dashboard />
+      : <EmptyState title="Geen toegang" description="Dashboard is niet beschikbaar voor jouw huidige rechten." />;
+  }
   if (path === "mijn-gegevens") return <MyProfilePage />;
   if (path === "taken-vandaag") return <TodayTasksPage />;
   if (segments[0] === "salesday") return <PlaceholderWorkspace title="Salesday" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
@@ -146,7 +159,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "contract") return <PlaceholderWorkspace title="Contract" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "service") return <PlaceholderWorkspace title="Service" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "mijn-team") {
-    if (!canViewTeamDashboard(user) || !can(user, "moduleMyTeam")) {
+    if (!isModuleEnabled("BEGELEIDINGEN") || !canAccessMyTeamNavigation(user)) {
       return <EmptyState title="Geen toegang" description="Mijn Team is alleen beschikbaar voor gebruikers met een team- of beheerscope." />;
     }
     if (segments[1] === "gebruiker" && segments[2]) {
@@ -180,7 +193,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
     return <ActionPoints />;
   }
   if (path === "planning") return <Planning />;
-  if (segments[0] === "beheer") return <Management section={segments[1] ?? "gebruikers"} />;
+  if (segments[0] === "beheer") return <Management section={segments[1]} />;
   if (path === "begeleidingen") {
     return <InterventionList kind={path} />;
   }
@@ -407,8 +420,6 @@ function Dashboard() {
           </div>
         )}
       </section>
-
-      <ActivityHistoryCard user={user} />
     </div>
   );
 }
@@ -3008,23 +3019,37 @@ function PlaceholderWorkspace({ title, description }: { title: string; descripti
   );
 }
 
-function Management({ section }: { section: string }) {
+function Management({ section }: { section?: string }) {
   const { user } = useSession();
-  if (section === "gebruikers") {
-    return canAccessUserManagement(user)
-      ? <UsersManagementPage />
-      : <ManagementRedirect />;
-  }
-  if (!canAccessTechnicalManagement(user)) return <ManagementRedirect />;
+  const resolvedSection = section
+    ? canAccessManagementSection(user, section)
+      ? section
+      : undefined
+    : getDefaultManagementSection(user);
+  if (!resolvedSection) return <ManagementRedirect />;
 
-  const superOnly = ["rollen", "kapstok", "modules", "instellingen"].includes(section);
-  if (superOnly && !canManageSystem(user)) return <EmptyState title="Super Admin vereist" description="Deze systeemconfiguratie is bewust alleen beschikbaar voor de Super Admin." />;
-
-  if (section === "modules") return <ModuleManagement />;
-  if (["teams", "rollen", "kpis", "kapstok"].includes(section)) {
-    return <ConfigurationManagement section={section as "teams" | "rollen" | "kpis" | "kapstok"} />;
+  if (resolvedSection === "gebruikers") return <UsersManagementPage />;
+  if (resolvedSection === "modules") return <ModuleManagement />;
+  if (resolvedSection === "log") return <ManagementLog />;
+  if (["teams", "rollen", "kpis", "kapstok"].includes(resolvedSection)) {
+    return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok"} />;
   }
   return <EmptyState title="Instellingen" description="Deze instellingen worden in een volgende beheeriteratie toegevoegd." />;
+}
+
+function ManagementLog() {
+  const { user } = useSession();
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Beheer"
+        title="Log"
+        description="Actiehistoriek binnen je toegelaten scope, met dezelfde filters en paginatie als de vroegere dashboardweergave."
+      />
+      <ActivityHistoryCard user={user} />
+    </div>
+  );
 }
 
 function ManagementRedirect() {

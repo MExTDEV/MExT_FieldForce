@@ -16,7 +16,7 @@ Priority levels:
 
 Priority: High
 
-Status: Completed on 2026-07-07
+Status: Completed on 2026-07-08
 
 Implemented changes:
 
@@ -73,18 +73,18 @@ Status: Completed on 2026-07-07
 
 Implemented changes:
 
-- Pagination has been added to the table.
-- The Dashboard shows 15 action history items per page.
-- Existing filters are preserved while navigating between pages.
-
-Future:
-
-- Move Actiehistoriek to Beheer -> Log when the administrative logging section is defined.
+- Actiehistoriek has been moved from the operational Dashboard to `Beheer -> Log`.
+- The Dashboard no longer renders the Actiehistoriek card or an empty placeholder for it.
+- `Beheer -> Log` reuses the existing ActivityHistoryCard/table/data source.
+- Pagination remains 15 action history items per page.
+- Existing date, team and representative filters remain available and are preserved while navigating pages.
+- Direct `/beheer/log` access and `/api/activity-history` reads require effective `menu.coaching.log`.
+- Role defaults give Super Admin and Admin access to `Beheer -> Log`.
+- Other roles have no default log access, but user-level overrides can explicitly enable or disable `menu.coaching.log`.
 
 Architecture note:
 
-- Action history should eventually move to Beheer → Log.
-- It does not belong on the operational dashboard long term.
+- Action history is administrative logging and no longer belongs to the operational dashboard.
 
 ---
 
@@ -892,6 +892,31 @@ Restpunten:
 ## Role and User-Level Overrides
 
 Priority: High
+
+Status: Completed on 2026-07-08
+
+Implemented changes:
+
+- Menu permission groups are now included in the same role and user-level permission configuration as the other FieldForce permissions.
+- Main Coaching module routes use explicit effective menu permissions in addition to module activation.
+- Undefined but registered Coaching module menu items now have explicit permission keys:
+  - `menu.coaching.contacts`
+  - `menu.coaching.retrainings`
+  - `menu.coaching.trainings`
+  - `menu.coaching.help`
+- Beheer subitems now have explicit permission keys:
+  - `menu.coaching.teams`
+  - `menu.coaching.kpis`
+  - `menu.coaching.framework`
+  - `menu.coaching.settings`
+  - `menu.coaching.log`
+- Sidebar visibility, app-switcher visibility and direct route access use the same effective permission helpers.
+- Direct Beheer routes are blocked when the user lacks the specific section permission.
+
+Validation performed:
+
+- `npm run test:menu-rights`
+- `npm run test:management-log`
 
 Required rule:
 

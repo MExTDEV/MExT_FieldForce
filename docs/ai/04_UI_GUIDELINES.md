@@ -631,4 +631,3 @@ The following UI areas still require future refinement:
 - final UI for Hulpaanvragen
 - final Reporting UI
 - final action point detail view
-- final administrative Log location for Actiehistoriek

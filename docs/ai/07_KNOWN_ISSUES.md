@@ -272,24 +272,30 @@ Related documents:
 
 # Dashboard Issues
 
-## Actiehistoriek probably belongs under Beheer → Log
+## Actiehistoriek probably belongs under Beheer -> Log
 
 Status:
 
-Confirmed Open / Architectural Note
+Resolved on 2026-07-08
 
 Description:
 
-The Dashboard currently shows action history for management users.
+The Dashboard no longer shows action history.
 
-Preferred future location:
+Current behaviour:
 
-- Beheer
-- Log
+- Actiehistoriek is available under Beheer -> Log.
+- Direct route and API reads require effective `menu.coaching.log`.
+- The existing filters and 15-row pagination are preserved.
 
 Reason:
 
 Action history is administrative logging and not part of the operational dashboard workflow.
+
+Verification:
+
+- `npm run test:menu-rights`
+- `npm run test:management-log`
 
 Related documents:
 

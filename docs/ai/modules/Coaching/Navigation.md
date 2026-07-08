@@ -303,34 +303,72 @@ Allow coaches and management users to immediately see which team members require
 
 Target:
 
-- No navigation
+- Beheer -> Log
 
 Description:
 
-Displays a history of actions performed by users.
+Displays a history of actions performed by users in the administrative logging section.
 
-This widget is informational only.
+This is no longer a Dashboard widget.
 
 Current dashboard behaviour:
 
-- visible on the dashboard for management users
-
-Preferred future location:
-
-- Beheer
-- Log
+- the operational Dashboard does not show Actiehistoriek
 
 Architecture note:
 
 Action history is not part of the operational dashboard workflow.
 
-It should eventually be moved to an administrative logging section.
+It belongs in Beheer -> Log.
 
 Current implemented behaviour:
 
 - Pagination is available.
 - 15 items are shown per page.
 - Existing filters remain active while navigating pages.
+- Visibility and direct access require effective `menu.coaching.log`.
+- Super Admin and Admin have default access.
+- Other roles require an explicit user-level override.
+
+---
+
+# Beheer Navigation
+
+Beheer contains administrative and configuration screens.
+
+Visibility is controlled by effective menu permissions. The same effective permission must be used for:
+
+- sidebar visibility
+- app-switcher visibility
+- direct route access
+- related API reads where the data is administrative
+
+## Log
+
+Route:
+
+- Beheer -> Log
+
+Permission:
+
+- `menu.coaching.log`
+
+Purpose:
+
+- show Actiehistoriek for the user's allowed scope
+
+Default visibility:
+
+- Super Admin
+- Admin
+
+Business rules:
+
+- Sales Manager, Country Manager, Verkoopleider and Vertegenwoordiger do not have default log access.
+- User-level overrides can explicitly enable or disable log access.
+- Direct `/beheer/log` access must be blocked when effective `menu.coaching.log` is false.
+- `/api/activity-history` reads must require the same effective log permission.
+- The log reuses the existing Actiehistoriek table, filters and pagination.
 
 ---
 

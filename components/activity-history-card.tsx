@@ -19,10 +19,11 @@ import {
   Send,
   X,
 } from "lucide-react";
-import type {
-  ActivityHistoryItem,
-  ActivityHistoryKind,
-  ActivityHistoryResponse,
+import {
+  activityHistoryPageSize,
+  type ActivityHistoryItem,
+  type ActivityHistoryKind,
+  type ActivityHistoryResponse,
 } from "@/lib/activity-history";
 import type { MockUser } from "@/lib/types";
 
@@ -32,8 +33,6 @@ type Filters = {
   teamId: string;
   representativeId: string;
 };
-
-const pageSize = 15;
 
 export function ActivityHistoryCard({ user }: { user: MockUser }) {
   const defaults = useMemo(defaultFilters, []);
@@ -53,7 +52,7 @@ export function ActivityHistoryCard({ user }: { user: MockUser }) {
         from: filters.from,
         to: filters.to,
         page: String(page),
-        pageSize: String(pageSize),
+        pageSize: String(activityHistoryPageSize),
       });
       if (filters.teamId) params.set("teamId", filters.teamId);
       if (filters.representativeId) params.set("representativeId", filters.representativeId);

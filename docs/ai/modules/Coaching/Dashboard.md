@@ -29,7 +29,6 @@ It gives users an overview of:
 - upcoming activities
 - team status
 - management indicators, where applicable
-- recent activity history, where applicable
 
 The Dashboard should minimise the number of clicks required to start the daily work.
 
@@ -386,42 +385,35 @@ Management alerts must only include items within the user's effective permission
 
 Purpose:
 
-Displays a history of actions performed by users.
+Actiehistoriek is no longer part of the operational Dashboard.
 
 Target:
 
-- No navigation
+- Beheer -> Log
 
 Current dashboard behaviour:
 
-- visible on the dashboard for management users
-- informational only
+- the Dashboard does not render the Actiehistoriek card
+- no empty Actiehistoriek placeholder is shown
 
-Supports filtering by:
+Current implemented behaviour in Beheer -> Log:
 
-- date
-- team
-- representative
-
-Current implemented behaviour:
-
+- the existing ActivityHistoryCard/table/data source is reused
+- filtering by date, team and representative remains available
 - pagination is available
 - 15 items are shown per page
 - existing filters remain active while navigating pages
-
-Preferred future location:
-
-- Beheer → Log
+- direct route and API reads require effective `menu.coaching.log`
 
 Architecture note:
 
 Action history is not part of the operational dashboard workflow.
-It should eventually move to an administrative logging section.
+It belongs in the administrative logging section.
 
 Reference:
 
-- Navigation.md → Dashboard Navigation → Actiehistoriek
-- TODO.md → Dashboard → Actiehistoriek
+- Navigation.md -> Beheer -> Log
+- TODO.md -> Dashboard -> Actiehistoriek
 
 ---
 

@@ -254,7 +254,7 @@ Important decisions:
 
 - Dashboard is the primary landing page.
 - Nieuwe begeleiding starts the planning flow.
-- Actiehistoriek currently exists on the Dashboard but should eventually move to Beheer → Log.
+- Actiehistoriek has moved from the Dashboard to Beheer -> Log.
 - Today's attention must show all items requiring action.
 
 ---

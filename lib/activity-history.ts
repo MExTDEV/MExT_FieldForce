@@ -42,6 +42,8 @@ export type ActivityHistoryResponse = {
   totalPages: number;
 };
 
+export const activityHistoryPageSize = 15;
+
 export const activityHistoryLabels: Record<ActivityHistoryKind, string> = {
   coaching_planned: "Begeleiding gepland",
   coaching_started: "Begeleiding gestart",

@@ -1,6 +1,6 @@
 import { handleApi } from "@/lib/server/api";
 import { listActivityHistory } from "@/lib/server/activity-history";
-import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
+import { requireAuthenticatedUser, requirePermission } from "@/lib/server/authenticated-user";
 import { buildVisibleCoachingWhere } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
 import { writeAuditLog } from "@/lib/server/audit";
@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   return handleApi("api/activity-history:get", async () => {
     const url = new URL(request.url);
     const actor = await requireAuthenticatedUser(url.searchParams.get("actorId"));
+    requirePermission(actor, "menu.coaching.log");
     const now = new Date();
     const defaultFrom = new Date(now);
     defaultFrom.setDate(defaultFrom.getDate() - 29);

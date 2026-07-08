@@ -24,6 +24,7 @@
     "test:coaching-groups": "tsx scripts/test-coaching-scope-groups.ts",
     "test:coaching-visibility": "tsx scripts/test-coaching-visibility.ts",
     "test:menu-rights": "tsx scripts/test-menu-rights.ts",
+    "test:management-log": "tsx scripts/test-management-log.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",
     "test:auth-session": "tsx scripts/test-auth-session.ts",
     "test:login-history": "tsx scripts/test-login-history.ts",
