@@ -249,6 +249,29 @@ Open question:
 
 # Begeleidingen
 
+## Afwerken begeleiding met nieuwe actiepunten
+
+Priority: High
+
+Status: Completed on 2026-07-08
+
+Implemented changes:
+
+- The coaching dossier save flow now preserves all persistence-critical fields for action points when saving an executed coaching.
+- New coaching action points keep `isNew`, `tipsAndTricks`, `definitionId`, `targetValue` and `achievedScore` when the UI sends the workflow patch to `/api/workflows/coaching`.
+- This fixes the case where the browser already showed the coaching as `Afgewerkt`, while the server rejected the database save because the submitted action points no longer looked like new action points with required Tips & Tricks.
+- No lifecycle, permission, approval, action-point detail or database model changes were introduced.
+
+Validation performed:
+
+- `npm run test:coaching-action-persistence`
+- `npm run typecheck`
+- `npm run lint` completed with 0 errors and the existing warnings.
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
+- `npx next build` completed successfully with the existing Prisma client.
+
+---
+
 ## Compacte lijstweergave
 
 Priority: Medium

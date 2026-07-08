@@ -118,6 +118,7 @@ import {
   dedupeById,
   localDateKey,
 } from "@/lib/coaching/visibility";
+import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
@@ -1590,14 +1591,7 @@ function CoachingDossierDetail({
       internalNotes: local.internalNotes,
       focusNames: local.focusNames,
       scores: local.scores,
-      actionPoints: local.actionPoints.map((action) => ({
-        title: action.title,
-        type: action.type,
-        due: action.due,
-        owner: action.owner,
-        priority: action.priority,
-        description: action.description,
-      })),
+      actionPoints: toPersistableCoachingActionPoints(local.actionPoints),
       dossier: local.dossier,
       appointments: local.appointments,
     }, status);
