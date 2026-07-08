@@ -119,9 +119,16 @@ Examples of items that may appear:
 - sales trainings planned for today
 - support requests planned for today
 
-Current implementation note:
+Current implemented behaviour:
 
-- Items planned for today are currently not displayed correctly.
+- The Dashboard displays a dedicated **Aandacht vereist** card.
+- The card is split into:
+  - Uit te voeren
+  - Uitgevoerd
+- Items are loaded from the same visible workflow state used by Planning and Begeleidingen.
+- Begeleidingen, Contactmomenten, Retrainingen, Salestrainingen and Hulpaanvragen are shown when they already exist as visible today-items in the application.
+- `Wachten op akkoord` is shown under **Uitgevoerd** because it represents an executed coaching submitted for approval.
+- Undefined module workflows are not implemented from the Dashboard.
 
 TODO reference:
 
@@ -218,6 +225,12 @@ This includes:
 Business rule:
 
 This widget should provide a daily operational overview of everything requiring action.
+
+Current implemented behaviour:
+
+- Today-items are shown directly on the Dashboard in **Uit te voeren** and **Uitgevoerd** sections.
+- Clicking a row opens the existing related workflow when an implemented target exists and the user is allowed to open it.
+- Representative surprise-coaching visibility remains governed by the shared coaching visibility rules.
 
 Reference:
 

@@ -3,7 +3,16 @@ import { unauthorized } from "@/lib/server/api";
 import { forbidden } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
 import { can } from "@/lib/permissions";
-import type { Country, MockUser, Role } from "@/lib/types";
+import {
+  fieldForcePermissionKeys,
+  roleTemplates,
+} from "@/lib/user-management";
+import type {
+  Country,
+  FieldForcePermissionKey,
+  MockUser,
+  Role,
+} from "@/lib/types";
 
 export function actorCountryWhere(user: MockUser) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return {};
@@ -140,7 +149,10 @@ async function findActiveUser(id: string): Promise<MockUser | undefined> {
     },
   });
   if (!user) return undefined;
-  const countryAccess = await findUserCountryAccess(user.id);
+  const [countryAccess, permissions] = await Promise.all([
+    findUserCountryAccess(user.id),
+    findEffectivePermissions(user.id, user.role as Role),
+  ]);
   return {
     id: user.id,
     name: `${user.firstName} ${user.lastName}`.trim(),
@@ -151,6 +163,7 @@ async function findActiveUser(id: string): Promise<MockUser | undefined> {
     language: user.language,
     teamId: user.teamId ?? undefined,
     representativeId: user.representativeId ?? undefined,
+    permissions,
   };
 }
 
@@ -165,4 +178,39 @@ async function findUserCountryAccess(userId: string): Promise<Country[]> {
     console.warn("[auth] UserCountryAccess kon niet worden geladen; lege scope gebruikt.", error);
     return [];
   }
+}
+
+async function findEffectivePermissions(
+  userId: string,
+  role: Role
+): Promise<Record<FieldForcePermissionKey, boolean>> {
+  const [roleGrants, userGrants] = await Promise.all([
+    prisma.rolePermission.findMany({
+      where: { role },
+      include: { permission: { select: { key: true } } },
+    }),
+    prisma.userPermission.findMany({
+      where: { userId },
+      include: { permission: { select: { key: true } } },
+    }),
+  ]);
+  const permissions = { ...roleTemplates[role].permissions };
+  for (const grant of roleGrants) {
+    if (isFieldForcePermissionKey(grant.permission.key)) {
+      permissions[grant.permission.key] = grant.enabled;
+    }
+  }
+  for (const grant of userGrants) {
+    if (isFieldForcePermissionKey(grant.permission.key)) {
+      permissions[grant.permission.key] = grant.enabled;
+    }
+  }
+  return fieldForcePermissionKeys.reduce(
+    (result, key) => ({ ...result, [key]: Boolean(permissions[key]) }),
+    {} as Record<FieldForcePermissionKey, boolean>
+  );
+}
+
+function isFieldForcePermissionKey(key: string): key is FieldForcePermissionKey {
+  return (fieldForcePermissionKeys as string[]).includes(key);
 }

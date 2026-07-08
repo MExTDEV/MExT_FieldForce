@@ -272,32 +272,6 @@ Related documents:
 
 # Dashboard Issues
 
-## “Vandaag vraagt aandacht” does not show planned items
-
-Status:
-
-Confirmed Open
-
-Description:
-
-The Dashboard should display items that require attention today, but planned items are currently not shown.
-
-Expected behaviour:
-
-The section should contain:
-
-- Uit te voeren
-- Uitgevoerd
-
-It should automatically display every relevant item planned for today.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Dashboard.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
 ## Actiehistoriek probably belongs under Beheer → Log
 
 Status:
@@ -358,17 +332,28 @@ Related documents:
 
 Status:
 
-Confirmed Open
+Resolved on 2026-07-08
 
 Description:
 
-The employee fiche must show only information from active modules.
+The employee fiche now shows module-bound information only when the module is active, the user has the effective section permission and the target representative is within scope.
 
-Expected behaviour:
+Current behaviour:
 
-- Disabled modules must not appear on the fiche.
-- User and role permissions must be respected.
-- Future modules must not appear until active and permissioned.
+- Disabled modules do not appear as fiche tabs or overview sections.
+- User-level overrides already present on the active session user are respected by the fiche visibility helper.
+- Timeline content is restricted to item types from visible module sections.
+- Undefined module workflows were not expanded.
+
+Verification:
+
+- `npm run test:fiche-visibility`
+- `npm run test:data-access`
+- `npm run test:menu-rights`
+- `npm run test:coaching-visibility`
+- `npm run typecheck`
+- `npm run lint`
+- `npx next build`
 
 Related documents:
 
@@ -377,7 +362,7 @@ Related documents:
 
 ---
 
-## Visual indicators in Mijn Team are not complete
+## Visual indicators in Mijn Team are partly complete
 
 Status:
 
@@ -385,7 +370,7 @@ Confirmed Open
 
 Description:
 
-Mijn Team should visually communicate follow-up status.
+Mijn Team should visually communicate follow-up status. The planned coaching indicator has been implemented; score-based colouring still needs final configuration.
 
 Expected behaviour:
 
@@ -782,6 +767,66 @@ Verification:
 Related documents:
 
 - `docs/ai/modules/Coaching/Dashboard.md`
+- `docs/ai/modules/Coaching/TODO.md`
+
+## Dashboard vandaag vraagt aandacht planned items
+
+Date fixed:
+
+2026-07-07
+
+Description:
+
+The Dashboard **Aandacht vereist** card now shows visible FieldForce items planned for today in two sections: **Uit te voeren** and **Uitgevoerd**.
+
+Verification:
+
+- `npm run test:dashboard-attention`
+- `npm run test:planning-items`
+- `npm run test:coaching-visibility`
+- `npm run typecheck`
+- `npm run lint`
+- `npx next build`
+
+Known limitations:
+
+- Contactmomenten and Hulpaanvragen still follow the current Planning date basis because those workflows do not yet define a separate scheduled date field.
+- `npm run build` is still blocked by the known Windows Prisma query-engine file lock during `prisma generate` when the engine is held by the local environment.
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+
+Related documents:
+
+- `docs/ai/modules/Coaching/Dashboard.md`
+- `docs/ai/modules/Coaching/TODO.md`
+
+## Mijn Team planned coaching indicator
+
+Date fixed:
+
+2026-07-08
+
+Description:
+
+Mijn Team now highlights a row light blue and shows the compact `Begeleiding gepland` badge when the current user may see a planned Begeleiding for that person today or in the future. Hidden surprise coachings for representatives do not trigger an indirect indicator.
+
+Verification:
+
+- `npm run test:my-team-planned`
+- `npm run test:coaching-visibility`
+- `npm run test:fiche-visibility`
+- `npm run test:menu-rights`
+- `npm run test:data-access`
+- `npm run typecheck`
+- `npm run lint`
+- `npx next build`
+
+Known limitation:
+
+- `npm run build` is still blocked by the known Windows Prisma query-engine file lock during `prisma generate` when the engine is held by the local environment.
+
+Related documents:
+
+- `docs/ai/modules/Coaching/MijnTeam.md`
 - `docs/ai/modules/Coaching/TODO.md`
 
 When an issue is fixed, move it here with:

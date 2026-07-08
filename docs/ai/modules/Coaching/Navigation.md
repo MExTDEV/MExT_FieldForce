@@ -238,12 +238,14 @@ Purpose:
 
 Provide a daily operational overview of everything that requires follow-up.
 
-Open implementation note:
+Current implemented behaviour:
 
-- The dashboard should split this area into two sections:
+- The dashboard splits this area into two sections:
   - Uit te voeren
   - Uitgevoerd
-- All items planned for today must be displayed.
+- Visible FieldForce items planned for today are displayed.
+- Clicking an item opens the existing source workflow where that workflow is implemented and available to the current user.
+- Undefined module workflows are not invented from this Dashboard entry point.
 
 ---
 
@@ -658,10 +660,14 @@ Open implementation note:
 
 The row should visually communicate the status of the person.
 
+Current behaviour:
+
+- If a visible coaching is planned for the person today or in the future, the row is highlighted light blue.
+- If a visible coaching is planned, a `Begeleiding gepland` badge is shown on the row.
+- Surprise coachings that are hidden for the representative do not create an indirect visual indicator.
+
 Planned behaviour:
 
-- If a coaching is planned for the person, the row should be highlighted light blue.
-- If a coaching is planned, a badge should be shown on the row.
 - If the person has a bad score, the row should be highlighted light red.
 
 The score threshold between bad and good must be configurable.

@@ -61,10 +61,22 @@ import {
 import { buildReportingDataset, filterReportingDataset, emptyReportingFilters, reportingUserName } from "@/lib/reporting";
 import { buildSmartCoaching } from "@/lib/smart-coaching";
 import {
+  buildDashboardAttentionSections,
+  type DashboardAttentionItem,
+  type DashboardAttentionSections,
+} from "@/lib/dashboard-attention";
+import {
   getVisibleRepresentatives,
   getVisibleWorkflowState,
 } from "@/lib/data-access";
 import { moduleForRoute } from "@/lib/modules";
+import {
+  getFicheTimelineItemTypes,
+  getVisibleFicheSections,
+  getVisibleFicheTabs,
+  type FicheSectionId,
+  type FicheTimelineItemType,
+} from "@/lib/my-team-fiche-visibility";
 import {
   coachingById,
   coachingsForRepresentative,
@@ -78,7 +90,10 @@ import {
   representativeForCoaching,
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
-import type { MyTeamMember } from "@/lib/my-team";
+import {
+  canShowPlannedCoachingIndicator,
+  type MyTeamMember,
+} from "@/lib/my-team";
 import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
   canEditFutureCoachingPlanning,
@@ -119,7 +134,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "contract") return <PlaceholderWorkspace title="Contract" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "service") return <PlaceholderWorkspace title="Service" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "mijn-team") {
-    if (!canViewTeamDashboard(user)) {
+    if (!canViewTeamDashboard(user) || !can(user, "moduleMyTeam")) {
       return <EmptyState title="Geen toegang" description="Mijn Team is alleen beschikbaar voor gebruikers met een team- of beheerscope." />;
     }
     if (segments[1] === "gebruiker" && segments[2]) {
@@ -185,13 +200,52 @@ function Dashboard() {
   const retrainingEnabled = isModuleEnabled("RETRAININGEN");
   const salesTrainingEnabled = isModuleEnabled("SALESTRAININGEN");
   const actionPointsEnabled = isModuleEnabled("ACTIEPUNTEN");
-  const scopedInterventions = coachingEnabled
-    ? dedupeById(visibleInterventions(user))
-    : [];
-  const scopedContacts = contactsEnabled ? visibleContactMoments(user) : [];
-  const scopedHelpRequests = helpEnabled ? visibleHelpRequests(user) : [];
-  const scopedRetrainings = retrainingEnabled ? visibleRetrainings(user) : [];
-  const scopedSalesTrainings = salesTrainingEnabled ? visibleSalesTrainings(user) : [];
+  const scopedInterventions = useMemo(
+    () => coachingEnabled ? dedupeById(visibleInterventions(user)) : [],
+    [coachingEnabled, user, visibleInterventions],
+  );
+  const scopedContacts = useMemo(
+    () => contactsEnabled ? visibleContactMoments(user) : [],
+    [contactsEnabled, user, visibleContactMoments],
+  );
+  const scopedHelpRequests = useMemo(
+    () => helpEnabled ? visibleHelpRequests(user) : [],
+    [helpEnabled, user, visibleHelpRequests],
+  );
+  const scopedRetrainings = useMemo(
+    () => retrainingEnabled ? visibleRetrainings(user) : [],
+    [retrainingEnabled, user, visibleRetrainings],
+  );
+  const scopedSalesTrainings = useMemo(
+    () => salesTrainingEnabled ? visibleSalesTrainings(user) : [],
+    [salesTrainingEnabled, user, visibleSalesTrainings],
+  );
+  const attentionEnabled = coachingEnabled || contactsEnabled || helpEnabled || retrainingEnabled || salesTrainingEnabled;
+  const attentionSections = useMemo(
+    () => buildDashboardAttentionSections({
+      currentUser: user,
+      interventions: scopedInterventions,
+      contactMoments: scopedContacts,
+      helpRequests: scopedHelpRequests,
+      retrainings: scopedRetrainings,
+      salesTrainings: scopedSalesTrainings,
+      representativeName: (id) => {
+        const representative = representatives.find((person) => person.id === id);
+        return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
+      },
+      ownerName: (id) => id ? reportingUserName(id, managedUsers) : undefined,
+    }),
+    [
+      managedUsers,
+      representatives,
+      scopedContacts,
+      scopedHelpRequests,
+      scopedInterventions,
+      scopedRetrainings,
+      scopedSalesTrainings,
+      user,
+    ],
+  );
   const scopedState = useMemo(
     () => getVisibleWorkflowState(user, state, representatives),
     [representatives, state, user]
@@ -236,19 +290,10 @@ function Dashboard() {
   ])
     .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
     .slice(0, 5);
-  const completedToday = dedupeById(scopedInterventions)
-    .filter((item) =>
-      completedCoachingStatuses.has(item.status) &&
-      (item.plannedDate ?? item.updatedAt.slice(0, 10)) === localDateKey()
-    )
-    .sort((left, right) => (left.startTime ?? "00:00").localeCompare(right.startTime ?? "00:00"));
   const openActionCount = actionPointsEnabled ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) : 0;
   const awaitingApproval = scopedInterventions.filter((item) => ["wacht_op_akkoord", "verzonden_ter_akkoord"].includes(item.status));
   const approvalCount = awaitingApproval.length;
-  const attentionRequiredCount = awaitingApproval.filter((item) => {
-    const since = item.sentForApprovalAt ?? item.updatedAt;
-    return Date.now() - new Date(since).getTime() > 2 * 24 * 60 * 60 * 1000;
-  }).length;
+  const attentionRequiredCount = attentionSections.todo.length;
   const metrics = [
     coachingEnabled && user.role === "REPRESENTATIVE" && { label: "Mijn Begeleidingen", value: scopedInterventions.length, icon: ClipboardCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
     coachingEnabled && { label: "Geplande begeleidingen", value: scopedInterventions.filter((item) => item.status === "gepland").length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
@@ -262,7 +307,7 @@ function Dashboard() {
     salesTrainingEnabled && { label: "Geplande sales trainingen", value: scopedSalesTrainings.filter((item) => item.status === "gepland").length, icon: Sparkles, tone: "bg-cyan-50 text-cyan-700", href: "/sales-trainingen" },
     (retrainingEnabled || salesTrainingEnabled) && { label: "Openstaande trainingen", value: [...scopedRetrainings, ...scopedSalesTrainings].filter((item) => !["afgerond", "geannuleerd"].includes(item.status)).length, icon: BookOpenCheck, tone: "bg-blue-50 text-blue-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
     (retrainingEnabled || salesTrainingEnabled) && { label: "Trainingen zonder opvolgactie", value: scopedRetrainings.filter((item) => item.actionPoints.length === 0).length + scopedSalesTrainings.filter((item) => !item.followUpAction.trim()).length, icon: Target, tone: "bg-amber-50 text-amber-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
-    coachingEnabled && { label: "Aandacht vereist", value: attentionRequiredCount, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/begeleidingen" },
+    attentionEnabled && { label: "Aandacht vereist", value: attentionRequiredCount, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/taken-vandaag" },
   ].filter(Boolean) as { label: string; value: number; icon: typeof CalendarCheck; tone: string; href: string }[];
 
   return (
@@ -305,6 +350,8 @@ function Dashboard() {
 
       {teamDashboardAllowed && actionPointsEnabled && <SmartManagementSections result={smartResult} />}
 
+      {attentionEnabled && <DashboardAttentionCard sections={attentionSections} />}
+
       <section className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         {planningEnabled && <div className="card overflow-hidden">
           <SectionTitle title="Eerstvolgende momenten" subtitle="Planning voor je huidige scope" link="/planning" />
@@ -344,39 +391,110 @@ function Dashboard() {
         )}
       </section>
 
-      {coachingEnabled && completedToday.length > 0 && (
-        <section className="card overflow-hidden">
-          <SectionTitle title="Vandaag uitgevoerd" subtitle="Afgewerkte begeleidingen van vandaag" link="/begeleidingen" />
-          <div className="divide-y divide-slate-100">
-            {completedToday.map((item) => {
-              const representative = representatives.find((person) => person.id === item.representativeId);
-              const personName = representative
-                ? `${representative.firstName} ${representative.lastName}`
-                : item.subject
-                  ? `${item.subject.firstName} ${item.subject.lastName}`
-                  : "Onbekend";
-              return (
-                <Link key={item.id} href={`/begeleidingen/${item.id}`} className="flex items-center gap-4 px-5 py-4 transition hover:bg-slate-50">
-                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><ClipboardCheck className="h-5 w-5" /></div>
-                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{personName}</p><p className="mt-1 text-xs text-slate-500">{item.startTime ?? "--:--"}–{item.endTime ?? "--:--"} · {reportingUserName(item.ownerId, managedUsers)}</p></div>
-                  <StatusBadge status={item.status} />
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
       <ActivityHistoryCard user={user} />
     </div>
   );
 }
 
+const attentionIcons: Record<DashboardAttentionItem["type"], typeof ClipboardCheck> = {
+  begeleiding: ClipboardCheck,
+  contactmoment: Phone,
+  retraining: GraduationCap,
+  sales_training: Sparkles,
+  hulpaanvraag: CircleHelp,
+};
+
+function DashboardAttentionCard({ sections, link = "/taken-vandaag" }: { sections: DashboardAttentionSections; link?: string | null }) {
+  return (
+    <section className="card overflow-hidden">
+      <SectionTitle title="Aandacht vereist" subtitle="Vandaag gepland binnen je toegelaten scope" link={link ?? undefined} />
+      <div className="grid gap-0 lg:grid-cols-2">
+        <DashboardAttentionColumn
+          title="Uit te voeren"
+          count={sections.todo.length}
+          items={sections.todo}
+          emptyMessage="Er staat vandaag niets meer open in jouw scope."
+        />
+        <DashboardAttentionColumn
+          title="Uitgevoerd"
+          count={sections.done.length}
+          items={sections.done}
+          emptyMessage="Er is vandaag nog niets uitgevoerd binnen jouw scope."
+          done
+        />
+      </div>
+    </section>
+  );
+}
+
+function DashboardAttentionColumn({
+  title,
+  count,
+  items,
+  emptyMessage,
+  done = false,
+}: {
+  title: string;
+  count: number;
+  items: DashboardAttentionItem[];
+  emptyMessage: string;
+  done?: boolean;
+}) {
+  return (
+    <section className={`min-w-0 ${done ? "border-t border-slate-100 lg:border-l lg:border-t-0" : ""}`}>
+      <div className="flex items-center justify-between gap-3 bg-slate-50/70 px-5 py-3">
+        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${done ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+          {count}
+        </span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {items.length > 0 ? (
+          items.map((item) => <DashboardAttentionRow key={item.id} item={item} />)
+        ) : (
+          <p className="px-5 py-4 text-sm text-slate-500">{emptyMessage}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardAttentionRow({ item }: { item: DashboardAttentionItem }) {
+  const Icon = attentionIcons[item.type];
+  const content = (
+    <>
+      <div className="flex w-20 shrink-0 items-center gap-2 text-xs font-bold text-slate-500">
+        <Clock3 className="h-3.5 w-3.5" />
+        <span className="truncate">{item.timeLabel}</span>
+      </div>
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-950">{item.title}</p>
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {item.typeLabel} · {item.subtitle}{item.owner ? ` · ${item.owner}` : ""}
+        </p>
+      </div>
+      <StatusBadge status={item.status} />
+    </>
+  );
+  const className = "flex min-h-[68px] items-center gap-3 px-5 py-3 transition hover:bg-slate-50";
+
+  if (item.href) {
+    return <Link href={item.href} className={className}>{content}</Link>;
+  }
+
+  return <div className={className}>{content}</div>;
+}
+
 function MyTeamPage() {
   const { user } = useSession();
+  const { modules } = useModules();
   const { error, loading, members } = useMyTeamMembers();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const countries = useMemo(() => groupMyTeamMembers(members), [members]);
+  const showPlannedCoachingIndicator = canShowPlannedCoachingIndicator(user, modules);
 
   useEffect(() => {
     try {
@@ -430,7 +548,13 @@ function MyTeamPage() {
                   <span className="text-xs font-semibold text-slate-500">{team.members.length} {team.members.length === 1 ? "persoon" : "personen"}</span>
                 </button>
                 {teamOpen && <div className="divide-y divide-slate-100 border-t border-slate-100">
-                  {team.members.map((member) => <MyTeamMemberRow key={member.id} member={member} />)}
+                  {team.members.map((member) => (
+                    <MyTeamMemberRow
+                      key={member.id}
+                      member={member}
+                      showPlannedCoachingIndicator={showPlannedCoachingIndicator}
+                    />
+                  ))}
                 </div>}
               </section>;
             })}
@@ -441,12 +565,19 @@ function MyTeamPage() {
   );
 }
 
-function MyTeamMemberRow({ member }: { member: MyTeamMember }) {
-  return <Link href={member.profileHref} className="grid gap-3 p-3.5 transition hover:bg-brand-50/40 sm:grid-cols-[minmax(210px,1.4fr)_minmax(125px,0.7fr)_minmax(145px,0.8fr)_auto] sm:items-center sm:px-4">
+function MyTeamMemberRow({
+  member,
+  showPlannedCoachingIndicator,
+}: {
+  member: MyTeamMember;
+  showPlannedCoachingIndicator: boolean;
+}) {
+  const hasPlannedCoaching = showPlannedCoachingIndicator && member.hasPlannedCoaching;
+  return <Link href={member.profileHref} className={`grid gap-3 p-3.5 transition sm:grid-cols-[minmax(210px,1.4fr)_minmax(125px,0.7fr)_minmax(145px,0.8fr)_auto] sm:items-center sm:px-4 ${hasPlannedCoaching ? "bg-sky-50/80 hover:bg-sky-50" : "hover:bg-brand-50/40"}`}>
     <div className="flex min-w-0 items-center gap-3">
       <Avatar initials={member.initials} />
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5"><p className="truncate text-sm font-semibold text-slate-900">{member.firstName} {member.lastName}</p>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>}</div>
+        <div className="flex flex-wrap items-center gap-1.5"><p className="truncate text-sm font-semibold text-slate-900">{member.firstName} {member.lastName}</p>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>}{hasPlannedCoaching && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">Begeleiding gepland</span>}</div>
         <p className="mt-0.5 text-xs text-slate-500">{roleLabels[member.role]}</p>
       </div>
     </div>
@@ -630,8 +761,32 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
   const { user } = useSession();
   const { error, loading, representatives } = useRepresentatives();
   const { dataset: performanceDataset, error: performanceError } = usePerformance();
+  const { modules } = useModules();
   const representative = representatives.find((item) => item.id === id);
   const [tab, setTab] = useState("overzicht");
+  const visibleSections = useMemo(
+    () => representative
+      ? getVisibleFicheSections({ user, representative, modules })
+      : new Set<FicheSectionId>(),
+    [modules, representative, user]
+  );
+  const visibleTabs = useMemo(
+    () => representative
+      ? getVisibleFicheTabs({ user, representative, modules })
+      : [],
+    [modules, representative, user]
+  );
+  const activeTab = visibleTabs.some((item) => item.label === tab)
+    ? tab
+    : visibleTabs[0]?.label ?? "overzicht";
+  const timelineItemTypes = useMemo(
+    () => getFicheTimelineItemTypes(visibleSections),
+    [visibleSections]
+  );
+  const showCoachings = visibleSections.has("coachings");
+  const showActionPoints = visibleSections.has("actionPoints");
+  const showPerformance = visibleSections.has("performanceCircle");
+  const showKpis = visibleSections.has("kpis");
 
   if (loading) {
     return <EmptyState title="Vertegenwoordiger laden" description="De gegevens worden uit MariaDB opgehaald." />;
@@ -645,7 +800,6 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
     return <EmptyState title="Geen toegang" description="Deze vertegenwoordiger valt niet binnen jouw huidige rol- of teamscope." />;
   }
 
-  const tabs = ["overzicht", "Prestatiecirkel", "persoonlijke criteria", "KPI's", "begeleidingen", "contactmomenten", "retrainingen", "sales trainingen", "hulpaanvragen", "actiepunten", "productanalyse", "tijdlijn"];
   const latestCompletedCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
   const latestCoaching = latestScoredCoaching(performanceDataset, representative.id);
   const latestScore = latestCoaching ? coachingScoreOutOfFive(latestCoaching) : undefined;
@@ -674,86 +828,97 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
               <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{representativeRoleLabel}</span>
               {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>}
-              <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />
+              {showPerformance && <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />}
             </div>
           </div>
-          {user.role !== "REPRESENTATIVE" && <Link href="/begeleidingen/nieuw" className="btn-primary w-full shrink-0 sm:mt-2 sm:w-auto"><Plus className="h-4 w-4" /> Begeleiding</Link>}
+          {showCoachings && can(user, "intervention:create") && <Link href="/begeleidingen/nieuw" className="btn-primary w-full shrink-0 sm:mt-2 sm:w-auto"><Plus className="h-4 w-4" /> Begeleiding</Link>}
         </div>
         <div className="mext-horizontal-scrollbar flex min-h-[58px] gap-1 overflow-x-auto border-t border-slate-100 px-4 pt-2">
-          {tabs.map((item) => (
-            <button key={item} onClick={() => setTab(item)} className={`min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold capitalize transition-colors ${tab === item ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
-              {item}
+          {visibleTabs.map((item) => (
+            <button key={item.id} onClick={() => setTab(item.label)} className={`min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold capitalize transition-colors ${activeTab === item.label ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+              {item.label}
             </button>
           ))}
         </div>
       </div>
 
-      {tab === "overzicht" && (
+      {activeTab === "overzicht" && (
         <>
-          <section className="grid gap-4 lg:grid-cols-[220px_1fr]">
-            <div className="card grid place-items-center p-5 text-center">
-              {latestCoaching && latestScore !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestScore * 20))}%, #e2e8f0 0)` }}>
-                <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{latestScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">van 5</p></div></div>
-              </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."}</p></div>}
-            </div>
-            <div className="card p-5 sm:p-6">
-              <p className="eyebrow">Laatste begeleiding</p>
-              {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">Algemene score {latestScore!.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE")} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">Begeleiding openen <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd.</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE")} /></div></div> : <EmptyState title="Nog geen begeleidingen beschikbaar" description="Voor deze vertegenwoordiger is nog geen afgewerkte begeleiding gevonden." />}
-            </div>
-          </section>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {representative.kpis.map((kpi) => (
-              <div key={kpi.label} className="card p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-500">{kpi.label}</p>
-                  <Trend value={kpi.trend} />
+          {(showCoachings || showPerformance) && (
+            <section className={`grid gap-4 ${showCoachings && showPerformance ? "lg:grid-cols-[220px_1fr]" : ""}`}>
+              {showPerformance && (
+                <div className="card grid place-items-center p-5 text-center">
+                  {latestCoaching && latestScore !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestScore * 20))}%, #e2e8f0 0)` }}>
+                    <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{latestScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">van 5</p></div></div>
+                  </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."}</p></div>}
                 </div>
-                <p className="mt-4 text-2xl font-bold text-slate-950">{kpi.value}</p>
-                <p className="mt-1 text-xs text-slate-400">Doel {kpi.target}</p>
-              </div>
-            ))}
-          </section>
-          <section className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
-            <div className="card overflow-hidden">
-              <SectionTitle title="Open actiepunten" subtitle="Concrete afspraken in opvolging" link="/actiepunten" />
-              {performanceDataset.historicalActionPoints
-                .filter((action) =>
-                  action.representativeId === representative.id &&
-                  !["behaald", "niet_behaald"].includes(action.status)
-                )
-                .slice(0, 3)
-                .map((action) => (
-                <div key={action.id} className="border-t border-slate-100 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div><p className="font-semibold text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-500">Tegen {formatShortDate(action.due)}</p></div>
-                    <StatusBadge status={action.status} />
+              )}
+              {showCoachings && (
+                <div className="card p-5 sm:p-6">
+                  <p className="eyebrow">Laatste begeleiding</p>
+                  {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">{showPerformance && latestScore !== undefined ? `Algemene score ${latestScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5` : "Laatste begeleiding"}</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE")} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">Begeleiding openen <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{showPerformance ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Er is een afgewerkte begeleiding beschikbaar."}</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE")} /></div></div> : <EmptyState title="Nog geen begeleidingen beschikbaar" description="Voor deze vertegenwoordiger is nog geen afgewerkte begeleiding gevonden." />}
+                </div>
+              )}
+            </section>
+          )}
+          {showKpis && (
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {representative.kpis.map((kpi) => (
+                <div key={kpi.label} className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-500">{kpi.label}</p>
+                    <Trend value={kpi.trend} />
                   </div>
-                  <div className="mt-4 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-brand-700" style={{ width: `${action.progress}%` }} /></div>
+                  <p className="mt-4 text-2xl font-bold text-slate-950">{kpi.value}</p>
+                  <p className="mt-1 text-xs text-slate-400">Doel {kpi.target}</p>
                 </div>
               ))}
-            </div>
+            </section>
+          )}
+          <section className={`grid gap-5 ${showActionPoints ? "xl:grid-cols-[1.3fr_1fr]" : ""}`}>
+            {showActionPoints && (
+              <div className="card overflow-hidden">
+                <SectionTitle title="Open actiepunten" subtitle="Concrete afspraken in opvolging" link="/actiepunten" />
+                {performanceDataset.historicalActionPoints
+                  .filter((action) =>
+                    action.representativeId === representative.id &&
+                    !["behaald", "niet_behaald"].includes(action.status)
+                  )
+                  .slice(0, 3)
+                  .map((action) => (
+                  <div key={action.id} className="border-t border-slate-100 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div><p className="font-semibold text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-500">Tegen {formatShortDate(action.due)}</p></div>
+                      <StatusBadge status={action.status} />
+                    </div>
+                    <div className="mt-4 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-brand-700" style={{ width: `${action.progress}%` }} /></div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="card p-5">
               <h2 className="font-bold text-slate-900">Contactgegevens</h2>
               <div className="mt-5 space-y-4">
                 <p className="flex items-center gap-3 text-sm text-slate-600"><Mail className="h-4 w-4 text-brand-700" /> {representative.email}</p>
                 <p className="flex items-center gap-3 text-sm text-slate-600"><Phone className="h-4 w-4 text-brand-700" /> {representative.phone}</p>
-                <p className="flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>
+                {showCoachings && <p className="flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>}
               </div>
             </div>
           </section>
         </>
       )}
-      {performanceError && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
-      {tab === "Prestatiecirkel" && (
+      {performanceError && (showCoachings || showActionPoints || showPerformance || showKpis) && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
+      {activeTab === "Prestatiecirkel" && (
         scoredCoachings.length ? <PerformanceEvolution
           coachings={scoredCoachings}
           representativeName={`${representative.firstName} ${representative.lastName}`}
         /> : <EmptyState title="Geen score beschikbaar" description={latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."} />
       )}
-      {tab === "persoonlijke criteria" && <PersonalCriteriaPanel representative={representative} />}
-      {tab === "KPI's" && <KpiPanel representativeId={representative.id} />}
-      {tab === "actiepunten" && <RepresentativeActionPointsPanel representativeId={representative.id} />}
-      {!["overzicht", "Prestatiecirkel", "persoonlijke criteria", "KPI's", "actiepunten"].includes(tab) && <TimelinePanel title={tab} representativeId={representative.id} representativeName={representative.firstName} />}
+      {activeTab === "persoonlijke criteria" && <PersonalCriteriaPanel representative={representative} />}
+      {activeTab === "KPI's" && <KpiPanel representativeId={representative.id} />}
+      {activeTab === "actiepunten" && <RepresentativeActionPointsPanel representativeId={representative.id} />}
+      {["begeleidingen", "contactmomenten", "retrainingen", "sales trainingen", "hulpaanvragen", "tijdlijn"].includes(activeTab) && <TimelinePanel title={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={timelineItemTypesForTab(activeTab, timelineItemTypes)} />}
+      {activeTab === "productanalyse" && <TimelinePanel title={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={[]} />}
     </div>
   );
 }
@@ -1014,26 +1179,77 @@ function KpiPanel({ representativeId }: { representativeId: string }) {
   );
 }
 
-function TimelinePanel({ title, representativeId, representativeName }: { title: string; representativeId: string; representativeName: string }) {
-  const { state } = useWorkflow();
+function timelineItemTypesForTab(
+  tab: string,
+  visibleItemTypes: FicheTimelineItemType[]
+): FicheTimelineItemType[] {
+  if (tab === "begeleidingen") return visibleItemTypes.includes("begeleiding") ? ["begeleiding"] : [];
+  if (tab === "contactmomenten") return visibleItemTypes.includes("contactmoment") ? ["contactmoment"] : [];
+  if (tab === "retrainingen") return visibleItemTypes.includes("retraining") ? ["retraining"] : [];
+  if (tab === "sales trainingen") return visibleItemTypes.includes("sales_training") ? ["sales_training"] : [];
+  if (tab === "hulpaanvragen") return visibleItemTypes.includes("hulpaanvraag") ? ["hulpaanvraag"] : [];
+  if (tab === "tijdlijn") return visibleItemTypes;
+  return [];
+}
+
+function TimelinePanel({
+  title,
+  representativeId,
+  representativeName,
+  itemTypes,
+}: {
+  title: string;
+  representativeId: string;
+  representativeName: string;
+  itemTypes: FicheTimelineItemType[];
+}) {
+  const { user } = useSession();
+  const workflowApi = useWorkflow();
   const { dataset: performanceDataset } = usePerformance();
+  const allowedTypes = new Set(itemTypes);
   const workflowItems = [...new Map([
-    ...performanceDataset.historicalCoachings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.date, owner: item.ownerName, status: item.status })),
-    ...performanceDataset.historicalContactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.date, owner: item.reason, status: item.status })),
-    ...state.interventions.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "begeleiding", date: item.plannedDate ?? item.updatedAt, owner: "Coaching", status: item.status })),
-    ...state.contactMoments.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "contactmoment", date: item.updatedAt, owner: item.reason, status: item.status })),
-    ...state.helpRequests.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "hulpaanvraag", date: item.updatedAt, owner: item.subject, status: item.status })),
-    ...state.retrainings.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: "retraining", date: item.updatedAt, owner: item.theme, status: item.status })),
-    ...state.salesTrainings.filter((item) => item.participantIds.includes(representativeId)).map((item) => ({ id: item.id, type: "sales_training", date: item.updatedAt, owner: item.theme, status: item.status })),
-    ...state.linkedInterventions.filter((item) => item.representativeId === representativeId).map((item) => ({ id: item.id, type: item.type, date: item.createdAt, owner: item.title, status: item.status })),
-  ].filter((item) => {
-    if (title === "contactmomenten") return item.type === "contactmoment";
-    if (title === "hulpaanvragen") return item.type === "hulpaanvraag";
-    if (title === "begeleidingen") return item.type === "begeleiding";
-    if (title === "retrainingen") return item.type === "retraining";
-    if (title === "sales trainingen") return item.type === "sales_training";
-    return true;
-  }).map((item) => [`${item.type}:${item.id}`, item])).values()]
+    ...(allowedTypes.has("begeleiding")
+      ? [
+          ...performanceDataset.historicalCoachings
+            .filter((item) => item.representativeId === representativeId)
+            .map((item) => ({ id: item.id, type: "begeleiding" as const, date: item.date, owner: item.ownerName, status: item.status })),
+          ...workflowApi.visibleInterventions(user)
+            .filter((item) => item.representativeId === representativeId)
+            .map((item) => ({ id: item.id, type: "begeleiding" as const, date: item.plannedDate ?? item.updatedAt, owner: "Coaching", status: item.status })),
+        ]
+      : []),
+    ...(allowedTypes.has("contactmoment")
+      ? [
+          ...performanceDataset.historicalContactMoments
+            .filter((item) => item.representativeId === representativeId)
+            .map((item) => ({ id: item.id, type: "contactmoment" as const, date: item.date, owner: item.reason, status: item.status })),
+          ...workflowApi.visibleContactMoments(user)
+            .filter((item) => item.representativeId === representativeId)
+            .map((item) => ({ id: item.id, type: "contactmoment" as const, date: item.updatedAt, owner: item.reason, status: item.status })),
+        ]
+      : []),
+    ...(allowedTypes.has("hulpaanvraag")
+      ? workflowApi.visibleHelpRequests(user)
+          .filter((item) => item.representativeId === representativeId)
+          .map((item) => ({ id: item.id, type: "hulpaanvraag" as const, date: item.updatedAt, owner: item.subject, status: item.status }))
+      : []),
+    ...(allowedTypes.has("retraining")
+      ? workflowApi.visibleRetrainings(user)
+          .filter((item) => item.representativeId === representativeId)
+          .map((item) => ({ id: item.id, type: "retraining" as const, date: item.updatedAt, owner: item.theme, status: item.status }))
+      : []),
+    ...(allowedTypes.has("sales_training")
+      ? workflowApi.visibleSalesTrainings(user)
+          .filter((item) => item.participantIds.includes(representativeId))
+          .map((item) => ({ id: item.id, type: "sales_training" as const, date: item.updatedAt, owner: item.theme, status: item.status }))
+      : []),
+    ...workflowApi.state.linkedInterventions
+      .filter((item) =>
+        item.representativeId === representativeId &&
+        allowedTypes.has(item.type)
+      )
+      .map((item) => ({ id: item.id, type: item.type, date: item.createdAt, owner: item.title, status: item.status })),
+  ].map((item) => [`${item.type}:${item.id}`, item])).values()]
     .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
@@ -1064,9 +1280,10 @@ function timelineItemHref(type: string, id: string) {
 }
 
 function RepresentativeActionPointsPanel({ representativeId }: { representativeId: string }) {
-  const { state } = useWorkflow();
+  const { user } = useSession();
+  const workflowApi = useWorkflow();
   const { dataset } = usePerformance();
-  const workflowActions = state.interventions
+  const workflowActions = workflowApi.visibleInterventions(user)
     .filter((item) => item.representativeId === representativeId)
     .flatMap((item) => item.actionPoints);
   const historicalActions = dataset.historicalActionPoints.filter((item) => item.representativeId === representativeId);
@@ -2501,18 +2718,46 @@ function MyProfilePage() {
 }
 
 function TodayTasksPage() {
-  const { user } = useSession();
-  const { visibleInterventions } = useWorkflow();
+  const { user, managedUsers } = useSession();
+  const { isModuleEnabled } = useModules();
+  const {
+    visibleInterventions,
+    visibleContactMoments,
+    visibleHelpRequests,
+    visibleRetrainings,
+    visibleSalesTrainings,
+  } = useWorkflow();
   const { representatives } = useRepresentatives();
   const today = localDateKey();
-  const interventions = dedupeById(
-    visibleInterventions(user).filter((item) => !item.deletedAt)
+  const attentionSections = useMemo(
+    () => buildDashboardAttentionSections({
+      currentUser: user,
+      today,
+      interventions: isModuleEnabled("BEGELEIDINGEN") ? dedupeById(visibleInterventions(user)) : [],
+      contactMoments: isModuleEnabled("CONTACTMOMENTEN") ? visibleContactMoments(user) : [],
+      helpRequests: isModuleEnabled("HULPAANVRAGEN") ? visibleHelpRequests(user) : [],
+      retrainings: isModuleEnabled("RETRAININGEN") ? visibleRetrainings(user) : [],
+      salesTrainings: isModuleEnabled("SALESTRAININGEN") ? visibleSalesTrainings(user) : [],
+      representativeName: (id) => {
+        const representative = representatives.find((item) => item.id === id);
+        return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
+      },
+      ownerName: (id) => id ? reportingUserName(id, managedUsers) : undefined,
+    }),
+    [
+      isModuleEnabled,
+      managedUsers,
+      representatives,
+      today,
+      user,
+      visibleContactMoments,
+      visibleHelpRequests,
+      visibleInterventions,
+      visibleRetrainings,
+      visibleSalesTrainings,
+    ],
   );
-  const todayCoachings = interventions
-    .filter((item) => (item.plannedDate ?? item.updatedAt.slice(0, 10)) === today)
-    .sort((left, right) => (left.startTime ?? "00:00").localeCompare(right.startTime ?? "00:00"));
-  const openCoachings = interventions.filter((item) => !completedCoachingStatuses.has(item.status) && item.status !== "geannuleerd");
-  const completedToday = interventions.filter((item) => completedCoachingStatuses.has(item.status) && (item.finalizedAt ?? item.updatedAt).slice(0, 10) === today);
+  const todayItemCount = attentionSections.todo.length + attentionSections.done.length;
 
   return (
     <div className="space-y-4">
@@ -2525,75 +2770,27 @@ function TodayTasksPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card p-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Vandaag gepland</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{todayCoachings.length}</p>
-          <p className="mt-1 text-sm text-slate-500">Begeleidingen op {new Date(`${today}T12:00:00`).toLocaleDateString("nl-BE")}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{todayItemCount}</p>
+          <p className="mt-1 text-sm text-slate-500">Items op {new Date(`${today}T12:00:00`).toLocaleDateString("nl-BE")}</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Open coachings</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{openCoachings.length}</p>
-          <p className="mt-1 text-sm text-slate-500">Nog niet afgeronde begeleidingen</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Uit te voeren</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{attentionSections.todo.length}</p>
+          <p className="mt-1 text-sm text-slate-500">Nog niet afgeronde items</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Vandaag afgewerkt</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{completedToday.length}</p>
-          <p className="mt-1 text-sm text-slate-500">Volledig afgesloten tijdens de huidige dag</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Uitgevoerd</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{attentionSections.done.length}</p>
+          <p className="mt-1 text-sm text-slate-500">Afgewerkt of ingediend vandaag</p>
         </div>
         <div className="card p-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Totale scope</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{interventions.length}</p>
-          <p className="mt-1 text-sm text-slate-500">Alle zichtbare coachingsmomenten</p>
+          <p className="mt-3 text-3xl font-bold text-slate-950">{todayItemCount}</p>
+          <p className="mt-1 text-sm text-slate-500">Zichtbare items voor vandaag</p>
         </div>
       </div>
 
-      <div className="card overflow-hidden">
-        <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
-          <p className="font-bold text-slate-950">Vandaag in detail</p>
-          <p className="mt-1 text-sm text-slate-500">De planning hieronder toont alleen de coachings die vandaag staan of vandaag afgewerkt werden.</p>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {todayCoachings.length > 0 ? todayCoachings.map((intervention) => {
-            const representative = representatives.find((item) => item.id === intervention.representativeId);
-            const href = coachingOpenHref(user, intervention, today);
-            const content = (
-              <>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">
-                    {intervention.startTime ?? "00:00"} - {intervention.endTime ?? "--:--"} · {intervention.status.replaceAll("_", " ")}
-                  </p>
-                  <h2 className="mt-1 truncate font-bold text-slate-950">
-                    {representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend"}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {representative ? representative.team : "Geen team"} · {intervention.title}
-                  </p>
-                </div>
-                <StatusBadge status={intervention.status} />
-              </>
-            );
-            if (!href) {
-              return (
-                <div
-                  key={intervention.id}
-                  className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between"
-                >
-                  {content}
-                </div>
-              );
-            }
-            return (
-              <Link
-                key={intervention.id}
-                href={href}
-                className="flex flex-col gap-3 p-5 transition hover:bg-slate-50 md:flex-row md:items-center md:justify-between"
-              >
-                {content}
-              </Link>
-            );
-          }) : (
-            <EmptyState title="Geen taken gevonden voor vandaag" description="Er staan vandaag geen zichtbare begeleidingen in jouw scope." />
-          )}
-        </div>
-      </div>
+      <DashboardAttentionCard sections={attentionSections} link={null} />
     </div>
   );
 }

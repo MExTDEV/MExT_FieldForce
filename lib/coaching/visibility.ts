@@ -19,6 +19,7 @@ export const completedCoachingStatuses = new Set([
   "gefinaliseerd",
   "afgesloten",
   "voltooid",
+  "wacht_op_akkoord",
   "verzonden_ter_akkoord",
   "akkoord_door_vertegenwoordiger",
 ]);

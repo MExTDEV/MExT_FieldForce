@@ -22,7 +22,7 @@ export async function GET() {
       branchNumber: "",
       active: true,
       avatarUrl: "",
-      permissions: { ...roleTemplates[actor.role].permissions },
+      permissions: { ...roleTemplates[actor.role].permissions, ...actor.permissions },
       representativeId: actor.representativeId,
     });
     return { user };

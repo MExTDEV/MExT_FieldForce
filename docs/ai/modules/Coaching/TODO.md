@@ -16,6 +16,38 @@ Priority levels:
 
 Priority: High
 
+Status: Completed on 2026-07-07
+
+Implemented changes:
+
+- Dashboard shows a dedicated **Aandacht vereist** card with two sections:
+  - Uit te voeren
+  - Uitgevoerd
+- The card uses the same visible workflow data as Planning and Begeleidingen through the shared workflow visibility state.
+- Today is determined with the existing local date helper.
+- Begeleidingen use `plannedDate` and the existing coaching open/access helpers.
+- Contactmomenten and Hulpaanvragen use their currently existing Planning date basis because no separate scheduled date field is defined yet.
+- Retrainingen and Salestrainingen use their existing `date` field.
+- `Wachten op akkoord` is treated as executed/submitted for this dashboard split because the lifecycle reaches that status after execution and submission for approval.
+- The existing `/taken-vandaag` entry point uses the same two-section source.
+- Undefined workflows were not implemented.
+
+Validation performed:
+
+- `npm run test:dashboard-attention`
+- `npm run test:planning-items`
+- `npm run test:coaching-visibility`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock before Next.js compilation.
+- `npx next build` completed successfully with the existing Prisma client.
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+- Contactmomenten, Hulpaanvragen, Retrainingen and Salestrainingen still require business clarification for final create/open/edit workflows.
+- Contactmomenten and Hulpaanvragen do not yet have a separate planned date field, so Dashboard follows the current Planning behaviour for those item types.
+
 Required changes:
 
 - Build two sections:
@@ -82,17 +114,37 @@ Open question:
 
 Priority: High
 
-Required change:
+Status: Completed on 2026-07-08
 
-- The employee fiche must be filtered based on active modules.
+Implemented changes:
 
-Business rule:
+- The employee fiche now derives tab and section visibility from a central fiche-visibility helper.
+- Visibility combines active module configuration, effective user permissions, user-level overrides already present on the active session user, and representative scope.
+- The overview hides module-bound blocks independently:
+  - latest coaching / coaching open action follows Begeleidingen + `moduleVisitRecord`;
+  - Performance Circle score follows Rapportering + `moduleReporting` + `performanceView`;
+  - KPI cards follow Rapportering + `moduleReporting` + `performanceScoresView`;
+  - action-point summary follows Actiepunten + `modulePreparation`.
+- Timeline tabs only include item types from visible modules and use the existing visible workflow helpers.
+- The Mijn Team client route and sidebar visibility now also respect the effective `moduleMyTeam` permission.
+- Undefined workflows were not implemented or expanded.
 
-- Only information from active modules should be displayed.
+Validation performed:
 
-Example:
+- `npm run test:fiche-visibility`
+- `npm run test:data-access`
+- `npm run test:menu-rights`
+- `npm run test:coaching-visibility`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock before Next.js compilation.
+- `npx next build` completed successfully with the existing Prisma client.
 
-- If a module is disabled for the user or role, related sections should not appear on the fiche.
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+- The existing app-level Performance and Workflow providers still load their already backend-scoped datasets globally; no new section-specific fetches were added for hidden fiche sections.
+- Contactmomenten, Hulpaanvragen, Retrainingen, Salestrainingen and Rapportage still require business clarification for final workflows.
 
 ---
 
@@ -100,10 +152,29 @@ Example:
 
 Priority: Medium
 
-Required changes:
+Status: Completed on 2026-07-08
 
-- If a coaching is planned for a person, highlight the row in light blue.
-- Add a badge to the row indicating that a coaching is planned.
+Implemented changes:
+
+- Mijn Team rows now show a light-blue highlight and compact `Begeleiding gepland` badge when the active user can see a planned coaching for that person.
+- The indicator is calculated server-side from visible `BEGELEIDING` records with status `GEPLAND`.
+- Only planned coachings for today or a future date trigger the indicator.
+- Executed/submitted statuses such as `Wachten op akkoord` do not trigger the planned indicator.
+- The indicator respects active Begeleidingen module configuration and effective `moduleVisitRecord` permissions, including user-level overrides.
+- Representative surprise coachings remain hidden: representatives only get an indicator for announced planned coachings that are visible through the shared coaching visibility rules.
+- The implementation does not change coaching lifecycle, Planning, Outlook synchronisation or the coaching form workflow.
+
+Validation performed:
+
+- `npm run test:my-team-planned`
+- `npm run test:coaching-visibility`
+- `npm run test:fiche-visibility`
+- `npm run test:menu-rights`
+- `npm run test:data-access`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock before Next.js compilation.
+- `npx next build` completed successfully with the existing Prisma client.
 
 Purpose:
 

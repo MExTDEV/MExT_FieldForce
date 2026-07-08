@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import {
+  can,
   canAccessTechnicalManagement,
   canAccessUserManagement,
   canViewTeamDashboard,
@@ -86,7 +87,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       key: module.navKey,
       icon: iconMap[module.icon as keyof typeof iconMap] ?? LayoutDashboard,
     }));
-  const canSeeMyTeam = canViewTeamDashboard(user);
+  const canSeeMyTeam =
+    isModuleEnabled("BEGELEIDINGEN") &&
+    canViewTeamDashboard(user) &&
+    can(user, "moduleMyTeam");
   const mainNav = [dashboardNav, ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
 
   if (pathname === "/login") return <>{children}</>;

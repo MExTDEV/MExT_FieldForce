@@ -1,10 +1,20 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { loadPerformanceDatasetFromDatabase } from "@/lib/server/performance";
-import { buildCoachingVisibilityFilter } from "@/lib/server/coaching-visibility";
+import {
+  buildCoachingVisibilityFilter,
+  buildVisibleCoachingWhere,
+} from "@/lib/server/coaching-visibility";
 import { actorCountryWhere } from "@/lib/server/authenticated-user";
+import { listAppModules } from "@/lib/server/modules";
 import { latestHistoricalCoaching, latestScoredCoaching } from "@/lib/performance-data";
-import { sortMyTeamMembers, type MyTeamMember } from "@/lib/my-team";
+import {
+  canShowPlannedCoachingIndicator,
+  sortMyTeamMembers,
+  withPlannedCoachingIndicators,
+  type MyTeamMember,
+  type PlannedCoachingIndicatorSource,
+} from "@/lib/my-team";
 import type { MockUser } from "@/lib/types";
 
 export function myTeamScopeWhere(actor: MockUser): Prisma.TeamWhereInput {
@@ -26,56 +36,74 @@ export function myTeamScopeWhere(actor: MockUser): Prisma.TeamWhereInput {
   return { id: "__geen_toegang__" };
 }
 export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamMember[]> {
-  const teams = await prisma.team.findMany({
-    where: { active: true, AND: [myTeamScopeWhere(actor)] },
-    select: {
-      id: true,
-      name: true,
-      country: true,
-      primaryLeader: {
-        select: {
-          id: true, representativeId: true, firstName: true, lastName: true,
-          role: true, active: true,
+  const [teams, modules] = await Promise.all([
+    prisma.team.findMany({
+      where: { active: true, AND: [myTeamScopeWhere(actor)] },
+      select: {
+        id: true,
+        name: true,
+        country: true,
+        primaryLeader: {
+          select: {
+            id: true, representativeId: true, firstName: true, lastName: true,
+            role: true, active: true,
+          },
         },
-      },
-      leaders: {
-        where: { user: { active: true } },
-        select: {
-          user: {
-            select: {
-              id: true, representativeId: true, firstName: true, lastName: true,
-              role: true, active: true,
+        leaders: {
+          where: { user: { active: true } },
+          select: {
+            user: {
+              select: {
+                id: true, representativeId: true, firstName: true, lastName: true,
+                role: true, active: true,
+              },
             },
           },
         },
-      },
-      members: {
-        where: { active: true },
-        select: {
-          id: true, representativeId: true, firstName: true, lastName: true,
-          role: true, active: true,
+        members: {
+          where: { active: true },
+          select: {
+            id: true, representativeId: true, firstName: true, lastName: true,
+            role: true, active: true,
+          },
         },
       },
-    },
-    orderBy: [{ country: "asc" }, { name: "asc" }],
-  });
+      orderBy: [{ country: "asc" }, { name: "asc" }],
+    }),
+    listAppModules(),
+  ]);
 
   const representativeIds = new Set<string>();
+  const plannedCoachingTargetUserIds = new Set<string>();
   for (const team of teams) {
     for (const member of team.members) {
       if (member.role === "REPRESENTATIVE") {
         representativeIds.add(member.representativeId ?? member.id);
       }
+      if (member.role === "REPRESENTATIVE" || member.role === "SALES_LEADER") {
+        plannedCoachingTargetUserIds.add(member.id);
+      }
+    }
+    if (team.primaryLeader.active && team.primaryLeader.role === "SALES_LEADER") {
+      plannedCoachingTargetUserIds.add(team.primaryLeader.id);
+    }
+    for (const { user } of team.leaders) {
+      if (user.role === "SALES_LEADER") plannedCoachingTargetUserIds.add(user.id);
     }
   }
 
-  const performance = representativeIds.size
-    ? await loadPerformanceDatasetFromDatabase({
-        coachingWhere: buildCoachingVisibilityFilter(actor),
-      })
-    : undefined;
+  const [performance, plannedCoachings] = await Promise.all([
+    representativeIds.size
+      ? loadPerformanceDatasetFromDatabase({
+          coachingWhere: buildCoachingVisibilityFilter(actor),
+        })
+      : undefined,
+    canShowPlannedCoachingIndicator(actor, modules)
+      ? loadVisiblePlannedCoachingSources(actor, [...plannedCoachingTargetUserIds])
+      : [],
+  ]);
 
-  return teams.flatMap((team) => {
+  const members = teams.flatMap((team) => {
     const linkedLeaderIds = new Set([
       team.primaryLeader.active ? team.primaryLeader.id : "",
       ...team.leaders.map(({ user }) => user.id),
@@ -120,4 +148,40 @@ export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamM
       } satisfies MyTeamMember;
     }));
   });
+
+  return withPlannedCoachingIndicators(members, plannedCoachings);
+}
+
+async function loadVisiblePlannedCoachingSources(
+  actor: MockUser,
+  targetUserIds: string[]
+): Promise<PlannedCoachingIndicatorSource[]> {
+  if (!targetUserIds.length) return [];
+  const rows = await prisma.intervention.findMany({
+    where: buildVisibleCoachingWhere(actor, {
+      status: "GEPLAND",
+      representativeId: { in: targetUserIds },
+    }),
+    select: {
+      representativeId: true,
+      plannedAt: true,
+      updatedAt: true,
+      representative: {
+        select: {
+          id: true,
+          representativeId: true,
+        },
+      },
+    },
+  });
+  return rows.map((row) => ({
+    representativeId: row.representative.representativeId ?? row.representativeId,
+    status: "gepland",
+    plannedDate: row.plannedAt?.toISOString().slice(0, 10),
+    updatedAt: row.updatedAt.toISOString(),
+    subject: {
+      id: row.representative.representativeId ?? row.representativeId,
+      userId: row.representative.id,
+    },
+  }));
 }
