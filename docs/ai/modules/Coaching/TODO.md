@@ -196,13 +196,30 @@ Documentation impact:
 
 Priority: Medium
 
-Required changes:
+Status: Not planned / Cancelled by business decision on 2026-07-08
 
-- Hide "Begeleidingen van vandaag" when there are no coachings planned for today.
-- Hide "Toekomstige begeleidingen" when there are no future coachings.
-- Hide "Uitgevoerde begeleidingen" when there are no historical coachings.
+Decision:
 
-Purpose:
+- Empty sections on the Begeleidingen page will remain visible.
+- Do not hide `Begeleidingen van vandaag` when there are no coachings planned for today.
+- Do not hide `Toekomstige begeleidingen` when there are no future coachings.
+- Do not hide `Uitgevoerde begeleidingen` when there are no historical coachings.
+
+Reason:
+
+- Business decided that keeping the fixed section structure is preferred over a more compact page layout.
+
+AI rule:
+
+- Do not pick this item up as an implementation task unless the business decision changes again.
+
+Original requested changes, kept for history:
+
+- Hide `Begeleidingen van vandaag` when there are no coachings planned for today.
+- Hide `Toekomstige begeleidingen` when there are no future coachings.
+- Hide `Uitgevoerde begeleidingen` when there are no historical coachings.
+
+Original purpose:
 
 - Avoid showing empty sections that add no value to the user.
 
