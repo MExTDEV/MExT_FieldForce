@@ -24,8 +24,9 @@ Implemented changes:
 - The bell reuses the existing visible workflow data used by Dashboard `Vandaag vraagt aandacht`, `/taken-vandaag`, Planning and Begeleidingen.
 - No separate ToDo database, ToDo model or parallel source of truth was introduced.
 - Open execution ToDo's come from the existing `Uit te voeren` split in the shared dashboard attention helper.
-- Coachings with status `Wachten op akkoord` / `verzonden_ter_akkoord` are added as approval ToDo's for users who can already see the coaching through the existing workflow visibility rules.
-- The count, red bell state and dropdown contents are based only on visible, module-enabled workflow items.
+- Coachings with status `Wachten op akkoord` / `verzonden_ter_akkoord` are added as approval ToDo's only for the coached person who must give approval.
+- The count, red bell state and dropdown contents are based only on visible, module-enabled workflow items that are personally assigned to or directly linked to the active user.
+- Super Admins, management users and Verkoopleiders do not see header ToDo's for other users, even when those items are visible in Dashboard, Begeleidingen, Planning or management scope.
 - Hidden surprise coachings do not trigger the red bell, count or dropdown for representatives.
 - The dropdown opens existing item routes through the same `coachingOpenHref` logic for Begeleidingen; undefined module item routes are not expanded.
 - Clicking a dropdown item closes the dropdown.
@@ -49,7 +50,7 @@ Validation performed:
 Remaining checks or known limitations:
 
 - Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
-- The existing codebase currently contains both `wacht_op_akkoord` and `verzonden_ter_akkoord` as approval-like statuses; the header bell treats both as approval ToDo statuses without changing lifecycle names.
+- The existing codebase currently contains both `wacht_op_akkoord` and `verzonden_ter_akkoord` as approval-like statuses; the header bell treats both as personal approval ToDo statuses for the coached person without changing lifecycle names.
 - The existing detail approval button is implemented for the current `verzonden_ter_akkoord` flow. Legacy `wacht_op_akkoord` items still open the existing Begeleiding detail/read flow and remain visible as approval ToDo's until the existing status/approval data changes.
 - Contactmomenten, Hulpaanvragen, Retrainingen and Salestrainingen still keep their existing Planning/Dashboard routes only; no undefined workflow was expanded.
 

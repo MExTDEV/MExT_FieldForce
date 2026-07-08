@@ -1,6 +1,7 @@
 import { coachingOpenHref } from "@/lib/coaching/access";
 import {
   completedCoachingStatuses,
+  isCurrentUserCoachingTarget,
   localDateKey,
 } from "@/lib/coaching/visibility";
 import {
@@ -198,11 +199,30 @@ export function buildHeaderTodoItems(input: BuildDashboardAttentionInput): Heade
   const today = input.today ?? localDateKey();
   const representativeName = input.representativeName ?? (() => "Onbekend");
   const ownerName = input.ownerName ?? (() => undefined);
-  const executionTodos = buildDashboardAttentionSections(input).todo.map((item) => ({
+  const personalInput = {
+    ...input,
+    interventions: (input.interventions ?? []).filter((item) =>
+      isCurrentUserCoachingTarget(input.currentUser, item)
+    ),
+    contactMoments: (input.contactMoments ?? []).filter((item) =>
+      isCurrentUserLinkedToRepresentative(input.currentUser, item.representativeId)
+    ),
+    helpRequests: (input.helpRequests ?? []).filter((item) =>
+      isCurrentUserLinkedToRepresentative(input.currentUser, item.representativeId) ||
+      isCurrentUserLinkedToRepresentative(input.currentUser, item.requesterId)
+    ),
+    retrainings: (input.retrainings ?? []).filter((item) =>
+      isCurrentUserLinkedToRepresentative(input.currentUser, item.representativeId)
+    ),
+    salesTrainings: (input.salesTrainings ?? []).filter((item) =>
+      item.participantIds.some((id) => isCurrentUserLinkedToRepresentative(input.currentUser, id))
+    ),
+  };
+  const executionTodos = buildDashboardAttentionSections(personalInput).todo.map((item) => ({
     ...item,
     todoKind: "execution" as const,
   }));
-  const approvalTodos = (input.interventions ?? []).flatMap((item): HeaderTodoItem[] => {
+  const approvalTodos = (personalInput.interventions ?? []).flatMap((item): HeaderTodoItem[] => {
     if (
       item.deletedAt ||
       item.approvedByRepAt ||
@@ -283,4 +303,11 @@ function formatTimeLabel(startTime?: string, endTime?: string) {
   if (startTime && endTime) return `${startTime}-${endTime}`;
   if (startTime) return startTime;
   return "Hele dag";
+}
+
+function isCurrentUserLinkedToRepresentative(currentUser: MockUser, representativeId?: string) {
+  return Boolean(
+    representativeId &&
+    [currentUser.id, currentUser.representativeId].filter(Boolean).includes(representativeId)
+  );
 }

@@ -338,17 +338,18 @@ The global header contains a compact ToDo bell.
 
 Purpose:
 
-- show whether the active user has visible open ToDo's;
+- show whether the active user has personal visible open ToDo's;
 - provide a compact dropdown with the same visible daily workflow items used by Dashboard `Aandacht vereist` and `/taken-vandaag`;
 - add approval ToDo's for visible Begeleidingen that are waiting for the coached person's approval.
 
 Business rules:
 
 - The bell must not own or duplicate workflow logic.
-- The bell uses existing visible workflow data after effective permission, module, country, team and user-scope filtering.
-- The red bell state and count may only be based on items visible to the active user.
+- The bell uses existing visible workflow data after effective permission, module, country, team and user-scope filtering, and then narrows it to items personally assigned to or directly linked to the active user.
+- The red bell state and count may only be based on personal items visible to the active user.
+- Super Admins, management users and Verkoopleiders must not see header ToDo's for other users through their broader scope.
 - Hidden surprise coachings must not be revealed through bell colour, count or dropdown content.
-- `Wachten op akkoord` / `verzonden_ter_akkoord` counts as an approval ToDo for the header bell while the existing approval data still indicates that approval is needed.
+- `Wachten op akkoord` / `verzonden_ter_akkoord` counts as an approval ToDo for the header bell only for the coached person while the existing approval data still indicates that approval is needed.
 - Clicking a ToDo row opens the existing source route or detail flow, such as the Begeleiding form/detail route through the shared coaching open helper.
 - Undefined workflows for Contactmomenten, Retrainingen, Salestrainingen and Hulpaanvragen must not be expanded from the header.
 

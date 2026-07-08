@@ -29,6 +29,7 @@ const otherRepresentative = user("other-rep-user", "REPRESENTATIVE", "BE", "rep-
 const adminBe = user("admin-be", "ADMIN", "BE");
 const salesManagerBe = { ...user("sales-manager", "SALES_MANAGER", "BE"), countryAccess: ["BE"] as MockUser["country"][] };
 const salesManagerWithoutScope = { ...user("sales-manager-empty", "SALES_MANAGER", "BE"), countryAccess: [] as MockUser["country"][] };
+const superAdmin = user("super-admin", "SUPER_ADMIN", "BE");
 
 function coaching(
   id: string,
@@ -60,20 +61,40 @@ function coaching(
 }
 
 const completedOnly = buildHeaderTodoItems({
-  currentUser: leader,
+  currentUser: representative,
   today: "2026-07-08",
   interventions: [coaching("completed", "voltooid")],
 });
 assert.equal(completedOnly.length, 0, "Volledig uitgevoerde items zonder actie tellen niet als open ToDo.");
 
 const executionTodo = buildHeaderTodoItems({
-  currentUser: leader,
+  currentUser: representative,
   today: "2026-07-08",
-  interventions: [coaching("planned", "gepland")],
+  interventions: visibleCoachings(representative, [coaching("planned", "gepland")]),
 });
 assert.equal(executionTodo.length, 1);
 assert.equal(executionTodo[0].todoKind, "execution");
-assert.equal(executionTodo[0].href, "/begeleidingen/planned");
+assert.equal(executionTodo[0].href, undefined);
+
+assert.equal(
+  buildHeaderTodoItems({
+    currentUser: leader,
+    today: "2026-07-08",
+    interventions: visibleCoachings(leader, [coaching("planned-for-rep", "gepland")]),
+  }).length,
+  0,
+  "Een verkoopleider ziet geen header-ToDo's van zijn vertegenwoordigers.",
+);
+
+assert.equal(
+  buildHeaderTodoItems({
+    currentUser: superAdmin,
+    today: "2026-07-08",
+    interventions: visibleCoachings(superAdmin, [coaching("planned-for-yoni", "gepland")]),
+  }).length,
+  0,
+  "Een Super Admin ziet in de header geen ToDo's van andere gebruikers.",
+);
 
 const hiddenSurprise = visibleCoachings(representative, [
   coaching("surprise", "gepland", "rep-1", "BE", false),
@@ -118,8 +139,8 @@ assert.deepEqual(
     today: "2026-07-08",
     interventions: visibleCoachings(adminBe, [pendingBe, pendingNl]),
   }).map((item) => item.recordId),
-  ["pending-be"],
-  "Managementrollen zien akkoord-ToDo's alleen binnen bestaande scope.",
+  [],
+  "Managementrollen zien in de header geen akkoord-ToDo's van andere gebruikers.",
 );
 assert.equal(visibleCoachings(salesManagerBe, [pendingBe]).length, 1);
 assert.equal(visibleCoachings(salesManagerWithoutScope, [pendingBe]).length, 0);
@@ -142,4 +163,4 @@ assert.equal(shouldAnimateTodoBell(1, false), true);
 assert.equal(shouldAnimateTodoBell(0, false), false);
 assert.equal(shouldAnimateTodoBell(1, true), false);
 
-console.log("Header ToDo-bel volgt bestaande visible workflowdata en akkoord-ToDo regels.");
+console.log("Header ToDo-bel toont alleen persoonlijke visible workflow-ToDo's en akkoord-ToDo regels.");
