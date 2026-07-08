@@ -214,6 +214,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
     permissions: permissions(
       "moduleDashboard",
       "moduleAgenda",
+      "modulePreparation",
       "moduleMyTeam",
       "moduleReporting",
       "modulePdfExport",

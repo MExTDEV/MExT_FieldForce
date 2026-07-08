@@ -94,18 +94,30 @@ import {
   canShowPlannedCoachingIndicator,
   type MyTeamMember,
 } from "@/lib/my-team";
-import type { CoachingAppointment, CoachingDossier, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
+import type { CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
   coachingOpenHref,
 } from "@/lib/coaching/access";
 import {
+  buildCoachingScopeGroups,
+  type CoachingScopeCountryGroup,
+  type CoachingScopeGroupItem,
+  type CoachingScopeTeamGroup,
+} from "@/lib/coaching/scope-groups";
+import {
   canOpenCoachingDetail,
   completedCoachingStatuses,
   dedupeById,
   localDateKey,
 } from "@/lib/coaching/visibility";
+import {
+  actionPointScopeLabel,
+  canAccessActionPointsOverview,
+  splitActionPointSections,
+  type ActionPointSection,
+} from "@/lib/action-points/visibility";
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user, loading: sessionLoading, error: sessionError } = useSession();
@@ -161,7 +173,12 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
     }
     return <RepresentativesList />;
   }
-  if (path === "actiepunten") return <ActionPoints />;
+  if (path === "actiepunten") {
+    if (!can(user, "modulePreparation") || !can(user, "menu.coaching.actionPoints")) {
+      return <EmptyState title="Geen toegang" description="Actiepunten zijn niet beschikbaar voor jouw huidige rechten." />;
+    }
+    return <ActionPoints />;
+  }
   if (path === "planning") return <Planning />;
   if (segments[0] === "beheer") return <Management section={segments[1] ?? "gebruikers"} />;
   if (path === "begeleidingen") {
@@ -2281,6 +2298,23 @@ function formatPercentage(value?: number) {
   return value === undefined ? "-" : `${Math.round(value)}%`;
 }
 
+type InterventionListRow = CoachingScopeGroupItem & {
+  type: string;
+  date: string;
+  owner: string;
+  status: string;
+  editable: boolean;
+  plannedDate: string;
+  startTime: string;
+  endTime: string;
+  executionAt: number;
+  outlookSyncStatus?: CoachingIntervention["outlookSyncStatus"];
+  syncError?: string;
+  detailHref?: string;
+  openLabel: string;
+  editPlanningHref?: string;
+};
+
 function InterventionList({ kind }: { kind: string }) {
   const { user, managedUsers } = useSession();
   const { visibleInterventions } = useWorkflow();
@@ -2295,7 +2329,7 @@ function InterventionList({ kind }: { kind: string }) {
   const current = labels[kind];
   const Icon = current.icon;
   const todayKey = localDateKey();
-  const historicalRows = kind === "begeleidingen"
+  const historicalRows: InterventionListRow[] = kind === "begeleidingen"
     ? performanceDataset.historicalCoachings
       .filter((item) => {
         const representative = representatives.find((person) => person.id === item.representativeId);
@@ -2307,6 +2341,10 @@ function InterventionList({ kind }: { kind: string }) {
           id: item.id,
           type: "begeleiding",
           person: `${representative.firstName} ${representative.lastName}`,
+          representativeId: representative.id,
+          country: representative.country,
+          teamId: representative.teamId,
+          team: representative.team,
           date: formatShortDate(item.date),
           owner: item.ownerName,
           status: item.status,
@@ -2323,9 +2361,14 @@ function InterventionList({ kind }: { kind: string }) {
         };
       })
     : [];
-  const workflowRows = kind === "begeleidingen"
+  const workflowRows: InterventionListRow[] = kind === "begeleidingen"
     ? visibleInterventions(user).map((item) => {
       const representative = representatives.find((person) => person.id === item.representativeId);
+      const personName = representative
+        ? `${representative.firstName} ${representative.lastName}`
+        : item.subject
+          ? `${item.subject.firstName} ${item.subject.lastName}`
+          : "Onbekend";
       const openHref = coachingOpenHref(user, item, todayKey);
       const editPlanningHref = canEditFutureCoachingPlanning(user, item, todayKey)
         ? `/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`
@@ -2342,7 +2385,11 @@ function InterventionList({ kind }: { kind: string }) {
       return {
         id: item.id,
         type: "begeleiding",
-        person: representative ? `${representative.firstName} ${representative.lastName}` : item.subject ? `${item.subject.firstName} ${item.subject.lastName}` : "Onbekend",
+        person: personName,
+        representativeId: representative?.id ?? item.subject?.id ?? item.representativeId,
+        country: item.country,
+        teamId: representative?.teamId ?? item.subject?.teamId ?? item.teamId,
+        team: representative?.team ?? item.subject?.team ?? "Geen team",
         date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
         owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
@@ -2360,7 +2407,7 @@ function InterventionList({ kind }: { kind: string }) {
     })
     : [];
   const workflowIds = new Set(workflowRows.map((item) => item.id));
-  const allRows = dedupeById([
+  const allRows: InterventionListRow[] = dedupeById([
     ...workflowRows,
     ...historicalRows.filter((item) => !workflowIds.has(item.id)),
   ]);
@@ -2382,7 +2429,7 @@ function InterventionList({ kind }: { kind: string }) {
     .filter((item) => completedCoachingStatuses.has(item.status))
     .sort((left, right) => right.executionAt - left.executionAt);
 
-  function renderRows(items: typeof allRows, emptyMessage: string) {
+  function renderRows(items: InterventionListRow[], emptyMessage: string) {
     if (items.length === 0) {
       return (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
@@ -2391,30 +2438,112 @@ function InterventionList({ kind }: { kind: string }) {
       );
     }
 
+    const scopeGroups = buildCoachingScopeGroups(user, items);
+    if (scopeGroups.enabled) {
+      if (scopeGroups.showCountry) {
+        return (
+          <div className="space-y-4">
+            {scopeGroups.countries.map((country) => (
+              <section key={country.id} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-white text-brand-700 shadow-sm">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="eyebrow">Land</p>
+                    <h3 className="truncate text-base font-bold text-slate-950">{countryName(country.id)}</h3>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm">
+                    {countCountryItems(country)} {countCountryItems(country) === 1 ? "begeleiding" : "begeleidingen"}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {country.teams.map((team) => renderTeamGroup(team))}
+                </div>
+              </section>
+            ))}
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-3">
+          {scopeGroups.countries.flatMap((country) => country.teams).map((team) => renderTeamGroup(team))}
+        </div>
+      );
+    }
+
     return (
       <div className="grid gap-4 lg:grid-cols-2">
         {items.map((item) => (
-          <article key={item.id} className="card p-5">
-            <div className="flex items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div>
-              <div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{item.person}</p><p className="mt-1 text-sm text-slate-500">{item.date} · {item.owner}</p></div>
-              <StatusBadge status={item.status} />
-            </div>
-            {item.outlookSyncStatus && (
-              <div className="mt-3"><InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} /></div>
-            )}
-            <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Begeleidingsdossier</span>
-              {item.detailHref ? (
-                <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">{item.openLabel}</Link>
-              ) : (
-                <span className="text-sm font-semibold text-slate-400">{item.openLabel}</span>
-              )}
-            </div>
-          </article>
+          renderInterventionCard(item)
         ))}
       </div>
     );
+  }
+
+  function renderTeamGroup(team: CoachingScopeTeamGroup<InterventionListRow>) {
+    const count = countTeamItems(team);
+    return (
+      <section key={team.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center gap-2.5 bg-white px-3 py-3 sm:px-4">
+          <UsersRound className="h-4 w-4 text-brand-700" />
+          <div className="min-w-0 flex-1">
+            <p className="eyebrow">Team</p>
+            <h4 className="truncate text-sm font-bold text-slate-900">{team.name}</h4>
+          </div>
+          <span className="text-xs font-semibold text-slate-500">
+            {count} {count === 1 ? "begeleiding" : "begeleidingen"}
+          </span>
+        </div>
+        <div className="space-y-4 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
+          {team.users.map((userGroup) => (
+            <section key={userGroup.id} className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold text-slate-900">{userGroup.name}</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                  {userGroup.items.length}
+                </span>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {userGroup.items.map((item) => renderInterventionCard(item))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderInterventionCard(item: InterventionListRow) {
+    return (
+      <article key={item.id} className="card p-5">
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div>
+          <div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{item.person}</p><p className="mt-1 text-sm text-slate-500">{item.date} · {item.owner}</p></div>
+          <StatusBadge status={item.status} />
+        </div>
+        {item.outlookSyncStatus && (
+          <div className="mt-3"><InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} /></div>
+        )}
+        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Begeleidingsdossier</span>
+          {item.detailHref ? (
+            <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">{item.openLabel}</Link>
+          ) : (
+            <span className="text-sm font-semibold text-slate-400">{item.openLabel}</span>
+          )}
+        </div>
+      </article>
+    );
+  }
+
+  function countTeamItems(team: CoachingScopeTeamGroup<InterventionListRow>) {
+    return team.users.reduce((total, userGroup) => total + userGroup.items.length, 0);
+  }
+
+  function countCountryItems(country: CoachingScopeCountryGroup<InterventionListRow>) {
+    return country.teams.reduce((total, team) => total + countTeamItems(team), 0);
   }
 
   return (
@@ -2520,33 +2649,108 @@ function ActionPoints() {
 
 function ScopedActionPoints() {
   const { user, managedUsers } = useSession();
-  const canManage = user.role !== "REPRESENTATIVE";
+  const { modules } = useModules();
   const [definitions, setDefinitions] = useState<ScopedActionDefinition[]>([]);
-  const [editing, setEditing] = useState(false);
-  const [overrideFor, setOverrideFor] = useState<ScopedActionDefinition>();
-  const [overrideDraft, setOverrideDraft] = useState({ scope: "COUNTRY" as "COUNTRY" | "TEAM" | "USER", country: user.country, teamId: user.teamId ?? "", userId: "", targetValue: "" });
   const [error, setError] = useState<string>();
-  const [draft, setDraft] = useState({ title: "", description: "", tipsAndTricks: "", targetValue: "", priority: "normaal" as "laag" | "normaal" | "hoog", scope: (user.role === "SALES_LEADER" ? "TEAM" : "COUNTRY") as "GLOBAL" | "COUNTRY" | "TEAM" | "USER", country: user.country, teamId: user.teamId ?? "", userId: "", validFrom: new Date().toISOString().slice(0, 10), validUntil: "" });
-  const refresh = () => fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" }).then(async (response) => { const payload = await response.json() as { definitions?: ScopedActionDefinition[]; error?: string }; if (!response.ok) throw new Error(payload.error); setDefinitions(payload.definitions ?? []); });
-  useEffect(() => { void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : "Actiepunten konden niet worden geladen.")); }, [user.id]);
-  async function save() {
-    setError(undefined);
-    const response = await fetch("/api/action-definitions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, actorId: user.id, targetValue: draft.targetValue === "" ? undefined : draft.targetValue }) });
-    const payload = await response.json() as { error?: string };
-    if (!response.ok) { setError(payload.error ?? "Actiepunt kon niet worden opgeslagen."); return; }
-    setEditing(false); await refresh();
+  const allowed = canAccessActionPointsOverview(user, modules);
+  const sections = useMemo(() => splitActionPointSections(definitions), [definitions]);
+  const refresh = useCallback(async () => {
+    const response = await fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" });
+    const payload = await response.json() as { definitions?: ScopedActionDefinition[]; error?: string };
+    if (!response.ok) throw new Error(payload.error);
+    setDefinitions(payload.definitions ?? []);
+  }, [user.id]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : "Actiepunten konden niet worden geladen."));
+  }, [allowed, refresh]);
+
+  if (!allowed) {
+    return <EmptyState title="Geen toegang" description="Actiepunten zijn niet actief of niet toegestaan voor jouw huidige rechten." />;
   }
-  async function remove(id: string) { await fetch("/api/action-definitions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actorId: user.id, id }) }); await refresh(); }
-  async function saveOverride() { if (!overrideFor) return; const response = await fetch("/api/action-definitions/target-override", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...overrideDraft, actorId: user.id, actionDefinitionId: overrideFor.id }) }); const payload = await response.json() as { error?: string }; if (!response.ok) { setError(payload.error ?? "Targetafwijking kon niet worden opgeslagen."); return; } setOverrideFor(undefined); }
-  const teamOptions = [...new Map(managedUsers.filter((item) => item.teamId).map((item) => [item.teamId, item.teamName])).entries()];
-  const priorityTone = (priority: string) => priority === "HIGH" || priority === "hoog" ? "bg-rose-100 text-rose-800" : priority === "LOW" || priority === "laag" ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-800";
+
   return <div className="space-y-6">
-    <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Beheer globale, land-, team- en persoonsgebonden actiepunten met overerving en geldigheid." actions={canManage ? <button type="button" className="btn-primary" onClick={() => setEditing(true)}><Plus className="h-4 w-4" /> Actiepunt</button> : undefined} />
+    <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Open en afgesloten opvolgacties binnen jouw globale, land-, team- of persoonlijke scope." />
     {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
-    <div className="grid gap-4 lg:grid-cols-2">{definitions.map((item) => <article key={item.id} className="card p-5"><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap gap-2"><span className="rounded-full bg-brand-50 px-2 py-1 text-[10px] font-bold text-brand-800">{item.scope}</span><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${priorityTone(item.priority)}`}>{item.priority}</span></div><h2 className="mt-3 font-bold text-slate-950">{item.title}</h2><p className="mt-1 text-sm text-slate-500">{item.description}</p></div><p className="text-right text-sm font-bold text-brand-800">{item.targetValue === undefined ? "Geen target" : `Target ${item.targetValue}`}</p></div><p className="mt-4 text-xs text-slate-500">Geldig {formatShortDate(item.validFrom)} t/m {item.validUntil ? formatShortDate(item.validUntil) : "onbepaald"}</p>{canManage && <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3"><button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOverrideFor(item)}>Targetafwijking</button><button type="button" className="btn-secondary py-2 text-xs text-rose-700" onClick={() => void remove(item.id)}>Deactiveren</button></div>}</article>)}</div>
-    {editing && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">Nieuw actiepunt</h2><button type="button" onClick={() => setEditing(false)}>✕</button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><TextField label="Titel *" value={draft.title} onChange={(title) => setDraft({ ...draft, title })} /><TextField label="Target (optioneel)" type="number" value={draft.targetValue} onChange={(targetValue) => setDraft({ ...draft, targetValue })} /><label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Prioriteit *</span><select className="field" value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as typeof draft.priority })}><option value="hoog">Hoog</option><option value="normaal">Normaal</option><option value="laag">Laag</option></select></label><label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Niveau</span><select className="field" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as typeof draft.scope })}>{["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role) && <option value="GLOBAL">Globaal</option>}<option value="COUNTRY">Land</option><option value="TEAM">Team</option><option value="USER">Gebruiker</option></select></label><TextField label="VAN *" type="date" value={draft.validFrom} onChange={(validFrom) => setDraft({ ...draft, validFrom })} /><TextField label="TOT (optioneel)" type="date" value={draft.validUntil} onChange={(validUntil) => setDraft({ ...draft, validUntil })} />{draft.scope === "TEAM" && <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Team</span><select className="field" value={draft.teamId} onChange={(event) => setDraft({ ...draft, teamId: event.target.value })}><option value="">Selecteer</option>{teamOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>}{draft.scope === "USER" && <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Gebruiker</span><select className="field" value={draft.userId} onChange={(event) => { const selected = managedUsers.find((item) => item.id === event.target.value); setDraft({ ...draft, userId: event.target.value, teamId: selected?.teamId ?? "", country: selected?.country ?? user.country }); }}><option value="">Selecteer</option>{managedUsers.filter((item) => item.active && ["REPRESENTATIVE", "SALES_LEADER"].includes(item.role)).map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select></label>}<div className="sm:col-span-2"><label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Omschrijving</span><textarea className="field min-h-20 py-3" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label></div><div className="sm:col-span-2"><RichTextEditor label="Tips & Tricks *" value={draft.tipsAndTricks} disabled={false} onChange={(tipsAndTricks) => setDraft({ ...draft, tipsAndTricks })} /></div></div><div className="mt-5 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setEditing(false)}>Annuleren</button><button type="button" className="btn-primary" onClick={() => void save()}>Opslaan</button></div></div></div>}
-    {overrideFor && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5"><h2 className="text-xl font-bold">Targetafwijking · {overrideFor.title}</h2><div className="mt-4 grid gap-4"><label><span className="mb-2 block text-xs font-bold uppercase text-slate-500">Niveau</span><select className="field" value={overrideDraft.scope} onChange={(event) => setOverrideDraft({ ...overrideDraft, scope: event.target.value as typeof overrideDraft.scope })}><option value="COUNTRY">Land</option><option value="TEAM">Team</option><option value="USER">Gebruiker</option></select></label>{overrideDraft.scope === "TEAM" && <select className="field" value={overrideDraft.teamId} onChange={(event) => setOverrideDraft({ ...overrideDraft, teamId: event.target.value })}><option value="">Selecteer team</option>{teamOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>}{overrideDraft.scope === "USER" && <select className="field" value={overrideDraft.userId} onChange={(event) => { const selected = managedUsers.find((item) => item.id === event.target.value); setOverrideDraft({ ...overrideDraft, userId: event.target.value, teamId: selected?.teamId ?? "", country: selected?.country ?? user.country }); }}><option value="">Selecteer gebruiker</option>{managedUsers.filter((item) => ["REPRESENTATIVE", "SALES_LEADER"].includes(item.role)).map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select>}<TextField label="Nieuwe target" type="number" value={overrideDraft.targetValue} onChange={(targetValue) => setOverrideDraft({ ...overrideDraft, targetValue })} /></div><div className="mt-5 flex justify-end gap-2"><button className="btn-secondary" onClick={() => setOverrideFor(undefined)}>Annuleren</button><button className="btn-primary" onClick={() => void saveOverride()}>Opslaan</button></div></div></div>}
+    {sections.map((section) => renderActionPointSection(section))}
   </div>;
+
+  function renderActionPointSection(section: ActionPointSection) {
+    return (
+      <section key={section.id} className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow mb-1">{section.id === "open" ? "Actieve opvolging" : "Historiek"}</p>
+            <h2 className="text-xl font-bold text-slate-950">{section.title}</h2>
+          </div>
+          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{section.items.length}</span>
+        </div>
+        {section.items.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+            {section.emptyMessage}
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {section.items.map((item) => renderActionPointCard(item))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderActionPointCard(item: ScopedActionDefinition) {
+    const scopeLabel = actionPointScopeLabel(item.scope);
+    return (
+      <article key={item.id} className="card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{scopeLabel}</span>
+              <StatusBadge status={item.active ? "open" : "afgesloten"} />
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{priorityLabel(item.priority)}</span>
+            </div>
+            <h3 className="mt-3 text-base font-bold text-slate-950">{item.title}</h3>
+          </div>
+          {item.targetValue !== undefined && <p className="text-sm font-bold text-brand-800">Target {item.targetValue}</p>}
+        </div>
+        {item.description.trim() && <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>}
+        <div className="mt-5 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+          <ReadOnlyField label={scopeLabel} value={actionPointScopeDetail(item)} />
+          <ReadOnlyField label="Geldigheid" value={`${formatShortDate(item.validFrom)} t/m ${item.validUntil ? formatShortDate(item.validUntil) : "onbepaald"}`} />
+        </div>
+      </article>
+    );
+  }
+
+  function actionPointScopeDetail(item: ScopedActionDefinition) {
+    if (item.scope === "GLOBAL") return "Alle toegestane gebruikers";
+    if (item.scope === "COUNTRY") return item.country ? countryName(item.country) : "Land niet ingevuld";
+    if (item.scope === "TEAM") {
+      return managedUsers.find((member) => member.teamId === item.teamId)?.teamName ?? item.teamId ?? "Team niet ingevuld";
+    }
+    const person = managedUsers.find((member) => member.id === item.userId || member.representativeId === item.userId);
+    return person ? `${person.firstName} ${person.lastName}` : item.userId ?? "Gebruiker niet ingevuld";
+  }
+}
+
+function scopeBadgeTone(scope: ScopedActionDefinition["scope"]) {
+  if (scope === "GLOBAL") return "bg-slate-100 text-slate-700";
+  if (scope === "COUNTRY") return "bg-blue-100 text-blue-800";
+  if (scope === "TEAM") return "bg-brand-50 text-brand-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+function priorityTone(priority: ScopedActionDefinition["priority"]) {
+  if (priority === "hoog") return "bg-rose-100 text-rose-800";
+  if (priority === "laag") return "bg-slate-100 text-slate-700";
+  return "bg-amber-100 text-amber-800";
+}
+
+function priorityLabel(priority: ScopedActionDefinition["priority"]) {
+  if (priority === "hoog") return "Hoog";
+  if (priority === "laag") return "Laag";
+  return "Normaal";
 }
 
 function LegacyActionPoints() {

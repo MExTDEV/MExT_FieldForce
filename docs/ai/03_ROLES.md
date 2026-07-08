@@ -434,19 +434,24 @@ The exact inclusion rules still need to be specified.
 - assigned country scope
 - view mode by default for representative coachings
 - can plan and execute coachings on Verkoopleiders within assigned country scope when configured
-- grouped by team and user when only one country is available
+- grouped by country, team and user when multiple countries
+- country grouping hidden when only one country is available
 
 ### Admin
 
 - assigned country scope
 - view mode by default for representative coachings
 - can plan and execute coachings on Verkoopleiders within assigned country scope when explicitly configured
+- grouped by country, team and user when multiple countries
+- country grouping hidden when only one country is available
 
 ### Super Admin
 
 - all coachings
 - can open coachings like a Verkoopleider
 - can plan and execute coachings on Verkoopleiders across all countries and teams
+- grouped by country, team and user
+- country grouping is always visible
 
 ---
 
@@ -487,6 +492,12 @@ Action points exist at multiple scope levels:
 - country
 - team
 - individual user
+
+Access to the Actiepunten overview also requires:
+
+- active `ACTIEPUNTEN` module configuration
+- effective `modulePreparation`
+- effective `menu.coaching.actionPoints`
 
 Visibility rules:
 

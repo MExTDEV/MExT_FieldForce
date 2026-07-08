@@ -357,6 +357,8 @@ export type ScopedActionDefinition = {
   active: boolean;
   validFrom: string;
   validUntil?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type CoachingSimpleScore = {

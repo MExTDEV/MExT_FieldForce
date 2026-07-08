@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/server/db";
+import {
+  canViewScopedActionDefinition,
+  visibleActionPointCountries,
+} from "@/lib/action-points/visibility";
 import type { Country, MockUser, ScopedActionDefinition } from "@/lib/types";
-import type { ActionScope, Priority } from "@prisma/client";
+import type { ActionScope, Prisma, Priority } from "@prisma/client";
 import { sanitizeRichText } from "@/lib/rich-text";
-import { actorCanAccessCountry, actorCountryWhere } from "@/lib/server/authenticated-user";
+import { actorCanAccessCountry } from "@/lib/server/authenticated-user";
 
 export async function listEffectiveActionDefinitions(userId: string, date: Date): Promise<ScopedActionDefinition[]> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, country: true, teamId: true } });
@@ -31,17 +35,24 @@ export async function listEffectiveActionDefinitions(userId: string, date: Date)
 }
 
 export async function listVisibleActionDefinitions(actor: MockUser) {
-  return prisma.actionDefinition.findMany({
+  const definitions = await prisma.actionDefinition.findMany({
     where: {
-      deletedAt: null,
-      ...(["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ? {} : actor.role === "SALES_MANAGER" ? {
-        OR: [{ scope: "GLOBAL" }, actorCountryWhere(actor), ...(actor.teamId ? [{ teamId: actor.teamId }] : []), { userId: actor.id }],
-      } : {
-        OR: [{ scope: "GLOBAL" }, { country: actor.country }, ...(actor.teamId ? [{ teamId: actor.teamId }] : []), { userId: actor.id }],
-      }),
+      AND: [
+        { deletedAt: null },
+        actionDefinitionVisibilityWhere(actor),
+      ],
     },
     orderBy: [{ active: "desc" }, { priority: "desc" }, { title: "asc" }],
   });
+  return definitions.filter((definition) =>
+    canViewScopedActionDefinition(actor, {
+      scope: definition.scope,
+      country: definition.country ?? undefined,
+      teamId: definition.teamId ?? undefined,
+      userId: definition.userId ?? undefined,
+      active: definition.active,
+    })
+  );
 }
 
 export async function saveActionDefinition(actor: MockUser, input: {
@@ -88,3 +99,45 @@ export function toPriority(value: "laag" | "normaal" | "hoog"): Priority {
   return value === "hoog" ? "HIGH" : value === "laag" ? "LOW" : "NORMAL";
 }
 export function fromPriority(value: Priority) { return value === "HIGH" ? "hoog" : value === "LOW" ? "laag" : "normaal"; }
+
+function actionDefinitionVisibilityWhere(actor: MockUser): Prisma.ActionDefinitionWhereInput {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return {};
+
+  if (actor.role === "REPRESENTATIVE") {
+    return {
+      OR: [
+        { scope: "GLOBAL" },
+        { scope: "USER", userId: { in: [actor.id, actor.representativeId].filter(Boolean) as string[] } },
+      ],
+    };
+  }
+
+  if (actor.role === "SALES_LEADER") {
+    return {
+      OR: [
+        { scope: "GLOBAL" },
+        { scope: "COUNTRY", country: actor.country },
+        ...(actor.teamId
+          ? [
+            { scope: "TEAM" as const, teamId: actor.teamId },
+            { scope: "USER" as const, teamId: actor.teamId },
+          ]
+          : []),
+        { scope: "USER", userId: actor.id },
+      ],
+    };
+  }
+
+  const countries = visibleActionPointCountries(actor);
+  if (countries) {
+    return {
+      OR: [
+        { scope: "GLOBAL" },
+        { country: { in: countries } },
+        { scope: "USER", userId: actor.id },
+      ],
+    };
+  }
+
+  return {};
+}

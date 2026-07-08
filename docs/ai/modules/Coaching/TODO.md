@@ -386,23 +386,34 @@ Additional required rule:
 
 Priority: Medium
 
-Status: Future / Restpunt after 2026-07-07
+Status: Completed on 2026-07-08
 
-Reason:
+Implemented changes:
 
-- The current Begeleidingen card grid can safely show scope-filtered data, but grouping by country -> team -> user requires UI restructuring of the overview sections.
-- This was not forced in the role-visibility task to avoid introducing a larger layout change alongside access-control changes.
-
-Required behaviour:
-
-- Country Manager, Sales Manager, Admin and Super Admin see coachings grouped by:
+- Begeleidingen keeps the existing Today, Future and History main sections visible, including their empty states.
+- Country Manager, Sales Manager, Admin and Super Admin overview rows are grouped after the existing coaching visibility and scope filtering.
+- Multi-country management users see:
   - country
   - team
   - user
-
-- If the user has access to only one country, hide the country grouping and show:
+- Management users with access to one country start directly at:
   - team
   - user
+- Super Admin always keeps country -> team -> user grouping.
+- Verkoopleider and Vertegenwoordiger keep the existing non-management card grid.
+- Empty management subgroups are not rendered because groups are built only from visible coaching rows.
+- Existing card actions, badges, Outlook status, future planning edit links and read-only management links were preserved.
+
+Validation performed:
+
+- `npm run test:coaching-groups`
+- `npm run test:coaching-visibility`
+- `npm run test:planning-items`
+- `npm run test:dashboard-attention`
+- `npm run test:my-team-planned`
+- `npm run test:menu-rights`
+- `npm run typecheck`
+- `npm run lint`
 
 Purpose:
 
@@ -514,21 +525,26 @@ They must not be able to:
 
 Priority: High
 
-Current status:
+Status: Completed on 2026-07-08
 
-- The Actiepunten page exists visually.
-- The functional implementation is not yet completed.
+Implemented changes:
 
-Required change:
+- The Actiepunten page is now a read-only overview.
+- The overview uses existing `ActionDefinition` data for global, country, team and user-scoped action points.
+- The page no longer exposes create, deactivate or target-override actions.
+- Direct page access requires the active Actiepunten module and effective `modulePreparation` plus `menu.coaching.actionPoints` permissions.
+- The action-definition APIs also enforce the active module and effective permissions before returning data.
+- No new data model, status, detail workflow, approval workflow, expiry workflow or reassignment workflow was added.
 
-- Build the functional action point overview.
+Validation performed:
 
-The overview must show action points for:
+- `npm run test:action-points-overview`
+- `npm run typecheck`
 
-- global scope
-- country scope
-- team scope
-- individual user scope
+Known limitations:
+
+- The overview uses `active` as the current Open/Afgesloten split because no final close workflow or closedAt field has been defined yet.
+- Action points from concrete coaching executions remain available through the existing coaching and preparation surfaces; this overview does not invent a separate detail or lifecycle workflow for them.
 
 ---
 
@@ -536,11 +552,16 @@ The overview must show action points for:
 
 Priority: High
 
-Required change:
+Status: Completed on 2026-07-08
+
+Implemented changes:
 
 - Show action points in two sections:
   - Open
   - Afgesloten
+- Both sections keep a compact empty state when they contain no visible action points.
+- Open action points sort by validity end date first, then validity start date and id.
+- Afgesloten action points sort by update date first, then validity dates and id.
 
 Purpose:
 
@@ -552,11 +573,13 @@ Purpose:
 
 Priority: Medium
 
-Required change:
+Status: Completed on 2026-07-08
 
-- Each action point must display a badge showing its type.
+Implemented changes:
 
-Required badges:
+- Each visible action point displays a scope/type badge.
+
+Implemented badges:
 
 - Globaal
 - Land
@@ -573,6 +596,8 @@ Purpose:
 
 Priority: Medium
 
+Status: Open / Not implemented in the read-only overview task
+
 Required change:
 
 - Clicking an action point must open the action point detail view.
@@ -581,19 +606,31 @@ Open question:
 
 - The exact fields and actions in the detail view still need to be discussed with the business.
 
+Current limitation:
+
+- The first functional overview intentionally does not add click behaviour or business actions.
+
 ---
 
 ## Visibility Rules
 
 Priority: High
 
-Required change:
+Status: Completed on 2026-07-08
 
-- Implement role-based and scope-based visibility.
+Implemented changes:
+
+- Role-based and scope-based visibility is implemented in a shared action-point visibility helper.
+- Server routes filter action definitions before returning data to the client.
+- The sidebar, app switcher and direct `/actiepunten` route respect active module state, role defaults and user-level overrides.
+- Country Manager role defaults now include `modulePreparation`, matching the documented requirement that Country Managers can follow up action points within country scope.
+- Representative visibility is restricted to global action points and own personal action points; team and country action points are not exposed to representatives from this overview.
 
 ### Vertegenwoordiger
 
-- Only sees own action points.
+- Sees global action points when Actiepunten is active and allowed.
+- Only sees own personal action points.
+- Does not see team, country or personal action points of others.
 
 ### Verkoopleider
 
@@ -617,6 +654,10 @@ Required change:
 ### Super Admin
 
 - Sees all action points.
+
+Validation performed:
+
+- `npm run test:action-points-overview`
 
 ---
 

@@ -727,9 +727,10 @@ Navigation:
 - clicking a coaching opens the coaching input form when the user has edit rights
 - clicking a coaching opens the preparation/view mode when the user only has view rights
 
-Desired behaviour:
+Current behaviour:
 
-- hide this section when there are no coachings planned for today
+- keep this section visible when there are no coachings planned for today
+- show the existing empty state in the section body
 
 ---
 
@@ -762,9 +763,10 @@ Navigation for Country Managers, Sales Managers and Admins:
 - no form editing
 - no planning changes
 
-Desired behaviour:
+Current behaviour:
 
-- hide this section when there are no future coachings planned
+- keep this section visible when there are no future coachings planned
+- show the existing empty state in the section body
 
 ---
 
@@ -781,9 +783,10 @@ Navigation:
 - clicking **Bekijk verslag** opens the coaching report / coaching dossier
 - completed or submitted coachings are opened in read-only mode unless the lifecycle status allows changes
 
-Desired behaviour:
+Current behaviour:
 
-- hide this section when there are no historical coachings
+- keep this section visible when there are no historical coachings
+- show the existing empty state in the section body
 
 ---
 
@@ -967,6 +970,8 @@ The overview is grouped by:
 - team
 - user
 
+Country grouping is always kept for Super Admin.
+
 Navigation rules:
 
 - can open coachings with the same access level as a Verkoopleider
@@ -990,8 +995,10 @@ Navigation rules:
 - Sales Managers can view coachings within their scope but cannot edit the coaching form.
 - Admins can view coachings within their scope but cannot edit the coaching form.
 - Super Admins can open coachings with Verkoopleider-level access.
-- If a user only has access to one country, country grouping should be hidden to reduce visual noise.
-- Today, future and historical sections should be hidden when empty.
+- If a Country Manager, Sales Manager or Admin only has access to one country, country grouping should be hidden to reduce visual noise.
+- Super Admins always keep country grouping.
+- Today, future and historical sections remain visible when empty.
+- Empty country/team/user subgroups are not shown.
 
 ---
 
@@ -1011,7 +1018,14 @@ Actiepunten
 
 ## Current Status
 
-The Actiepunten page currently exists visually, but the functional implementation is not yet completed.
+The Actiepunten page has a first functional read-only overview.
+
+Current implemented behaviour:
+
+- action points are shown in Open and Afgesloten sections
+- each item displays a Globaal, Land, Team or Persoonlijk badge
+- visible data is filtered by active module state, effective permissions and role/country/team/user scope
+- no create, edit, close, approval, expiry or reassignment workflow is implemented from this page
 
 The detailed business process must still be discussed with the business.
 
@@ -1076,13 +1090,11 @@ The user must immediately understand why the action point is visible and to whom
 
 Target:
 
-- Action Point Detail View
+- No separate action workflow yet
 
 Description:
 
-Clicking an action point opens the detail view of that action point.
-
-The detail view should show all relevant information about the selected action point.
+The current overview is read-only. Clicking an action point must not create a new edit, close, approval, expiry or reassignment workflow.
 
 Exact detail behaviour still needs to be defined with the business.
 
@@ -1096,8 +1108,10 @@ A representative only sees own action points.
 
 This includes:
 
+- global action points when the module and permission allow it
 - personal action points assigned to the representative
-- broader action points that apply to the representative through country or team scope, if applicable
+
+Representatives do not see team, country or personal action points of others from this overview.
 
 ---
 
@@ -1149,7 +1163,8 @@ A Super Admin sees all action points.
   - closed
 - Each action point must clearly show its type.
 - Users must only see action points that apply to their effective permission scope.
-- Clicking an action point opens its detail view.
+- The current overview is read-only.
+- Detail and business action workflows remain undefined.
 - The detailed action point workflow still needs to be defined with the business.
 
 ---

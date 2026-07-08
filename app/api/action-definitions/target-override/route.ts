@@ -1,13 +1,19 @@
-import { badRequest, handleApi } from "@/lib/server/api";
-import { actorCanAccessCountry, requireAuthenticatedUser, requireRole } from "@/lib/server/authenticated-user";
+import { badRequest, forbidden, handleApi } from "@/lib/server/api";
+import { actorCanAccessCountry, requireAuthenticatedUser, requirePermission, requireRole } from "@/lib/server/authenticated-user";
 import { prisma } from "@/lib/server/db";
 import type { ActionScope } from "@prisma/client";
+import { isAppModuleEnabled } from "@/lib/server/modules";
 
 export async function PUT(request: Request) {
   return handleApi("api/action-definitions/target-override", async () => {
     const body = await request.json() as { actorId?: string; actionDefinitionId?: string; scope?: ActionScope; country?: string; teamId?: string; userId?: string; targetValue?: unknown };
     const actor = await requireAuthenticatedUser(body.actorId);
     requireRole(actor, ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    requirePermission(actor, "modulePreparation");
+    requirePermission(actor, "menu.coaching.actionPoints");
+    if (!(await isAppModuleEnabled("ACTIEPUNTEN"))) {
+      forbidden("Actiepuntenmodule is niet actief.");
+    }
     const targetValue = Number(body.targetValue);
     if (!Number.isFinite(targetValue)) badRequest("Target moet numeriek zijn.");
     const scope = body.scope ?? "USER";

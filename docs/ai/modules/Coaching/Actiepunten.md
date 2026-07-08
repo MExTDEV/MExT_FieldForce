@@ -19,7 +19,24 @@ The objective of the page is to make follow-up visible, structured and actionabl
 
 ## Current Status
 
-The Actiepunten page currently exists visually, but the functional implementation is not yet completed.
+The Actiepunten page has a first functional read-only overview.
+
+Implemented behaviour:
+
+- visible action points are shown in two sections:
+  - Open
+  - Afgesloten
+- each item displays a type badge:
+  - Globaal
+  - Land
+  - Team
+  - Persoonlijk
+- visibility respects active module configuration, effective permissions, role defaults, user-level overrides and country/team/user scope.
+
+Current data source:
+
+- the overview uses existing `ActionDefinition` data for global, country, team and personal scoped action points.
+- `active` is currently used for the Open/Afgesloten split because the final action-point close workflow and `closedAt` semantics are not defined yet.
 
 The detailed business process still needs to be discussed with the business.
 
@@ -34,6 +51,12 @@ The page is accessed through the main navigation item:
 **Actiepunten**
 
 When the user opens this menu item, the page displays all action points that apply to the user's effective permission scope.
+
+The page is visible only when:
+
+- the Actiepunten module is active
+- the user has effective `modulePreparation`
+- the user has effective `menu.coaching.actionPoints`
 
 ---
 
@@ -92,9 +115,9 @@ The user must immediately understand why the action point is visible and what sc
 
 ## Action Point Details
 
-Clicking an action point opens the detail view of that action point.
+Clicking an action point does not currently open an edit or action workflow.
 
-The detail view should show all relevant information about the selected action point.
+The detail view should eventually show all relevant information about the selected action point.
 
 The exact detail view behaviour still needs to be defined with the business.
 
@@ -131,8 +154,14 @@ A Vertegenwoordiger only sees action points that apply to the representative.
 
 This includes:
 
+- global action points when the module and permission allow it
 - personal action points assigned to the representative
-- broader action points that apply to the representative through country or team scope, if applicable
+
+A Vertegenwoordiger does not see:
+
+- team action points
+- country action points
+- personal action points of other users
 
 ---
 
@@ -212,7 +241,8 @@ A Super Admin sees all action points.
   - closed
 - Each action point must clearly show its type.
 - Users must only see action points that apply to their effective permission scope.
-- Clicking an action point opens the action point detail view.
+- The current overview is read-only.
+- Clicking an action point does not create, edit, close, approve, expire or reassign it.
 - The detailed action point workflow still needs to be defined with the business.
 
 ---

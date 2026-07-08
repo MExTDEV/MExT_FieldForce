@@ -75,9 +75,10 @@ Navigation behaviour:
 - users with edit rights open the coaching input form
 - users with view-only rights open preparation/view mode
 
-Expected behaviour:
+Current behaviour:
 
-- hide this section when there are no coachings planned for today
+- keep this main section visible when there are no coachings planned for today
+- show the existing empty state in the section body
 
 ---
 
@@ -117,9 +118,10 @@ For Country Managers, Sales Managers and Admins:
 - no form editing
 - no planning changes
 
-Expected behaviour:
+Current behaviour:
 
-- hide this section when there are no future coachings planned
+- keep this main section visible when there are no future coachings planned
+- show the existing empty state in the section body
 
 ---
 
@@ -142,9 +144,10 @@ Navigation behaviour:
 - completed coachings open in read-only report mode
 - submitted coachings remain locked unless the lifecycle status allows changes
 
-Expected behaviour:
+Current behaviour:
 
-- hide this section when there are no historical coachings
+- keep this main section visible when there are no historical coachings
+- show the existing empty state in the section body
 
 ---
 
@@ -493,7 +496,7 @@ Purpose:
 
 ## Grouping by Scope
 
-For users with broader visibility, coachings should be grouped by scope.
+For users with broader visibility, coachings are grouped by scope after the existing visibility and permission filtering.
 
 Default grouping:
 
@@ -501,10 +504,12 @@ Default grouping:
 - team
 - user
 
-If a user has access to only one country:
+If a management user has access to only one country:
 
 - hide country grouping
 - show only team and user
+
+Super Admin always keeps country grouping, even when the visible data currently contains only one country.
 
 Purpose:
 
@@ -518,6 +523,13 @@ Applies to:
 - Sales Manager
 - Admin
 - Super Admin
+
+Does not apply to:
+
+- Verkoopleider
+- Vertegenwoordiger
+
+Empty subgroups are not shown. The main Today, Future and History sections remain visible even when they have no rows.
 
 ---
 
@@ -537,8 +549,10 @@ Applies to:
 - Sales Managers can view coachings within assigned country scope but cannot edit them.
 - Admins can view coachings within assigned country scope but cannot edit them.
 - Super Admins can open coachings with Verkoopleider-level access.
-- If a user only has access to one country, country grouping should be hidden.
-- Today, future and historical sections should be hidden when empty.
+- If a Country Manager, Sales Manager or Admin only has access to one country, country grouping should be hidden.
+- Super Admins always keep country grouping.
+- Today, future and historical sections remain visible when empty.
+- Empty country/team/user subgroups are not shown.
 - There is only one coaching form.
 - Begeleidingen must never implement a duplicate coaching workflow.
 
@@ -548,11 +562,6 @@ Applies to:
 
 The following implementation points are tracked in `TODO.md`:
 
-- hide empty Begeleidingen sections
-- implement role-based visibility rules
-- implement representative notification logic
-- implement future coaching edit mode
-- implement management view-only mode
-- implement Sales Manager as a separate role
-- validate grouping by country/team/user scope
-
+- Score-Based Visual Indicator
+- action-point and undefined module follow-ups
+- future business clarifications that are explicitly still open

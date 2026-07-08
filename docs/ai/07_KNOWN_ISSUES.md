@@ -224,7 +224,7 @@ Historical / Verify
 
 Description:
 
-Begeleidingen role visibility has been implemented in the shared client and server coaching access helpers. Browser-based visual verification and grouping by scope remain tracked in `docs/ai/modules/Coaching/TODO.md`.
+Begeleidingen role visibility has been implemented in the shared client and server coaching access helpers. Grouping by country, team and user is implemented for Country Manager, Sales Manager, Admin and Super Admin after the existing visibility filtering. Browser-based visual verification remains outside Codex unless explicitly requested.
 
 Expected behaviour:
 
@@ -396,19 +396,21 @@ Related documents:
 
 Status:
 
-Confirmed Open
+Not planned / Cancelled by business decision on 2026-07-08
 
 Description:
 
-The Begeleidingen page should not show empty sections.
+The Begeleidingen page keeps its fixed Today, Future and History main sections visible, even when a section has no rows.
 
-Expected behaviour:
+Current behaviour:
 
-Hide:
+- Keep visible:
 
 - Begeleidingen van vandaag when none exist
 - Toekomstige begeleidingen when none exist
 - Uitgevoerde begeleidingen when none exist
+
+Empty country/team/user subgroups are not shown inside grouped management sections.
 
 Related documents:
 
@@ -560,13 +562,13 @@ Related documents:
 
 Status:
 
-Confirmed Open
+Resolved on 2026-07-08
 
 Description:
 
-The Actiepunten page exists visually, but functional implementation is not yet complete.
+The Actiepunten page now has a first read-only functional overview based on existing scoped action definitions.
 
-Expected behaviour:
+Current behaviour:
 
 - show global action points
 - show country action points
@@ -575,7 +577,12 @@ Expected behaviour:
 - split into Open and Afgesloten
 - show type badges
 - apply role and scope visibility
-- clicking opens detail view
+- direct page and API access require active Actiepunten module and effective permissions
+
+Known limitations:
+
+- Detail view and business actions remain open because the detailed action-point workflow still needs business definition.
+- Open/Afgesloten currently follows the existing `active` field; no separate close workflow or `closedAt` field was introduced.
 
 Related documents:
 

@@ -48,6 +48,11 @@ export async function setAppModuleEnabled(
   return toAppModuleConfig(appModule);
 }
 
+export async function isAppModuleEnabled(code: AppModuleCode) {
+  const modules = await listAppModules();
+  return modules.some((module) => module.code === code && module.enabled);
+}
+
 async function ensureAppModules() {
   await Promise.all(
     appModuleRegistry.map((registryItem) =>

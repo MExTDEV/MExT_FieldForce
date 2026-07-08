@@ -39,6 +39,7 @@ import { ServiceWorkerRegistration } from "@/components/service-worker-registrat
 import { useWorkflow } from "@/components/workflow-provider";
 import { branding } from "@/config/branding";
 import { appModuleRegistry } from "@/lib/modules";
+import type { AppModuleCode, MockUser } from "@/lib/types";
 
 const iconMap = {
   BarChart3,
@@ -71,6 +72,14 @@ const representativeNav = [
   { href: "/mijn-verslagen", key: "nav.myReports", icon: ClipboardCheck },
 ] as const;
 
+function canSeeModuleNav(user: MockUser, code: AppModuleCode) {
+  if (code === "PLANNING") return can(user, "menu.coaching.planning") && can(user, "moduleAgenda");
+  if (code === "BEGELEIDINGEN") return can(user, "menu.coaching.coachings") && can(user, "moduleVisitRecord");
+  if (code === "ACTIEPUNTEN") return can(user, "menu.coaching.actionPoints") && can(user, "modulePreparation");
+  if (code === "RAPPORTERING") return can(user, "menu.coaching.reporting") && can(user, "moduleReporting");
+  return can(user, "modulePreparation");
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, language, setLanguage, status } = useSession();
@@ -81,7 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeManagement = canAccessTechnicalManagement(user);
   const canSeeUsers = canAccessUserManagement(user);
   const activeModuleNav = appModuleRegistry
-    .filter((module) => isModuleEnabled(module.code))
+    .filter((module) => isModuleEnabled(module.code) && canSeeModuleNav(user, module.code))
     .map((module) => ({
       href: module.href,
       key: module.navKey,

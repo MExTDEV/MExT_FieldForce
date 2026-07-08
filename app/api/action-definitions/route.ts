@@ -1,15 +1,27 @@
-import { badRequest, handleApi } from "@/lib/server/api";
-import { requireAuthenticatedUser, requireRole } from "@/lib/server/authenticated-user";
+import { badRequest, forbidden, handleApi } from "@/lib/server/api";
+import { requireAuthenticatedUser, requirePermission, requireRole } from "@/lib/server/authenticated-user";
 import { listVisibleActionDefinitions, saveActionDefinition, softDeleteActionDefinition } from "@/lib/server/action-definitions";
 import type { ActionScope } from "@prisma/client";
 import type { Country } from "@/lib/types";
+import { isAppModuleEnabled } from "@/lib/server/modules";
 
 export async function GET(request: Request) {
   return handleApi("api/action-definitions:get", async () => {
     const actor = await requireAuthenticatedUser(new URL(request.url).searchParams.get("actorId"));
     requireRole(actor, ["REPRESENTATIVE", "SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    await requireActionPointsAccess(actor);
     const definitions = await listVisibleActionDefinitions(actor);
-    return { definitions: definitions.map((item) => ({ ...item, targetValue: item.targetValue === null ? undefined : Number(item.targetValue), priority: item.priority.toLowerCase(), validFrom: item.validFrom.toISOString().slice(0, 10), validUntil: item.validUntil?.toISOString().slice(0, 10) })) };
+    return {
+      definitions: definitions.map((item) => ({
+        ...item,
+        targetValue: item.targetValue === null ? undefined : Number(item.targetValue),
+        priority: item.priority.toLowerCase(),
+        validFrom: item.validFrom.toISOString().slice(0, 10),
+        validUntil: item.validUntil?.toISOString().slice(0, 10),
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+      })),
+    };
   });
 }
 
@@ -18,6 +30,7 @@ async function mutate(request: Request, method: "POST" | "PATCH" | "DELETE") {
     const body = await request.json() as Record<string, unknown>;
     const actor = await requireAuthenticatedUser(String(body.actorId ?? ""));
     requireRole(actor, ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
+    await requireActionPointsAccess(actor);
     if (method === "DELETE") return { definition: await softDeleteActionDefinition(actor, String(body.id)) };
     const target = body.targetValue === "" || body.targetValue === undefined ? undefined : Number(body.targetValue);
     if (target !== undefined && !Number.isFinite(target)) badRequest("Target moet numeriek zijn.");
@@ -33,3 +46,11 @@ async function mutate(request: Request, method: "POST" | "PATCH" | "DELETE") {
 export async function POST(request: Request) { return mutate(request, "POST"); }
 export async function PATCH(request: Request) { return mutate(request, "PATCH"); }
 export async function DELETE(request: Request) { return mutate(request, "DELETE"); }
+
+async function requireActionPointsAccess(actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>) {
+  requirePermission(actor, "modulePreparation");
+  requirePermission(actor, "menu.coaching.actionPoints");
+  if (!(await isAppModuleEnabled("ACTIEPUNTEN"))) {
+    forbidden("Actiepuntenmodule is niet actief.");
+  }
+}
