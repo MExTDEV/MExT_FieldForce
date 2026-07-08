@@ -55,8 +55,8 @@ export function SmartDashboardPanel({
   return (
     <section className="card overflow-hidden">
       <SmartHeader
-        title="Vandaag vraagt aandacht"
-        description="De hoogste prioriteiten binnen je huidige team- of managementscope."
+        title="Coachingprioriteiten"
+        description="Risico's en opvolging binnen je huidige team- of managementscope."
         icon={CircleHelp}
       />
       <div className="grid gap-3 p-3.5 lg:grid-cols-3">
@@ -64,7 +64,7 @@ export function SmartDashboardPanel({
         {priorities.length === 0 && (
           <div className="col-span-full flex items-center gap-3 rounded-xl bg-emerald-50 p-3.5 text-emerald-800">
             <CheckCircle2 className="h-5 w-5" />
-            <div><p className="font-bold">Alles op schema</p><p className="text-sm">Er zijn vandaag geen urgente coachingprioriteiten.</p></div>
+            <div><p className="font-bold">Geen extra prioriteiten</p><p className="text-sm">Er zijn vandaag geen urgente coachingprioriteiten.</p></div>
           </div>
         )}
       </div>

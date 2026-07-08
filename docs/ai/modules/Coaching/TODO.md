@@ -10,6 +10,51 @@ Priority levels:
 
 ---
 
+# Header / Notifications
+
+## Header ToDo-bel
+
+Priority: High
+
+Status: Completed on 2026-07-08
+
+Implemented changes:
+
+- The application header now shows a compact ToDo notification bell next to the language and user controls.
+- The bell reuses the existing visible workflow data used by Dashboard `Vandaag vraagt aandacht`, `/taken-vandaag`, Planning and Begeleidingen.
+- No separate ToDo database, ToDo model or parallel source of truth was introduced.
+- Open execution ToDo's come from the existing `Uit te voeren` split in the shared dashboard attention helper.
+- Coachings with status `Wachten op akkoord` / `verzonden_ter_akkoord` are added as approval ToDo's for users who can already see the coaching through the existing workflow visibility rules.
+- The count, red bell state and dropdown contents are based only on visible, module-enabled workflow items.
+- Hidden surprise coachings do not trigger the red bell, count or dropdown for representatives.
+- The dropdown opens existing item routes through the same `coachingOpenHref` logic for Begeleidingen; undefined module item routes are not expanded.
+- Clicking a dropdown item closes the dropdown.
+- The active bell uses a red filled icon with a small count badge and wiggles once per minute for about one second.
+- The wiggle timer is cleaned up on unmount and respects `prefers-reduced-motion`.
+- New header labels were added to the Dutch, French and German locale files.
+
+Validation performed:
+
+- `npm run test:header-todos`
+- `npm run test:dashboard-attention`
+- `npm run test:planning-items`
+- `npm run test:coaching-visibility`
+- `npm run test:menu-rights`
+- `npm run test:data-access`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
+- `npx next build` completed successfully with the existing Prisma client.
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+- The existing codebase currently contains both `wacht_op_akkoord` and `verzonden_ter_akkoord` as approval-like statuses; the header bell treats both as approval ToDo statuses without changing lifecycle names.
+- The existing detail approval button is implemented for the current `verzonden_ter_akkoord` flow. Legacy `wacht_op_akkoord` items still open the existing Begeleiding detail/read flow and remain visible as approval ToDo's until the existing status/approval data changes.
+- Contactmomenten, Hulpaanvragen, Retrainingen and Salestrainingen still keep their existing Planning/Dashboard routes only; no undefined workflow was expanded.
+
+---
+
 # Dashboard
 
 ## Aandacht vereist
@@ -20,9 +65,10 @@ Status: Completed on 2026-07-08
 
 Implemented changes:
 
-- Dashboard shows a dedicated **Aandacht vereist** card with two sections:
+- Dashboard shows a dedicated **Vandaag vraagt aandacht** card directly below the page header with two sections:
   - Uit te voeren
   - Uitgevoerd
+- The smart coaching risk panel is shown separately as **Coachingprioriteiten**, so an empty risk panel no longer hides or contradicts today's planned items.
 - The card uses the same visible workflow data as Planning and Begeleidingen through the shared workflow visibility state.
 - Today is determined with the existing local date helper.
 - Begeleidingen use `plannedDate` and the existing coaching open/access helpers.
@@ -530,10 +576,24 @@ Status: Completed on 2026-07-08
 Implemented changes:
 
 - The Actiepunten page is now a read-only overview.
+- The screen has two tabs:
+  - Actiepunten
+  - Gebruikers
+- Both tabs have a search field.
 - The overview uses existing `ActionDefinition` data for global, country, team and user-scoped action points.
+- The overview also shows concrete action points from visible workflow/reporting data, including action points created during coachings, contact moments, retrainings and sales trainings.
+- Concrete workflow action points are displayed as personal/user-scoped items for the related representative.
+- The Actiepunten tab shows open / to-do action points in collapsible scope groups:
+  - Globaal
+  - Land
+  - Team
+  - Persoonlijk
+- The Gebruikers tab shows the same open / to-do action points grouped per visible user.
+- Action point rows now use a compact list layout aligned with the Mijn Team list pattern.
 - The page no longer exposes create, deactivate or target-override actions.
 - Direct page access requires the active Actiepunten module and effective `modulePreparation` plus `menu.coaching.actionPoints` permissions.
 - The action-definition APIs also enforce the active module and effective permissions before returning data.
+- The action-definition API returns the same Dutch priority values that the UI uses for priority badges.
 - No new data model, status, detail workflow, approval workflow, expiry workflow or reassignment workflow was added.
 
 Validation performed:
@@ -544,7 +604,9 @@ Validation performed:
 Known limitations:
 
 - The overview uses `active` as the current Open/Afgesloten split because no final close workflow or closedAt field has been defined yet.
-- Action points from concrete coaching executions remain available through the existing coaching and preparation surfaces; this overview does not invent a separate detail or lifecycle workflow for them.
+- Concrete workflow action points use their existing workflow status for the Open/Afgesloten split.
+- The visible screen currently focuses on open / to-do action points.
+- The overview does not invent a separate detail or lifecycle workflow for action points.
 
 ---
 
@@ -556,16 +618,20 @@ Status: Completed on 2026-07-08
 
 Implemented changes:
 
-- Show action points in two sections:
-  - Open
-  - Afgesloten
-- Both sections keep a compact empty state when they contain no visible action points.
+- Show open / to-do action points in the Actiepunten tab.
+- In the Actiepunten tab, group visible action points in collapsible scope groups:
+  - Globaal
+  - Land
+  - Team
+  - Persoonlijk
+- Show the same open / to-do action points in the Gebruikers tab, grouped per visible user.
+- Both tabs keep a compact empty state when they contain no visible action points.
 - Open action points sort by validity end date first, then validity start date and id.
-- Afgesloten action points sort by update date first, then validity dates and id.
+- The underlying closed split still sorts by update date first, then validity dates and id, but closed action history is not exposed as a separate screen workflow in this iteration.
 
 Purpose:
 
-- Separate active follow-up from completed action points.
+- Make active follow-up searchable by action point and by user.
 
 ---
 

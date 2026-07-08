@@ -4,11 +4,13 @@ import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
   canViewScopedActionDefinition,
+  groupActionPointsByRepresentative,
   splitActionPointSections,
+  type ActionPointOverviewItem,
 } from "../lib/action-points/visibility";
 import { getAvailableDomains } from "../lib/app-switcher";
 import { roleTemplates } from "../lib/user-management";
-import type { AppModuleConfig, MockUser, Role, ScopedActionDefinition } from "../lib/types";
+import type { AppModuleConfig, ManagedUser, MockUser, Representative, Role } from "../lib/types";
 
 const activeModules = modules(true);
 const inactiveActionPointModules = modules(false);
@@ -49,7 +51,7 @@ function user(role: Role, input: Partial<MockUser> = {}): MockUser {
   };
 }
 
-function action(input: Partial<ScopedActionDefinition>): ScopedActionDefinition {
+function action(input: Partial<ActionPointOverviewItem>): ActionPointOverviewItem {
   return {
     id: "action",
     title: "Actiepunt",
@@ -66,6 +68,49 @@ function action(input: Partial<ScopedActionDefinition>): ScopedActionDefinition 
     validUntil: "2026-07-20",
     createdAt: "2026-07-01T08:00:00.000Z",
     updatedAt: "2026-07-02T08:00:00.000Z",
+    ...input,
+  };
+}
+
+function actionRepresentative(input: Partial<Representative>): Representative {
+  return {
+    id: "representative-be",
+    firstName: "Rita",
+    lastName: "Peeters",
+    initials: "RP",
+    country: "BE",
+    team: "Team BE A",
+    teamId: "team-be-a",
+    level: "Vertegenwoordiger",
+    levelColor: "bg-sky-100 text-sky-800",
+    lastCoaching: "Nog niet",
+    openActions: 0,
+    email: "rita@example.test",
+    phone: "",
+    kpis: [],
+    ...input,
+  };
+}
+
+function managedUser(input: Partial<ManagedUser>): ManagedUser {
+  return {
+    id: "user-be",
+    firstName: "Rita",
+    lastName: "Peeters",
+    email: "rita@example.test",
+    mobile: "",
+    language: "nl",
+    country: "BE",
+    countryAccess: ["BE"],
+    teamId: "team-be-a",
+    teamName: "Team BE A",
+    role: "REPRESENTATIVE",
+    teamSupervisor: false,
+    branchNumber: "",
+    active: true,
+    avatarUrl: "",
+    permissions: { ...roleTemplates.REPRESENTATIVE.permissions },
+    representativeId: "representative-be",
     ...input,
   };
 }
@@ -115,13 +160,36 @@ const sections = splitActionPointSections([
   action({ id: "open-later", active: true, validUntil: "2026-08-01" }),
   action({ id: "closed", active: false, updatedAt: "2026-07-10T08:00:00.000Z" }),
   action({ id: "open-sooner", active: true, validUntil: "2026-07-10" }),
+  action({ id: "workflow-closed", active: true, source: "workflow", status: "behaald", updatedAt: "2026-07-11T08:00:00.000Z" }),
+  action({ id: "global-open", active: true, scope: "GLOBAL", scopeKey: "GLOBAL", country: undefined, teamId: undefined, userId: undefined }),
 ]);
-assert.deepEqual(sections[0].items.map((item) => item.id), ["open-sooner", "open-later"], "Open actiepunten verschijnen in sectie Open en sorteren stabiel.");
-assert.deepEqual(sections[1].items.map((item) => item.id), ["closed"], "Afgesloten actiepunten verschijnen in sectie Afgesloten.");
+assert.deepEqual(sections[0].items.map((item) => item.id), ["open-sooner", "global-open", "open-later"], "Open actiepunten verschijnen in sectie Open en sorteren stabiel.");
+assert.deepEqual(sections[1].items.map((item) => item.id), ["workflow-closed", "closed"], "Afgesloten actiepunten verschijnen in sectie Afgesloten.");
+assert.deepEqual(sections[0].groups.map((group) => group.id), ["GLOBAL", "USER"], "Open actiepunten worden inklapbaar per scope gegroepeerd.");
 assert.equal(actionPointScopeLabel("GLOBAL"), "Globaal", "Typebadge Globaal verschijnt correct.");
 assert.equal(actionPointScopeLabel("COUNTRY"), "Land", "Typebadge Land verschijnt correct.");
 assert.equal(actionPointScopeLabel("TEAM"), "Team", "Typebadge Team verschijnt correct.");
 assert.equal(actionPointScopeLabel("USER"), "Persoonlijk", "Typebadge Persoonlijk verschijnt correct.");
+
+const userMappedAction = action({ id: "user-mapped", scope: "USER", scopeKey: "USER:user-be", userId: "user-be", teamId: "team-be-a" });
+const representativeGroups = groupActionPointsByRepresentative(
+  [globalAction, countryBeAction, teamBeAction, personalOwnAction, userMappedAction, teamOtherAction],
+  [
+    actionRepresentative({ id: "representative-be", firstName: "Rita", lastName: "Peeters", teamId: "team-be-a", team: "Team BE A" }),
+    actionRepresentative({ id: "representative-other", firstName: "Ona", lastName: "Teams", teamId: "team-be-b", team: "Team BE B" }),
+  ],
+  [managedUser({ id: "user-be", representativeId: "representative-be" })],
+);
+assert.deepEqual(
+  representativeGroups.find((group) => group.id === "representative-be")?.items.map((item) => item.id),
+  ["global", "country-be", "team-be", "personal-own", "user-mapped"],
+  "Gebruikerstab toont globale, land-, team- en persoonlijke actiepunten per gebruiker."
+);
+assert.deepEqual(
+  representativeGroups.find((group) => group.id === "representative-other")?.items.map((item) => item.id),
+  ["global", "country-be", "team-other"],
+  "Gebruikerstab respecteert team- en landenscope per gebruiker."
+);
 
 assert.equal(canAccessActionPointsOverview(leader, inactiveActionPointModules), false, "Disabled Actiepunten-module blokkeert de pagina.");
 const leaderWithoutPreparation = user("SALES_LEADER", { permissions: { ...roleTemplates.SALES_LEADER.permissions, modulePreparation: false } });

@@ -54,6 +54,38 @@ textarea {
   background: #003b83;
 }
 
+@keyframes todo-bell-wiggle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(-10deg);
+  }
+  30% {
+    transform: rotate(8deg);
+  }
+  45% {
+    transform: rotate(-6deg);
+  }
+  60% {
+    transform: rotate(4deg);
+  }
+  75% {
+    transform: rotate(-2deg);
+  }
+}
+
+.animate-todo-bell-wiggle {
+  animation: todo-bell-wiggle 1s ease-in-out;
+  transform-origin: 50% 10%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-todo-bell-wiggle {
+    animation: none;
+  }
+}
+
 @layer components {
   .card {
     @apply rounded-2xl border border-slate-200/80 bg-white shadow-card;

@@ -572,7 +572,7 @@ Resolved on 2026-07-08
 
 Description:
 
-The Actiepunten page now has a first read-only functional overview based on existing scoped action definitions.
+The Actiepunten page now has a first read-only functional overview based on existing scoped action definitions and concrete action points from visible coaching-related workflow/reporting data.
 
 Current behaviour:
 
@@ -580,15 +580,20 @@ Current behaviour:
 - show country action points
 - show team action points
 - show personal action points
-- split into Open and Afgesloten
+- show open / to-do action points in two tabs: Actiepunten and Gebruikers
+- provide a search field in both tabs
+- group the Actiepunten tab in collapsible scope groups
+- group the Gebruikers tab per visible user
 - show type badges
 - apply role and scope visibility
+- show concrete workflow action points as personal/user-scoped items for the related representative
 - direct page and API access require active Actiepunten module and effective permissions
 
 Known limitations:
 
 - Detail view and business actions remain open because the detailed action-point workflow still needs business definition.
-- Open/Afgesloten currently follows the existing `active` field; no separate close workflow or `closedAt` field was introduced.
+- Open/Afgesloten follows the existing `active` field for scoped action definitions and the existing workflow status for concrete workflow action points; no separate close workflow or `closedAt` field was introduced.
+- The visible screen currently focuses on open / to-do action points.
 
 Related documents:
 
@@ -790,7 +795,7 @@ Date fixed:
 
 Description:
 
-The Dashboard **Aandacht vereist** card now shows visible FieldForce items planned for today in two sections: **Uit te voeren** and **Uitgevoerd**.
+The Dashboard **Vandaag vraagt aandacht** card now shows visible FieldForce items planned for today in two sections: **Uit te voeren** and **Uitgevoerd**. It is displayed directly below the page header; smart coaching risks are shown separately as **Coachingprioriteiten** so an empty risk panel no longer contradicts today's planned items.
 
 Verification:
 

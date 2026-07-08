@@ -10,6 +10,8 @@ declare module "lucide-react" {
   export const ArrowRight: LucideIcon;
   export const ArrowUpRight: LucideIcon;
   export const BarChart3: LucideIcon;
+  export const Bell: LucideIcon;
+  export const BellRing: LucideIcon;
   export const BookOpenCheck: LucideIcon;
   export const CalendarCheck: LucideIcon;
   export const CalendarDays: LucideIcon;

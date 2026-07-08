@@ -1,6 +1,6 @@
 import { badRequest, forbidden, handleApi } from "@/lib/server/api";
 import { requireAuthenticatedUser, requirePermission, requireRole } from "@/lib/server/authenticated-user";
-import { listVisibleActionDefinitions, saveActionDefinition, softDeleteActionDefinition } from "@/lib/server/action-definitions";
+import { fromPriority, listVisibleActionDefinitions, saveActionDefinition, softDeleteActionDefinition } from "@/lib/server/action-definitions";
 import type { ActionScope } from "@prisma/client";
 import type { Country } from "@/lib/types";
 import { isAppModuleEnabled } from "@/lib/server/modules";
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       definitions: definitions.map((item) => ({
         ...item,
         targetValue: item.targetValue === null ? undefined : Number(item.targetValue),
-        priority: item.priority.toLowerCase(),
+        priority: fromPriority(item.priority),
         validFrom: item.validFrom.toISOString().slice(0, 10),
         validUntil: item.validUntil?.toISOString().slice(0, 10),
         createdAt: item.createdAt.toISOString(),

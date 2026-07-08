@@ -39,6 +39,12 @@ export type DashboardAttentionItem = SortablePlanningItem & {
   href?: string;
 };
 
+export type HeaderTodoKind = "execution" | "approval";
+
+export type HeaderTodoItem = DashboardAttentionItem & {
+  todoKind: HeaderTodoKind;
+};
+
 export type DashboardAttentionSections = {
   todo: DashboardAttentionItem[];
   done: DashboardAttentionItem[];
@@ -60,6 +66,7 @@ const cancelledStatuses = new Set(["geannuleerd"]);
 const completedContactStatuses = new Set(["afgesloten"]);
 const completedHelpRequestStatuses = new Set(["afgesloten"]);
 const completedTrainingStatuses = new Set(["afgerond"]);
+const pendingApprovalCoachingStatuses = new Set(["wacht_op_akkoord", "verzonden_ter_akkoord"]);
 
 const typeLabels: Record<DashboardAttentionType, string> = {
   begeleiding: "Begeleiding",
@@ -185,6 +192,54 @@ export function buildDashboardAttentionSections(
     todo: items.filter((item) => item.section === "todo"),
     done: items.filter((item) => item.section === "done"),
   };
+}
+
+export function buildHeaderTodoItems(input: BuildDashboardAttentionInput): HeaderTodoItem[] {
+  const today = input.today ?? localDateKey();
+  const representativeName = input.representativeName ?? (() => "Onbekend");
+  const ownerName = input.ownerName ?? (() => undefined);
+  const executionTodos = buildDashboardAttentionSections(input).todo.map((item) => ({
+    ...item,
+    todoKind: "execution" as const,
+  }));
+  const approvalTodos = (input.interventions ?? []).flatMap((item): HeaderTodoItem[] => {
+    if (
+      item.deletedAt ||
+      item.approvedByRepAt ||
+      item.approvedByRepId ||
+      !pendingApprovalCoachingStatuses.has(item.status)
+    ) {
+      return [];
+    }
+
+    const participantName = item.subject
+      ? `${item.subject.firstName} ${item.subject.lastName}`
+      : representativeName(item.representativeId);
+    const date = dateOnly(item.plannedDate ?? item.sentForApprovalAt ?? item.finalizedAt ?? item.updatedAt);
+
+    return [{
+      ...attentionItem({
+        recordId: item.id,
+        type: "begeleiding",
+        date,
+        title: participantName,
+        subtitle: item.title,
+        owner: ownerName(item.ownerId),
+        status: item.status,
+        section: "todo",
+        startTime: item.startTime,
+        endTime: item.endTime,
+        href: coachingOpenHref(input.currentUser, item, today),
+      }),
+      todoKind: "approval",
+    }];
+  });
+
+  return sortPlanningItems([...executionTodos, ...approvalTodos]);
+}
+
+export function shouldAnimateTodoBell(openTodoCount: number, prefersReducedMotion: boolean) {
+  return openTodoCount > 0 && !prefersReducedMotion;
 }
 
 function attentionItem(input: {

@@ -121,8 +121,12 @@ import {
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  groupActionPointsByRepresentative,
+  groupActionPointsByScope,
   splitActionPointSections,
-  type ActionPointSection,
+  type ActionPointOverviewItem,
+  type ActionPointScopeGroup,
+  type ActionPointUserGroup,
 } from "@/lib/action-points/visibility";
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
@@ -354,6 +358,8 @@ function Dashboard() {
         ) : undefined}
       />
 
+      {attentionEnabled && <DashboardAttentionCard sections={attentionSections} />}
+
       {actionPointsEnabled && <SmartDashboardPanel result={smartResult} personal={user.role === "REPRESENTATIVE"} />}
 
       <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -379,8 +385,6 @@ function Dashboard() {
       </section>
 
       {teamDashboardAllowed && actionPointsEnabled && <SmartManagementSections result={smartResult} />}
-
-      {attentionEnabled && <DashboardAttentionCard sections={attentionSections} />}
 
       <section className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         {planningEnabled && <div className="card overflow-hidden">
@@ -435,7 +439,7 @@ const attentionIcons: Record<DashboardAttentionItem["type"], typeof ClipboardChe
 function DashboardAttentionCard({ sections, link = "/taken-vandaag" }: { sections: DashboardAttentionSections; link?: string | null }) {
   return (
     <section className="card overflow-hidden">
-      <SectionTitle title="Aandacht vereist" subtitle="Vandaag gepland binnen je toegelaten scope" link={link ?? undefined} />
+      <SectionTitle title="Vandaag vraagt aandacht" subtitle="Uit te voeren en uitgevoerd vandaag binnen je toegelaten scope" link={link ?? undefined} />
       <div className="grid gap-0 lg:grid-cols-2">
         <DashboardAttentionColumn
           title="Uit te voeren"
@@ -2661,10 +2665,75 @@ function ActionPoints() {
 function ScopedActionPoints() {
   const { user, managedUsers } = useSession();
   const { modules } = useModules();
+  const { state } = useWorkflow();
+  const { dataset: performanceDataset } = usePerformance();
+  const { representatives } = useRepresentatives();
   const [definitions, setDefinitions] = useState<ScopedActionDefinition[]>([]);
   const [error, setError] = useState<string>();
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [activeActionTab, setActiveActionTab] = useState<"actions" | "users">("actions");
+  const [actionSearch, setActionSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
   const allowed = canAccessActionPointsOverview(user, modules);
-  const sections = useMemo(() => splitActionPointSections(definitions), [definitions]);
+  const workflowActionItems = useMemo<ActionPointOverviewItem[]>(() => {
+    if (!allowed) return [];
+    const scopedState = getVisibleWorkflowState(user, state, representatives);
+    const scopedRepresentatives = getVisibleRepresentatives(user, representatives);
+    const dataset = buildReportingDataset(scopedState, representatives, performanceDataset, managedUsers);
+    const scopedDataset = filterReportingDataset(dataset, scopedRepresentatives, emptyReportingFilters, managedUsers);
+    return scopedDataset.actions.flatMap((action) => {
+      const representative = representatives.find((item) => item.id === action.representativeId);
+      if (!representative) return [];
+      const ownerName = action.ownerId ? reportingUserName(action.ownerId, managedUsers) : undefined;
+      const representativeName = `${representative.firstName} ${representative.lastName}`;
+      return [{
+        id: `workflow:${action.id}:${action.representativeId}`,
+        source: "workflow",
+        status: action.status,
+        due: action.due,
+        title: action.title,
+        description: action.linkedKpi ? `KPI: ${action.linkedKpi}` : "",
+        tipsAndTricks: "",
+        priority: action.due && action.due < localDateKey() && !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(action.status) ? "hoog" : "normaal",
+        scope: "USER",
+        scopeKey: `USER:${action.representativeId}`,
+        country: representative.country,
+        teamId: representative.teamId,
+        userId: action.representativeId,
+        active: !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(action.status),
+        validFrom: action.updatedAt.slice(0, 10),
+        validUntil: action.due || undefined,
+        updatedAt: action.updatedAt,
+        ownerName,
+        representativeId: action.representativeId,
+        representativeName,
+        originLabel: "Gekoppeld actiepunt",
+      }];
+    });
+  }, [allowed, managedUsers, performanceDataset, representatives, state, user]);
+  const actionPointItems = useMemo<ActionPointOverviewItem[]>(
+    () => [
+      ...definitions.map((definition) => ({ ...definition, source: "definition" as const })),
+      ...workflowActionItems,
+    ],
+    [definitions, workflowActionItems],
+  );
+  const sections = useMemo(() => splitActionPointSections(actionPointItems), [actionPointItems]);
+  const openActionPointItems = useMemo(
+    () => sections.find((section) => section.id === "open")?.items ?? [],
+    [sections],
+  );
+  const filteredActionItems = openActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
+  const actionScopeGroups = groupActionPointsByScope(filteredActionItems);
+  const visibleActionPointRepresentatives = getVisibleRepresentatives(user, representatives);
+  const userGroups = groupActionPointsByRepresentative(openActionPointItems, visibleActionPointRepresentatives, managedUsers)
+    .flatMap((group) => {
+      const groupMatches = matchesText(`${group.title} ${group.subtitle}`, userSearch);
+      const items = groupMatches
+        ? group.items
+        : group.items.filter((item) => matchesActionPointSearch(item, userSearch));
+      return items.length ? [{ ...group, items }] : [];
+    });
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" });
     const payload = await response.json() as { definitions?: ScopedActionDefinition[]; error?: string };
@@ -2682,66 +2751,273 @@ function ScopedActionPoints() {
   }
 
   return <div className="space-y-6">
-    <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Open en afgesloten opvolgacties binnen jouw globale, land-, team- of persoonlijke scope." />
+    <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Uit te voeren opvolgacties binnen jouw globale, land-, team- of persoonlijke scope." />
     {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
-    {sections.map((section) => renderActionPointSection(section))}
+
+    <section className="card p-2">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {[
+          { id: "actions" as const, label: "Actiepunten", count: filteredActionItems.length },
+          { id: "users" as const, label: "Gebruikers", count: userGroups.length },
+        ].map((tab) => {
+          const active = activeActionTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveActionTab(tab.id)}
+              className={`flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-bold transition ${active ? "bg-brand-700 text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-brand-50 hover:text-brand-800"}`}
+            >
+              <span>{tab.label}</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs ${active ? "bg-white/20 text-white" : "bg-white text-brand-700"}`}>{tab.count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+
+    {activeActionTab === "actions" ? renderActionsTab() : renderUsersTab()}
   </div>;
 
-  function renderActionPointSection(section: ActionPointSection) {
+  function toggleGroup(key: string) {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function renderActionsTab() {
     return (
-      <section key={section.id} className="space-y-4">
+      <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow mb-1">{section.id === "open" ? "Actieve opvolging" : "Historiek"}</p>
-            <h2 className="text-xl font-bold text-slate-950">{section.title}</h2>
+            <p className="eyebrow mb-1">Uit te voeren</p>
+            <h2 className="text-xl font-bold text-slate-950">Actiepunten</h2>
+            <p className="mt-1 text-sm text-slate-500">Gesorteerd per Globaal, Land, Team en Persoonlijk.</p>
           </div>
-          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{section.items.length}</span>
+          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{filteredActionItems.length}</span>
         </div>
-        {section.items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-            {section.emptyMessage}
-          </div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {section.items.map((item) => renderActionPointCard(item))}
-          </div>
-        )}
+        {renderSearchField("Zoek actiepunt, gebruiker, scope of eigenaar...", actionSearch, setActionSearch)}
+        {renderScopeGroups(actionScopeGroups, "actions", "Geen uit te voeren actiepunten gevonden binnen deze zoekopdracht.")}
       </section>
     );
   }
 
-  function renderActionPointCard(item: ScopedActionDefinition) {
-    const scopeLabel = actionPointScopeLabel(item.scope);
+  function renderUsersTab() {
     return (
-      <article key={item.id} className="card p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow mb-1">Uit te voeren</p>
+            <h2 className="text-xl font-bold text-slate-950">Gebruikers</h2>
+            <p className="mt-1 text-sm text-slate-500">Alle zichtbare actiepunten gegroepeerd per gebruiker.</p>
+          </div>
+          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{userGroups.length}</span>
+        </div>
+        {renderSearchField("Zoek gebruiker, actiepunt, scope of eigenaar...", userSearch, setUserSearch)}
+        {renderUserGroups(userGroups, "Geen gebruikers met uit te voeren actiepunten gevonden binnen deze zoekopdracht.")}
+      </section>
+    );
+  }
+
+  function renderSearchField(
+    placeholder: string,
+    value: string,
+    onChange: (value: string) => void,
+  ) {
+    return (
+      <label className="relative block">
+        <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+        <input
+          className="field pl-10"
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+    );
+  }
+
+  function renderScopeGroups(
+    groups: ActionPointScopeGroup[],
+    keyPrefix: string,
+    emptyMessage: string,
+  ) {
+    if (groups.length === 0) {
+      return (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+          {emptyMessage}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {groups.map((group) => {
+          const groupKey = `${keyPrefix}:${group.id}`;
+          const groupOpen = !collapsedGroups.has(groupKey);
+          return (
+            <section key={groupKey} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <button
+                type="button"
+                onClick={() => toggleGroup(groupKey)}
+                aria-expanded={groupOpen}
+                className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5"
+              >
+                {groupOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
+                <div className="min-w-0 flex-1">
+                  <p className="eyebrow">Actiepunten</p>
+                  <h3 className="truncate text-base font-bold text-slate-950">{group.title}</h3>
+                </div>
+                <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{group.items.length}</span>
+              </button>
+              {groupOpen && (
+                <div className="divide-y divide-slate-100">
+                  {group.items.map((item) => renderActionPointCard(item))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderUserGroups(groups: ActionPointUserGroup[], emptyMessage: string) {
+    if (groups.length === 0) {
+      return (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+          {emptyMessage}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {groups.map((group) => {
+          const groupKey = `users:${group.id}`;
+          const groupOpen = !collapsedGroups.has(groupKey);
+          return (
+            <section key={groupKey} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <button
+                type="button"
+                onClick={() => toggleGroup(groupKey)}
+                aria-expanded={groupOpen}
+                className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5"
+              >
+                {groupOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
+                <Avatar initials={initialsFromName(group.title)} className="h-9 w-9 text-xs" />
+                <div className="min-w-0 flex-1">
+                  <p className="eyebrow">{group.subtitle}</p>
+                  <h3 className="truncate text-base font-bold text-slate-950">{group.title}</h3>
+                </div>
+                <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{group.items.length}</span>
+              </button>
+              {groupOpen && (
+                <div className="divide-y divide-slate-100">
+                  {group.items.map((item) => renderActionPointCard(item))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderActionPointCard(item: ActionPointOverviewItem) {
+    const scopeLabel = actionPointScopeLabel(item.scope);
+    const status = item.status ?? (item.active ? "open" : "afgesloten");
+    const meta = actionPointMetaParts(item).join(" · ");
+    return (
+      <article key={item.id} className="flex min-h-[72px] items-center gap-3 px-4 py-3 transition hover:bg-slate-50 sm:px-5">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+          <Target className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="min-w-0 truncate text-sm font-bold text-slate-950">{item.title}</h4>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{scopeLabel}</span>
-              <StatusBadge status={item.active ? "open" : "afgesloten"} />
+              <StatusBadge status={status} />
               <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{priorityLabel(item.priority)}</span>
             </div>
-            <h3 className="mt-3 text-base font-bold text-slate-950">{item.title}</h3>
           </div>
-          {item.targetValue !== undefined && <p className="text-sm font-bold text-brand-800">Target {item.targetValue}</p>}
+          <p className="mt-1 truncate text-xs leading-4 text-slate-500">{meta}</p>
         </div>
-        {item.description.trim() && <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>}
-        <div className="mt-5 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
-          <ReadOnlyField label={scopeLabel} value={actionPointScopeDetail(item)} />
-          <ReadOnlyField label="Geldigheid" value={`${formatShortDate(item.validFrom)} t/m ${item.validUntil ? formatShortDate(item.validUntil) : "onbepaald"}`} />
-        </div>
+        {item.targetValue !== undefined && (
+          <span className="hidden rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800 sm:inline-flex">
+            Target {item.targetValue}
+          </span>
+        )}
       </article>
     );
   }
 
-  function actionPointScopeDetail(item: ScopedActionDefinition) {
+  function actionPointScopeDetail(item: ActionPointOverviewItem) {
     if (item.scope === "GLOBAL") return "Alle toegestane gebruikers";
     if (item.scope === "COUNTRY") return item.country ? countryName(item.country) : "Land niet ingevuld";
     if (item.scope === "TEAM") {
       return managedUsers.find((member) => member.teamId === item.teamId)?.teamName ?? item.teamId ?? "Team niet ingevuld";
     }
+    if (item.representativeName) return item.representativeName;
     const person = managedUsers.find((member) => member.id === item.userId || member.representativeId === item.userId);
     return person ? `${person.firstName} ${person.lastName}` : item.userId ?? "Gebruiker niet ingevuld";
+  }
+
+  function actionPointDateLabel(item: ActionPointOverviewItem) {
+    if (item.source === "workflow") return item.due ? formatShortDate(item.due) : "Geen deadline";
+    return `${formatShortDate(item.validFrom)} t/m ${item.validUntil ? formatShortDate(item.validUntil) : "onbepaald"}`;
+  }
+
+  function actionPointSourceLabel(item: ActionPointOverviewItem) {
+    if (item.originLabel) return item.originLabel;
+    return item.source === "workflow" ? "Gekoppeld actiepunt" : "Scope-actiepunt";
+  }
+
+  function actionPointMetaParts(item: ActionPointOverviewItem) {
+    return [
+      actionPointSourceLabel(item),
+      actionPointScopeDetail(item),
+      item.source === "workflow" ? `Deadline ${actionPointDateLabel(item)}` : actionPointDateLabel(item),
+      item.ownerName ? `Eigenaar ${item.ownerName}` : undefined,
+      item.description.trim() || undefined,
+    ].filter(Boolean) as string[];
+  }
+
+  function matchesActionPointSearch(item: ActionPointOverviewItem, query: string) {
+    return matchesText([
+      item.title,
+      item.description,
+      item.priority,
+      item.status,
+      actionPointScopeLabel(item.scope),
+      actionPointScopeDetail(item),
+      actionPointDateLabel(item),
+      actionPointSourceLabel(item),
+      item.ownerName,
+      item.representativeName,
+      item.country ? countryName(item.country) : "",
+      item.teamId,
+    ].filter(Boolean).join(" "), query);
+  }
+
+  function matchesText(value: string, query: string) {
+    const normalizedQuery = query.trim().toLocaleLowerCase("nl-BE");
+    if (!normalizedQuery) return true;
+    return value.toLocaleLowerCase("nl-BE").includes(normalizedQuery);
+  }
+
+  function initialsFromName(name: string) {
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase();
   }
 }
 

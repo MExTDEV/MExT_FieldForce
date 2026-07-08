@@ -332,6 +332,28 @@ Current implemented behaviour:
 
 ---
 
+# Header ToDo Notification
+
+The global header contains a compact ToDo bell.
+
+Purpose:
+
+- show whether the active user has visible open ToDo's;
+- provide a compact dropdown with the same visible daily workflow items used by Dashboard `Aandacht vereist` and `/taken-vandaag`;
+- add approval ToDo's for visible Begeleidingen that are waiting for the coached person's approval.
+
+Business rules:
+
+- The bell must not own or duplicate workflow logic.
+- The bell uses existing visible workflow data after effective permission, module, country, team and user-scope filtering.
+- The red bell state and count may only be based on items visible to the active user.
+- Hidden surprise coachings must not be revealed through bell colour, count or dropdown content.
+- `Wachten op akkoord` / `verzonden_ter_akkoord` counts as an approval ToDo for the header bell while the existing approval data still indicates that approval is needed.
+- Clicking a ToDo row opens the existing source route or detail flow, such as the Begeleiding form/detail route through the shared coaching open helper.
+- Undefined workflows for Contactmomenten, Retrainingen, Salestrainingen and Hulpaanvragen must not be expanded from the header.
+
+---
+
 # Beheer Navigation
 
 Beheer contains administrative and configuration screens.
@@ -1060,9 +1082,19 @@ The Actiepunten page has a first functional read-only overview.
 
 Current implemented behaviour:
 
-- action points are shown in Open and Afgesloten sections
+- open / to-do action points are shown in two tabs:
+  - Actiepunten
+  - Gebruikers
+- both tabs have a search field
+- the Actiepunten tab groups visible open action points in collapsible scope groups:
+  - Globaal
+  - Land
+  - Team
+  - Persoonlijk
+- the Gebruikers tab shows the same visible open action points grouped per visible user
 - each item displays a Globaal, Land, Team or Persoonlijk badge
 - visible data is filtered by active module state, effective permissions and role/country/team/user scope
+- concrete workflow action points from visible coaching-related workflows are shown as personal/user-scoped items
 - no create, edit, close, approval, expiry or reassignment workflow is implemented from this page
 
 The detailed business process must still be discussed with the business.
@@ -1091,17 +1123,17 @@ Applies to one specific user.
 
 ---
 
-## Page Sections
+## Page Tabs
 
-Action points are shown in two main sections.
+Action points are shown in two main tabs.
 
-### Open
+### Actiepunten
 
 Contains active action points that still require follow-up.
 
-### Afgesloten
+### Gebruikers
 
-Contains completed or closed action points.
+Contains active action points grouped per visible user.
 
 ---
 

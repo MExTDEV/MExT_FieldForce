@@ -23,9 +23,17 @@ The Actiepunten page has a first functional read-only overview.
 
 Implemented behaviour:
 
-- visible action points are shown in two sections:
-  - Open
-  - Afgesloten
+- visible open / to-do action points are shown in two tabs:
+  - Actiepunten
+  - Gebruikers
+- both tabs have a search field.
+- the **Actiepunten** tab groups to-do action points in collapsible scope groups:
+  - Globaal
+  - Land
+  - Team
+  - Persoonlijk
+- the **Gebruikers** tab uses the same visible to-do action points but groups them per visible user.
+- action point rows use a compact list layout aligned with the Mijn Team list pattern.
 - each item displays a type badge:
   - Globaal
   - Land
@@ -33,10 +41,13 @@ Implemented behaviour:
   - Persoonlijk
 - visibility respects active module configuration, effective permissions, role defaults, user-level overrides and country/team/user scope.
 
-Current data source:
+Current data sources:
 
 - the overview uses existing `ActionDefinition` data for global, country, team and personal scoped action points.
-- `active` is currently used for the Open/Afgesloten split because the final action-point close workflow and `closedAt` semantics are not defined yet.
+- the overview also shows concrete action points from visible Coaching workflow/reporting data, such as action points created during a coaching, contact moment, retraining or sales training.
+- concrete workflow action points are shown as personal/user-scoped items for the related representative.
+- `active` is currently used for the Open/Afgesloten split for `ActionDefinition` records because the final action-point close workflow and `closedAt` semantics are not defined yet.
+- workflow action point status is used for the Open/Afgesloten split for concrete workflow items.
 
 The detailed business process still needs to be discussed with the business.
 
@@ -82,17 +93,32 @@ Applies to one specific user.
 
 ---
 
-## Page Sections
+## Page Tabs
 
-Action points must be shown in two main sections.
+The operational Actiepunten screen is organised in two tabs.
 
-### Open
+### Actiepunten
 
 Contains active action points that still require follow-up.
 
+Items are grouped in collapsible scope groups:
+
+- Globaal
+- Land
+- Team
+- Persoonlijk
+
+The tab has a search field that filters visible open action points.
+
+### Gebruikers
+
+Contains the same active action points that still require follow-up, but grouped per visible user.
+
+The tab has a search field that filters both users and action points.
+
 ### Afgesloten
 
-Contains completed or closed action points.
+Completed or closed action points remain status-aware in the underlying data model, but this screen iteration focuses on open / to-do action points. A final closed-action detail or history workflow still requires business clarification.
 
 ---
 
@@ -236,9 +262,10 @@ A Super Admin sees all action points.
   - country
   - team
   - individual user
-- Action points must be divided into:
-  - open
-  - closed
+- The operational screen must focus on open / to-do action points.
+- Open action points must be viewable:
+  - by action point scope
+  - by user
 - Each action point must clearly show its type.
 - Users must only see action points that apply to their effective permission scope.
 - The current overview is read-only.
