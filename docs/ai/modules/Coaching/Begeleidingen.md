@@ -169,6 +169,20 @@ Purpose:
 
 ---
 
+## List Layout
+
+Current behaviour:
+
+- Begeleidingen are shown as compact rows aligned with the `Mijn Team` list pattern.
+- The same compact row layout is used for all users and roles.
+- Non-management views show one compact list per main section.
+- Management views keep the existing country, team and user grouping, but coaching items inside each user group use the same compact row layout.
+- Each row shows the coached person, coach or owner, date and time when available, lifecycle status, Outlook sync status when available and the existing open action.
+- The row layout must not change visibility, grouping, open modes, lifecycle rules or permission checks.
+- The fixed main sections for Today, Future and History remain visible when empty.
+
+---
+
 ## Opening Modes
 
 The same coaching can be opened in different modes depending on:

@@ -22,6 +22,7 @@
     "test:fiche-visibility": "tsx scripts/test-my-team-fiche-visibility.ts",
     "test:my-team-planned": "tsx scripts/test-my-team-planned-indicator.ts",
     "test:action-points-overview": "tsx scripts/test-action-points-overview.ts",
+    "test:action-point-targets": "tsx scripts/test-action-point-target-visibility.ts",
     "test:coaching-groups": "tsx scripts/test-coaching-scope-groups.ts",
     "test:coaching-visibility": "tsx scripts/test-coaching-visibility.ts",
     "test:menu-rights": "tsx scripts/test-menu-rights.ts",

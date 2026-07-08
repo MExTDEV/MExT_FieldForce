@@ -8,6 +8,11 @@ import type { MockUser, WorkflowState } from "../lib/types";
 import { canViewTeamDashboard } from "../lib/permissions";
 
 const jonas = mockUsers.find((user) => user.id === "user-rep-be")!;
+const representativeWithoutExternalId: MockUser = {
+  ...jonas,
+  id: "rep-1",
+  representativeId: undefined,
+};
 const sophie = mockUsers.find((user) => user.id === "user-leader-be")!;
 const superAdmin = mockUsers.find((user) => user.id === "user-super")!;
 const countryManagerBe: MockUser = {
@@ -23,6 +28,11 @@ assert.deepEqual(
   getVisibleRepresentatives(jonas, representatives).map((item) => item.id),
   ["rep-1"],
   "Jonas mag uitsluitend zichzelf zien."
+);
+assert.deepEqual(
+  getVisibleRepresentatives(representativeWithoutExternalId, representatives).map((item) => item.id),
+  ["rep-1"],
+  "Een vertegenwoordiger zonder aparte representativeId valt terug op de eigen user-id."
 );
 assert.ok(
   getVisibleRepresentatives(sophie, representatives).every((item) => item.teamId === "be-1"),
@@ -80,6 +90,11 @@ assert.deepEqual(
   getVisibleWorkflowState(jonas, state, representatives).salesTrainings[0]?.participantIds,
   ["rep-1"],
   "Een vertegenwoordiger mag geen participant-ids van collega's ontvangen."
+);
+assert.deepEqual(
+  getVisibleWorkflowState(representativeWithoutExternalId, state, representatives).salesTrainings[0]?.participantIds,
+  ["rep-1"],
+  "De workflow-scope gebruikt dezelfde fallback naar user-id voor vertegenwoordigers."
 );
 assert.deepEqual(
   getVisibleWorkflowState(sophie, state, representatives).salesTrainings[0]?.participantIds,

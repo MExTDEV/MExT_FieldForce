@@ -39,15 +39,17 @@ export function getVisibleRepresentatives(
     return source.filter((representative) => countries.has(representative.country));
   }
   if (currentUser.role === "REPRESENTATIVE") {
+    const ownRepresentativeId = representativeIdForActor(currentUser);
     return source.filter(
-      (representative) => representative.id === currentUser.representativeId
+      (representative) => representative.id === ownRepresentativeId
     );
   }
   if (currentUser.role === "SALES_LEADER") {
+    const ownRepresentativeId = representativeIdForActor(currentUser);
     return source.filter(
       (representative) =>
         representative.teamId === currentUser.teamId ||
-        representative.id === currentUser.representativeId
+        (ownRepresentativeId ? representative.id === ownRepresentativeId : false)
     );
   }
   return source.filter(
@@ -77,13 +79,19 @@ export function canAccessRepresentativeData(
   if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(currentUser.role)) return true;
   if (currentUser.role === "SALES_MANAGER") return canAccessCountryScope(currentUser, representative.country);
   if (currentUser.role === "REPRESENTATIVE") {
-    return representative.id === currentUser.representativeId;
+    return representative.id === representativeIdForActor(currentUser);
   }
   if (currentUser.role === "SALES_LEADER") {
+    const ownRepresentativeId = representativeIdForActor(currentUser);
     return representative.teamId === currentUser.teamId ||
-      representative.id === currentUser.representativeId;
+      (ownRepresentativeId ? representative.id === ownRepresentativeId : false);
   }
   return representative.country === currentUser.country;
+}
+
+function representativeIdForActor(currentUser: MockUser) {
+  if (currentUser.representativeId) return currentUser.representativeId;
+  return currentUser.role === "REPRESENTATIVE" ? currentUser.id : undefined;
 }
 
 export function scopeSalesTraining(

@@ -177,6 +177,13 @@ Reference:
 - Navigation.md → Dashboard Navigation → Open actiepunten
 - Actiepunten.md
 
+Current implemented behaviour:
+
+- The count is based on the same visible reporting action dataset used by the Actiepunten overview.
+- Personal action points created from a coaching count for the coached / assigned representative, not for the creator or owner.
+- Legacy `ActionPoint` rows and current `CoachingAction` rows from coachings are normalised before counting.
+- Closed statuses such as `afgerond`, `behaald`, `niet_behaald` and `geannuleerd` do not count as open action points.
+
 ---
 
 ## Verslagen wachtend op akkoord

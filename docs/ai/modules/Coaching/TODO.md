@@ -249,6 +249,39 @@ Open question:
 
 # Begeleidingen
 
+## Compacte lijstweergave
+
+Priority: Medium
+
+Status: Completed on 2026-07-08
+
+Implemented changes:
+
+- Begeleidingen rows now use a compact list layout aligned with the `Mijn Team` row pattern.
+- The compact row layout is applied for all users and roles.
+- Non-management views use a single compact list per main section instead of two-column coaching cards.
+- Management grouped views keep the existing country, team and user grouping, but items inside each user group use the same compact row renderer.
+- Existing visibility rules, scope grouping, empty main sections, open labels, route targets, status badges and Outlook sync badges were preserved.
+- No database, lifecycle, permission or workflow logic was changed.
+
+Validation performed:
+
+- `git diff --check`
+- `npm run typecheck`
+- `npm run lint` completed with 0 errors and the existing warnings.
+- `npm run test:coaching-groups`
+- `npm run test:coaching-visibility`
+- `npm run test:planning-items`
+- `npm run test:my-team-planned`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
+- `npx next build` completed successfully with the existing Prisma client.
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+
+---
+
 ## Begeleiding op Verkoopleider kunnen inplannen
 
 Priority: High
@@ -584,6 +617,11 @@ Implemented changes:
 - The overview uses existing `ActionDefinition` data for global, country, team and user-scoped action points.
 - The overview also shows concrete action points from visible workflow/reporting data, including action points created during coachings, contact moments, retrainings and sales trainings.
 - Concrete workflow action points are displayed as personal/user-scoped items for the related representative.
+- Coaching-origin personal action points are now normalised by target user / coached representative instead of creator or owner.
+- Existing legacy `ActionPoint` rows with incomplete or inconsistent assignment data are linked back to the representative on the related coaching when available.
+- Current `CoachingAction` rows are included in the same reporting action dataset and deduplicated against matching legacy coaching action points.
+- Representatives without a separate external `representativeId` now fall back to their own user-id for scope filtering, so they still see their personal action points.
+- The Dashboard open action point count now uses the same visible action dataset and excludes closed statuses, including `afgerond`.
 - The Actiepunten tab shows open / to-do action points in collapsible scope groups:
   - Globaal
   - Land
@@ -599,8 +637,15 @@ Implemented changes:
 
 Validation performed:
 
+- `npm run test:action-point-targets`
 - `npm run test:action-points-overview`
+- `npm run test:data-access`
+- `npm run test:performance`
+- `npm run test:smart-coaching`
 - `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
+- `npx next build` completed successfully with the existing Prisma client.
 
 Known limitations:
 

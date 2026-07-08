@@ -91,7 +91,7 @@ export function analyzeRepresentative(
   referenceDate = currentDateKey()
 ): RepresentativeCoachingInsight {
   const actions = dataset.actions.filter((item) => item.representativeId === representative.id);
-  const openActions = actions.filter((item) => !["behaald", "niet_behaald", "geannuleerd"].includes(item.status));
+  const openActions = actions.filter((item) => isOpenActionStatus(item.status));
   const overdueActions = openActions.filter((item) => isActionOverdue(item.due, item.status, referenceDate));
   const kpis = dataset.kpis.filter((item) => item.representativeId === representative.id);
   const negativeKpis = kpis.filter((item) => item.trend < 0);
@@ -305,7 +305,7 @@ function buildTeamHeatmap(
     const teamInsights = insights.filter((item) => ids.has(item.representative.id));
     const openActionCount = dataset.actions.filter((item) =>
       ids.has(item.representativeId) &&
-      !["behaald", "niet_behaald", "geannuleerd"].includes(item.status)
+      isOpenActionStatus(item.status)
     ).length;
     const interventionCount = dataset.interventions.filter((item) =>
       item.representativeIds.some((id) => ids.has(id))
@@ -441,7 +441,11 @@ function daysBetween(from: string, to: string) {
 function isActionOverdue(due: string, status: string, referenceDate: string) {
   return Boolean(due) &&
     due < referenceDate &&
-    !["behaald", "niet_behaald", "geannuleerd"].includes(status);
+    isOpenActionStatus(status);
+}
+
+function isOpenActionStatus(status: string) {
+  return !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(status);
 }
 
 function currentDateKey() {

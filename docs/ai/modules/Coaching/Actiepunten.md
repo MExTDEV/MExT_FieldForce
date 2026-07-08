@@ -46,6 +46,8 @@ Current data sources:
 - the overview uses existing `ActionDefinition` data for global, country, team and personal scoped action points.
 - the overview also shows concrete action points from visible Coaching workflow/reporting data, such as action points created during a coaching, contact moment, retraining or sales training.
 - concrete workflow action points are shown as personal/user-scoped items for the related representative.
+- coaching-origin personal action points are targeted by the coached user / representative. The creator or owner of the action point does not determine whether the representative sees it.
+- legacy `ActionPoint` records and current `CoachingAction` records are normalised into the same reporting action dataset. For coaching-origin legacy records, the linked coaching representative is the backwards-compatible target when stored assignment data is incomplete or inconsistent.
 - `active` is currently used for the Open/Afgesloten split for `ActionDefinition` records because the final action-point close workflow and `closedAt` semantics are not defined yet.
 - workflow action point status is used for the Open/Afgesloten split for concrete workflow items.
 
@@ -268,6 +270,8 @@ A Super Admin sees all action points.
   - by user
 - Each action point must clearly show its type.
 - Users must only see action points that apply to their effective permission scope.
+- Personal action points from a coaching must always be visible to the assigned / coached user when they are open, even when they were created by a Verkoopleider, Country Manager, Admin or Super Admin.
+- `ownerId` / creator data may be used for audit and display, but must not be used as the personal visibility target.
 - The current overview is read-only.
 - Clicking an action point does not create, edit, close, approve, expire or reassign it.
 - The detailed action point workflow still needs to be defined with the business.

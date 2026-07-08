@@ -2489,10 +2489,10 @@ function InterventionList({ kind }: { kind: string }) {
     }
 
     return (
-      <div className="grid gap-4 lg:grid-cols-2">
-        {items.map((item) => (
-          renderInterventionCard(item)
-        ))}
+      <div className="card overflow-hidden">
+        <div className="divide-y divide-slate-100">
+          {items.map((item) => renderInterventionRow(item))}
+        </div>
       </div>
     );
   }
@@ -2511,17 +2511,19 @@ function InterventionList({ kind }: { kind: string }) {
             {count} {count === 1 ? "begeleiding" : "begeleidingen"}
           </span>
         </div>
-        <div className="space-y-4 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
+        <div className="space-y-3 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
           {team.users.map((userGroup) => (
-            <section key={userGroup.id} className="space-y-2.5">
+            <section key={userGroup.id} className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-bold text-slate-900">{userGroup.name}</p>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
                   {userGroup.items.length}
                 </span>
               </div>
-              <div className="grid gap-4 lg:grid-cols-2">
-                {userGroup.items.map((item) => renderInterventionCard(item))}
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="divide-y divide-slate-100">
+                  {userGroup.items.map((item) => renderInterventionRow(item))}
+                </div>
               </div>
             </section>
           ))}
@@ -2530,26 +2532,48 @@ function InterventionList({ kind }: { kind: string }) {
     );
   }
 
-  function renderInterventionCard(item: InterventionListRow) {
-    return (
-      <article key={item.id} className="card p-5">
-        <div className="flex items-start gap-4">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{item.person}</p><p className="mt-1 text-sm text-slate-500">{item.date} · {item.owner}</p></div>
-          <StatusBadge status={item.status} />
+  function renderInterventionRow(item: InterventionListRow) {
+    const timeLabel = [item.startTime, item.endTime].filter(Boolean).join(" - ");
+    const rowClass = `grid gap-3 p-3.5 transition sm:grid-cols-[minmax(220px,1.5fr)_minmax(135px,0.65fr)_minmax(185px,0.85fr)_auto] sm:items-center sm:px-4 ${item.detailHref ? "hover:bg-brand-50/40" : ""}`;
+    const actionClass = `inline-flex items-center gap-1 text-sm font-bold ${item.detailHref ? "text-brand-700" : "text-slate-400"}`;
+    const content = (
+      <>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">{item.person}</p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">{item.owner}</p>
+          </div>
         </div>
-        {item.outlookSyncStatus && (
-          <div className="mt-3"><InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} /></div>
-        )}
-        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Begeleidingsdossier</span>
-          {item.detailHref ? (
-            <Link href={item.detailHref} className="text-sm font-semibold text-brand-700">{item.openLabel}</Link>
-          ) : (
-            <span className="text-sm font-semibold text-slate-400">{item.openLabel}</span>
-          )}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Datum</p>
+          <p className="mt-1 text-sm text-slate-700">{item.date}</p>
+          {timeLabel && <p className="mt-0.5 text-xs text-slate-500">{timeLabel}</p>}
         </div>
-      </article>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <StatusBadge status={item.status} />
+            {item.outlookSyncStatus && (
+              <InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} />
+            )}
+          </div>
+        </div>
+        <span className={actionClass}>
+          {item.openLabel}
+          {item.detailHref && <ChevronRight className="h-4 w-4" />}
+        </span>
+      </>
+    );
+
+    return item.detailHref ? (
+      <Link key={item.id} href={item.detailHref} className={rowClass}>
+        {content}
+      </Link>
+    ) : (
+      <div key={item.id} className={rowClass}>
+        {content}
+      </div>
     );
   }
 

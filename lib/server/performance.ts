@@ -15,6 +15,38 @@ import {
 import type { KpiUnit, Status, WorkflowActionPoint } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
 
+type TargetUserRow = {
+  representativeId: string | null;
+};
+
+type TargetInterventionRow = {
+  representativeId: string;
+  representative: TargetUserRow;
+};
+
+type LegacyActionPointRow = {
+  id: string;
+  representativeId: string;
+  representative: TargetUserRow;
+  interventionId: string | null;
+  intervention: TargetInterventionRow | null;
+  title: string;
+  type: string;
+  status: string;
+  dueDate: Date | null;
+  updatedAt: Date;
+};
+
+type CoachingActionRow = {
+  id: string;
+  interventionId: string;
+  intervention: TargetInterventionRow | null;
+  userId: string;
+  user: TargetUserRow;
+  title: string;
+  updatedAt: Date;
+};
+
 export async function loadPerformanceDatasetFromDatabase(
   options: { coachingWhere?: Prisma.InterventionWhereInput } = {}
 ): Promise<PerformanceDataset> {
@@ -181,29 +213,96 @@ async function loadHistoricalContactMoments(): Promise<HistoricalContactMoment[]
 }
 
 async function loadHistoricalActionPoints(): Promise<HistoricalActionPoint[]> {
-  const actions = await prisma.actionPoint.findMany({
-    include: {
-      representative: true,
-    },
-    orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
-  });
+  const [legacyActions, coachingActions] = await Promise.all([
+    prisma.actionPoint.findMany({
+      where: {
+        OR: [
+          { interventionId: null },
+          { intervention: { deletedAt: null } },
+        ],
+      },
+      include: {
+        representative: true,
+        intervention: {
+          include: {
+            representative: true,
+          },
+        },
+      },
+      orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+    }),
+    prisma.coachingAction.findMany({
+      where: {
+        intervention: {
+          deletedAt: null,
+        },
+      },
+      include: {
+        user: true,
+        intervention: {
+          include: {
+            representative: true,
+          },
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }],
+    }),
+  ]);
 
-  return actions.map((action) => {
+  return normalizeHistoricalActionPoints(legacyActions, coachingActions);
+}
+
+export function normalizeHistoricalActionPoints(
+  legacyActions: LegacyActionPointRow[],
+  coachingActions: CoachingActionRow[],
+  referenceDate = today()
+): HistoricalActionPoint[] {
+  const items: HistoricalActionPoint[] = [];
+  const legacyActionKeys = new Set<string>();
+
+  for (const action of legacyActions) {
+    const representativeId = targetRepresentativeIdForActionPoint(action);
+    if (!representativeId) continue;
     const status = toActionStatus(action.status);
     const due = action.dueDate ? dateOnly(action.dueDate) : "";
-    return {
+    legacyActionKeys.add(actionPointTargetKey(action.interventionId, representativeId, action.title));
+    items.push({
       id: action.id,
-      representativeId: action.representative.representativeId ?? action.representativeId,
+      representativeId,
       title: action.title,
       type: action.type.toLowerCase() as WorkflowActionPoint["type"],
-      status: due && due < today() && !["behaald", "afgerond", "geannuleerd"].includes(status)
+      status: due && due < referenceDate && !["behaald", "afgerond", "geannuleerd"].includes(status)
         ? "achterstallig"
         : status,
       due,
       progress: progressForStatus(status),
       updatedAt: dateOnly(action.updatedAt),
-    };
-  });
+    });
+  }
+
+  for (const action of coachingActions) {
+    const representativeId = targetRepresentativeIdForCoachingAction(action);
+    if (!representativeId) continue;
+    const key = actionPointTargetKey(action.interventionId, representativeId, action.title);
+    if (legacyActionKeys.has(key)) continue;
+    items.push({
+      id: `coaching-action:${action.id}`,
+      representativeId,
+      title: action.title,
+      type: "vaardigheid",
+      status: "open",
+      due: "",
+      progress: progressForStatus("open"),
+      updatedAt: dateOnly(action.updatedAt),
+    });
+  }
+
+  return items.sort((left, right) =>
+    left.representativeId.localeCompare(right.representativeId) ||
+    left.due.localeCompare(right.due) ||
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    left.title.localeCompare(right.title)
+  );
 }
 
 async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
@@ -279,6 +378,26 @@ function progressForStatus(status: WorkflowActionPoint["status"]) {
   if (status === "niet_behaald") return 30;
   if (status === "geannuleerd") return 0;
   return 40;
+}
+
+function targetRepresentativeIdForActionPoint(action: LegacyActionPointRow) {
+  if (action.intervention) {
+    return publicRepresentativeId(action.intervention.representative, action.intervention.representativeId);
+  }
+  return publicRepresentativeId(action.representative, action.representativeId);
+}
+
+function targetRepresentativeIdForCoachingAction(action: CoachingActionRow) {
+  return publicRepresentativeId(action.user, action.userId) ||
+    (action.intervention ? publicRepresentativeId(action.intervention.representative, action.intervention.representativeId) : "");
+}
+
+function publicRepresentativeId(user: TargetUserRow | null | undefined, fallback: string) {
+  return user?.representativeId || fallback;
+}
+
+function actionPointTargetKey(interventionId: string | null | undefined, representativeId: string, title: string) {
+  return `${interventionId ?? "standalone"}:${representativeId}:${title.trim().toLocaleLowerCase("nl-BE")}`;
 }
 
 function toKpiUnit(unit: string): KpiUnit {

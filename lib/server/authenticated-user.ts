@@ -162,7 +162,9 @@ async function findActiveUser(id: string): Promise<MockUser | undefined> {
     countryAccess,
     language: user.language,
     teamId: user.teamId ?? undefined,
-    representativeId: user.representativeId ?? undefined,
+    representativeId: user.role === "REPRESENTATIVE"
+      ? user.representativeId ?? user.id
+      : user.representativeId ?? undefined,
     permissions,
   };
 }
