@@ -246,9 +246,9 @@ model Team {
   id               String                      @id @default(cuid())
   name             String
   country          Country
-  primaryLeaderId  String
+  primaryLeaderId  String?
   active           Boolean                     @default(true)
-  primaryLeader    User                        @relation("PrimaryLeader", fields: [primaryLeaderId], references: [id])
+  primaryLeader    User?                       @relation("PrimaryLeader", fields: [primaryLeaderId], references: [id], onDelete: SetNull)
   members          User[]                      @relation("TeamMembers")
   leaders          TeamLeader[]
   personalCriteria PersonalCoachingCriterion[]

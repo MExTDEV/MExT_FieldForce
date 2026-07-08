@@ -165,7 +165,7 @@ async function main() {
     });
   }
 
-  const teamsByCountry = new Map<Country, { id: string; primaryLeaderId: string }[]>();
+  const teamsByCountry = new Map<Country, { id: string; primaryLeaderId: string | null }[]>();
   for (const country of Object.values(Country)) {
     const config = countryConfig[country];
     const leaders = leadersByCountry.get(country)!;

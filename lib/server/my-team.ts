@@ -84,7 +84,7 @@ export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamM
         plannedCoachingTargetUserIds.add(member.id);
       }
     }
-    if (team.primaryLeader.active && team.primaryLeader.role === "SALES_LEADER") {
+    if (team.primaryLeader?.active && team.primaryLeader.role === "SALES_LEADER") {
       plannedCoachingTargetUserIds.add(team.primaryLeader.id);
     }
     for (const { user } of team.leaders) {
@@ -105,12 +105,12 @@ export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamM
 
   const members = teams.flatMap((team) => {
     const linkedLeaderIds = new Set([
-      team.primaryLeader.active ? team.primaryLeader.id : "",
+      team.primaryLeader?.active ? team.primaryLeader.id : "",
       ...team.leaders.map(({ user }) => user.id),
     ]);
     const users = new Map([
       ...team.members.map((member) => [member.id, member] as const),
-      ...(team.primaryLeader.active
+      ...(team.primaryLeader?.active
         ? [[team.primaryLeader.id, team.primaryLeader] as const]
         : []),
       ...team.leaders.map(({ user }) => [user.id, user] as const),

@@ -128,7 +128,7 @@ export type ManagementTeam = {
   id: string;
   name: string;
   country: Country;
-  primaryLeaderId: string;
+  primaryLeaderId: string | null;
   primaryLeaderName: string;
   active: boolean;
   memberCount: number;

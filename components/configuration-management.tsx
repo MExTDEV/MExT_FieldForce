@@ -14,6 +14,7 @@ import { useSession } from "@/components/session-provider";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { fieldForcePermissionGroups } from "@/lib/user-management";
 import { kpiEvaluationLabels, kpiUnitOptions } from "@/lib/kpi-settings";
+import { optionalTeamLeaderLabel } from "@/lib/team-management";
 import type {
   Country,
   KpiEvaluationDirection,
@@ -137,14 +138,14 @@ export function ConfigurationManagement({ section }: { section: Section }) {
             <Card
               key={item.id}
               title={item.name}
-              detail={`${item.country} | ${item.primaryLeaderName} | ${item.memberCount} leden`}
+              detail={`${item.country} | ${optionalTeamLeaderLabel(item.primaryLeaderName)} | ${item.memberCount} leden`}
               active={item.active}
               onEdit={() => setEditor({
                 kind: "team",
                 id: item.id,
                 name: item.name,
                 country: item.country,
-                primaryLeaderId: item.primaryLeaderId,
+                primaryLeaderId: item.primaryLeaderId ?? "",
               })}
               onDelete={() => setEditor({
                 kind: "deactivate",
@@ -168,14 +169,14 @@ export function ConfigurationManagement({ section }: { section: Section }) {
             <Card
               key={item.id}
               title={item.name}
-              detail={`${item.country} | ${item.primaryLeaderName} | ${item.memberCount} leden`}
+              detail={`${item.country} | ${optionalTeamLeaderLabel(item.primaryLeaderName)} | ${item.memberCount} leden`}
               active={item.active}
               onEdit={() => setEditor({
                 kind: "team",
                 id: item.id,
                 name: item.name,
                 country: item.country,
-                primaryLeaderId: item.primaryLeaderId,
+                primaryLeaderId: item.primaryLeaderId ?? "",
               })}
               onDelete={() => setEditor({
                 kind: "deactivate",
@@ -774,7 +775,7 @@ function ManagementEditor({
 
   const valid =
     editor.kind === "team"
-      ? Boolean(editor.name.trim() && editor.primaryLeaderId)
+      ? Boolean(editor.name.trim())
       : editor.kind === "kpi"
         ? Boolean(
             editor.code.trim() &&
@@ -836,7 +837,7 @@ function ManagementEditor({
                 <option value="DE">Duitsland</option>
               </select>
             </Field>
-            <Field label="Primaire teamleider">
+            <Field label="Verkoopleider">
               <select
                 className="field"
                 value={editor.primaryLeaderId}
@@ -845,7 +846,7 @@ function ManagementEditor({
                   primaryLeaderId: event.target.value,
                 })}
               >
-                <option value="">Selecteer een teamleider</option>
+                <option value="">Geen verkoopleider toegewezen</option>
                 {users
                   .filter((item) =>
                     item.active &&

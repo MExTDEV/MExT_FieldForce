@@ -10,6 +10,42 @@ Priority levels:
 
 ---
 
+# Beheer / Teams
+
+## Teams zonder toegewezen Verkoopleider
+
+Priority: High
+
+Status: Completed on 2026-07-08
+
+Implemented changes:
+
+- Teams can be created from Beheer and from user management without selecting a Verkoopleider.
+- Team Beheer API access now follows the existing `menu.coaching.teams` permission, so a Country Manager with explicit team-management rights can manage teams within country scope while other management areas remain Admin/Super Admin scoped.
+- Existing Teams can be saved with an empty Verkoopleider selection, which removes the primary `TeamLeader` row and stores `Team.primaryLeaderId` as `null`.
+- The Prisma schema and migration now make `Team.primaryLeaderId` nullable with `ON DELETE SET NULL`.
+- Existing Teams with a Verkoopleider keep their current relation.
+- The team list shows `Geen verkoopleider toegewezen` for teams without a Verkoopleider instead of an empty value, `null`, `undefined` or a technical ID.
+- `Mijn Team` and management team queries are null-safe for teams without a primary leader.
+- Permanent user deletion no longer requires assigning another primary leader first; the nullable relation can be cleared.
+- User assignment to teams remains unchanged: roles that require a team still require `User.teamId`.
+- Verkoopleider visibility remains scoped to the user's own team; teams without Verkoopleider do not become visible to ordinary Verkoopleiders.
+
+Validation performed:
+
+- `npm run test:team-leader-optional`
+- `npm run test:my-team-planned`
+- `npm run test:data-access`
+- `npm run test:menu-rights`
+- `npm run typecheck`
+
+Remaining checks or known limitations:
+
+- Full `prisma generate` hit the known Windows Prisma query-engine file lock; `npx prisma generate --no-engine` completed successfully for generated client types.
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+
+---
+
 # Header / Notifications
 
 ## Header ToDo-bel

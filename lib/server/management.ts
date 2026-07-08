@@ -8,6 +8,10 @@ import {
   fieldForcePermissionKeys,
   roleTemplates,
 } from "@/lib/user-management";
+import {
+  normalizeOptionalTeamLeaderId,
+  optionalTeamLeaderLabel,
+} from "@/lib/team-management";
 import { isKpiUnit, validateKpiRange } from "@/lib/kpi-settings";
 import type {
   Country,
@@ -43,8 +47,11 @@ export async function listManagementTeams(
     name: team.name,
     country: team.country as Country,
     primaryLeaderId: team.primaryLeaderId,
-    primaryLeaderName:
-      `${team.primaryLeader.firstName} ${team.primaryLeader.lastName}`.trim(),
+    primaryLeaderName: optionalTeamLeaderLabel(
+      team.primaryLeader
+        ? `${team.primaryLeader.firstName} ${team.primaryLeader.lastName}`.trim()
+        : null
+    ),
     active: team.active,
     memberCount: team._count.members,
   }));
@@ -134,14 +141,19 @@ export function assertCountryScope(actor: MockUser, country: Country | null) {
 
 export async function saveTeam(
   actor: MockUser,
-  input: { id?: string; name: string; country: Country; primaryLeaderId: string }
+  input: { id?: string; name: string; country: Country; primaryLeaderId?: string | null }
 ) {
   assertCountryScope(actor, input.country);
-  const leader = await prisma.user.findFirst({
-    where: { id: input.primaryLeaderId, active: true, country: input.country },
-    select: { id: true },
-  });
-  if (!leader) throw new Error("De gekozen teamleider is niet actief in dit land.");
+  const primaryLeaderId = normalizeOptionalTeamLeaderId(input.primaryLeaderId);
+  const leader = primaryLeaderId
+    ? await prisma.user.findFirst({
+        where: { id: primaryLeaderId, active: true, country: input.country },
+        select: { id: true },
+      })
+    : null;
+  if (primaryLeaderId && !leader) {
+    throw new Error("De gekozen teamleider is niet actief in dit land.");
+  }
   return prisma.$transaction(async (tx) => {
     if (input.id) {
       const existing = await tx.team.findUniqueOrThrow({
@@ -166,7 +178,7 @@ export async function saveTeam(
           data: {
             name: input.name.trim(),
             country: input.country,
-            primaryLeaderId: leader.id,
+            primaryLeaderId,
             active: true,
           },
         })
@@ -174,16 +186,18 @@ export async function saveTeam(
           data: {
             name: input.name.trim(),
             country: input.country,
-            primaryLeaderId: leader.id,
+            primaryLeaderId,
             active: true,
           },
         });
     await tx.teamLeader.deleteMany({ where: { teamId: team.id, type: "PRIMARY" } });
-    await tx.teamLeader.upsert({
-      where: { teamId_userId: { teamId: team.id, userId: leader.id } },
-      update: { type: "PRIMARY" },
-      create: { teamId: team.id, userId: leader.id, type: "PRIMARY" },
-    });
+    if (leader) {
+      await tx.teamLeader.upsert({
+        where: { teamId_userId: { teamId: team.id, userId: leader.id } },
+        update: { type: "PRIMARY" },
+        create: { teamId: team.id, userId: leader.id, type: "PRIMARY" },
+      });
+    }
     return team;
   });
 }

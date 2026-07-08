@@ -5,6 +5,7 @@ import {
   deactivateKpi,
   deactivateTeam,
   getManagementConfiguration,
+  listManagementTeams,
   saveCriterion,
   saveFocus,
   saveKpi,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/server/authenticated-user";
 import { writeAuditLog } from "@/lib/server/audit";
 import { parseOptionalKpiNumber, parseRequiredKpiNumber } from "@/lib/kpi-settings";
+import { canAccessManagementSection } from "@/lib/management-access";
 import type {
   Country,
   FieldForcePermissionKey,
@@ -36,7 +38,17 @@ export async function GET() {
   return handleApi("api/management:get", async () => {
     const actor = await requireAuthenticatedRead();
     if (!actor) badRequest("Beheer vereist een aangemelde gebruiker.");
-    requireRole(actor, ["ADMIN", "SUPER_ADMIN"]);
+    if (!["ADMIN", "SUPER_ADMIN"].includes(actor.role)) {
+      if (canAccessManagementSection(actor, "teams")) {
+        return {
+          teams: await listManagementTeams(actor),
+          kpis: [],
+          focuses: [],
+          roles: [],
+        };
+      }
+      badRequest("Je hebt geen toegang tot deze beheerconfiguratie.");
+    }
     return getManagementConfiguration(actor);
   }, "Beheerconfiguratie kon niet worden geladen.");
 }
@@ -59,8 +71,14 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
     const actor = await requireAuthenticatedUser(
       typeof payload.actorId === "string" ? payload.actorId : undefined
     );
-    requireRole(actor, ["ADMIN", "SUPER_ADMIN"]);
     const entity = String(payload.entity ?? "");
+    if (entity === "team") {
+      if (!canAccessManagementSection(actor, "teams")) {
+        badRequest("Je hebt geen toegang tot teambeheer.");
+      }
+    } else {
+      requireRole(actor, ["ADMIN", "SUPER_ADMIN"]);
+    }
     const permanent = operation === "delete" && payload.permanent === true;
     if (permanent) requireRole(actor, ["SUPER_ADMIN"]);
     let result: unknown;
@@ -82,7 +100,10 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
             id: operation === "update" ? String(payload.id) : undefined,
             name: String(payload.name ?? ""),
             country: String(payload.country) as Country,
-            primaryLeaderId: String(payload.primaryLeaderId ?? ""),
+            primaryLeaderId:
+              typeof payload.primaryLeaderId === "string"
+                ? payload.primaryLeaderId
+                : null,
           });
     } else if (entity === "kpi") {
       result = operation === "delete"

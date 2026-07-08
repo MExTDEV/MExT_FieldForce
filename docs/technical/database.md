@@ -105,3 +105,13 @@ Rules:
 - Inactive roles remain visible in role management.
 - Inactive roles are not available for new user-role assignments.
 - Existing users keep inactive roles until an authorised user changes them.
+
+## Team leadership
+
+`Team` is the organisational team record. The assigned primary Verkoopleider is optional:
+
+- `Team.primaryLeaderId` is nullable.
+- When it is `NULL`, the team is displayed as having no assigned Verkoopleider.
+- Primary leadership join rows in `TeamLeader` are removed when no Verkoopleider is assigned.
+- Existing teams with a Verkoopleider keep their relation during migration.
+- Field users may remain assigned through `User.teamId` even when the team has no primary leader.

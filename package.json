@@ -32,6 +32,7 @@
     "test:auth-session": "tsx scripts/test-auth-session.ts",
     "test:login-history": "tsx scripts/test-login-history.ts",
     "test:kpi-settings": "tsx scripts/test-kpi-settings.ts",
+    "test:team-leader-optional": "tsx scripts/test-team-leader-optional.ts",
     "test:coaching-expansion": "tsx scripts/test-coaching-expansion.ts",
     "test:api-persistence": "tsx scripts/test-api-persistence.ts",
     "test:db-verification": "tsx scripts/verify-step10-database.ts",

@@ -95,6 +95,7 @@ Business rule:
 
 - A Verkoopleider may follow up the people in their own team.
 - A Verkoopleider must not see other teams unless explicitly granted through another role or override.
+- If a team has no assigned Verkoopleider, it does not become visible to other ordinary Verkoopleiders.
 
 ---
 
@@ -143,6 +144,8 @@ Business rule:
 
 - Super Admin has full visibility across all countries, teams and field employees.
 
+Teams may exist without an assigned Verkoopleider. Such teams remain visible to management roles when they are inside the user's existing country or global scope, and the UI must show a neutral label instead of an empty leader value.
+
 ---
 
 ## Grouping
@@ -160,6 +163,7 @@ Business rules:
 - People must remain grouped within their team.
 - Within each team, the Verkoopleider must be shown first.
 - Other team members are listed below the Verkoopleider.
+- If no Verkoopleider is assigned to a team, the team remains valid and no technical placeholder may be displayed.
 
 ---
 
@@ -326,6 +330,7 @@ Business rule:
 - Super Admins see all countries, teams and people.
 - People are grouped by country, team and person.
 - The Verkoopleider must be shown first within each team.
+- Teams without assigned Verkoopleider remain valid organisational teams.
 - Clicking `Fiche` opens the employee / representative profile page.
 - The fiche must only display information from active modules.
 - Planned coachings should be visually visible from the list.

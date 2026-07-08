@@ -130,6 +130,8 @@ A Verkoopleider is the direct sales manager of a team.
 
 A Verkoopleider can also be the target of a coaching by a user who is functionally above Verkoopleider level.
 
+A Team can temporarily exist without an assigned Verkoopleider. This does not create additional visibility for ordinary Verkoopleiders; they still see only the team linked to their own user record.
+
 Primary scope:
 
 - own team
@@ -409,6 +411,8 @@ Visibility rules:
 - Super Admin: all countries
 
 Mijn Team includes field employees.
+
+Teams without an assigned Verkoopleider remain visible to Country Manager, Sales Manager, Admin and Super Admin users when the team falls inside their existing country or global scope.
 
 Current intended roles:
 

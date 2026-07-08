@@ -24,13 +24,9 @@ export async function permanentlyDeleteUser(
         lastName: true,
         email: true,
         role: true,
-        primaryTeams: { select: { name: true } },
       },
     });
     assertConfirmation(user.email, confirmation);
-    if (user.primaryTeams.length) {
-      throw new Error(`Wijs eerst een andere primaire leider toe aan: ${user.primaryTeams.map((team) => team.name).join(", ")}.`);
-    }
     if (user.role === "SUPER_ADMIN") {
       const remaining = await tx.user.count({
         where: { role: "SUPER_ADMIN", active: true, id: { not: user.id } },

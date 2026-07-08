@@ -121,6 +121,11 @@ const adminWithoutLog = user("ADMIN", { "menu.coaching.log": false });
 expect(!canAccessManagementSection(adminWithoutLog, "log"), "Een user override moet Beheer > Log kunnen uitschakelen.");
 const salesManagerWithLog = user("SALES_MANAGER", { "menu.coaching.log": true });
 expect(canAccessManagementSection(salesManagerWithLog, "log"), "Een user override moet Beheer > Log kunnen inschakelen.");
+expect(!canAccessManagementSection(user("COUNTRY_MANAGER"), "teams"), "Country Manager heeft standaard geen teambeheer.");
+expect(
+  canAccessManagementSection(user("COUNTRY_MANAGER", { "menu.coaching.teams": true }), "teams"),
+  "Country Manager kan teambeheer krijgen via expliciete rechten."
+);
 
 expect(!canAccessDashboard(user("ADMIN", { "menu.coaching.dashboard": false })), "Dashboard volgt menu overrides.");
 expect(!canAccessCoachingModuleNavigation(user("ADMIN", { "menu.coaching.planning": false }), "PLANNING"), "Planning volgt menu overrides.");

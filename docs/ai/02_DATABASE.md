@@ -129,6 +129,20 @@ These entities are shared across modules and should not be duplicated inside ind
 
 ---
 
+## Team Leadership
+
+Teams are organisational entities.
+
+Business rules:
+
+- A Team may exist without an assigned Verkoopleider.
+- `Team.primaryLeaderId` is optional and must remain nullable in the database.
+- Missing team leadership must be stored as `null`, not as a dummy user, fake Verkoopleider or empty-string workaround.
+- Representatives and other field users may still be assigned to a Team that has no Verkoopleider.
+- Assigning or removing the Team Verkoopleider must not broaden Verkoopleider visibility; ordinary Verkoopleiders remain scoped to their own `User.teamId`.
+
+---
+
 ## Coaching Domain
 
 The Coaching module currently has development priority.

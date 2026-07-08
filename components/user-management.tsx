@@ -32,6 +32,7 @@ import {
   userManagementCapabilities,
   visibleManagedUsers,
 } from "@/lib/user-management";
+import { optionalTeamLeaderLabel } from "@/lib/team-management";
 import type {
   Country,
   FieldForcePermissionKey,
@@ -1644,7 +1645,7 @@ function TeamCreationDialog({
 
   async function createTeam() {
     const normalizedName = name.trim();
-    if (!normalizedName || !leaderId) return;
+    if (!normalizedName) return;
     if (leaderId === newUserLeaderId) {
       onUseNewUser(normalizedName);
       return;
@@ -1661,7 +1662,7 @@ function TeamCreationDialog({
           entity: "team",
           name: normalizedName,
           country,
-          primaryLeaderId: leaderId,
+          primaryLeaderId: leaderId || null,
         }),
       });
       const payload = (await response.json()) as {
@@ -1669,7 +1670,7 @@ function TeamCreationDialog({
           id: string;
           name: string;
           country: Country;
-          primaryLeaderId: string;
+          primaryLeaderId: string | null;
           active: boolean;
         };
         error?: string;
@@ -1680,9 +1681,9 @@ function TeamCreationDialog({
       const leader = leaders.find((profile) => profile.id === leaderId);
       onCreated({
         ...payload.result,
-        primaryLeaderName: leader
-          ? `${leader.firstName} ${leader.lastName}`.trim()
-          : "",
+        primaryLeaderName: optionalTeamLeaderLabel(
+          leader ? `${leader.firstName} ${leader.lastName}`.trim() : null
+        ),
         memberCount: 0,
       });
     } catch (cause) {
@@ -1725,13 +1726,13 @@ function TeamCreationDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </Field>
-          <Field label="Primaire teamleider" required>
+          <Field label="Verkoopleider">
             <select
               className="field"
               value={leaderId}
               onChange={(event) => setLeaderId(event.target.value)}
             >
-              <option value="">Selecteer een teamleider</option>
+              <option value="">Geen verkoopleider toegewezen</option>
               {newUserCanLeadTeam && (
                 <option value={newUserLeaderId}>
                   Deze nieuwe gebruiker
@@ -1757,7 +1758,7 @@ function TeamCreationDialog({
           <button
             type="button"
             className="btn-primary"
-            disabled={!name.trim() || !leaderId || saving}
+            disabled={!name.trim() || saving}
             onClick={() => void createTeam()}
           >
             <Plus className="h-4 w-4" /> {saving ? "Aanmaken..." : "Team aanmaken"}
