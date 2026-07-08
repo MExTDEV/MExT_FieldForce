@@ -66,6 +66,14 @@ export const fieldForceBasePermissionGroups: {
     ],
   },
   {
+    title: "Actiepunten",
+    description: "Aanmaken en beheren van actiepunten binnen de toegelaten scope.",
+    permissions: [
+      { key: "actionPointsCreate", label: "Actiepunten aanmaken" },
+      { key: "actionPointsManage", label: "Actiepunten beheren" },
+    ],
+  },
+  {
     title: "Technisch beheer",
     description: "Configuratie van gegevens, parameters en app-instellingen.",
     permissions: [
@@ -182,6 +190,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingOwn",
       "reportingTeam",
       "reportingExport",
+      "actionPointsCreate",
+      "actionPointsManage",
       ...internalMenuPermissions
     ),
   },
@@ -202,6 +212,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingOwn",
       "reportingTeam",
       "reportingExport",
+      "actionPointsCreate",
+      "actionPointsManage",
       ...internalMenuPermissions
     ),
   },
@@ -231,6 +243,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingOwn",
       "reportingTeam",
       "reportingExport",
+      "actionPointsCreate",
+      "actionPointsManage",
       ...internalMenuPermissions
     ),
   },
@@ -250,6 +264,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingTeam",
       "reportingAll",
       "reportingExport",
+      "actionPointsCreate",
+      "actionPointsManage",
       ...internalMenuPermissions
     ),
   },
@@ -277,6 +293,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingOwn",
       "reportingTeam",
       "reportingExport",
+      "actionPointsCreate",
+      "actionPointsManage",
       ...internalMenuPermissions,
       "menu.coaching.teams",
       "menu.coaching.kpis",

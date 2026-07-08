@@ -11,6 +11,7 @@ export async function PUT(request: Request) {
     requireRole(actor, ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"]);
     requirePermission(actor, "modulePreparation");
     requirePermission(actor, "menu.coaching.actionPoints");
+    requirePermission(actor, "actionPointsManage");
     if (!(await isAppModuleEnabled("ACTIEPUNTEN"))) {
       forbidden("Actiepuntenmodule is niet actief.");
     }

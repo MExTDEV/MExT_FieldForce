@@ -28,6 +28,7 @@ import {
   Target,
   Users,
   UsersRound,
+  X,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
 import { useConfiguration } from "@/components/configuration-provider";
@@ -100,7 +101,7 @@ import {
   canShowPlannedCoachingIndicator,
   type MyTeamMember,
 } from "@/lib/my-team";
-import type { CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
+import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
@@ -122,6 +123,9 @@ import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-p
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  canCreateActionPointDefinition,
+  canManageActionPointDefinitions,
+  canManageScopedActionDefinition,
   canViewActionPointUserTab,
   groupActionPointsByRepresentative,
   groupActionPointsByScope,
@@ -209,9 +213,10 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
 
 function Dashboard() {
   const { user, managedUsers } = useSession();
-  const { isModuleEnabled } = useModules();
+  const { isModuleEnabled, modules } = useModules();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
+  const [dashboardDefinitions, setDashboardDefinitions] = useState<ScopedActionDefinition[]>([]);
   const {
     visibleInterventions,
     visibleContactMoments,
@@ -291,6 +296,30 @@ function Dashboard() {
     const scopedDataset = filterReportingDataset(dataset, scopedRepresentatives, emptyReportingFilters, managedUsers);
     return buildSmartCoaching(scopedDataset, scopedState, undefined, managedUsers);
   }, [managedUsers, performanceDataset, representatives, scopedState, scopedRepresentatives]);
+  useEffect(() => {
+    if (!actionPointsEnabled || !canAccessActionPointsOverview(user, modules)) {
+      setDashboardDefinitions([]);
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { definitions?: ScopedActionDefinition[] };
+        if (!response.ok) throw new Error("Actiepunten konden niet worden geladen.");
+        if (!cancelled) setDashboardDefinitions(payload.definitions ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setDashboardDefinitions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [actionPointsEnabled, modules, user]);
+  const definitionOpenActionCount = useMemo(
+    () => splitActionPointSections(dashboardDefinitions.map((definition) => ({ ...definition, source: "definition" as const })))
+      .find((section) => section.id === "open")?.items.length ?? 0,
+    [dashboardDefinitions],
+  );
   const scopedOtherMoments = planningEnabled ? [
     ...scopedContacts.map((item) => ({ id: `contact-${item.id}`, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.ownerId, status: item.status })),
     ...scopedRetrainings.map((item) => ({ id: `retraining-${item.id}`, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
@@ -326,7 +355,9 @@ function Dashboard() {
   ])
     .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
     .slice(0, 5);
-  const openActionCount = actionPointsEnabled ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) : 0;
+  const openActionCount = actionPointsEnabled
+    ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) + definitionOpenActionCount
+    : 0;
   const awaitingApproval = scopedInterventions.filter((item) => ["wacht_op_akkoord", "verzonden_ter_akkoord"].includes(item.status));
   const approvalCount = awaitingApproval.length;
   const attentionRequiredCount = attentionSections.todo.length;
@@ -2681,6 +2712,22 @@ function ActionPoints() {
   return <ScopedActionPoints />;
 }
 
+type ActionDefinitionDraft = {
+  id?: string;
+  title: string;
+  tipsAndTricks: string;
+  targetValue: string;
+  priority: ScopedActionDefinition["priority"];
+  scope: ScopedActionDefinition["scope"];
+  country: string;
+  teamId: string;
+  userId: string;
+  validFrom: string;
+  validUntil: string;
+  active: boolean;
+  productIds: string[];
+};
+
 function ScopedActionPoints() {
   const { user, managedUsers } = useSession();
   const { modules } = useModules();
@@ -2688,12 +2735,21 @@ function ScopedActionPoints() {
   const { dataset: performanceDataset } = usePerformance();
   const { representatives } = useRepresentatives();
   const [definitions, setDefinitions] = useState<ScopedActionDefinition[]>([]);
+  const [targetTypes, setTargetTypes] = useState<ActionPointTargetTypeOption[]>([]);
+  const [products, setProducts] = useState<ActionPointProductOption[]>([]);
   const [error, setError] = useState<string>();
+  const [formError, setFormError] = useState<string>();
+  const [saving, setSaving] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [activeActionTab, setActiveActionTab] = useState<"actions" | "users">("actions");
   const [actionSearch, setActionSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [draft, setDraft] = useState<ActionDefinitionDraft>();
+  const [detailAction, setDetailAction] = useState<ActionPointOverviewItem>();
   const allowed = canAccessActionPointsOverview(user, modules);
+  const canCreateDefinitions = canCreateActionPointDefinition(user);
+  const canManageDefinitions = canManageActionPointDefinitions(user);
   const showActionPointUserTab = canViewActionPointUserTab(user);
   const visibleActionTab = showActionPointUserTab ? activeActionTab : "actions";
   const workflowActionItems = useMemo<ActionPointOverviewItem[]>(() => {
@@ -2744,8 +2800,14 @@ function ScopedActionPoints() {
     () => sections.find((section) => section.id === "open")?.items ?? [],
     [sections],
   );
+  const closedActionPointItems = useMemo(
+    () => canManageDefinitions ? sections.find((section) => section.id === "closed")?.items ?? [] : [],
+    [canManageDefinitions, sections],
+  );
   const filteredActionItems = openActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
+  const filteredClosedActionItems = closedActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
   const actionScopeGroups = groupActionPointsByScope(filteredActionItems);
+  const closedActionScopeGroups = groupActionPointsByScope(filteredClosedActionItems);
   const visibleActionPointRepresentatives = getVisibleRepresentatives(user, representatives);
   const userGroups = showActionPointUserTab
     ? groupActionPointsByRepresentative(openActionPointItems, visibleActionPointRepresentatives, managedUsers)
@@ -2759,9 +2821,16 @@ function ScopedActionPoints() {
     : [];
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" });
-    const payload = await response.json() as { definitions?: ScopedActionDefinition[]; error?: string };
+    const payload = await response.json() as {
+      definitions?: ScopedActionDefinition[];
+      targetTypes?: ActionPointTargetTypeOption[];
+      products?: ActionPointProductOption[];
+      error?: string;
+    };
     if (!response.ok) throw new Error(payload.error);
     setDefinitions(payload.definitions ?? []);
+    setTargetTypes(payload.targetTypes ?? []);
+    setProducts(payload.products ?? []);
   }, [user.id]);
 
   useEffect(() => {
@@ -2774,7 +2843,16 @@ function ScopedActionPoints() {
   }
 
   return <div className="space-y-6">
-    <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Uit te voeren opvolgacties binnen jouw globale, land-, team- of persoonlijke scope." />
+    <PageHeader
+      eyebrow="Opvolging"
+      title="Actiepunten"
+      description="Uit te voeren opvolgacties binnen jouw globale, land-, team- of persoonlijke scope."
+      actions={canCreateDefinitions ? (
+        <button type="button" className="btn-primary" onClick={() => openCreateDialog()}>
+          <Plus className="h-4 w-4" /> Actiepunt toevoegen
+        </button>
+      ) : undefined}
+    />
     {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
 
     {showActionPointUserTab && <section className="card p-2">
@@ -2800,7 +2878,223 @@ function ScopedActionPoints() {
     </section>}
 
     {visibleActionTab === "actions" ? renderActionsTab() : renderUsersTab()}
+    {detailAction && renderDetailModal(detailAction)}
+    {draft && renderActionDefinitionDialog()}
   </div>;
+
+  function openCreateDialog() {
+    const scope = allowedTargetTypes()[0]?.code ?? "USER";
+    setProductSearch("");
+    setFormError(undefined);
+    setDraft(normalizeDraft({
+      title: "",
+      tipsAndTricks: "",
+      targetValue: "",
+      priority: "normaal",
+      scope,
+      country: "",
+      teamId: "",
+      userId: "",
+      validFrom: localDateKey(),
+      validUntil: "",
+      active: true,
+      productIds: [],
+    }));
+  }
+
+  function openEditDialog(item: ActionPointOverviewItem) {
+    setProductSearch("");
+    setFormError(undefined);
+    setDetailAction(undefined);
+    setDraft(normalizeDraft({
+      id: item.id,
+      title: item.title,
+      tipsAndTricks: item.tipsAndTricks || item.description,
+      targetValue: item.targetValue === undefined ? "" : String(item.targetValue),
+      priority: item.priority,
+      scope: item.scope,
+      country: item.country ?? "",
+      teamId: item.teamId ?? "",
+      userId: item.userId ?? "",
+      validFrom: item.validFrom,
+      validUntil: item.validUntil ?? "",
+      active: item.active,
+      productIds: item.productIds ?? [],
+    }));
+  }
+
+  function updateDraft(update: Partial<ActionDefinitionDraft>) {
+    setDraft((current) => current ? normalizeDraft({ ...current, ...update }) : current);
+  }
+
+  function normalizeDraft(value: ActionDefinitionDraft): ActionDefinitionDraft {
+    const allowedScopes = allowedTargetTypes().map((item) => item.code);
+    const scope = allowedScopes.includes(value.scope) ? value.scope : allowedScopes[0] ?? "USER";
+    const countries = countryOptions();
+    let country = value.country || countries[0] || user.country;
+    let teamId = value.teamId;
+    let userId = value.userId;
+
+    if (scope === "GLOBAL") {
+      return { ...value, scope, country: "", teamId: "", userId: "" };
+    }
+
+    if (scope === "COUNTRY") {
+      if (!countries.includes(country)) country = countries[0] ?? user.country;
+      return { ...value, scope, country, teamId: "", userId: "" };
+    }
+
+    if (scope === "TEAM") {
+      const teams = teamOptions(country);
+      if (!teams.some((team) => team.id === teamId)) {
+        teamId = teams[0]?.id ?? "";
+      }
+      const selectedTeam = teams.find((team) => team.id === teamId);
+      return { ...value, scope, country: selectedTeam?.country ?? country, teamId, userId: "" };
+    }
+
+    const users = userOptions(country, teamId);
+    if (!users.some((member) => member.id === userId)) {
+      userId = users[0]?.id ?? "";
+    }
+    const selectedUser = users.find((member) => member.id === userId);
+    return {
+      ...value,
+      scope: "USER",
+      country: selectedUser?.country ?? country,
+      teamId: selectedUser?.teamId ?? teamId,
+      userId,
+    };
+  }
+
+  function allowedTargetTypes() {
+    const activeTypes = targetTypes.filter((item) => item.isActive);
+    return activeTypes.filter((item) => {
+      if (user.role === "SALES_LEADER") return item.code === "USER";
+      if (["SALES_MANAGER", "COUNTRY_MANAGER"].includes(user.role)) return item.code !== "GLOBAL";
+      return canCreateDefinitions || canManageDefinitions;
+    });
+  }
+
+  function countryOptions() {
+    const countries = new Set<string>();
+    if (["GROUP_MANAGER", "SUPER_ADMIN", "ADMIN"].includes(user.role)) {
+      managedUsers.forEach((member) => countries.add(member.country));
+      countries.add(user.country);
+    } else if (user.countryAccess?.length) {
+      user.countryAccess.forEach((country) => countries.add(country));
+    } else {
+      countries.add(user.country);
+    }
+    return ["BE", "NL", "DE"].filter((country) => countries.has(country));
+  }
+
+  function teamOptions(country?: string) {
+    const countries = new Set(country ? [country] : countryOptions());
+    const teams = new Map<string, { id: string; name: string; country: string }>();
+    managedUsers
+      .filter((member) => member.active && member.teamId && countries.has(member.country))
+      .forEach((member) => {
+        if (!teams.has(member.teamId)) {
+          teams.set(member.teamId, { id: member.teamId, name: member.teamName || member.teamId, country: member.country });
+        }
+      });
+    return [...teams.values()].sort((left, right) =>
+      left.country.localeCompare(right.country, "nl-BE") || left.name.localeCompare(right.name, "nl-BE")
+    );
+  }
+
+  function userOptions(country?: string, teamId?: string) {
+    const countries = new Set(country ? [country] : countryOptions());
+    return managedUsers
+      .filter((member) => member.active && member.role === "REPRESENTATIVE")
+      .filter((member) => countries.has(member.country))
+      .filter((member) => !teamId || member.teamId === teamId)
+      .filter((member) => user.role !== "SALES_LEADER" || Boolean(user.teamId && member.teamId === user.teamId))
+      .sort((left, right) =>
+        left.country.localeCompare(right.country, "nl-BE") ||
+        left.teamName.localeCompare(right.teamName, "nl-BE") ||
+        left.lastName.localeCompare(right.lastName, "nl-BE") ||
+        left.firstName.localeCompare(right.firstName, "nl-BE")
+      );
+  }
+
+  async function saveDraft() {
+    if (!draft) return;
+    setSaving(true);
+    setFormError(undefined);
+    try {
+      const body = actionDefinitionPayload(draft);
+      const response = await fetch("/api/action-definitions", {
+        method: draft.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Actiepunt kon niet worden opgeslagen.");
+      await refresh();
+      setDraft(undefined);
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : "Actiepunt kon niet worden opgeslagen.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function setDefinitionActive(item: ActionPointOverviewItem, active: boolean) {
+    const nextDraft = normalizeDraft({
+      id: item.id,
+      title: item.title,
+      tipsAndTricks: item.tipsAndTricks || item.description,
+      targetValue: item.targetValue === undefined ? "" : String(item.targetValue),
+      priority: item.priority,
+      scope: item.scope,
+      country: item.country ?? "",
+      teamId: item.teamId ?? "",
+      userId: item.userId ?? "",
+      validFrom: item.validFrom,
+      validUntil: item.validUntil ?? "",
+      active,
+      productIds: item.productIds ?? [],
+    });
+    setSaving(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/action-definitions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(actionDefinitionPayload(nextDraft)),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Actiepunt kon niet worden bijgewerkt.");
+      await refresh();
+      setDetailAction(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Actiepunt kon niet worden bijgewerkt.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function actionDefinitionPayload(value: ActionDefinitionDraft) {
+    return {
+      actorId: user.id,
+      id: value.id,
+      title: value.title,
+      description: value.tipsAndTricks,
+      tipsAndTricks: value.tipsAndTricks,
+      targetValue: value.targetValue,
+      priority: value.priority,
+      scope: value.scope,
+      country: value.scope === "GLOBAL" ? undefined : value.country,
+      teamId: ["TEAM", "USER"].includes(value.scope) ? value.teamId : undefined,
+      userId: value.scope === "USER" ? value.userId : undefined,
+      validFrom: value.validFrom,
+      validUntil: value.validUntil || undefined,
+      active: value.active,
+      productIds: value.productIds,
+    };
+  }
 
   function toggleGroup(key: string) {
     setCollapsedGroups((current) => {
@@ -2824,6 +3118,18 @@ function ScopedActionPoints() {
         </div>
         {renderSearchField("Zoek actiepunt, gebruiker, scope of eigenaar...", actionSearch, setActionSearch)}
         {renderScopeGroups(actionScopeGroups, "actions", "Geen uit te voeren actiepunten gevonden binnen deze zoekopdracht.")}
+        {canManageDefinitions && (
+          <div className="pt-2">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="eyebrow mb-1">Beheer</p>
+                <h3 className="text-lg font-bold text-slate-950">Niet-actief of buiten geldigheid</h3>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{filteredClosedActionItems.length}</span>
+            </div>
+            {renderScopeGroups(closedActionScopeGroups, "closed-actions", "Geen niet-actieve of verlopen actiepunten gevonden.")}
+          </div>
+        )}
       </section>
     );
   }
@@ -2955,7 +3261,12 @@ function ScopedActionPoints() {
     const status = item.status ?? (item.active ? "open" : "afgesloten");
     const meta = actionPointMetaParts(item).join(" · ");
     return (
-      <article key={item.id} className="flex min-h-[72px] items-center gap-3 px-4 py-3 transition hover:bg-slate-50 sm:px-5">
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => setDetailAction(item)}
+        className="flex min-h-[72px] w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 sm:px-5"
+      >
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
           <Target className="h-4 w-4" />
         </div>
@@ -2975,7 +3286,275 @@ function ScopedActionPoints() {
             Target {item.targetValue}
           </span>
         )}
-      </article>
+      </button>
+    );
+  }
+
+  function renderDetailModal(item: ActionPointOverviewItem) {
+    const canManageThis = item.source !== "workflow" && canManageScopedActionDefinition(user, item);
+    const body = item.tipsAndTricks || item.description;
+    return (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
+        <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+            <div className="min-w-0">
+              <p className="eyebrow mb-1">{actionPointSourceLabel(item)}</p>
+              <h2 className="text-xl font-bold text-slate-950">{item.title}</h2>
+              <p className="mt-1 text-sm text-slate-500">{actionPointScopeDetail(item)}</p>
+            </div>
+            <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDetailAction(undefined)} aria-label="Sluiten">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="space-y-5 p-5">
+            <div className="flex flex-wrap gap-2">
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{actionPointScopeLabel(item.scope)}</span>
+              <StatusBadge status={item.status ?? (item.active ? "open" : "afgesloten")} />
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{priorityLabel(item.priority)}</span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ReadOnlyField label="Doelgroep" value={actionPointScopeDetail(item)} />
+              <ReadOnlyField label="Periode" value={actionPointDateLabel(item)} />
+              <ReadOnlyField label="Eigenaar" value={item.ownerName || "Niet toegewezen"} />
+              <ReadOnlyField label="Target" value={item.targetValue === undefined ? "Geen target" : String(item.targetValue)} />
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Producten</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(item.products ?? []).length > 0
+                  ? item.products?.map((product) => <span key={product.id} className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800">{product.name}</span>)
+                  : <span className="text-sm text-slate-500">Geen producten gekoppeld.</span>}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Omschrijving</p>
+              {body.trim() ? (
+                item.source === "definition" ? (
+                  <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: body }} />
+                ) : (
+                  <p className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">{body}</p>
+                )
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">Geen omschrijving ingevuld.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
+            {canManageThis && (
+              <>
+                <button type="button" className="btn-secondary" onClick={() => openEditDialog(item)} disabled={saving}>Bewerken</button>
+                <button
+                  type="button"
+                  className={item.active ? "btn-secondary text-rose-700" : "btn-primary"}
+                  onClick={() => void setDefinitionActive(item, !item.active)}
+                  disabled={saving}
+                >
+                  {item.active ? "Inactief zetten" : "Activeren"}
+                </button>
+              </>
+            )}
+            <button type="button" className="btn-secondary" onClick={() => setDetailAction(undefined)}>Sluiten</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderActionDefinitionDialog() {
+    if (!draft) return null;
+    const scopeOptions = allowedTargetTypes();
+    const countries = countryOptions();
+    const teams = teamOptions(draft.country);
+    const users = userOptions(draft.country, draft.teamId);
+    const visibleProducts = products
+      .filter((product) => product.active)
+      .filter((product) => draft.productIds.includes(product.id) || matchesText(product.name, productSearch))
+      .sort((left, right) =>
+        Number(draft.productIds.includes(right.id)) - Number(draft.productIds.includes(left.id)) ||
+        left.sortOrder - right.sortOrder ||
+        left.name.localeCompare(right.name, "nl-BE")
+      );
+
+    return (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
+        <form
+          className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveDraft();
+          }}
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+            <div>
+              <p className="eyebrow mb-1">Actiepunt</p>
+              <h2 className="text-xl font-bold text-slate-950">{draft.id ? "Actiepunt bewerken" : "Actiepunt toevoegen"}</h2>
+            </div>
+            <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDraft(undefined)} aria-label="Sluiten">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="space-y-5 p-5">
+            {formError && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{formError}</p>}
+            {scopeOptions.length === 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Geen actiepuntsoorten beschikbaar voor jouw rechten.</p>}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Naam</span>
+                <input className="field" value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} disabled={saving} required />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Soort actiepunt</span>
+                <select
+                  className="field"
+                  value={draft.scope}
+                  onChange={(event) => updateDraft({ scope: event.target.value as ScopedActionDefinition["scope"] })}
+                  disabled={saving || scopeOptions.length === 0}
+                >
+                  {scopeOptions.map((targetType) => (
+                    <option key={targetType.id} value={targetType.code}>{targetType.name || actionPointScopeLabel(targetType.code)}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {renderTargetFields(countries, teams, users)}
+
+            <RichTextEditor label="Omschrijving" value={draft.tipsAndTricks} disabled={saving} onChange={(value) => updateDraft({ tipsAndTricks: value })} />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Geldig vanaf</span>
+                <input className="field" type="date" value={draft.validFrom} onChange={(event) => updateDraft({ validFrom: event.target.value })} disabled={saving} required />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Geldig tot</span>
+                <input className="field" type="date" value={draft.validUntil} onChange={(event) => updateDraft({ validUntil: event.target.value })} disabled={saving} />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Target</span>
+                <input className="field" type="number" min="0" step="0.01" value={draft.targetValue} onChange={(event) => updateDraft({ targetValue: event.target.value })} disabled={saving} placeholder="Optioneel" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Prioriteit</span>
+                <select className="field" value={draft.priority} onChange={(event) => updateDraft({ priority: event.target.value as ScopedActionDefinition["priority"] })} disabled={saving}>
+                  <option value="laag">Laag</option>
+                  <option value="normaal">Normaal</option>
+                  <option value="hoog">Hoog</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              <input type="checkbox" checked={draft.active} onChange={(event) => updateDraft({ active: event.target.checked })} disabled={saving} />
+              Actief
+            </label>
+
+            <div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-slate-700">Producten</span>
+                <span className="relative block">
+                  <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+                  <input className="field pl-10" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Zoek product..." disabled={saving} />
+                </span>
+              </label>
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl border border-slate-200">
+                {visibleProducts.map((product) => (
+                  <label key={product.id} className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 last:border-b-0 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={draft.productIds.includes(product.id)}
+                      onChange={(event) => {
+                        const productIds = event.target.checked
+                          ? [...draft.productIds, product.id]
+                          : draft.productIds.filter((id) => id !== product.id);
+                        updateDraft({ productIds: [...new Set(productIds)] });
+                      }}
+                      disabled={saving}
+                    />
+                    <span>{product.name}</span>
+                  </label>
+                ))}
+                {visibleProducts.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">Geen producten gevonden.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
+            <button type="button" className="btn-secondary" onClick={() => setDraft(undefined)} disabled={saving}>Annuleren</button>
+            <button type="submit" className="btn-primary" disabled={saving || scopeOptions.length === 0}>
+              {saving && <LoaderCircle className="h-4 w-4 animate-spin" />} Opslaan
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  function renderTargetFields(
+    countries: string[],
+    teams: { id: string; name: string; country: string }[],
+    users: typeof managedUsers,
+  ) {
+    if (!draft) return null;
+    if (draft.scope === "GLOBAL") {
+      return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">Dit actiepunt geldt globaal voor alle toegestane gebruikers.</div>;
+    }
+    if (draft.scope === "COUNTRY") {
+      return (
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Land</span>
+          <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value })} disabled={saving}>
+            {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
+          </select>
+        </label>
+      );
+    }
+    if (draft.scope === "TEAM") {
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold text-slate-700">Land</span>
+            <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value, teamId: "" })} disabled={saving}>
+              {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold text-slate-700">Team</span>
+            <select className="field" value={draft.teamId} onChange={(event) => updateDraft({ teamId: event.target.value })} disabled={saving} required>
+              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+            </select>
+          </label>
+        </div>
+      );
+    }
+    return (
+      <div className="grid gap-4 md:grid-cols-3">
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Land</span>
+          <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value, teamId: "", userId: "" })} disabled={saving || user.role === "SALES_LEADER"}>
+            {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Team</span>
+          <select className="field" value={draft.teamId} onChange={(event) => updateDraft({ teamId: event.target.value, userId: "" })} disabled={saving || user.role === "SALES_LEADER"}>
+            <option value="">Alle teams</option>
+            {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-slate-700">Gebruiker</span>
+          <select className="field" value={draft.userId} onChange={(event) => updateDraft({ userId: event.target.value })} disabled={saving} required>
+            {users.map((member) => <option key={member.id} value={member.id}>{member.firstName} {member.lastName}</option>)}
+          </select>
+        </label>
+      </div>
     );
   }
 

@@ -11,7 +11,7 @@ import type {
 
 export type ActionPointVisibilityItem = Pick<
   ScopedActionDefinition,
-  "scope" | "country" | "teamId" | "userId" | "active"
+  "scope" | "country" | "teamId" | "userId" | "active" | "createdById"
 >;
 
 export type ActionPointOverviewSource = "definition" | "workflow";
@@ -73,6 +73,40 @@ export function canAccessActionPointsOverview(
 
 export function canViewActionPointUserTab(user: MockUser) {
   return user.role !== "REPRESENTATIVE";
+}
+
+export function canCreateActionPointDefinition(user: MockUser) {
+  return user.role !== "REPRESENTATIVE" &&
+    user.role !== "SERVICE_OPERATOR" &&
+    can(user, "actionPointsCreate");
+}
+
+export function canManageActionPointDefinitions(user: MockUser) {
+  return user.role !== "REPRESENTATIVE" &&
+    user.role !== "SERVICE_OPERATOR" &&
+    can(user, "actionPointsManage");
+}
+
+export function canManageScopedActionDefinition(
+  user: MockUser,
+  item: ActionPointVisibilityItem
+) {
+  if (!canManageActionPointDefinitions(user)) return false;
+  if (globalScopedRoles.has(user.role)) return true;
+
+  if (user.role === "SALES_LEADER") {
+    return Boolean(
+      item.scope === "USER" &&
+      item.createdById === user.id &&
+      user.teamId &&
+      item.teamId === user.teamId
+    );
+  }
+
+  if (user.role === "ADMIN" && item.scope === "GLOBAL") return true;
+  if (item.scope === "GLOBAL") return false;
+  const countries = visibleActionPointCountries(user);
+  return Boolean(item.country && countries?.includes(item.country));
 }
 
 export function visibleActionPointCountries(user: MockUser): Country[] | undefined {
@@ -190,7 +224,9 @@ export function actionPointAppliesToRepresentative(
 }
 
 export function isOpenActionPoint(item: ActionPointOverviewItem) {
-  return item.status ? !closedActionStatuses.has(item.status) : item.active;
+  return item.status
+    ? !closedActionStatuses.has(item.status)
+    : item.active && isActionPointInDateRange(item);
 }
 
 export function actionPointScopeLabel(scope: ScopedActionDefinition["scope"]) {
@@ -241,4 +277,15 @@ function compareLabel(left: string, right: string) {
 
 function matchesUser(user: MockUser, userId?: string | null) {
   return Boolean(userId && [user.id, user.representativeId].filter(Boolean).includes(userId));
+}
+
+function isActionPointInDateRange(item: Pick<ActionPointOverviewItem, "validFrom" | "validUntil">) {
+  const today = localDateKey();
+  return item.validFrom <= today && (!item.validUntil || item.validUntil >= today);
+}
+
+function localDateKey() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }

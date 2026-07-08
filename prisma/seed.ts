@@ -1,4 +1,5 @@
 import {
+  ActionScope,
   ActionPointStatus,
   ActionPointType,
   Country,
@@ -37,6 +38,13 @@ const appModules = [
   { code: "RAPPORTERING", naam: "Rapportering", actief: false },
 ] as const;
 
+const actionPointTargetTypes = [
+  { id: "apt_global", code: ActionScope.GLOBAL, name: "Globaal", description: "Actiepunt voor alle relevante gebruikers.", sortOrder: 10 },
+  { id: "apt_country", code: ActionScope.COUNTRY, name: "Land", description: "Actiepunt voor gebruikers binnen een land.", sortOrder: 20 },
+  { id: "apt_team", code: ActionScope.TEAM, name: "Team", description: "Actiepunt voor gebruikers binnen een team.", sortOrder: 30 },
+  { id: "apt_user", code: ActionScope.USER, name: "Gebruiker", description: "Actiepunt voor een individuele gebruiker.", sortOrder: 40 },
+] as const;
+
 const countryConfig = {
   BE: { representatives: 30, leaders: 3, teams: 3, language: Language.nl },
   NL: { representatives: 20, leaders: 3, teams: 3, language: Language.nl },
@@ -73,8 +81,12 @@ async function main() {
   await prisma.helpRequest.deleteMany();
   await prisma.approval.deleteMany();
   await prisma.reflection.deleteMany();
+  await prisma.actionDefinitionProduct.deleteMany();
+  await prisma.actionTargetOverride.deleteMany();
+  await prisma.actionDefinition.deleteMany();
   await prisma.actionPointAssignment.deleteMany();
   await prisma.actionPoint.deleteMany();
+  await prisma.actionPointTargetType.deleteMany();
   await prisma.score.deleteMany();
   await prisma.trainingParticipant.deleteMany();
   await prisma.interventionParticipant.deleteMany();
@@ -95,6 +107,7 @@ async function main() {
   await prisma.appModule.createMany({
     data: [...appModules],
   });
+  await seedActionPointTargetTypes();
   await seedPermissions();
 
   const levels = await Promise.all(
@@ -381,6 +394,7 @@ async function seedConfiguration() {
     });
   }
   await seedPermissions();
+  await seedActionPointTargetTypes();
 
   const levels = [
     ["Starter", "Nieuwe vertegenwoordiger in onboarding", "#F59E0B"],
@@ -439,6 +453,27 @@ async function seedConfiguration() {
         create: { focusId: focus.id, name: criterion, sortOrder: criterionIndex + 1 },
       });
     }
+  }
+}
+
+async function seedActionPointTargetTypes() {
+  for (const targetType of actionPointTargetTypes) {
+    await prisma.actionPointTargetType.upsert({
+      where: { code: targetType.code },
+      update: {
+        name: targetType.name,
+        description: targetType.description,
+        isActive: true,
+        sortOrder: targetType.sortOrder,
+      },
+      create: {
+        id: targetType.id,
+        code: targetType.code,
+        name: targetType.name,
+        description: targetType.description,
+        sortOrder: targetType.sortOrder,
+      },
+    });
   }
 }
 

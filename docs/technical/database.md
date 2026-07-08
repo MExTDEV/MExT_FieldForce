@@ -64,6 +64,25 @@ npm run db:migrate:deploy
 
 Do not make manual destructive database edits. If existing records must be transformed, add a migration or a reviewed data backfill script.
 
+## Action point management
+
+Scoped action points for the Actiepunten module reuse `ActionDefinition`.
+
+Related tables:
+
+- `ActionDefinition`: global, country, team or user scoped action point definition.
+- `action_point_target_types`: seeded target-level configuration for Global, Country, Team and User.
+- `action_point_products`: many-to-many link between `ActionDefinition` and existing `Product`.
+- `ActionTargetOverride`: optional scoped target override for an action definition.
+- `CoachingAction` and legacy `ActionPoint`: concrete workflow-origin action points, kept separate from scoped definitions.
+
+Rules:
+
+- Do not create a second standalone action-point definition table.
+- Product links must reference existing `Product` rows.
+- Active, in-date `ActionDefinition` records are counted as open scoped action points.
+- Concrete workflow action points continue to use their workflow status for open/closed reporting.
+
 ## Required check for every future feature
 
 Before implementing a feature or change, verify:

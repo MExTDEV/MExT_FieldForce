@@ -236,14 +236,27 @@ Each action point contains:
 - optional target date
 - Tips & Tricks WYSIWYG content
 
-Action points may also exist independently at different scopes, depending on future implementation:
+Scoped action point definitions also exist independently of a coaching:
 
 - global
 - country
 - team
 - individual user
 
-The exact standalone Action Point workflow still requires business confirmation.
+Technical model:
+
+- `ActionDefinition` is the source of truth for scoped action point definitions.
+- `ActionPointTargetType` stores the allowed target levels.
+- `ActionDefinitionProduct` links action definitions to existing `Product` records.
+- `ActionTargetOverride` stores optional scoped target overrides.
+- `CoachingAction` and legacy `ActionPoint` remain concrete workflow-origin action points.
+
+Rules:
+
+- Do not duplicate scoped action definitions in a second table.
+- Active, in-date `ActionDefinition` records are considered open scoped action points.
+- Inactive or expired definitions remain visible to authorised management users.
+- The close, approval, reassignment and automatic per-user task generation workflows are not yet defined.
 
 ---
 

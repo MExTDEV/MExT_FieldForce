@@ -51,6 +51,8 @@ export type FieldForcePermissionKey =
   | "reportingTeam"
   | "reportingAll"
   | "reportingExport"
+  | "actionPointsCreate"
+  | "actionPointsManage"
   | "technicalTables"
   | "technicalParameters"
   | "technicalBranding"
@@ -356,6 +358,8 @@ export type ScopedActionDefinition = {
   title: string;
   description: string;
   tipsAndTricks: string;
+  targetTypeId?: string;
+  targetTypeCode?: "GLOBAL" | "COUNTRY" | "TEAM" | "USER";
   targetValue?: number;
   priority: "laag" | "normaal" | "hoog";
   scope: "GLOBAL" | "COUNTRY" | "TEAM" | "USER";
@@ -363,11 +367,31 @@ export type ScopedActionDefinition = {
   country?: Country;
   teamId?: string;
   userId?: string;
+  productIds?: string[];
+  products?: ActionPointProductOption[];
+  createdById?: string;
+  updatedById?: string;
   active: boolean;
   validFrom: string;
   validUntil?: string;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type ActionPointTargetTypeOption = {
+  id: string;
+  code: ScopedActionDefinition["scope"];
+  name: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type ActionPointProductOption = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
 };
 
 export type CoachingSimpleScore = {

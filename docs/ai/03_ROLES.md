@@ -523,36 +523,57 @@ Access to the Actiepunten overview also requires:
 - effective `modulePreparation`
 - effective `menu.coaching.actionPoints`
 
+Action point creation and management are separate configurable permissions:
+
+- `actionPointsCreate`
+- `actionPointsManage`
+
 Visibility rules:
 
 ### Vertegenwoordiger
 
 - own action points only
 - sees only the Actiepunten view on the Actiepunten page, not the Gebruikers tab
+- cannot create or manage scoped action definitions
 
 ### Verkoopleider
 
 - action points for own country, own team and users in own team
+- can create personal action definitions for active representatives in own team when `actionPointsCreate` is effective
+- can manage own-created personal action definitions in own team when `actionPointsManage` is effective
+- cannot create or manage global, country or team action definitions
 
 ### Sales Manager
 
 - action points within assigned country scope
+- can create and manage country, team and personal action definitions within assigned countries
+- cannot create or manage global action definitions by default
 
 ### Country Manager
 
 - action points within assigned country scope
+- can create and manage country, team and personal action definitions within assigned countries
+- cannot create or manage global action definitions by default
 
 ### Admin
 
 - action points within assigned country scope
+- can create and manage global action definitions
+- can create and manage country, team and personal action definitions within effective country scope
 
 ### Super Admin
 
 - all action points
+- can create and manage all action point scopes
+
+### Group Manager
+
+- all action points
+- can create and manage all action point scopes
 
 Open point:
 
-Detailed action point workflow still needs business clarification.
+Completion, approval, reopening and reassignment workflow still need business clarification.
 
 ---
 

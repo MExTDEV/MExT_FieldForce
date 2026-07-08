@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  canCreateActionPointDefinition,
+  canManageActionPointDefinitions,
+  canManageScopedActionDefinition,
   canViewActionPointUserTab,
   canViewScopedActionDefinition,
   groupActionPointsByRepresentative,
@@ -65,8 +68,8 @@ function action(input: Partial<ActionPointOverviewItem>): ActionPointOverviewIte
     teamId: "team-be-a",
     userId: "representative-be",
     active: true,
-    validFrom: "2026-07-01",
-    validUntil: "2026-07-20",
+    validFrom: "2000-01-01",
+    validUntil: "2099-12-31",
     createdAt: "2026-07-01T08:00:00.000Z",
     updatedAt: "2026-07-02T08:00:00.000Z",
     ...input,
@@ -126,6 +129,8 @@ const personalOtherTeamAction = action({ id: "personal-other-team", scope: "USER
 const personalNlAction = action({ id: "personal-nl", scope: "USER", scopeKey: "USER:rep-nl", country: "NL", teamId: "team-nl", userId: "rep-nl" });
 
 const representative = user("REPRESENTATIVE");
+assert.equal(canCreateActionPointDefinition(representative), false, "Vertegenwoordiger kan geen actiepuntdefinities aanmaken.");
+assert.equal(canManageActionPointDefinitions(representative), false, "Vertegenwoordiger kan geen actiepuntdefinities beheren.");
 assert.equal(canViewScopedActionDefinition(representative, personalOwnAction), true, "Vertegenwoordiger ziet eigen persoonlijke open actiepunten.");
 assert.equal(canViewScopedActionDefinition(representative, personalOtherTeamAction), false, "Vertegenwoordiger ziet geen persoonlijke actiepunten van anderen.");
 assert.equal(canViewScopedActionDefinition(representative, teamOtherAction), false, "Vertegenwoordiger ziet geen teamactiepunten buiten toegestane scope.");
@@ -133,12 +138,26 @@ assert.equal(canViewScopedActionDefinition(representative, globalAction), true, 
 assert.equal(canViewActionPointUserTab(representative), false, "Vertegenwoordiger ziet geen Gebruikers-tab in Actiepunten.");
 
 const leader = user("SALES_LEADER");
+assert.equal(canCreateActionPointDefinition(leader), true, "Verkoopleider kan persoonlijke actiepunten aanmaken.");
+assert.equal(
+  canManageScopedActionDefinition(leader, action({ id: "leader-owned", scope: "USER", teamId: "team-be-a", createdById: leader.id })),
+  true,
+  "Verkoopleider beheert eigen persoonlijke actiepunten binnen het eigen team."
+);
+assert.equal(
+  canManageScopedActionDefinition(leader, action({ id: "leader-team", scope: "TEAM", teamId: "team-be-a", createdById: leader.id })),
+  false,
+  "Verkoopleider beheert geen teamactiepunten."
+);
 assert.equal(canViewScopedActionDefinition(leader, teamBeAction), true, "Verkoopleider ziet actiepunten voor eigen team.");
 assert.equal(canViewScopedActionDefinition(leader, personalOwnAction), true, "Verkoopleider ziet actiepunten voor teamleden.");
 assert.equal(canViewScopedActionDefinition(leader, teamOtherAction), false, "Verkoopleider ziet geen actiepunten van andere teams.");
 assert.equal(canViewActionPointUserTab(leader), true, "Verkoopleider behoudt de Gebruikers-tab in Actiepunten.");
 
 const countryManager = user("COUNTRY_MANAGER", { countryAccess: ["BE"] });
+assert.equal(canCreateActionPointDefinition(countryManager), true, "Country Manager kan actiepuntdefinities aanmaken.");
+assert.equal(canManageScopedActionDefinition(countryManager, countryBeAction), true, "Country Manager beheert actiepunten binnen eigen landenscope.");
+assert.equal(canManageScopedActionDefinition(countryManager, globalAction), false, "Country Manager beheert geen globale actiepunten.");
 assert.equal(canViewScopedActionDefinition(countryManager, countryBeAction), true, "Country Manager ziet actiepunten binnen toegewezen landenscope.");
 assert.equal(canViewScopedActionDefinition(countryManager, countryNlAction), false, "Country Manager ziet geen actiepunten buiten toegewezen landenscope.");
 
@@ -147,6 +166,7 @@ assert.equal(canViewScopedActionDefinition(salesManager, teamBeAction), true, "S
 assert.equal(canViewScopedActionDefinition(salesManager, personalNlAction), false, "Sales Manager ziet geen actiepunten buiten toegewezen landenscope.");
 
 const admin = user("ADMIN", { countryAccess: ["BE"] });
+assert.equal(canManageScopedActionDefinition(admin, globalAction), true, "Admin kan globale actiepunten beheren.");
 assert.equal(canViewScopedActionDefinition(admin, personalOwnAction), true, "Admin ziet actiepunten binnen toegewezen landenscope.");
 assert.equal(canViewScopedActionDefinition(admin, personalNlAction), false, "Admin ziet geen actiepunten buiten toegewezen landenscope.");
 
@@ -160,14 +180,15 @@ assert.deepEqual(
 );
 
 const sections = splitActionPointSections([
-  action({ id: "open-later", active: true, validUntil: "2026-08-01" }),
+  action({ id: "open-later", active: true, validUntil: "2099-08-01" }),
   action({ id: "closed", active: false, updatedAt: "2026-07-10T08:00:00.000Z" }),
-  action({ id: "open-sooner", active: true, validUntil: "2026-07-10" }),
+  action({ id: "expired", active: true, validUntil: "2000-01-02", updatedAt: "2026-07-09T08:00:00.000Z" }),
+  action({ id: "open-sooner", active: true, validUntil: "2099-07-10" }),
   action({ id: "workflow-closed", active: true, source: "workflow", status: "behaald", updatedAt: "2026-07-11T08:00:00.000Z" }),
   action({ id: "global-open", active: true, scope: "GLOBAL", scopeKey: "GLOBAL", country: undefined, teamId: undefined, userId: undefined }),
 ]);
-assert.deepEqual(sections[0].items.map((item) => item.id), ["open-sooner", "global-open", "open-later"], "Open actiepunten verschijnen in sectie Open en sorteren stabiel.");
-assert.deepEqual(sections[1].items.map((item) => item.id), ["workflow-closed", "closed"], "Afgesloten actiepunten verschijnen in sectie Afgesloten.");
+assert.deepEqual(sections[0].items.map((item) => item.id), ["open-sooner", "open-later", "global-open"], "Open actiepunten verschijnen in sectie Open en sorteren stabiel.");
+assert.deepEqual(sections[1].items.map((item) => item.id), ["workflow-closed", "closed", "expired"], "Afgesloten en verlopen actiepunten verschijnen in sectie Afgesloten.");
 assert.deepEqual(sections[0].groups.map((group) => group.id), ["GLOBAL", "USER"], "Open actiepunten worden inklapbaar per scope gegroepeerd.");
 assert.equal(actionPointScopeLabel("GLOBAL"), "Globaal", "Typebadge Globaal verschijnt correct.");
 assert.equal(actionPointScopeLabel("COUNTRY"), "Land", "Typebadge Land verschijnt correct.");

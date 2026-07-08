@@ -668,7 +668,7 @@ Status: Completed on 2026-07-08
 
 Implemented changes:
 
-- The Actiepunten page is now a read-only overview.
+- The Actiepunten page is now a scoped overview and management screen for action definitions.
 - The screen has two tabs:
   - Actiepunten
   - Gebruikers
@@ -680,7 +680,7 @@ Implemented changes:
 - Existing legacy `ActionPoint` rows with incomplete or inconsistent assignment data are linked back to the representative on the related coaching when available.
 - Current `CoachingAction` rows are included in the same reporting action dataset and deduplicated against matching legacy coaching action points.
 - Representatives without a separate external `representativeId` now fall back to their own user-id for scope filtering, so they still see their personal action points.
-- The Dashboard open action point count now uses the same visible action dataset and excludes closed statuses, including `afgerond`.
+- The Dashboard open action point count now uses the same visible workflow action dataset and also counts active, in-date scoped `ActionDefinition` records.
 - The Actiepunten tab shows open / to-do action points in collapsible scope groups:
   - Globaal
   - Land
@@ -689,30 +689,34 @@ Implemented changes:
 - The Gebruikers tab shows the same open / to-do action points grouped per visible user.
 - For the Vertegenwoordiger role, the Gebruikers tab is hidden so the screen only shows the Actiepunten view.
 - Action point rows now use a compact list layout aligned with the Mijn Team list pattern.
-- The page no longer exposes create, deactivate or target-override actions.
+- Authorised users can create, edit, activate and deactivate scoped `ActionDefinition` records.
+- Action definitions can be linked to existing active `Product` records through `ActionDefinitionProduct`.
+- Target types are stored in `ActionPointTargetType` and seeded for Globaal, Land, Team and Gebruiker.
+- New configurable permissions `actionPointsCreate` and `actionPointsManage` control creation and management on top of the existing module/menu permissions.
 - Direct page access requires the active Actiepunten module and effective `modulePreparation` plus `menu.coaching.actionPoints` permissions.
 - The action-definition APIs also enforce the active module and effective permissions before returning data.
 - The action-definition API returns the same Dutch priority values that the UI uses for priority badges.
-- No new data model, status, detail workflow, approval workflow, expiry workflow or reassignment workflow was added.
+- No separate status lifecycle, approval workflow, automatic per-user task generation or reassignment workflow was added.
 
 Validation performed:
 
 - `npm run test:action-point-targets`
 - `npm run test:action-points-overview`
-- `npm run test:data-access`
-- `npm run test:performance`
-- `npm run test:smart-coaching`
+- `npm run test:menu-rights`
 - `npm run typecheck`
 - `npm run lint`
+- `npx prisma validate`
+- `npx prisma generate --no-engine`
 - `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
-- `npx next build` completed successfully with the existing Prisma client.
+- `npx next build` completed successfully with the generated Prisma client.
+- `npm run db:migrate:status` showed `0019_action_point_management` is not yet applied; the current `.env` points to the VPS database, so it was not applied from Codex.
 
 Known limitations:
 
-- The overview uses `active` as the current Open/Afgesloten split because no final close workflow or closedAt field has been defined yet.
+- The overview uses `active` plus the validity period as the current open split for action definitions because no final close workflow or closedAt field has been defined yet.
 - Concrete workflow action points use their existing workflow status for the Open/Afgesloten split.
-- The visible screen currently focuses on open / to-do action points.
-- The overview does not invent a separate detail or lifecycle workflow for action points.
+- Management users can see inactive or out-of-validity action definitions.
+- The overview does not invent approval, reassignment or completion lifecycle workflow for action points.
 
 ---
 
@@ -770,17 +774,20 @@ Priority: Medium
 
 Status: Open / Not implemented in the read-only overview task
 
-Required change:
+Status: Completed on 2026-07-08
 
-- Clicking an action point must open the action point detail view.
+Implemented changes:
+
+- Clicking an action point opens the action point detail view.
+- Scoped action definitions expose edit and active/inactive actions when the current user may manage the record.
 
 Open question:
 
-- The exact fields and actions in the detail view still need to be discussed with the business.
+- Approval, completion, reopening and reassignment actions still need to be discussed with the business.
 
 Current limitation:
 
-- The first functional overview intentionally does not add click behaviour or business actions.
+- Concrete workflow-origin action points remain read-only in this detail modal and keep their originating workflow lifecycle.
 
 ---
 
@@ -840,17 +847,13 @@ Priority: High
 
 Required action:
 
-- Discuss the detailed action point workflow with the business.
+- Discuss the remaining detailed action point lifecycle with the business.
 
 Topics to define:
 
-- who can create action points
 - who can close action points
 - whether action points require approval
-- whether action points can expire
 - whether action points can be reassigned
-- whether action points can originate outside a coaching
-- which fields are mandatory
 - which statuses are required
 
 ---

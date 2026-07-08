@@ -691,6 +691,7 @@ model ActionDefinition {
   title           String
   description     String                 @db.Text
   tipsAndTricks   String                 @db.LongText
+  targetTypeId    String?                @map("target_type_id")
   targetValue     Decimal?               @db.Decimal(14, 2)
   priority        Priority               @default(NORMAL)
   scope           ActionScope            @default(GLOBAL)
@@ -706,8 +707,10 @@ model ActionDefinition {
   updatedById     String
   team            Team?                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user            User?                  @relation("ActionDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
+  targetType      ActionPointTargetType? @relation(fields: [targetTypeId], references: [id])
   createdBy       User                   @relation("ActionDefinitionCreatedBy", fields: [createdById], references: [id])
   updatedBy       User                   @relation("ActionDefinitionUpdatedBy", fields: [updatedById], references: [id])
+  products        ActionDefinitionProduct[]
   targetOverrides ActionTargetOverride[]
   coachingActions CoachingAction[]
   createdAt       DateTime               @default(now())
@@ -718,6 +721,35 @@ model ActionDefinition {
   @@index([country])
   @@index([teamId])
   @@index([userId])
+  @@index([targetTypeId])
+}
+
+model ActionPointTargetType {
+  id                String             @id @default(cuid())
+  code              ActionScope         @unique
+  name              String
+  description       String?            @db.Text
+  isActive          Boolean            @default(true) @map("is_active")
+  sortOrder         Int                @default(0) @map("sort_order")
+  actionDefinitions ActionDefinition[]
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("action_point_target_types")
+}
+
+model ActionDefinitionProduct {
+  id                 String           @id @default(cuid())
+  actionDefinitionId String           @map("action_point_id")
+  productId          String           @map("product_id")
+  actionDefinition   ActionDefinition @relation(fields: [actionDefinitionId], references: [id], onDelete: Cascade)
+  product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  @@unique([actionDefinitionId, productId])
+  @@index([productId])
+  @@map("action_point_products")
 }
 
 model ActionTargetOverride {
@@ -833,6 +865,7 @@ model Product {
   sortOrder Int
   active    Boolean           @default(true)
   analyses  ProductAnalysis[]
+  actionDefinitionProducts ActionDefinitionProduct[]
 }
 
 model ProductAnalysis {

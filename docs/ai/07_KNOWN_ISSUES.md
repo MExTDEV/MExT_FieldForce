@@ -572,7 +572,7 @@ Resolved on 2026-07-08
 
 Description:
 
-The Actiepunten page now has a first read-only functional overview based on existing scoped action definitions and concrete action points from visible coaching-related workflow/reporting data.
+The Actiepunten page now has a scoped overview and management flow based on existing scoped action definitions and concrete action points from visible coaching-related workflow/reporting data.
 
 Current behaviour:
 
@@ -588,12 +588,15 @@ Current behaviour:
 - apply role and scope visibility
 - show concrete workflow action points as personal/user-scoped items for the related representative
 - direct page and API access require active Actiepunten module and effective permissions
+- allow authorised users to create, edit, activate and deactivate scoped action definitions
+- link scoped action definitions to existing active products
+- count active, in-date scoped action definitions in the Dashboard open action point metric
 
 Known limitations:
 
-- Detail view and business actions remain open because the detailed action-point workflow still needs business definition.
-- Open/Afgesloten follows the existing `active` field for scoped action definitions and the existing workflow status for concrete workflow action points; no separate close workflow or `closedAt` field was introduced.
-- The visible screen currently focuses on open / to-do action points.
+- Completion, approval, reopening and reassignment remain open because the detailed action-point lifecycle still needs business definition.
+- Open/Afgesloten follows `active` plus validity dates for scoped action definitions and the existing workflow status for concrete workflow action points; no separate close workflow or `closedAt` field was introduced.
+- Inactive or expired scoped definitions are visible only to management users.
 
 Related documents:
 
@@ -610,13 +613,9 @@ Confirmed Open
 
 Open topics:
 
-- who can create action points
 - who can close action points
 - whether action points require approval
-- whether action points can expire
 - whether action points can be reassigned
-- whether action points can originate outside a coaching
-- which fields are mandatory
 - which statuses are required
 
 AI rule:
