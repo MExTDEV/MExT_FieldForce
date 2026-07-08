@@ -1,14 +1,17 @@
-import { badRequest, handleApi } from "@/lib/server/api";
+import { ApiRequestError, badRequest, handleApi } from "@/lib/server/api";
 import {
   deactivateCriterion,
   deactivateFocus,
   deactivateKpi,
+  deactivateKpiTarget,
   deactivateTeam,
   getManagementConfiguration,
+  listManagementKpis,
   listManagementTeams,
   saveCriterion,
   saveFocus,
   saveKpi,
+  saveKpiTarget,
   saveRolePermissions,
   saveTeam,
 } from "@/lib/server/management";
@@ -29,6 +32,8 @@ import { canAccessManagementSection } from "@/lib/management-access";
 import type {
   Country,
   FieldForcePermissionKey,
+  KpiPeriodType,
+  KpiTargetScope,
   Role,
   KpiEvaluationDirection,
   KpiUnit,
@@ -39,10 +44,15 @@ export async function GET() {
     const actor = await requireAuthenticatedRead();
     if (!actor) badRequest("Beheer vereist een aangemelde gebruiker.");
     if (!["ADMIN", "SUPER_ADMIN"].includes(actor.role)) {
-      if (canAccessManagementSection(actor, "teams")) {
+      const canViewTeams = canAccessManagementSection(actor, "teams");
+      const canViewKpis = canAccessManagementSection(actor, "kpis");
+      if (canViewTeams || canViewKpis) {
+        const kpiConfiguration = canViewKpis
+          ? await listManagementKpis(actor)
+          : { kpis: [], kpiCategories: [], kpiTypes: [], kpiTargetTypes: [] };
         return {
-          teams: await listManagementTeams(actor),
-          kpis: [],
+          teams: canViewTeams || canViewKpis ? await listManagementTeams(actor) : [],
+          ...kpiConfiguration,
           focuses: [],
           roles: [],
         };
@@ -76,6 +86,10 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
       if (!canAccessManagementSection(actor, "teams")) {
         badRequest("Je hebt geen toegang tot teambeheer.");
       }
+    } else if (entity === "kpi" || entity === "kpiTarget") {
+      if (!canAccessManagementSection(actor, "kpis")) {
+        badRequest("Je hebt geen toegang tot KPI-beheer.");
+      }
     } else {
       requireRole(actor, ["ADMIN", "SUPER_ADMIN"]);
     }
@@ -83,71 +97,102 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
     if (permanent) requireRole(actor, ["SUPER_ADMIN"]);
     let result: unknown;
 
-    if (permanent) {
-      try {
+    try {
+      if (permanent) {
         result = await permanentlyDeleteManagementEntity(
           entity,
           String(payload.id),
           String(payload.confirmation ?? "")
         );
-      } catch (error) {
-        badRequest(error instanceof Error ? error.message : "Permanent verwijderen is mislukt.");
+      } else if (entity === "team") {
+        result = operation === "delete"
+          ? await deactivateTeam(actor, String(payload.id))
+          : await saveTeam(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              name: String(payload.name ?? ""),
+              country: String(payload.country) as Country,
+              primaryLeaderId:
+                typeof payload.primaryLeaderId === "string"
+                  ? payload.primaryLeaderId
+                  : null,
+            });
+      } else if (entity === "kpi") {
+        result = operation === "delete"
+          ? await deactivateKpi(actor, String(payload.id))
+          : await saveKpi(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              code: String(payload.code ?? ""),
+              name: String(payload.name ?? ""),
+              description: String(payload.description ?? ""),
+              categoryId: typeof payload.categoryId === "string" ? payload.categoryId : null,
+              typeId: typeof payload.typeId === "string" ? payload.typeId : null,
+              targetTypeId: typeof payload.targetTypeId === "string" ? payload.targetTypeId : null,
+              country: payload.country ? String(payload.country) as Country : null,
+              teamId: typeof payload.teamId === "string" ? payload.teamId : null,
+              userId: typeof payload.userId === "string" ? payload.userId : null,
+              targetRole: payload.targetRole ? String(payload.targetRole) as Role : null,
+              unit: String(payload.unit ?? "number") as KpiUnit,
+              targetValue: parseRequiredKpiNumber(payload.targetValue, "Doelwaarde"),
+              minValue: parseOptionalKpiNumber(payload.minValue, "Minimumwaarde"),
+              maxValue: parseOptionalKpiNumber(payload.maxValue, "Maximumwaarde"),
+              weight: parseOptionalKpiNumber(payload.weight, "Gewicht"),
+              countsForReporting: payload.countsForReporting !== false,
+              countsForPerformanceCircle: payload.countsForPerformanceCircle !== false,
+              sortOrder: Number(payload.sortOrder ?? 0),
+              validFrom: parseRequiredDate(payload.validFrom, "Begindatum"),
+              validUntil: parseOptionalDate(payload.validUntil, "Einddatum"),
+              evaluationDirection: String(payload.evaluationDirection ?? "HIGHER_IS_BETTER") as KpiEvaluationDirection,
+              active: payload.active !== false,
+            });
+      } else if (entity === "kpiTarget") {
+        result = operation === "delete"
+          ? await deactivateKpiTarget(actor, String(payload.id))
+          : await saveKpiTarget(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              kpiDefinitionId: String(payload.kpiDefinitionId ?? ""),
+              targetTypeId: typeof payload.targetTypeId === "string" ? payload.targetTypeId : null,
+              scope: String(payload.scope ?? "GLOBAL") as KpiTargetScope,
+              country: payload.country ? String(payload.country) as Country : null,
+              teamId: typeof payload.teamId === "string" ? payload.teamId : null,
+              userId: typeof payload.userId === "string" ? payload.userId : null,
+              role: payload.role ? String(payload.role) as Role : null,
+              periodType: String(payload.periodType ?? "MONTH") as KpiPeriodType,
+              periodStart: parseRequiredDate(payload.periodStart, "Startperiode"),
+              periodEnd: parseRequiredDate(payload.periodEnd, "Eindperiode"),
+              targetValue: parseRequiredKpiNumber(payload.targetValue, "Doelwaarde"),
+              active: payload.active !== false,
+            });
+      } else if (entity === "focus") {
+        result = operation === "delete"
+          ? await deactivateFocus(actor, String(payload.id))
+          : await saveFocus(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              code: String(payload.code ?? ""),
+              name: String(payload.name ?? ""),
+              sortOrder: Number(payload.sortOrder ?? 0),
+            });
+      } else if (entity === "criterion") {
+        result = operation === "delete"
+          ? await deactivateCriterion(actor, String(payload.id))
+          : await saveCriterion(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              focusId: String(payload.focusId ?? ""),
+              name: String(payload.name ?? ""),
+              sortOrder: Number(payload.sortOrder ?? 0),
+            });
+      } else if (entity === "role" && operation === "update") {
+        await saveRolePermissions(
+          actor,
+          String(payload.role) as Role,
+          (payload.permissions ?? {}) as Partial<Record<FieldForcePermissionKey, boolean>>,
+          typeof payload.active === "boolean" ? payload.active : undefined
+        );
+        result = { role: payload.role, active: payload.active };
+      } else {
+        badRequest("Onbekende beheeractie.");
       }
-    } else if (entity === "team") {
-      result = operation === "delete"
-        ? await deactivateTeam(actor, String(payload.id))
-        : await saveTeam(actor, {
-            id: operation === "update" ? String(payload.id) : undefined,
-            name: String(payload.name ?? ""),
-            country: String(payload.country) as Country,
-            primaryLeaderId:
-              typeof payload.primaryLeaderId === "string"
-                ? payload.primaryLeaderId
-                : null,
-          });
-    } else if (entity === "kpi") {
-      result = operation === "delete"
-        ? await deactivateKpi(actor, String(payload.id))
-        : await saveKpi(actor, {
-            id: operation === "update" ? String(payload.id) : undefined,
-            code: String(payload.code ?? ""),
-            name: String(payload.name ?? ""),
-            description: String(payload.description ?? ""),
-            country: payload.country ? String(payload.country) as Country : null,
-            unit: String(payload.unit ?? "number") as KpiUnit,
-            targetValue: parseRequiredKpiNumber(payload.targetValue, "Doelwaarde"),
-            minValue: parseOptionalKpiNumber(payload.minValue, "Minimumwaarde"),
-            maxValue: parseOptionalKpiNumber(payload.maxValue, "Maximumwaarde"),
-            evaluationDirection: String(payload.evaluationDirection ?? "HIGHER_IS_BETTER") as KpiEvaluationDirection,
-          });
-    } else if (entity === "focus") {
-      result = operation === "delete"
-        ? await deactivateFocus(actor, String(payload.id))
-        : await saveFocus(actor, {
-            id: operation === "update" ? String(payload.id) : undefined,
-            code: String(payload.code ?? ""),
-            name: String(payload.name ?? ""),
-            sortOrder: Number(payload.sortOrder ?? 0),
-          });
-    } else if (entity === "criterion") {
-      result = operation === "delete"
-        ? await deactivateCriterion(actor, String(payload.id))
-        : await saveCriterion(actor, {
-            id: operation === "update" ? String(payload.id) : undefined,
-            focusId: String(payload.focusId ?? ""),
-            name: String(payload.name ?? ""),
-            sortOrder: Number(payload.sortOrder ?? 0),
-          });
-    } else if (entity === "role" && operation === "update") {
-      await saveRolePermissions(
-        actor,
-        String(payload.role) as Role,
-        (payload.permissions ?? {}) as Partial<Record<FieldForcePermissionKey, boolean>>,
-        typeof payload.active === "boolean" ? payload.active : undefined
-      );
-      result = { role: payload.role, active: payload.active };
-    } else {
-      badRequest("Onbekende beheeractie.");
+    } catch (error) {
+      handleManagementMutationError(entity, error);
     }
 
     await writeAuditLog({
@@ -167,4 +212,92 @@ function permanentlyDeleteManagementEntity(entity: string, id: string, confirmat
   if (entity === "focus") return permanentlyDeleteFocus(id, confirmation);
   if (entity === "criterion") return permanentlyDeleteCriterion(id, confirmation);
   badRequest("Deze configuratie kan niet permanent worden verwijderd.");
+}
+
+function parseRequiredDate(value: unknown, label: string) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    throw new Error(`${label} is verplicht.`);
+  }
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) throw new Error(`${label} is ongeldig.`);
+  return date;
+}
+
+function parseOptionalDate(value: unknown, label: string) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) throw new Error(`${label} is ongeldig.`);
+  return date;
+}
+
+function handleManagementMutationError(entity: string, error: unknown): never {
+  if (error instanceof ApiRequestError) throw error;
+
+  const code = getPrismaErrorCode(error);
+  if (entity === "team" && code === "P2002") {
+    badRequest("Er bestaat al een team met deze naam in dit land.");
+  }
+  if (code === "P2003") {
+    badRequest("De gekozen koppeling is ongeldig of bestaat niet meer.");
+  }
+
+  if (error instanceof Error && isSafeManagementMessage(error.message)) {
+    badRequest(error.message);
+  }
+
+  throw error;
+}
+
+function getPrismaErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function isSafeManagementMessage(message: string) {
+  return (
+    message.endsWith(" is verplicht.") ||
+    message.endsWith(" is ongeldig.") ||
+    message.endsWith(" moet numeriek zijn.") ||
+    [
+      "Deze configuratie valt buiten je landenscope.",
+      "Deze KPI valt buiten je toegestane scope.",
+      "Deze doelwaarde valt buiten je toegestane scope.",
+      "Deze doelwaarde valt buiten de scope van de KPI.",
+      "Teamnaam is verplicht.",
+      "Er bestaat al een team met deze naam in dit land.",
+      "De gekozen teamleider is niet actief in dit land.",
+      "Verplaats eerst de bestaande teamleden voordat je het land van dit team wijzigt.",
+      "Selecteer een geldige eenheid.",
+      "Selecteer een geldige beoordelingsrichting.",
+      "Selecteer een geldige KPI-scope.",
+      "Selecteer een geldige KPI-periode.",
+      "Selecteer een land voor deze KPI.",
+      "Selecteer een team voor deze KPI.",
+      "Selecteer een gebruiker voor deze KPI.",
+      "Selecteer een rol voor deze KPI.",
+      "Selecteer een land voor deze doelwaarde.",
+      "Selecteer een team voor deze doelwaarde.",
+      "Selecteer een gebruiker voor deze doelwaarde.",
+      "Selecteer een rol voor deze doelwaarde.",
+      "Het gekozen team bestaat niet meer.",
+      "De gekozen gebruiker bestaat niet meer.",
+      "Globale KPI's kunnen alleen door groepsbeheer worden aangemaakt.",
+      "Globale KPI-doelwaarden kunnen alleen door groepsbeheer worden aangemaakt.",
+      "Je hebt geen toegang tot KPI-beheer.",
+      "Je mag geen KPI's aanmaken.",
+      "Je mag KPI's niet beheren.",
+      "Je mag KPI-doelwaarden niet beheren.",
+      "Gewicht moet een positief numeriek getal zijn.",
+      "Einddatum mag niet voor begindatum liggen.",
+      "Er bestaat al een actieve doelwaarde voor deze KPI, scope en periode.",
+      "Minimumwaarde mag niet hoger zijn dan maximumwaarde.",
+      "Doelwaarde mag niet lager zijn dan minimumwaarde.",
+      "Doelwaarde mag niet hoger zijn dan maximumwaarde.",
+      "De globale kapstok kan alleen door een Super Admin worden gewijzigd.",
+      "Super Admin vereist.",
+      "Rollen en globale rechten kunnen alleen door een Super Admin worden gewijzigd.",
+      "Onbekende rol.",
+    ].includes(message)
+  );
 }

@@ -122,6 +122,7 @@ export async function permanentlyDeleteKpi(
     const kpi = await tx.kpiDefinition.findUniqueOrThrow({ where: { id } });
     assertConfirmation(kpi.name, confirmation);
     let deletedRecords = (await tx.kpiTargetOverride.deleteMany({ where: { kpiDefinitionId: id } })).count;
+    deletedRecords += (await tx.kpiTarget.deleteMany({ where: { kpiDefinitionId: id } })).count;
     deletedRecords += (await tx.actionPoint.deleteMany({ where: { kpiDefinitionId: id } })).count;
     deletedRecords += (await tx.kpiSnapshot.deleteMany({ where: { kpiDefinitionId: id } })).count;
     await tx.kpiDefinition.delete({ where: { id } });

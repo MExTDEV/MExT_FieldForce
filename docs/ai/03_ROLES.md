@@ -577,6 +577,60 @@ Completion, approval, reopening and reassignment workflow still need business cl
 
 ---
 
+## KPI Management
+
+KPI management is controlled by dedicated permissions:
+
+- `kpisView`
+- `kpisCreate`
+- `kpisManage`
+- `kpiTargetsManage`
+- `kpiCategoriesManage`
+
+Access to `Beheer -> KPI's` also requires:
+
+- effective `menu.coaching.kpis`
+- effective `kpisView`
+
+Visibility and management rules:
+
+### Vertegenwoordiger
+
+- can see applicable KPI data in user-facing KPI/reporting contexts when `kpisView` is effective
+- cannot open KPI management by default
+- cannot create or manage KPI definitions or targets
+
+### Verkoopleider
+
+- can view KPI management for applicable global, country, role and own-team KPI definitions when explicitly allowed by menu permissions
+- cannot create or manage KPI definitions or targets by default
+
+### Sales Manager
+
+- can create and manage KPI definitions and targets within assigned country scope when effective permissions allow it
+- cannot create global KPI definitions or global target values by default
+
+### Country Manager
+
+- can create and manage KPI definitions and targets within assigned country scope when effective permissions allow it
+- cannot create global KPI definitions or global target values by default
+
+### Admin
+
+- can create and manage KPI definitions and targets within effective country scope
+- can manage KPI categories by default
+
+### Super Admin / Group Manager
+
+- can view all KPI definitions and targets
+- can create and manage all KPI scopes, including global definitions and target values
+
+Target priority:
+
+User-specific targets override team targets, team targets override country targets, country targets override role targets, and role targets override global/default values.
+
+---
+
 # Coaching Verkoopleiders
 
 Verkoopleiders can be coaching targets.

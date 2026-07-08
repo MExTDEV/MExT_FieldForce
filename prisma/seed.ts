@@ -17,6 +17,11 @@ import {
   fieldForcePermissionGroups,
   roleTemplates,
 } from "../lib/user-management";
+import {
+  kpiCategorySeed,
+  kpiTargetTypeSeed,
+  kpiTypeSeed,
+} from "../lib/kpi-settings";
 let developmentManagedUsers: typeof import("../lib/development-seed").developmentManagedUsers;
 let developmentTeamOptions: typeof import("../lib/development-seed").developmentTeamOptions;
 let developmentRepresentatives: typeof import("../lib/mock-data").representatives;
@@ -98,7 +103,12 @@ async function main() {
   await prisma.coachingCriterion.deleteMany();
   await prisma.coachingFocus.deleteMany();
   await prisma.kpiSnapshot.deleteMany();
+  await prisma.kpiTarget.deleteMany();
+  await prisma.kpiTargetOverride.deleteMany();
   await prisma.kpiDefinition.deleteMany();
+  await prisma.kpiTargetType.deleteMany();
+  await prisma.kpiType.deleteMany();
+  await prisma.kpiCategory.deleteMany();
   await prisma.teamLeader.deleteMany();
   await prisma.team.deleteMany();
   await prisma.user.deleteMany();
@@ -108,6 +118,7 @@ async function main() {
     data: [...appModules],
   });
   await seedActionPointTargetTypes();
+  await seedKpiReferenceData();
   await seedPermissions();
 
   const levels = await Promise.all(
@@ -132,8 +143,17 @@ async function main() {
     ["CASH_TRANSFER", "Cash vs Overschrijving", "%", 75],
   ];
   const kpis = await Promise.all(
-    kpiData.map(([code, name, unit, targetValue]) =>
-      prisma.kpiDefinition.create({ data: { code: String(code), name: String(name), description: `${name} coaching KPI`, unit: String(unit), targetValue: Number(targetValue) } })
+    kpiData.map(([code, name, unit, targetValue], index) =>
+      prisma.kpiDefinition.create({
+        data: {
+          code: String(code),
+          name: String(name),
+          description: `${name} coaching KPI`,
+          unit: String(unit),
+          targetValue: Number(targetValue),
+          ...kpiSeedAttributes(String(code), String(unit), index),
+        },
+      })
     )
   );
 
@@ -395,6 +415,7 @@ async function seedConfiguration() {
   }
   await seedPermissions();
   await seedActionPointTargetTypes();
+  await seedKpiReferenceData();
 
   const levels = [
     ["Starter", "Nieuwe vertegenwoordiger in onboarding", "#F59E0B"],
@@ -427,8 +448,22 @@ async function seedConfiguration() {
   for (const [code, name, unit, targetValue] of kpis) {
     await prisma.kpiDefinition.upsert({
       where: { code },
-      update: { name, description: `${name} coaching KPI`, unit, targetValue, active: true },
-      create: { code, name, description: `${name} coaching KPI`, unit, targetValue },
+      update: {
+        name,
+        description: `${name} coaching KPI`,
+        unit,
+        targetValue,
+        active: true,
+        ...kpiSeedAttributes(code, unit, kpis.findIndex((item) => item[0] === code)),
+      },
+      create: {
+        code,
+        name,
+        description: `${name} coaching KPI`,
+        unit,
+        targetValue,
+        ...kpiSeedAttributes(code, unit, kpis.findIndex((item) => item[0] === code)),
+      },
     });
   }
 
@@ -475,6 +510,93 @@ async function seedActionPointTargetTypes() {
       },
     });
   }
+}
+
+async function seedKpiReferenceData() {
+  for (const category of kpiCategorySeed) {
+    await prisma.kpiCategory.upsert({
+      where: { code: category.code },
+      update: {
+        name: category.name,
+        description: category.description,
+        isActive: true,
+        sortOrder: category.sortOrder,
+      },
+      create: {
+        id: category.id,
+        code: category.code,
+        name: category.name,
+        description: category.description,
+        sortOrder: category.sortOrder,
+      },
+    });
+  }
+
+  for (const type of kpiTypeSeed) {
+    await prisma.kpiType.upsert({
+      where: { code: type.code },
+      update: {
+        name: type.name,
+        description: type.description,
+        valueType: type.valueType,
+        isActive: true,
+        sortOrder: type.sortOrder,
+      },
+      create: {
+        id: type.id,
+        code: type.code,
+        name: type.name,
+        description: type.description,
+        valueType: type.valueType,
+        sortOrder: type.sortOrder,
+      },
+    });
+  }
+
+  for (const targetType of kpiTargetTypeSeed) {
+    await prisma.kpiTargetType.upsert({
+      where: { code: targetType.code },
+      update: {
+        name: targetType.name,
+        description: targetType.description,
+        isActive: true,
+        sortOrder: targetType.sortOrder,
+      },
+      create: {
+        id: targetType.id,
+        code: targetType.code,
+        name: targetType.name,
+        description: targetType.description,
+        sortOrder: targetType.sortOrder,
+      },
+    });
+  }
+}
+
+function kpiSeedAttributes(code: string, unit: string, index: number) {
+  return {
+    categoryId: kpiCategoryIdForCode(code),
+    typeId: kpiTypeIdForUnit(unit),
+    targetTypeId: kpiTargetTypeSeed[0].id,
+    countsForReporting: true,
+    countsForPerformanceCircle: true,
+    sortOrder: index + 1,
+  };
+}
+
+function kpiCategoryIdForCode(code: string) {
+  if (["SALES_DAY", "SALES_ORDER", "TOTAL_SALES"].includes(code)) return "kpicat_turnover";
+  if (["LEADS", "PROSPECT_CUSTOMER"].includes(code)) return "kpicat_sales";
+  if (["FM_ORDER"].includes(code)) return "kpicat_orders";
+  if (["CASH_TRANSFER"].includes(code)) return "kpicat_service";
+  return "kpicat_coaching";
+}
+
+function kpiTypeIdForUnit(unit: string) {
+  if (unit === "%") return "kpitype_percentage";
+  if (unit === "EUR") return "kpitype_currency";
+  if (unit === "count") return "kpitype_number";
+  return "kpitype_number";
 }
 
 async function seedPermissions() {

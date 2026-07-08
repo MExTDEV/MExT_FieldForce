@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/server/db";
 import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
-import type { Country, Representative } from "@/lib/types";
+import type { Country, Representative, Role } from "@/lib/types";
 
 const levelColors: Record<string, string> = {
   Starter: "bg-amber-100 text-amber-800",
@@ -34,7 +34,8 @@ async function fetchRepresentativeUsers() {
       team: true,
       level: true,
       kpiSnapshots: {
-        include: { kpiDefinition: { include: { targetOverrides: true } } },
+        where: { kpiDefinition: { active: true, countsForReporting: true } },
+        include: { kpiDefinition: { include: { targetOverrides: true, targets: { where: { active: true } } } } },
         orderBy: [{ periodEnd: "desc" }, { kpiDefinition: { name: "asc" } }],
       },
     },
@@ -101,7 +102,14 @@ function toRepresentative(
       value: formatKpiValue(Number(current.value), current.kpiDefinition.unit),
       target: formatKpiValue(Number(current.target ?? resolveKpiTargetFromDefinition(
         current.kpiDefinition,
-        { country: user.country, teamId: user.teamId ?? undefined, userId: user.id }
+        {
+          country: user.country,
+          teamId: user.teamId ?? undefined,
+          userId: user.id,
+          role: user.role as Role,
+          periodStart: current.periodStart,
+          periodEnd: current.periodEnd,
+        }
       ).targetValue), current.kpiDefinition.unit),
       trend:
         previous && Number(current.value) > Number(previous.value)

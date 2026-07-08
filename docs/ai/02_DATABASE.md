@@ -225,6 +225,30 @@ A Coaching must contain at least one customer visit before it can be completed.
 
 ---
 
+## KPI Management
+
+KPI definitions reuse the existing `KpiDefinition` table as the source of truth.
+
+Related configuration tables:
+
+- `kpi_categories`: seeded KPI categories such as Sales, Visits, Orders, Turnover, Coaching, Service and Custom.
+- `kpi_types`: seeded KPI value types such as Number, Percentage, Currency, Boolean and Score.
+- `kpi_target_types`: seeded target scopes Global, Country, Team, User and Role.
+- `kpi_targets`: period-specific target values for a KPI and scope.
+- `KpiTargetOverride`: legacy non-periodic target overrides kept for compatibility.
+
+Rules:
+
+- Do not create a second standalone KPI definition table.
+- `KpiDefinition.targetValue` remains the default target when no more specific period target exists.
+- Effective target priority is User, Team, Country, Role, Global/default.
+- Active period targets must not overlap for the same KPI and scope.
+- `counts_for_reporting` controls report inclusion.
+- `counts_for_performance_circle` controls Performance Circle inclusion.
+- KPI definitions and targets must always be filtered by role, country, team and user scope.
+
+---
+
 ## Action Points
 
 Every completed Coaching must contain at least one action point.

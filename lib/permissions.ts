@@ -2,7 +2,7 @@ import type { Country, MockUser, Representative, Role } from "@/lib/types";
 import { canAccessRepresentativeData } from "@/lib/data-access";
 
 export const permissionsByRole: Record<Role, string[]> = {
-  REPRESENTATIVE: ["self:read", "reflection:write", "help-request:create", "action:self:read"],
+  REPRESENTATIVE: ["self:read", "reflection:write", "help-request:create", "action:self:read", "kpisView"],
   SALES_LEADER: [
     "team:read",
     "history:read",
@@ -11,12 +11,13 @@ export const permissionsByRole: Record<Role, string[]> = {
     "action:update",
     "actionPointsCreate",
     "actionPointsManage",
+    "kpisView",
   ],
-  SALES_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage"],
+  SALES_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
   SERVICE_OPERATOR: ["self:read", "service:write"],
-  COUNTRY_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage"],
-  GROUP_MANAGER: ["group:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage"],
-  ADMIN: ["scope:configure", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage"],
+  COUNTRY_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
+  GROUP_MANAGER: ["group:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
+  ADMIN: ["scope:configure", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage", "kpiCategoriesManage"],
   SUPER_ADMIN: ["*"],
 };
 

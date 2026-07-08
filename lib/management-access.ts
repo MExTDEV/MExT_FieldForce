@@ -44,6 +44,7 @@ export const managementSections: ManagementSectionDefinition[] = [
     href: "/beheer/kpis",
     navKey: "nav.kpis",
     permission: "menu.coaching.kpis",
+    requiredPermissions: ["kpisView"],
   },
   {
     section: "kapstok",

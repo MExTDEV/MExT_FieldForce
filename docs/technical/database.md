@@ -83,6 +83,27 @@ Rules:
 - Active, in-date `ActionDefinition` records are counted as open scoped action points.
 - Concrete workflow action points continue to use their workflow status for open/closed reporting.
 
+## KPI management
+
+KPI management extends the existing KPI tables instead of duplicating definitions.
+
+Related tables:
+
+- `KpiDefinition`: source of truth for KPI definitions and default target values.
+- `kpi_categories`: configurable seeded categories.
+- `kpi_types`: configurable seeded value types.
+- `kpi_target_types`: configurable seeded scopes Global, Country, Team, User and Role.
+- `kpi_targets`: active/inactive period targets per KPI and scope.
+- `KpiTargetOverride`: legacy non-periodic overrides retained for backward compatibility.
+
+Rules:
+
+- `KpiDefinition.targetValue` is the default target.
+- Effective period target priority is User, Team, Country, Role, Global/default.
+- Active period targets may not overlap for the same KPI and scope.
+- Reporting and Performance Circle inclusion are controlled separately by `counts_for_reporting` and `counts_for_performance_circle`.
+- Seed/config mode upserts KPI categories, types and target types and must not delete business data.
+
 ## Required check for every future feature
 
 Before implementing a feature or change, verify:

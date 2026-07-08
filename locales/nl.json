@@ -62,5 +62,22 @@
   "status.wacht_op_vt": "Wacht op VT",
   "status.wacht_op_akkoord": "Wacht op akkoord",
   "status.afgesloten": "Afgesloten",
-  "status.geannuleerd": "Geannuleerd"
+  "status.geannuleerd": "Geannuleerd",
+  "kpis.title": "KPI-definities",
+  "kpis.add": "KPI toevoegen",
+  "kpis.category": "Categorie",
+  "kpis.type": "Type",
+  "kpis.scope": "Scope",
+  "kpis.targetValue": "Doelwaarde",
+  "kpis.targetValues": "Doelwaarden",
+  "kpis.period": "Periode",
+  "kpis.weight": "Gewicht",
+  "kpis.countsForReporting": "Telt mee in rapportage",
+  "kpis.countsForPerformanceCircle": "Telt mee in prestatiecirkel",
+  "kpis.conflict": "Conflict",
+  "kpis.global": "Globaal",
+  "kpis.country": "Land",
+  "kpis.team": "Team",
+  "kpis.user": "Gebruiker",
+  "kpis.role": "Rol"
 }

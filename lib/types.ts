@@ -12,6 +12,9 @@ export type Country = "BE" | "NL" | "DE";
 export type Language = "nl" | "fr" | "de";
 export type KpiEvaluationDirection = "HIGHER_IS_BETTER" | "LOWER_IS_BETTER" | "TARGET";
 export type KpiUnit = "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number";
+export type KpiValueType = "NUMBER" | "DECIMAL" | "CURRENCY" | "BOOLEAN" | "SCORE";
+export type KpiTargetScope = "GLOBAL" | "COUNTRY" | "TEAM" | "USER" | "ROLE";
+export type KpiPeriodType = "DAY" | "WEEK" | "MONTH" | "QUARTER" | "YEAR" | "CUSTOM";
 
 export type MockUser = {
   id: string;
@@ -53,6 +56,11 @@ export type FieldForcePermissionKey =
   | "reportingExport"
   | "actionPointsCreate"
   | "actionPointsManage"
+  | "kpisView"
+  | "kpisCreate"
+  | "kpisManage"
+  | "kpiTargetsManage"
+  | "kpiCategoriesManage"
   | "technicalTables"
   | "technicalParameters"
   | "technicalBranding"
@@ -141,13 +149,72 @@ export type ManagementKpi = {
   code: string;
   name: string;
   description: string;
+  categoryId: string | null;
+  typeId: string | null;
+  targetTypeId: string | null;
   country: Country | null;
+  teamId: string | null;
+  userId: string | null;
+  targetRole: Role | null;
   unit: KpiUnit;
   targetValue: number;
   minValue: number | null;
   maxValue: number | null;
+  weight: number | null;
+  countsForReporting: boolean;
+  countsForPerformanceCircle: boolean;
+  sortOrder: number;
+  validFrom: string;
+  validUntil: string | null;
   evaluationDirection: KpiEvaluationDirection;
   active: boolean;
+  targets: ManagementKpiTarget[];
+};
+
+export type ManagementKpiCategory = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type ManagementKpiType = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  valueType: KpiValueType;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type ManagementKpiTargetType = {
+  id: string;
+  code: KpiTargetScope;
+  name: string;
+  description: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type ManagementKpiTarget = {
+  id: string;
+  kpiDefinitionId: string;
+  targetTypeId: string;
+  scope: KpiTargetScope;
+  scopeKey: string;
+  country: Country | null;
+  teamId: string | null;
+  userId: string | null;
+  role: Role | null;
+  periodType: KpiPeriodType;
+  periodStart: string;
+  periodEnd: string;
+  targetValue: number;
+  active: boolean;
+  conflict: boolean;
 };
 
 export type ManagementCriterion = {
@@ -177,6 +244,9 @@ export type ManagementRole = {
 export type ManagementConfiguration = {
   teams: ManagementTeam[];
   kpis: ManagementKpi[];
+  kpiCategories: ManagementKpiCategory[];
+  kpiTypes: ManagementKpiType[];
+  kpiTargetTypes: ManagementKpiTargetType[];
   focuses: ManagementFocus[];
   roles: ManagementRole[];
 };

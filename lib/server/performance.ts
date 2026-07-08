@@ -12,7 +12,7 @@ import {
   mergeCriterionScores,
   normalizePerformanceScore,
 } from "@/lib/performance-data";
-import type { KpiUnit, Status, WorkflowActionPoint } from "@/lib/types";
+import type { KpiUnit, Role, Status, WorkflowActionPoint } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
 
 type TargetUserRow = {
@@ -307,9 +307,16 @@ export function normalizeHistoricalActionPoints(
 
 async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
   const snapshots = await prisma.kpiSnapshot.findMany({
+    where: {
+      kpiDefinition: {
+        active: true,
+        countsForReporting: true,
+        countsForPerformanceCircle: true,
+      },
+    },
     include: {
       user: true,
-      kpiDefinition: { include: { targetOverrides: true } },
+      kpiDefinition: { include: { targetOverrides: true, targets: { where: { active: true } } } },
     },
     orderBy: [{ periodStart: "asc" }, { kpiDefinition: { name: "asc" } }],
   });
@@ -329,6 +336,9 @@ async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
       country: snapshot.user.country,
       teamId: snapshot.user.teamId ?? undefined,
       userId: snapshot.userId,
+      role: snapshot.user.role as Role,
+      periodStart: snapshot.periodStart,
+      periodEnd: snapshot.periodEnd,
     });
     current.values.push({
       label: snapshot.kpiDefinition.name,

@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/server/db";
-import { roleLabels } from "@/lib/permissions";
+import { can, roleLabels } from "@/lib/permissions";
 import {
   applicationRoles,
   listRoleConfigurations,
@@ -12,10 +14,22 @@ import {
   normalizeOptionalTeamLeaderId,
   optionalTeamLeaderLabel,
 } from "@/lib/team-management";
-import { isKpiUnit, validateKpiRange } from "@/lib/kpi-settings";
+import {
+  createKpiTargetScopeKey,
+  detectKpiTargetConflicts,
+} from "@/lib/server/kpi-targets";
+import {
+  isKpiPeriodType,
+  isKpiTargetScope,
+  isKpiUnit,
+  validateKpiDates,
+  validateKpiRange,
+} from "@/lib/kpi-settings";
 import type {
   Country,
   FieldForcePermissionKey,
+  KpiPeriodType,
+  KpiTargetScope,
   ManagementConfiguration,
   MockUser,
   Role,
@@ -25,49 +39,79 @@ import type {
 
 const roles = applicationRoles;
 
+type ManagementTeamRow = {
+  id: string;
+  name: string;
+  country: string;
+  primaryLeaderId: string | null;
+  primaryLeaderFirstName: string | null;
+  primaryLeaderLastName: string | null;
+  active: boolean | number;
+  memberCount: bigint | number;
+};
+
 export async function listManagementTeams(
   actor: MockUser,
   options: { activeOnly?: boolean; country?: Country } = {}
 ) {
   const requestedCountry =
     actor.role === "SUPER_ADMIN" ? options.country : actor.country;
-  const teams = await prisma.team.findMany({
-    where: {
-      ...(requestedCountry ? { country: requestedCountry } : {}),
-      ...(options.activeOnly ? { active: true } : {}),
-    },
-    include: {
-      primaryLeader: { select: { firstName: true, lastName: true } },
-      _count: { select: { members: true } },
-    },
-    orderBy: [{ name: "asc" }],
-  });
+
+  const countryFilter = requestedCountry
+    ? Prisma.sql`AND t.country = ${requestedCountry}`
+    : Prisma.empty;
+  const activeFilter = options.activeOnly
+    ? Prisma.sql`AND t.active = TRUE`
+    : Prisma.empty;
+
+  const teams = await prisma.$queryRaw<ManagementTeamRow[]>(Prisma.sql`
+    SELECT
+      t.id,
+      t.name,
+      t.country,
+      t.primaryLeaderId,
+      leader.firstName AS primaryLeaderFirstName,
+      leader.lastName AS primaryLeaderLastName,
+      t.active,
+      COUNT(member.id) AS memberCount
+    FROM \`Team\` t
+    LEFT JOIN \`User\` leader ON leader.id = t.primaryLeaderId
+    LEFT JOIN \`User\` member ON member.teamId = t.id
+    WHERE 1 = 1
+      ${countryFilter}
+      ${activeFilter}
+    GROUP BY
+      t.id,
+      t.name,
+      t.country,
+      t.primaryLeaderId,
+      leader.firstName,
+      leader.lastName,
+      t.active
+    ORDER BY t.name ASC
+  `);
+
   return teams.map((team) => ({
     id: team.id,
     name: team.name,
     country: team.country as Country,
     primaryLeaderId: team.primaryLeaderId,
     primaryLeaderName: optionalTeamLeaderLabel(
-      team.primaryLeader
-        ? `${team.primaryLeader.firstName} ${team.primaryLeader.lastName}`.trim()
+      team.primaryLeaderFirstName || team.primaryLeaderLastName
+        ? `${team.primaryLeaderFirstName ?? ""} ${team.primaryLeaderLastName ?? ""}`.trim()
         : null
     ),
-    active: team.active,
-    memberCount: team._count.members,
+    active: Boolean(team.active),
+    memberCount: Number(team.memberCount),
   }));
 }
 
 export async function getManagementConfiguration(
   actor: MockUser
 ): Promise<ManagementConfiguration> {
-  const [teams, kpis, focuses, permissions, roleGrants, roleCounts, roleConfigurations] = await Promise.all([
+  const [teams, kpiConfiguration, focuses, permissions, roleGrants, roleCounts, roleConfigurations] = await Promise.all([
     listManagementTeams(actor),
-    prisma.kpiDefinition.findMany({
-      where: actor.role === "SUPER_ADMIN"
-        ? {}
-        : { OR: [{ country: actor.country }, { country: null }] },
-      orderBy: [{ country: "asc" }, { name: "asc" }],
-    }),
+    listManagementKpis(actor),
     prisma.coachingFocus.findMany({
       include: { criteria: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -91,19 +135,7 @@ export async function getManagementConfiguration(
 
   return {
     teams,
-    kpis: kpis.map((kpi) => ({
-      id: kpi.id,
-      code: kpi.code,
-      name: kpi.name,
-      description: kpi.description,
-      country: kpi.country as Country | null,
-      unit: isKpiUnit(kpi.unit) ? kpi.unit : "number",
-      targetValue: Number(kpi.targetValue),
-      minValue: kpi.minValue === null ? null : Number(kpi.minValue),
-      maxValue: kpi.maxValue === null ? null : Number(kpi.maxValue),
-      evaluationDirection: kpi.evaluationDirection,
-      active: kpi.active,
-    })),
+    ...kpiConfiguration,
     focuses: focuses.map((focus) => ({
       id: focus.id,
       code: focus.code,
@@ -133,6 +165,150 @@ export async function getManagementConfiguration(
   };
 }
 
+export async function listManagementKpis(actor: MockUser) {
+  const [kpis, categories, types, targetTypes] = await Promise.all([
+    prisma.kpiDefinition.findMany({
+      where: visibleKpiWhere(actor),
+      include: {
+        targets: { orderBy: [{ periodStart: "desc" }, { scopeKey: "asc" }] },
+      },
+      orderBy: [{ sortOrder: "asc" }, { country: "asc" }, { name: "asc" }],
+    }),
+    prisma.kpiCategory.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.kpiType.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.kpiTargetType.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+  ]);
+  const conflicts = detectKpiTargetConflicts(
+    kpis.flatMap((kpi) =>
+      kpi.targets.map((target) => ({
+        id: target.id,
+        kpiDefinitionId: target.kpiDefinitionId,
+        scopeKey: target.scopeKey,
+        periodStart: target.periodStart,
+        periodEnd: target.periodEnd,
+        active: target.active,
+      }))
+    )
+  );
+
+  return {
+    kpis: kpis.map((kpi) => ({
+      id: kpi.id,
+      code: kpi.code,
+      name: kpi.name,
+      description: kpi.description,
+      categoryId: kpi.categoryId,
+      typeId: kpi.typeId,
+      targetTypeId: kpi.targetTypeId,
+      country: kpi.country as Country | null,
+      teamId: kpi.teamId,
+      userId: kpi.userId,
+      targetRole: kpi.targetRole as Role | null,
+      unit: isKpiUnit(kpi.unit) ? kpi.unit : "number",
+      targetValue: Number(kpi.targetValue),
+      minValue: kpi.minValue === null ? null : Number(kpi.minValue),
+      maxValue: kpi.maxValue === null ? null : Number(kpi.maxValue),
+      weight: kpi.weight === null ? null : Number(kpi.weight),
+      countsForReporting: kpi.countsForReporting,
+      countsForPerformanceCircle: kpi.countsForPerformanceCircle,
+      sortOrder: kpi.sortOrder,
+      validFrom: dateOnly(kpi.validFrom),
+      validUntil: kpi.validUntil ? dateOnly(kpi.validUntil) : null,
+      evaluationDirection: kpi.evaluationDirection,
+      active: kpi.active,
+      targets: kpi.targets.map((target) => ({
+        id: target.id,
+        kpiDefinitionId: target.kpiDefinitionId,
+        targetTypeId: target.targetTypeId,
+        scope: target.scope as KpiTargetScope,
+        scopeKey: target.scopeKey,
+        country: target.country as Country | null,
+        teamId: target.teamId,
+        userId: target.userId,
+        role: target.role as Role | null,
+        periodType: target.periodType as KpiPeriodType,
+        periodStart: dateOnly(target.periodStart),
+        periodEnd: dateOnly(target.periodEnd),
+        targetValue: Number(target.targetValue),
+        active: target.active,
+        conflict: conflicts.has(target.id),
+      })),
+    })),
+    kpiCategories: categories.map((category) => ({
+      id: category.id,
+      code: category.code,
+      name: category.name,
+      description: category.description ?? "",
+      isActive: category.isActive,
+      sortOrder: category.sortOrder,
+    })),
+    kpiTypes: types.map((type) => ({
+      id: type.id,
+      code: type.code,
+      name: type.name,
+      description: type.description ?? "",
+      valueType: type.valueType,
+      isActive: type.isActive,
+      sortOrder: type.sortOrder,
+    })),
+    kpiTargetTypes: targetTypes.map((targetType) => ({
+      id: targetType.id,
+      code: targetType.code as KpiTargetScope,
+      name: targetType.name,
+      description: targetType.description ?? "",
+      isActive: targetType.isActive,
+      sortOrder: targetType.sortOrder,
+    })),
+  };
+}
+
+function visibleKpiWhere(actor: MockUser): Prisma.KpiDefinitionWhereInput {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return {};
+  const countries = kpiCountriesForActor(actor);
+  const clauses: Prisma.KpiDefinitionWhereInput[] = [
+    {
+      country: null,
+      teamId: null,
+      userId: null,
+      targetRole: null,
+    },
+    { targetRole: actor.role },
+  ];
+  if (countries.length) clauses.push({ country: { in: countries } });
+  if (actor.teamId) clauses.push({ teamId: actor.teamId });
+  clauses.push({ userId: actor.id });
+  return { OR: clauses };
+}
+
+function kpiCountriesForActor(actor: MockUser): Country[] {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return ["BE", "NL", "DE"];
+  if (actor.role === "SALES_MANAGER") return actor.countryAccess?.length ? actor.countryAccess : [actor.country];
+  return [actor.country];
+}
+
+function actorCanAccessKpiCountry(actor: MockUser, country: Country | null | undefined) {
+  if (!country) return ["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role);
+  return kpiCountriesForActor(actor).includes(country);
+}
+
+function assertKpiDefinitionAccess(actor: MockUser, kpi: {
+  country: Country | null;
+  teamId?: string | null;
+  userId?: string | null;
+  targetRole?: Role | null;
+}) {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return;
+  if (kpi.country && actorCanAccessKpiCountry(actor, kpi.country)) return;
+  if (kpi.teamId && actor.teamId === kpi.teamId) return;
+  if (kpi.userId && kpi.userId === actor.id) return;
+  if (kpi.targetRole && kpi.targetRole === actor.role) return;
+  throw new Error("Deze KPI valt buiten je toegestane scope.");
+}
+
+function dateOnly(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
 export function assertCountryScope(actor: MockUser, country: Country | null) {
   if (actor.role !== "SUPER_ADMIN" && country !== actor.country) {
     throw new Error("Deze configuratie valt buiten je landenscope.");
@@ -144,6 +320,19 @@ export async function saveTeam(
   input: { id?: string; name: string; country: Country; primaryLeaderId?: string | null }
 ) {
   assertCountryScope(actor, input.country);
+  const name = input.name.trim();
+  if (!name) throw new Error("Teamnaam is verplicht.");
+  const duplicate = await prisma.team.findFirst({
+    where: {
+      country: input.country,
+      name,
+      ...(input.id ? { id: { not: input.id } } : {}),
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    throw new Error("Er bestaat al een team met deze naam in dit land.");
+  }
   const primaryLeaderId = normalizeOptionalTeamLeaderId(input.primaryLeaderId);
   const leader = primaryLeaderId
     ? await prisma.user.findFirst({
@@ -176,7 +365,7 @@ export async function saveTeam(
       ? await tx.team.update({
           where: { id: input.id },
           data: {
-            name: input.name.trim(),
+            name,
             country: input.country,
             primaryLeaderId,
             active: true,
@@ -184,7 +373,7 @@ export async function saveTeam(
         })
       : await tx.team.create({
           data: {
-            name: input.name.trim(),
+            name,
             country: input.country,
             primaryLeaderId,
             active: true,
@@ -215,14 +404,32 @@ export async function saveKpi(
     code: string;
     name: string;
     description: string;
+    categoryId: string | null;
+    typeId: string | null;
+    targetTypeId: string | null;
     country: Country | null;
+    teamId: string | null;
+    userId: string | null;
+    targetRole: Role | null;
     unit: KpiUnit;
     targetValue: number;
     minValue: number | null;
     maxValue: number | null;
+    weight: number | null;
+    countsForReporting: boolean;
+    countsForPerformanceCircle: boolean;
+    sortOrder: number;
+    validFrom: Date;
+    validUntil: Date | null;
     evaluationDirection: KpiEvaluationDirection;
+    active: boolean;
   }
 ) {
+  if (input.id) {
+    if (!can(actor, "kpisManage")) throw new Error("Je mag KPI's niet beheren.");
+  } else if (!can(actor, "kpisCreate")) {
+    throw new Error("Je mag geen KPI's aanmaken.");
+  }
   if (!input.code.trim()) throw new Error("Code is verplicht.");
   if (!input.name.trim()) throw new Error("Naam is verplicht.");
   if (!Number.isFinite(input.targetValue)) throw new Error("Doelwaarde moet numeriek zijn.");
@@ -231,31 +438,374 @@ export async function saveKpi(
     throw new Error("Selecteer een geldige beoordelingsrichting.");
   }
   validateKpiRange(input.targetValue, input.minValue, input.maxValue);
-  const country = actor.role === "SUPER_ADMIN" ? input.country : actor.country;
-  assertCountryScope(actor, country);
+  validateKpiDates(input.validFrom, input.validUntil);
+  if (input.weight !== null && (!Number.isFinite(input.weight) || input.weight < 0)) {
+    throw new Error("Gewicht moet een positief numeriek getal zijn.");
+  }
+  if (input.id) {
+    const existing = await prisma.kpiDefinition.findUniqueOrThrow({
+      where: { id: input.id },
+      select: { country: true, teamId: true, userId: true, targetRole: true },
+    });
+    assertKpiDefinitionAccess(actor, {
+      country: existing.country as Country | null,
+      teamId: existing.teamId,
+      userId: existing.userId,
+      targetRole: existing.targetRole as Role | null,
+    });
+  }
+  const scope = await resolveKpiDefinitionScope(actor, input);
   const data = {
     code: input.code.trim().toUpperCase(),
     name: input.name.trim(),
     description: input.description.trim(),
-    country,
+    categoryId: normalizeId(input.categoryId),
+    typeId: normalizeId(input.typeId),
+    targetTypeId: scope.targetTypeId,
+    country: scope.country,
+    teamId: scope.teamId,
+    userId: scope.userId,
+    targetRole: scope.targetRole,
     unit: input.unit.trim(),
     targetValue: input.targetValue,
     minValue: input.minValue,
     maxValue: input.maxValue,
+    weight: input.weight,
+    countsForReporting: input.countsForReporting,
+    countsForPerformanceCircle: input.countsForPerformanceCircle,
+    sortOrder: input.sortOrder,
+    validFrom: input.validFrom,
+    validUntil: input.validUntil,
     evaluationDirection: input.evaluationDirection,
-    active: true,
+    active: input.active,
+    updatedById: actor.id,
   };
   return input.id
     ? prisma.kpiDefinition.update({ where: { id: input.id }, data })
-    : prisma.kpiDefinition.create({ data });
+    : prisma.kpiDefinition.create({ data: { ...data, createdById: actor.id } });
 }
 
 export async function deactivateKpi(actor: MockUser, id: string) {
+  if (!can(actor, "kpisManage")) throw new Error("Je mag KPI's niet beheren.");
   const kpi = await prisma.kpiDefinition.findUniqueOrThrow({ where: { id } });
-  if (actor.role !== "SUPER_ADMIN" && kpi.country !== actor.country) {
-    throw new Error("Een Admin kan alleen KPI's van het eigen land verwijderen.");
-  }
+  assertKpiDefinitionAccess(actor, {
+    country: kpi.country as Country | null,
+    teamId: kpi.teamId,
+    userId: kpi.userId,
+    targetRole: kpi.targetRole as Role | null,
+  });
   return prisma.kpiDefinition.update({ where: { id }, data: { active: false } });
+}
+
+async function resolveKpiDefinitionScope(
+  actor: MockUser,
+  input: {
+    targetTypeId: string | null;
+    country: Country | null;
+    teamId: string | null;
+    userId: string | null;
+    targetRole: Role | null;
+  }
+) {
+  const targetType = input.targetTypeId
+    ? await prisma.kpiTargetType.findUnique({ where: { id: input.targetTypeId } })
+    : await prisma.kpiTargetType.findUnique({ where: { code: "GLOBAL" } });
+  if (!targetType || !targetType.isActive) throw new Error("Selecteer een geldige KPI-scope.");
+  const scope = targetType.code as KpiTargetScope;
+
+  if (scope === "GLOBAL") {
+    if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
+      throw new Error("Globale KPI's kunnen alleen door groepsbeheer worden aangemaakt.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      country: null,
+      teamId: null,
+      userId: null,
+      targetRole: null,
+    };
+  }
+
+  if (scope === "COUNTRY") {
+    if (!input.country) throw new Error("Selecteer een land voor deze KPI.");
+    if (!actorCanAccessKpiCountry(actor, input.country)) {
+      throw new Error("Deze KPI valt buiten je toegestane scope.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      country: input.country,
+      teamId: null,
+      userId: null,
+      targetRole: null,
+    };
+  }
+
+  if (scope === "TEAM") {
+    const teamId = normalizeId(input.teamId);
+    if (!teamId) throw new Error("Selecteer een team voor deze KPI.");
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, active: true },
+      select: { id: true, country: true },
+    });
+    if (!team) throw new Error("Het gekozen team bestaat niet meer.");
+    const country = team.country as Country;
+    if (!actorCanAccessKpiCountry(actor, country)) {
+      throw new Error("Deze KPI valt buiten je toegestane scope.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      country,
+      teamId: team.id,
+      userId: null,
+      targetRole: null,
+    };
+  }
+
+  if (scope === "USER") {
+    const userId = normalizeId(input.userId);
+    if (!userId) throw new Error("Selecteer een gebruiker voor deze KPI.");
+    const user = await prisma.user.findFirst({
+      where: { id: userId, active: true },
+      select: { id: true, country: true, teamId: true },
+    });
+    if (!user) throw new Error("De gekozen gebruiker bestaat niet meer.");
+    const country = user.country as Country;
+    if (!actorCanAccessKpiCountry(actor, country)) {
+      throw new Error("Deze KPI valt buiten je toegestane scope.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      country,
+      teamId: user.teamId,
+      userId: user.id,
+      targetRole: null,
+    };
+  }
+
+  const role = input.targetRole;
+  if (!role) throw new Error("Selecteer een rol voor deze KPI.");
+  const country = input.country ?? (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ? null : actor.country);
+  if (!actorCanAccessKpiCountry(actor, country)) {
+    throw new Error("Deze KPI valt buiten je toegestane scope.");
+  }
+  return {
+    targetTypeId: targetType.id,
+    country,
+    teamId: null,
+    userId: null,
+    targetRole: role,
+  };
+}
+
+function normalizeId(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+export async function saveKpiTarget(
+  actor: MockUser,
+  input: {
+    id?: string;
+    kpiDefinitionId: string;
+    targetTypeId: string | null;
+    scope: KpiTargetScope;
+    country: Country | null;
+    teamId: string | null;
+    userId: string | null;
+    role: Role | null;
+    periodType: KpiPeriodType;
+    periodStart: Date;
+    periodEnd: Date;
+    targetValue: number;
+    active: boolean;
+  }
+) {
+  if (!can(actor, "kpiTargetsManage")) throw new Error("Je mag KPI-doelwaarden niet beheren.");
+  if (!isKpiTargetScope(input.scope)) throw new Error("Selecteer een geldige KPI-scope.");
+  if (!isKpiPeriodType(input.periodType)) throw new Error("Selecteer een geldige KPI-periode.");
+  if (!Number.isFinite(input.targetValue)) throw new Error("Doelwaarde moet numeriek zijn.");
+  validateKpiDates(input.periodStart, input.periodEnd);
+
+  const definition = await prisma.kpiDefinition.findUniqueOrThrow({
+    where: { id: input.kpiDefinitionId },
+    select: { id: true, country: true, teamId: true, userId: true, targetRole: true },
+  });
+  assertKpiDefinitionAccess(actor, {
+    country: definition.country as Country | null,
+    teamId: definition.teamId,
+    userId: definition.userId,
+    targetRole: definition.targetRole as Role | null,
+  });
+
+  const scope = await resolveKpiTargetScope(actor, input);
+  if (definition.country && scope.country && definition.country !== scope.country) {
+    throw new Error("Deze doelwaarde valt buiten de scope van de KPI.");
+  }
+  if (definition.teamId && definition.teamId !== scope.teamId) {
+    throw new Error("Deze doelwaarde valt buiten de scope van de KPI.");
+  }
+  if (definition.userId && definition.userId !== scope.userId) {
+    throw new Error("Deze doelwaarde valt buiten de scope van de KPI.");
+  }
+
+  const overlap = input.active
+    ? await prisma.kpiTarget.findFirst({
+        where: {
+          kpiDefinitionId: definition.id,
+          scopeKey: scope.scopeKey,
+          active: true,
+          ...(input.id ? { id: { not: input.id } } : {}),
+          periodStart: { lte: input.periodEnd },
+          periodEnd: { gte: input.periodStart },
+        },
+        select: { id: true },
+      })
+    : null;
+  if (overlap) {
+    throw new Error("Er bestaat al een actieve doelwaarde voor deze KPI, scope en periode.");
+  }
+
+  const data = {
+    kpiDefinitionId: definition.id,
+    targetTypeId: scope.targetTypeId,
+    scope: scope.scope,
+    scopeKey: scope.scopeKey,
+    country: scope.country,
+    teamId: scope.teamId,
+    userId: scope.userId,
+    role: scope.role,
+    periodType: input.periodType,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    targetValue: input.targetValue,
+    active: input.active,
+    updatedById: actor.id,
+  };
+  return input.id
+    ? prisma.kpiTarget.update({ where: { id: input.id }, data })
+    : prisma.kpiTarget.create({ data: { ...data, createdById: actor.id } });
+}
+
+export async function deactivateKpiTarget(actor: MockUser, id: string) {
+  if (!can(actor, "kpiTargetsManage")) throw new Error("Je mag KPI-doelwaarden niet beheren.");
+  const target = await prisma.kpiTarget.findUniqueOrThrow({
+    where: { id },
+    include: { kpiDefinition: { select: { country: true, teamId: true, userId: true, targetRole: true } } },
+  });
+  assertKpiDefinitionAccess(actor, {
+    country: target.kpiDefinition.country as Country | null,
+    teamId: target.kpiDefinition.teamId,
+    userId: target.kpiDefinition.userId,
+    targetRole: target.kpiDefinition.targetRole as Role | null,
+  });
+  return prisma.kpiTarget.update({ where: { id }, data: { active: false, updatedById: actor.id } });
+}
+
+async function resolveKpiTargetScope(
+  actor: MockUser,
+  input: {
+    targetTypeId: string | null;
+    scope: KpiTargetScope;
+    country: Country | null;
+    teamId: string | null;
+    userId: string | null;
+    role: Role | null;
+  }
+) {
+  const targetType = input.targetTypeId
+    ? await prisma.kpiTargetType.findUnique({ where: { id: input.targetTypeId } })
+    : await prisma.kpiTargetType.findUnique({ where: { code: input.scope } });
+  if (!targetType || !targetType.isActive || targetType.code !== input.scope) {
+    throw new Error("Selecteer een geldige KPI-scope.");
+  }
+  if (input.scope === "GLOBAL") {
+    if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
+      throw new Error("Globale KPI-doelwaarden kunnen alleen door groepsbeheer worden aangemaakt.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      scope: input.scope,
+      scopeKey: createKpiTargetScopeKey({ ...input, country: null, teamId: null, userId: null, role: null }),
+      country: null,
+      teamId: null,
+      userId: null,
+      role: null,
+    };
+  }
+  if (input.scope === "COUNTRY") {
+    if (!input.country) throw new Error("Selecteer een land voor deze doelwaarde.");
+    if (!actorCanAccessKpiCountry(actor, input.country)) {
+      throw new Error("Deze doelwaarde valt buiten je toegestane scope.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      scope: input.scope,
+      scopeKey: createKpiTargetScopeKey(input),
+      country: input.country,
+      teamId: null,
+      userId: null,
+      role: null,
+    };
+  }
+  if (input.scope === "TEAM") {
+    const teamId = normalizeId(input.teamId);
+    if (!teamId) throw new Error("Selecteer een team voor deze doelwaarde.");
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, active: true },
+      select: { id: true, country: true },
+    });
+    if (!team) throw new Error("Het gekozen team bestaat niet meer.");
+    const country = team.country as Country;
+    if (!actorCanAccessKpiCountry(actor, country)) {
+      throw new Error("Deze doelwaarde valt buiten je toegestane scope.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      scope: input.scope,
+      scopeKey: createKpiTargetScopeKey({ ...input, teamId: team.id }),
+      country,
+      teamId: team.id,
+      userId: null,
+      role: null,
+    };
+  }
+  if (input.scope === "USER") {
+    const userId = normalizeId(input.userId);
+    if (!userId) throw new Error("Selecteer een gebruiker voor deze doelwaarde.");
+    const user = await prisma.user.findFirst({
+      where: { id: userId, active: true },
+      select: { id: true, country: true, teamId: true },
+    });
+    if (!user) throw new Error("De gekozen gebruiker bestaat niet meer.");
+    const country = user.country as Country;
+    if (!actorCanAccessKpiCountry(actor, country)) {
+      throw new Error("Deze doelwaarde valt buiten je toegestane scope.");
+    }
+    return {
+      targetTypeId: targetType.id,
+      scope: input.scope,
+      scopeKey: createKpiTargetScopeKey({ ...input, userId: user.id }),
+      country,
+      teamId: user.teamId,
+      userId: user.id,
+      role: null,
+    };
+  }
+
+  if (!input.role) throw new Error("Selecteer een rol voor deze doelwaarde.");
+  const country = input.country ?? (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role) ? null : actor.country);
+  if (!actorCanAccessKpiCountry(actor, country)) {
+    throw new Error("Deze doelwaarde valt buiten je toegestane scope.");
+  }
+  return {
+    targetTypeId: targetType.id,
+    scope: input.scope,
+    scopeKey: createKpiTargetScopeKey({ ...input, country, role: input.role }),
+    country,
+    teamId: null,
+    userId: null,
+    role: input.role,
+  };
 }
 
 export async function saveFocus(

@@ -1063,6 +1063,38 @@ Restpunten:
 
 ---
 
+# KPI-beheer
+
+## Functional Implementation
+
+Priority: High
+
+Status: Implemented on 2026-07-08
+
+Implemented changes:
+
+- `Beheer -> KPI's` now supports categories, KPI types, target scopes, default targets, min/max values, weight, active state, sort order and validity dates.
+- KPI categories, KPI types and KPI target types are seeded configuration data.
+- Periodic KPI target values can be added per global, country, team, user or role scope.
+- Active periodic target values cannot overlap for the same KPI and scope.
+- Effective KPI target priority is User, Team, Country, Role, Global/default.
+- KPI definitions keep the existing `targetValue` as fallback/default so existing dashboards and snapshots remain compatible.
+- Reporting and Performance Circle inclusion are separated through `counts_for_reporting` and `counts_for_performance_circle`.
+- Direct management access is controlled by `menu.coaching.kpis` plus `kpisView`; creation and target management require dedicated KPI permissions.
+
+Validation to perform:
+
+- Run Prisma migration `0020_kpi_management` through the approved migration process.
+- Run `npm run db:seed:config` after migration to upsert KPI reference data.
+- Browser-based visual validation remains outside Codex and should be performed through the externally managed local devserver.
+
+Known limitations:
+
+- Actual KPI value-entry workflows outside management still depend on existing snapshot/import flows.
+- No new business calculation formula was introduced.
+
+---
+
 # General Permission System
 
 ## Role and User-Level Overrides

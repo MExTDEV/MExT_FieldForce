@@ -69,7 +69,7 @@ Related document:
 
 Status:
 
-Historical / Verify
+Partially resolved on 2026-07-08 / Verify
 
 Description:
 
@@ -723,6 +723,12 @@ Historical / Verify
 Description:
 
 There have previously been cases where KPI definitions were visible but no value or target could be entered.
+
+Current behaviour:
+
+- KPI management supports default target values, min/max values and period-specific target values.
+- Period target conflicts are detected for the same KPI and scope.
+- Actual KPI performance values still come from the existing snapshot/import flow and were not redefined.
 
 Expected behaviour:
 

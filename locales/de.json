@@ -63,4 +63,22 @@
   "status.wacht_op_akkoord": "Warten auf Zustimmung",
   "status.afgesloten": "Abgeschlossen",
   "status.geannuleerd": "Storniert"
+,
+  "kpis.title": "KPI-Definitionen",
+  "kpis.add": "KPI hinzufuegen",
+  "kpis.category": "Kategorie",
+  "kpis.type": "Typ",
+  "kpis.scope": "Geltungsbereich",
+  "kpis.targetValue": "Zielwert",
+  "kpis.targetValues": "Zielwerte",
+  "kpis.period": "Periode",
+  "kpis.weight": "Gewicht",
+  "kpis.countsForReporting": "Zaehlt fuer Berichte",
+  "kpis.countsForPerformanceCircle": "Zaehlt fuer den Performance-Kreis",
+  "kpis.conflict": "Konflikt",
+  "kpis.global": "Global",
+  "kpis.country": "Land",
+  "kpis.team": "Team",
+  "kpis.user": "Benutzer",
+  "kpis.role": "Rolle"
 }

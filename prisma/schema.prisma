@@ -88,9 +88,28 @@ enum KpiEvaluationDirection {
 }
 
 enum KpiTargetScope {
+  GLOBAL
   COUNTRY
   TEAM
   USER
+  ROLE
+}
+
+enum KpiValueType {
+  NUMBER
+  DECIMAL
+  CURRENCY
+  BOOLEAN
+  SCORE
+}
+
+enum KpiPeriodType {
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+  CUSTOM
 }
 
 enum ActionScope {
@@ -147,6 +166,12 @@ model User {
   ownedItems               Intervention[]              @relation("OwnedInterventions")
   kpiSnapshots             KpiSnapshot[]
   kpiTargetOverrides       KpiTargetOverride[]
+  scopedKpiDefinitions     KpiDefinition[]             @relation("KpiDefinitionUser")
+  createdKpiDefinitions    KpiDefinition[]             @relation("KpiDefinitionCreatedBy")
+  updatedKpiDefinitions    KpiDefinition[]             @relation("KpiDefinitionUpdatedBy")
+  kpiTargets               KpiTarget[]                 @relation("KpiTargetUser")
+  createdKpiTargets        KpiTarget[]                 @relation("KpiTargetCreatedBy")
+  updatedKpiTargets        KpiTarget[]                 @relation("KpiTargetUpdatedBy")
   actionPoints             ActionPoint[]               @relation("RepresentativeActions")
   ownedActionPoints        ActionPoint[]               @relation("OwnedActions")
   reflections              Reflection[]
@@ -253,6 +278,8 @@ model Team {
   leaders          TeamLeader[]
   personalCriteria PersonalCoachingCriterion[]
   kpiTargetOverrides KpiTargetOverride[]
+  kpiDefinitions     KpiDefinition[]             @relation("KpiDefinitionTeam")
+  kpiTargets         KpiTarget[]                 @relation("KpiTargetTeam")
   actionDefinitions ActionDefinition[]
   actionTargetOverrides ActionTargetOverride[]
   createdAt        DateTime                    @default(now())
@@ -333,18 +360,133 @@ model KpiDefinition {
   code                String                 @unique
   name                String
   description         String
+  categoryId          String?                @map("category_id")
+  typeId              String?                @map("type_id")
+  targetTypeId        String?                @map("target_type_id")
   country             Country?
+  teamId              String?                @map("target_team_id")
+  userId              String?                @map("target_user_id")
+  targetRole          Role?                  @map("target_role")
   active              Boolean                @default(true)
   unit                String
   targetValue         Decimal                @default(0) @db.Decimal(14, 2)
   minValue            Decimal?               @db.Decimal(14, 2)
   maxValue            Decimal?               @db.Decimal(14, 2)
+  weight              Decimal?               @db.Decimal(8, 2)
+  countsForReporting  Boolean                @default(true) @map("counts_for_reporting")
+  countsForPerformanceCircle Boolean         @default(true) @map("counts_for_performance_circle")
+  sortOrder           Int                    @default(0) @map("sort_order")
+  validFrom           DateTime               @default(now()) @map("valid_from")
+  validUntil          DateTime?              @map("valid_until")
+  createdById         String?                @map("created_by_user_id")
+  updatedById         String?                @map("updated_by_user_id")
   evaluationDirection KpiEvaluationDirection @default(HIGHER_IS_BETTER)
+  category            KpiCategory?           @relation(fields: [categoryId], references: [id])
+  type                KpiType?               @relation(fields: [typeId], references: [id])
+  targetType          KpiTargetType?         @relation(fields: [targetTypeId], references: [id])
+  team                Team?                  @relation("KpiDefinitionTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  user                User?                  @relation("KpiDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy           User?                  @relation("KpiDefinitionCreatedBy", fields: [createdById], references: [id])
+  updatedBy           User?                  @relation("KpiDefinitionUpdatedBy", fields: [updatedById], references: [id])
   snapshots           KpiSnapshot[]
   actionPoints        ActionPoint[]
   targetOverrides     KpiTargetOverride[]
+  targets             KpiTarget[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
+
+  @@index([categoryId])
+  @@index([typeId])
+  @@index([targetTypeId])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
+  @@index([active, sortOrder])
+}
+
+model KpiCategory {
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  description    String?         @db.Text
+  isActive       Boolean         @default(true) @map("is_active")
+  sortOrder      Int             @default(0) @map("sort_order")
+  kpiDefinitions KpiDefinition[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("kpi_categories")
+}
+
+model KpiType {
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  description    String?         @db.Text
+  valueType      KpiValueType    @map("value_type")
+  isActive       Boolean         @default(true) @map("is_active")
+  sortOrder      Int             @default(0) @map("sort_order")
+  kpiDefinitions KpiDefinition[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("kpi_types")
+}
+
+model KpiTargetType {
+  id             String          @id @default(cuid())
+  code           KpiTargetScope  @unique
+  name           String
+  description    String?         @db.Text
+  isActive       Boolean         @default(true) @map("is_active")
+  sortOrder      Int             @default(0) @map("sort_order")
+  kpiDefinitions KpiDefinition[]
+  kpiTargets     KpiTarget[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("kpi_target_types")
+}
+
+model KpiTarget {
+  id              String          @id @default(cuid())
+  kpiDefinitionId String          @map("kpi_definition_id")
+  targetTypeId    String          @map("target_type_id")
+  scope           KpiTargetScope
+  scopeKey        String          @map("scope_key")
+  country         Country?
+  teamId          String?         @map("team_id")
+  userId          String?         @map("user_id")
+  role            Role?
+  periodType      KpiPeriodType   @map("period_type")
+  periodStart     DateTime        @map("period_start")
+  periodEnd       DateTime        @map("period_end")
+  targetValue     Decimal         @db.Decimal(14, 2) @map("target_value")
+  active          Boolean         @default(true)
+  createdById     String?         @map("created_by_user_id")
+  updatedById     String?         @map("updated_by_user_id")
+  kpiDefinition   KpiDefinition   @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+  targetType      KpiTargetType   @relation(fields: [targetTypeId], references: [id])
+  team            Team?           @relation("KpiTargetTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  user            User?           @relation("KpiTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy       User?           @relation("KpiTargetCreatedBy", fields: [createdById], references: [id])
+  updatedBy       User?           @relation("KpiTargetUpdatedBy", fields: [updatedById], references: [id])
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@unique([kpiDefinitionId, scopeKey, periodType, periodStart, periodEnd])
+  @@index([kpiDefinitionId, active])
+  @@index([targetTypeId])
+  @@index([scope, scopeKey])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
+  @@index([role])
+  @@index([periodStart, periodEnd])
+  @@map("kpi_targets")
 }
 
 model KpiTargetOverride {

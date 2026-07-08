@@ -22,7 +22,7 @@ export async function getFieldForceConfiguration(): Promise<FieldForceConfigurat
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.kpiDefinition.findMany({
-      where: { active: true },
+      where: { active: true, countsForReporting: true },
       orderBy: [{ name: "asc" }],
       select: { name: true },
     }),

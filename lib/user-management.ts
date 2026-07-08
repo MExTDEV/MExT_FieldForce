@@ -74,6 +74,17 @@ export const fieldForceBasePermissionGroups: {
     ],
   },
   {
+    title: "KPI-beheer",
+    description: "KPI-definities, doelwaarden en categorieën binnen de toegelaten scope.",
+    permissions: [
+      { key: "kpisView", label: "KPI's bekijken" },
+      { key: "kpisCreate", label: "KPI's aanmaken" },
+      { key: "kpisManage", label: "KPI's beheren" },
+      { key: "kpiTargetsManage", label: "KPI-doelwaarden beheren" },
+      { key: "kpiCategoriesManage", label: "KPI-categorieën beheren" },
+    ],
+  },
+  {
     title: "Technisch beheer",
     description: "Configuratie van gegevens, parameters en app-instellingen.",
     permissions: [
@@ -140,6 +151,7 @@ const internalMenuPermissions: FieldForcePermissionKey[] = [
   "menu.coaching.actionPoints",
   "menu.coaching.reporting",
   "menu.coaching.users",
+  "menu.coaching.kpis",
   "menu.salesday.enabled",
   "menu.salesday.preparation",
   "menu.salesday.agenda",
@@ -169,6 +181,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "performanceView",
       "performanceCompare",
       "performanceScoresView",
+      "kpisView",
       "reportingOwn",
       ...representativeMenuPermissions
     ),
@@ -192,6 +205,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "kpisView",
       ...internalMenuPermissions
     ),
   },
@@ -214,6 +228,10 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "kpisView",
+      "kpisCreate",
+      "kpisManage",
+      "kpiTargetsManage",
       ...internalMenuPermissions
     ),
   },
@@ -245,6 +263,10 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "kpisView",
+      "kpisCreate",
+      "kpisManage",
+      "kpiTargetsManage",
       ...internalMenuPermissions
     ),
   },
@@ -266,6 +288,10 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "kpisView",
+      "kpisCreate",
+      "kpisManage",
+      "kpiTargetsManage",
       ...internalMenuPermissions
     ),
   },
@@ -295,6 +321,11 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "kpisView",
+      "kpisCreate",
+      "kpisManage",
+      "kpiTargetsManage",
+      "kpiCategoriesManage",
       ...internalMenuPermissions,
       "menu.coaching.teams",
       "menu.coaching.kpis",

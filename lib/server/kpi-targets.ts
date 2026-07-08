@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/server/db";
-import { validateKpiRange } from "@/lib/kpi-settings";
-import type { Country, KpiEvaluationDirection } from "@/lib/types";
+import { kpiScopeKey, validateKpiRange } from "@/lib/kpi-settings";
+import type {
+  Country,
+  KpiEvaluationDirection,
+  KpiPeriodType,
+  KpiTargetScope,
+  Role,
+} from "@/lib/types";
 
 export type KpiTargetValues = {
   targetValue: number;
@@ -13,6 +19,10 @@ export type KpiTargetContext = {
   country?: Country;
   teamId?: string;
   userId?: string;
+  role?: Role;
+  periodStart?: Date;
+  periodEnd?: Date;
+  atDate?: Date;
 };
 
 type StoredKpiTarget = {
@@ -22,17 +32,40 @@ type StoredKpiTarget = {
   evaluationDirection: KpiEvaluationDirection;
 };
 
+export type StoredKpiPeriodTarget = {
+  scopeKey: string;
+  targetValue: unknown;
+  periodStart: Date;
+  periodEnd: Date;
+  active: boolean;
+};
+
 export function resolveKpiTargetFromDefinition(
-  definition: StoredKpiTarget & { targetOverrides: (StoredKpiTarget & { scopeKey: string })[] },
+  definition: StoredKpiTarget & {
+    targetOverrides?: (StoredKpiTarget & { scopeKey: string })[];
+    targets?: StoredKpiPeriodTarget[];
+  },
   context: KpiTargetContext
 ): KpiTargetValues {
-  const priorityKeys = [
-    context.userId ? `USER:${context.userId}` : undefined,
-    context.teamId ? `TEAM:${context.teamId}` : undefined,
-    context.country ? `COUNTRY:${context.country}` : undefined,
-  ].filter((key): key is string => Boolean(key));
+  const priorityKeys = kpiPriorityKeys(context);
+  const periodTarget = priorityKeys
+    .map((key) =>
+      (definition.targets ?? [])
+        .filter((item) => item.scopeKey === key && item.active && kpiTargetPeriodApplies(item, context))
+        .sort((left, right) => right.periodStart.getTime() - left.periodStart.getTime())[0]
+    )
+    .find(Boolean);
+  if (periodTarget) {
+    return {
+      targetValue: Number(periodTarget.targetValue),
+      minValue: definition.minValue === null ? null : Number(definition.minValue),
+      maxValue: definition.maxValue === null ? null : Number(definition.maxValue),
+      evaluationDirection: definition.evaluationDirection,
+    };
+  }
+
   const override = priorityKeys
-    .map((key) => definition.targetOverrides.find((item) => item.scopeKey === key))
+    .map((key) => (definition.targetOverrides ?? []).find((item) => item.scopeKey === key))
     .find(Boolean);
   const source = override ?? definition;
   return {
@@ -49,7 +82,7 @@ export async function resolveKpiTarget(
 ): Promise<KpiTargetValues> {
   const definition = await prisma.kpiDefinition.findUniqueOrThrow({
     where: { id: kpiDefinitionId },
-    include: { targetOverrides: true },
+    include: { targetOverrides: true, targets: true },
   });
   return resolveKpiTargetFromDefinition(definition, context);
 }
@@ -81,4 +114,82 @@ export async function upsertKpiTargetOverride(
       ...values,
     },
   });
+}
+
+export type KpiPeriodTargetInput = {
+  id?: string;
+  kpiDefinitionId: string;
+  targetTypeId: string;
+  scope: KpiTargetScope;
+  country: Country | null;
+  teamId: string | null;
+  userId: string | null;
+  role: Role | null;
+  periodType: KpiPeriodType;
+  periodStart: Date;
+  periodEnd: Date;
+  targetValue: number;
+  active: boolean;
+  actorId: string;
+};
+
+export function kpiPriorityKeys(context: KpiTargetContext) {
+  return [
+    context.userId ? `USER:${context.userId}` : undefined,
+    context.teamId ? `TEAM:${context.teamId}` : undefined,
+    context.country ? `COUNTRY:${context.country}` : undefined,
+    context.role ? `ROLE:${context.role}` : undefined,
+    "GLOBAL",
+  ].filter((key): key is string => Boolean(key));
+}
+
+export function kpiTargetPeriodApplies(
+  target: Pick<StoredKpiPeriodTarget, "periodStart" | "periodEnd">,
+  context: Pick<KpiTargetContext, "periodStart" | "periodEnd" | "atDate">
+) {
+  const from = context.periodStart ?? context.atDate;
+  const until = context.periodEnd ?? context.atDate;
+  if (!from || !until) return true;
+  return target.periodStart <= until && target.periodEnd >= from;
+}
+
+export function kpiTargetPeriodsOverlap(
+  left: Pick<StoredKpiPeriodTarget, "periodStart" | "periodEnd">,
+  right: Pick<StoredKpiPeriodTarget, "periodStart" | "periodEnd">
+) {
+  return left.periodStart <= right.periodEnd && right.periodStart <= left.periodEnd;
+}
+
+export function detectKpiTargetConflicts<T extends {
+  id: string;
+  kpiDefinitionId: string;
+  scopeKey: string;
+  periodStart: Date;
+  periodEnd: Date;
+  active: boolean;
+}>(targets: T[]) {
+  const conflicted = new Set<string>();
+  const activeTargets = targets.filter((target) => target.active);
+  for (let leftIndex = 0; leftIndex < activeTargets.length; leftIndex++) {
+    for (let rightIndex = leftIndex + 1; rightIndex < activeTargets.length; rightIndex++) {
+      const left = activeTargets[leftIndex];
+      const right = activeTargets[rightIndex];
+      if (
+        left.kpiDefinitionId === right.kpiDefinitionId &&
+        left.scopeKey === right.scopeKey &&
+        kpiTargetPeriodsOverlap(left, right)
+      ) {
+        conflicted.add(left.id);
+        conflicted.add(right.id);
+      }
+    }
+  }
+  return conflicted;
+}
+
+export function createKpiTargetScopeKey(input: Pick<
+  KpiPeriodTargetInput,
+  "scope" | "country" | "teamId" | "userId" | "role"
+>) {
+  return kpiScopeKey(input.scope, input);
 }
