@@ -387,7 +387,19 @@ async function syncCoachingActions(tx: Transaction, item: CoachingIntervention, 
     const keys = ["GLOBAL", `COUNTRY:${user.country}`, ...(user.teamId ? [`TEAM:${user.teamId}`] : []), `USER:${userId}`];
     const definitions = await tx.actionDefinition.findMany({
       where: { active: true, deletedAt: null, scopeKey: { in: keys }, validFrom: { lte: plannedAt }, OR: [{ validUntil: null }, { validUntil: { gte: plannedAt } }] },
-      include: { targetOverrides: { where: { scopeKey: { in: keys } } } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        tipsAndTricks: true,
+        targetValue: true,
+        priority: true,
+        targetOverrides: {
+          where: { scopeKey: { in: keys } },
+          select: { scopeKey: true, targetValue: true },
+        },
+      },
+      orderBy: [{ priority: "desc" }, { title: "asc" }],
     });
     const inherited = definitions.map((definition) => {
       const override = [`USER:${userId}`, ...(user.teamId ? [`TEAM:${user.teamId}`] : []), `COUNTRY:${user.country}`].map((key) => definition.targetOverrides.find((item) => item.scopeKey === key)).find(Boolean);
