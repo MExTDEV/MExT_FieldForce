@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/server/db";
 import { ApiRequestError } from "@/lib/server/api";
 import { writeAuditLog } from "@/lib/server/audit";
@@ -65,6 +67,19 @@ type TeamImportPayload = {
   country: Country;
   primaryLeaderId: string | null;
   active: boolean;
+};
+
+type TeamExportRow = {
+  name: string;
+  country: string;
+  primaryLeaderEmail: string | null;
+  active: boolean | number;
+};
+
+type TeamLookupRow = {
+  id: string;
+  name: string;
+  country: string;
 };
 
 type KpiImportPayload = Parameters<typeof saveKpi>[1];
@@ -200,14 +215,20 @@ async function exportRows(
   }
 
   if (topic === "teams") {
-    const teams = await prisma.team.findMany({
-      include: { primaryLeader: { select: { email: true } } },
-      orderBy: [{ country: "asc" }, { name: "asc" }],
-    });
+    const teams = await prisma.$queryRaw<TeamExportRow[]>(Prisma.sql`
+      SELECT
+        t.name,
+        t.country,
+        leader.email AS primaryLeaderEmail,
+        t.active
+      FROM \`Team\` t
+      LEFT JOIN \`User\` leader ON leader.id = t.primaryLeaderId
+      ORDER BY t.country ASC, t.name ASC
+    `);
     return teams.map((team) => ({
       name: team.name,
       country: team.country,
-      primaryLeaderEmail: team.primaryLeader?.email ?? "",
+      primaryLeaderEmail: team.primaryLeaderEmail ?? "",
       active: booleanText(team.active),
     }));
   }
@@ -272,10 +293,11 @@ async function importUsers(
   const errors = [...parsed.errors, ...missingColumns(parsed.headers, exportHeaders.users)];
   const users = await listManagedUsers();
   const usersByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
-  const activeTeams = await prisma.team.findMany({
-    where: { active: true },
-    select: { id: true, name: true, country: true },
-  });
+  const activeTeams = await prisma.$queryRaw<TeamLookupRow[]>(Prisma.sql`
+    SELECT id, name, country
+    FROM \`Team\`
+    WHERE active = TRUE
+  `);
   const teamByCountryName = new Map(
     activeTeams.map((team) => [teamKey(team.country as Country, team.name), team])
   );
@@ -378,7 +400,10 @@ async function importTeams(
   const parsed = parseCsv(csv);
   const errors = [...parsed.errors, ...missingColumns(parsed.headers, exportHeaders.teams)];
   const [teams, users] = await Promise.all([
-    prisma.team.findMany({ select: { id: true, name: true, country: true } }),
+    prisma.$queryRaw<TeamLookupRow[]>(Prisma.sql`
+      SELECT id, name, country
+      FROM \`Team\`
+    `),
     prisma.user.findMany({ select: { id: true, email: true, country: true, active: true } }),
   ]);
   const existingByKey = new Map(
@@ -846,8 +871,8 @@ function teamKey(country: Country, name: string) {
   return `${country}:${name.trim().toLowerCase()}`;
 }
 
-function booleanText(value: boolean) {
-  return value ? "true" : "false";
+function booleanText(value: boolean | number) {
+  return Boolean(value) ? "true" : "false";
 }
 
 function decimalText(value: { toString: () => string } | null) {

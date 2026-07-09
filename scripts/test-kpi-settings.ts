@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   kpiScopeKey,
   isKpiUnit,
@@ -61,5 +62,26 @@ const conflicts = detectKpiTargetConflicts([
 assert.equal(conflicts.has("a"), true);
 assert.equal(conflicts.has("b"), true);
 assert.equal(conflicts.has("c"), false);
+
+const managementSource = readFileSync(
+  new URL("../lib/server/management.ts", import.meta.url),
+  "utf8"
+);
+assert.match(
+  managementSource,
+  /listManagementKpiRows/,
+  "KPI-beheer moet via een tolerante leesroute laden."
+);
+for (const forbiddenRead of [
+  "prisma.kpiCategory.findMany",
+  "prisma.kpiType.findMany",
+  "prisma.kpiTargetType.findMany",
+]) {
+  assert.equal(
+    managementSource.includes(forbiddenRead),
+    false,
+    `KPI-beheer mag bij laden niet afhankelijk zijn van ${forbiddenRead}.`
+  );
+}
 
 console.log("KPI-instellingen en scopeprioriteit getest.");

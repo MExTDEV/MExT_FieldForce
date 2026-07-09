@@ -795,6 +795,34 @@ A task is not complete if related documentation is outdated.
 
 # Resolved Issues
 
+## Team zonder Verkoopleider brak modules door volledige Team-decodering
+
+Date fixed:
+
+2026-07-09
+
+Description:
+
+Teams without assigned Verkoopleider are valid and store `Team.primaryLeaderId` as `null`. Some live routes still loaded full Team objects or Team relations, which could make Prisma fail with `expected non-nullable type String, found incompatible value of "null"` when the deployed Prisma Client was stale or when nullable team leadership data was decoded through a broad relation.
+
+Fix:
+
+- Mijn Team now builds team/member/leader snapshots through explicit null-safe SQL rows.
+- Gebruikers, vertegenwoordigers and workflow-state reads no longer use `team: true`; they select only the team fields they actually display.
+- Management team import/export no longer relies on `prisma.team.findMany()` for team CSV reads.
+- The optional team leader regression test now checks that critical server paths do not reintroduce full Team relation loading.
+
+Verification:
+
+- `npm run test:team-leader-optional`
+- `npm run typecheck`
+
+Related documents:
+
+- `docs/ai/02_DATABASE.md`
+- `docs/ai/modules/Coaching/MijnTeam.md`
+- `docs/ai/modules/Coaching/TODO.md`
+
 ## Actiehistoriek dashboard pagination
 
 Date fixed:
@@ -874,6 +902,27 @@ Related documents:
 
 - `docs/ai/modules/Coaching/MijnTeam.md`
 - `docs/ai/modules/Coaching/TODO.md`
+
+## KPI management unavailable after team leader hotfix
+
+Date fixed:
+
+2026-07-09
+
+Description:
+
+The Beheer > KPI's screen could fail to load when the runtime database/client did not expose the newer KPI management tables or generated Prisma delegates. The management KPI read path now loads through raw SQL with fallbacks to existing `KpiDefinition` data and seeded category/type/scope metadata, so missing optional KPI management tables no longer block the full page load.
+
+Verification:
+
+- `npm run typecheck`
+- `npm run test:kpi-settings`
+- `npm run test:team-leader-optional`
+
+Related documents:
+
+- `docs/ai/02_DATABASE.md`
+- `docs/technical/database.md`
 
 When an issue is fixed, move it here with:
 

@@ -19,6 +19,9 @@ import {
   detectKpiTargetConflicts,
 } from "@/lib/server/kpi-targets";
 import {
+  kpiCategorySeed,
+  kpiTargetTypeSeed,
+  kpiTypeSeed,
   isKpiPeriodType,
   isKpiTargetScope,
   isKpiUnit,
@@ -30,6 +33,7 @@ import type {
   FieldForcePermissionKey,
   KpiPeriodType,
   KpiTargetScope,
+  KpiValueType,
   ManagementConfiguration,
   MockUser,
   Role,
@@ -38,6 +42,7 @@ import type {
 } from "@/lib/types";
 
 const roles = applicationRoles;
+export type ManagementSection = "teams" | "rollen" | "kpis" | "kapstok";
 
 type ManagementTeamRow = {
   id: string;
@@ -48,6 +53,68 @@ type ManagementTeamRow = {
   primaryLeaderLastName: string | null;
   active: boolean | number;
   memberCount: bigint | number;
+};
+
+type RawKpiRow = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  categoryId: string | null;
+  typeId: string | null;
+  targetTypeId: string | null;
+  country: string | null;
+  teamId: string | null;
+  userId: string | null;
+  targetRole: string | null;
+  unit: string;
+  targetValue: unknown;
+  minValue: unknown | null;
+  maxValue: unknown | null;
+  weight: unknown | null;
+  countsForReporting: boolean | number;
+  countsForPerformanceCircle: boolean | number;
+  sortOrder: number | bigint;
+  validFrom: Date;
+  validUntil: Date | null;
+  evaluationDirection: string;
+  active: boolean | number;
+};
+
+type RawKpiTargetRow = {
+  id: string;
+  kpiDefinitionId: string;
+  targetTypeId: string;
+  scope: string;
+  scopeKey: string;
+  country: string | null;
+  teamId: string | null;
+  userId: string | null;
+  role: string | null;
+  periodType: string;
+  periodStart: Date;
+  periodEnd: Date;
+  targetValue: unknown;
+  active: boolean | number;
+};
+
+type RawKpiCategoryRow = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean | number;
+  sortOrder: number | bigint;
+};
+
+type RawKpiTypeRow = RawKpiCategoryRow & {
+  valueType: string;
+};
+
+type RawKpiTargetTypeRow = RawKpiCategoryRow;
+
+type SchemaPresenceRow = {
+  countValue: bigint | number;
 };
 
 export async function listManagementTeams(
@@ -107,15 +174,62 @@ export async function listManagementTeams(
 }
 
 export async function getManagementConfiguration(
-  actor: MockUser
+  actor: MockUser,
+  section?: ManagementSection
 ): Promise<ManagementConfiguration> {
-  const [teams, kpiConfiguration, focuses, permissions, roleGrants, roleCounts, roleConfigurations] = await Promise.all([
-    listManagementTeams(actor),
-    listManagementKpis(actor),
-    prisma.coachingFocus.findMany({
-      include: { criteria: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    }),
+  const needsTeams = !section || section === "teams" || section === "kpis";
+  const needsKpis = !section || section === "kpis";
+  const needsFocuses = !section || section === "kapstok";
+  const needsRoles = !section || section === "rollen";
+
+  const [teams, kpiConfiguration, focuses, managementRoles] = await Promise.all([
+    needsTeams ? listManagementTeams(actor) : Promise.resolve([]),
+    needsKpis
+      ? listManagementKpis(actor)
+      : Promise.resolve(emptyKpiConfiguration()),
+    needsFocuses ? listManagementFocuses() : Promise.resolve([]),
+    needsRoles ? listManagementRoles() : Promise.resolve([]),
+  ]);
+
+  return {
+    teams,
+    ...kpiConfiguration,
+    focuses,
+    roles: managementRoles,
+  };
+}
+
+function emptyKpiConfiguration() {
+  return {
+    kpis: [],
+    kpiCategories: [],
+    kpiTypes: [],
+    kpiTargetTypes: [],
+  };
+}
+
+async function listManagementFocuses() {
+  const focuses = await prisma.coachingFocus.findMany({
+    include: { criteria: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  return focuses.map((focus) => ({
+    id: focus.id,
+    code: focus.code,
+    name: focus.name,
+    active: focus.active,
+    sortOrder: focus.sortOrder,
+    criteria: focus.criteria.map((criterion) => ({
+      id: criterion.id,
+      name: criterion.name,
+      active: criterion.active,
+      sortOrder: criterion.sortOrder,
+    })),
+  }));
+}
+
+async function listManagementRoles() {
+  const [permissions, roleGrants, roleCounts, roleConfigurations] = await Promise.all([
     prisma.permission.findMany({ orderBy: [{ group: "asc" }, { label: "asc" }] }),
     prisma.rolePermission.findMany(),
     prisma.user.groupBy({ by: ["role"], _count: { id: true } }),
@@ -133,62 +247,39 @@ export async function getManagementConfiguration(
     ])
   );
 
-  return {
-    teams,
-    ...kpiConfiguration,
-    focuses: focuses.map((focus) => ({
-      id: focus.id,
-      code: focus.code,
-      name: focus.name,
-      active: focus.active,
-      sortOrder: focus.sortOrder,
-      criteria: focus.criteria.map((criterion) => ({
-        id: criterion.id,
-        name: criterion.name,
-        active: criterion.active,
-        sortOrder: criterion.sortOrder,
-      })),
-    })),
-    roles: roles.map((role) => ({
-      role,
-      label: roleLabels[role],
-      userCount: countMap.get(role) ?? 0,
-      active: activeMap.get(role) ?? true,
-      permissions: Object.fromEntries(
-        fieldForcePermissionKeys.map((key) => {
-          const permission = permissions.find((item) => item.key === key);
-          const stored = permission ? grantMap.get(`${role}:${permission.id}`) : undefined;
-          return [key, stored ?? roleTemplates[role].permissions[key]];
-        })
-      ) as Record<FieldForcePermissionKey, boolean>,
-    })),
-  };
+  return roles.map((role) => ({
+    role,
+    label: roleLabels[role],
+    userCount: countMap.get(role) ?? 0,
+    active: activeMap.get(role) ?? true,
+    permissions: Object.fromEntries(
+      fieldForcePermissionKeys.map((key) => {
+        const permission = permissions.find((item) => item.key === key);
+        const stored = permission ? grantMap.get(`${role}:${permission.id}`) : undefined;
+        return [key, stored ?? roleTemplates[role].permissions[key]];
+      })
+    ) as Record<FieldForcePermissionKey, boolean>,
+  }));
 }
 
 export async function listManagementKpis(actor: MockUser) {
   const [kpis, categories, types, targetTypes] = await Promise.all([
-    prisma.kpiDefinition.findMany({
-      where: visibleKpiWhere(actor),
-      include: {
-        targets: { orderBy: [{ periodStart: "desc" }, { scopeKey: "asc" }] },
-      },
-      orderBy: [{ sortOrder: "asc" }, { country: "asc" }, { name: "asc" }],
-    }),
-    prisma.kpiCategory.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.kpiType.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.kpiTargetType.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    listManagementKpiRows(actor),
+    listKpiCategories(),
+    listKpiTypes(),
+    listKpiTargetTypes(),
   ]);
+  const targets = await listKpiTargets(kpis.map((kpi) => kpi.id));
+  const targetsByKpi = groupBy(targets, (target) => target.kpiDefinitionId);
   const conflicts = detectKpiTargetConflicts(
-    kpis.flatMap((kpi) =>
-      kpi.targets.map((target) => ({
-        id: target.id,
-        kpiDefinitionId: target.kpiDefinitionId,
-        scopeKey: target.scopeKey,
-        periodStart: target.periodStart,
-        periodEnd: target.periodEnd,
-        active: target.active,
-      }))
-    )
+    targets.map((target) => ({
+      id: target.id,
+      kpiDefinitionId: target.kpiDefinitionId,
+      scopeKey: target.scopeKey,
+      periodStart: target.periodStart,
+      periodEnd: target.periodEnd,
+      active: Boolean(target.active),
+    }))
   );
 
   return {
@@ -196,10 +287,10 @@ export async function listManagementKpis(actor: MockUser) {
       id: kpi.id,
       code: kpi.code,
       name: kpi.name,
-      description: kpi.description,
-      categoryId: kpi.categoryId,
-      typeId: kpi.typeId,
-      targetTypeId: kpi.targetTypeId,
+      description: kpi.description ?? "",
+      categoryId: kpi.categoryId ?? fallbackKpiCategoryId(kpi.code),
+      typeId: kpi.typeId ?? fallbackKpiTypeId(kpi.unit),
+      targetTypeId: kpi.targetTypeId ?? fallbackKpiTargetTypeId(kpi.country as Country | null),
       country: kpi.country as Country | null,
       teamId: kpi.teamId,
       userId: kpi.userId,
@@ -209,14 +300,14 @@ export async function listManagementKpis(actor: MockUser) {
       minValue: kpi.minValue === null ? null : Number(kpi.minValue),
       maxValue: kpi.maxValue === null ? null : Number(kpi.maxValue),
       weight: kpi.weight === null ? null : Number(kpi.weight),
-      countsForReporting: kpi.countsForReporting,
-      countsForPerformanceCircle: kpi.countsForPerformanceCircle,
-      sortOrder: kpi.sortOrder,
+      countsForReporting: Boolean(kpi.countsForReporting),
+      countsForPerformanceCircle: Boolean(kpi.countsForPerformanceCircle),
+      sortOrder: Number(kpi.sortOrder),
       validFrom: dateOnly(kpi.validFrom),
       validUntil: kpi.validUntil ? dateOnly(kpi.validUntil) : null,
-      evaluationDirection: kpi.evaluationDirection,
-      active: kpi.active,
-      targets: kpi.targets.map((target) => ({
+      evaluationDirection: normalizeKpiEvaluationDirection(kpi.evaluationDirection),
+      active: Boolean(kpi.active),
+      targets: (targetsByKpi.get(kpi.id) ?? []).map((target) => ({
         id: target.id,
         kpiDefinitionId: target.kpiDefinitionId,
         targetTypeId: target.targetTypeId,
@@ -230,7 +321,7 @@ export async function listManagementKpis(actor: MockUser) {
         periodStart: dateOnly(target.periodStart),
         periodEnd: dateOnly(target.periodEnd),
         targetValue: Number(target.targetValue),
-        active: target.active,
+        active: Boolean(target.active),
         conflict: conflicts.has(target.id),
       })),
     })),
@@ -239,45 +330,381 @@ export async function listManagementKpis(actor: MockUser) {
       code: category.code,
       name: category.name,
       description: category.description ?? "",
-      isActive: category.isActive,
-      sortOrder: category.sortOrder,
+      isActive: Boolean(category.isActive),
+      sortOrder: Number(category.sortOrder),
     })),
     kpiTypes: types.map((type) => ({
       id: type.id,
       code: type.code,
       name: type.name,
       description: type.description ?? "",
-      valueType: type.valueType,
-      isActive: type.isActive,
-      sortOrder: type.sortOrder,
+      valueType: type.valueType as KpiValueType,
+      isActive: Boolean(type.isActive),
+      sortOrder: Number(type.sortOrder),
     })),
     kpiTargetTypes: targetTypes.map((targetType) => ({
       id: targetType.id,
       code: targetType.code as KpiTargetScope,
       name: targetType.name,
       description: targetType.description ?? "",
-      isActive: targetType.isActive,
-      sortOrder: targetType.sortOrder,
+      isActive: Boolean(targetType.isActive),
+      sortOrder: Number(targetType.sortOrder),
     })),
   };
 }
 
-function visibleKpiWhere(actor: MockUser): Prisma.KpiDefinitionWhereInput {
-  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return {};
+async function listManagementKpiRows(actor: MockUser) {
+  const hasManagementColumns = await columnsExist("KpiDefinition", [
+    "category_id",
+    "type_id",
+    "target_type_id",
+    "target_team_id",
+    "target_user_id",
+    "target_role",
+    "weight",
+    "counts_for_reporting",
+    "counts_for_performance_circle",
+    "sort_order",
+    "valid_from",
+    "valid_until",
+  ]);
+  if (!hasManagementColumns) return listLegacyManagementKpiRows(actor);
+
+  try {
+    return await prisma.$queryRaw<RawKpiRow[]>(Prisma.sql`
+      SELECT
+        id,
+        code,
+        name,
+        description,
+        category_id AS categoryId,
+        type_id AS typeId,
+        target_type_id AS targetTypeId,
+        country,
+        target_team_id AS teamId,
+        target_user_id AS userId,
+        target_role AS targetRole,
+        unit,
+        \`targetValue\`,
+        \`minValue\`,
+        \`maxValue\`,
+        weight,
+        counts_for_reporting AS countsForReporting,
+        counts_for_performance_circle AS countsForPerformanceCircle,
+        sort_order AS sortOrder,
+        valid_from AS validFrom,
+        valid_until AS validUntil,
+        \`evaluationDirection\`,
+        active
+      FROM \`KpiDefinition\`
+      ${visibleKpiSql(actor)}
+      ORDER BY sort_order ASC, country ASC, name ASC
+    `);
+  } catch (error) {
+    if (!isMissingKpiManagementSchema(error)) throw error;
+    return listLegacyManagementKpiRows(actor);
+  }
+}
+
+async function listLegacyManagementKpiRows(actor: MockUser) {
+  const hasLegacyColumns = await columnsExist("KpiDefinition", [
+    "targetValue",
+    "minValue",
+    "maxValue",
+    "evaluationDirection",
+  ]);
+  if (!hasLegacyColumns) return listBaseManagementKpiRows(actor);
+
+  try {
+    return await prisma.$queryRaw<RawKpiRow[]>(Prisma.sql`
+      SELECT
+        id,
+        code,
+        name,
+        description,
+        NULL AS categoryId,
+        NULL AS typeId,
+        NULL AS targetTypeId,
+        country,
+        NULL AS teamId,
+        NULL AS userId,
+        NULL AS targetRole,
+        unit,
+        \`targetValue\`,
+        \`minValue\`,
+        \`maxValue\`,
+        NULL AS weight,
+        TRUE AS countsForReporting,
+        TRUE AS countsForPerformanceCircle,
+        0 AS sortOrder,
+        \`createdAt\` AS validFrom,
+        NULL AS validUntil,
+        \`evaluationDirection\`,
+        active
+      FROM \`KpiDefinition\`
+      ${legacyVisibleKpiSql(actor)}
+      ORDER BY country ASC, name ASC
+    `);
+  } catch (error) {
+    if (!isMissingKpiManagementSchema(error)) throw error;
+    return listBaseManagementKpiRows(actor);
+  }
+}
+
+function listBaseManagementKpiRows(actor: MockUser) {
+  return prisma.$queryRaw<RawKpiRow[]>(Prisma.sql`
+    SELECT
+      id,
+      code,
+      name,
+      description,
+      NULL AS categoryId,
+      NULL AS typeId,
+      NULL AS targetTypeId,
+      country,
+      NULL AS teamId,
+      NULL AS userId,
+      NULL AS targetRole,
+      unit,
+      0 AS targetValue,
+      NULL AS minValue,
+      NULL AS maxValue,
+      NULL AS weight,
+      TRUE AS countsForReporting,
+      TRUE AS countsForPerformanceCircle,
+      0 AS sortOrder,
+      \`createdAt\` AS validFrom,
+      NULL AS validUntil,
+      'HIGHER_IS_BETTER' AS evaluationDirection,
+      active
+    FROM \`KpiDefinition\`
+    ${legacyVisibleKpiSql(actor)}
+    ORDER BY country ASC, name ASC
+  `);
+}
+
+async function listKpiTargets(kpiIds: string[]) {
+  if (!kpiIds.length) return [];
+  if (!(await tableExists("kpi_targets"))) return [];
+  try {
+    return await prisma.$queryRaw<RawKpiTargetRow[]>(Prisma.sql`
+      SELECT
+        id,
+        kpi_definition_id AS kpiDefinitionId,
+        target_type_id AS targetTypeId,
+        scope,
+        scope_key AS scopeKey,
+        country,
+        team_id AS teamId,
+        user_id AS userId,
+        role,
+        period_type AS periodType,
+        period_start AS periodStart,
+        period_end AS periodEnd,
+        target_value AS targetValue,
+        active
+      FROM \`kpi_targets\`
+      WHERE kpi_definition_id IN (${Prisma.join(kpiIds)})
+      ORDER BY period_start DESC, scope_key ASC
+    `);
+  } catch (error) {
+    if (!isMissingKpiManagementSchema(error)) throw error;
+    return [];
+  }
+}
+
+async function listKpiCategories(): Promise<RawKpiCategoryRow[]> {
+  if (!(await tableExists("kpi_categories"))) return kpiCategorySeedRows();
+  try {
+    return await prisma.$queryRaw<RawKpiCategoryRow[]>(Prisma.sql`
+      SELECT id, code, name, description, is_active AS isActive, sort_order AS sortOrder
+      FROM \`kpi_categories\`
+      ORDER BY sort_order ASC, name ASC
+    `);
+  } catch (error) {
+    if (!isMissingKpiManagementSchema(error)) throw error;
+    return kpiCategorySeedRows();
+  }
+}
+
+async function listKpiTypes(): Promise<RawKpiTypeRow[]> {
+  if (!(await tableExists("kpi_types"))) return kpiTypeSeedRows();
+  try {
+    return await prisma.$queryRaw<RawKpiTypeRow[]>(Prisma.sql`
+      SELECT id, code, name, description, value_type AS valueType, is_active AS isActive, sort_order AS sortOrder
+      FROM \`kpi_types\`
+      ORDER BY sort_order ASC, name ASC
+    `);
+  } catch (error) {
+    if (!isMissingKpiManagementSchema(error)) throw error;
+    return kpiTypeSeedRows();
+  }
+}
+
+async function listKpiTargetTypes(): Promise<RawKpiTargetTypeRow[]> {
+  if (!(await tableExists("kpi_target_types"))) return kpiTargetTypeSeedRows();
+  try {
+    return await prisma.$queryRaw<RawKpiTargetTypeRow[]>(Prisma.sql`
+      SELECT id, code, name, description, is_active AS isActive, sort_order AS sortOrder
+      FROM \`kpi_target_types\`
+      ORDER BY sort_order ASC, name ASC
+    `);
+  } catch (error) {
+    if (!isMissingKpiManagementSchema(error)) throw error;
+    return kpiTargetTypeSeedRows();
+  }
+}
+
+function kpiCategorySeedRows(): RawKpiCategoryRow[] {
+  return kpiCategorySeed.map((category) => ({
+    id: category.id,
+    code: category.code,
+    name: category.name,
+    description: category.description,
+    isActive: true,
+    sortOrder: category.sortOrder,
+  }));
+}
+
+function kpiTypeSeedRows(): RawKpiTypeRow[] {
+  return kpiTypeSeed.map((type) => ({
+    id: type.id,
+    code: type.code,
+    name: type.name,
+    description: type.description,
+    valueType: type.valueType,
+    isActive: true,
+    sortOrder: type.sortOrder,
+  }));
+}
+
+function kpiTargetTypeSeedRows(): RawKpiTargetTypeRow[] {
+  return kpiTargetTypeSeed.map((targetType) => ({
+    id: targetType.id,
+    code: targetType.code,
+    name: targetType.name,
+    description: targetType.description,
+    isActive: true,
+    sortOrder: targetType.sortOrder,
+  }));
+}
+
+async function tableExists(tableName: string) {
+  try {
+    const rows = await prisma.$queryRaw<SchemaPresenceRow[]>(Prisma.sql`
+      SELECT COUNT(*) AS countValue
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ${tableName}
+    `);
+    return Number(rows[0]?.countValue ?? 0) > 0;
+  } catch {
+    return true;
+  }
+}
+
+async function columnsExist(tableName: string, columnNames: string[]) {
+  if (!columnNames.length) return true;
+  try {
+    const rows = await prisma.$queryRaw<SchemaPresenceRow[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT COLUMN_NAME) AS countValue
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ${tableName}
+        AND COLUMN_NAME IN (${Prisma.join(columnNames)})
+    `);
+    return Number(rows[0]?.countValue ?? 0) === columnNames.length;
+  } catch {
+    return true;
+  }
+}
+
+function visibleKpiSql(actor: MockUser) {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return Prisma.empty;
   const countries = kpiCountriesForActor(actor);
-  const clauses: Prisma.KpiDefinitionWhereInput[] = [
-    {
-      country: null,
-      teamId: null,
-      userId: null,
-      targetRole: null,
-    },
-    { targetRole: actor.role },
+  const clauses = [
+    Prisma.sql`(country IS NULL AND target_team_id IS NULL AND target_user_id IS NULL AND target_role IS NULL)`,
+    Prisma.sql`target_role = ${actor.role}`,
   ];
-  if (countries.length) clauses.push({ country: { in: countries } });
-  if (actor.teamId) clauses.push({ teamId: actor.teamId });
-  clauses.push({ userId: actor.id });
-  return { OR: clauses };
+  if (countries.length) clauses.push(Prisma.sql`country IN (${Prisma.join(countries)})`);
+  if (actor.teamId) clauses.push(Prisma.sql`target_team_id = ${actor.teamId}`);
+  clauses.push(Prisma.sql`target_user_id = ${actor.id}`);
+  return Prisma.sql`WHERE (${Prisma.join(clauses, " OR ")})`;
+}
+
+function legacyVisibleKpiSql(actor: MockUser) {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return Prisma.empty;
+  const countries = kpiCountriesForActor(actor);
+  if (!countries.length) return Prisma.sql`WHERE country IS NULL`;
+  return Prisma.sql`WHERE (country IS NULL OR country IN (${Prisma.join(countries)}))`;
+}
+
+function isMissingKpiManagementSchema(error: unknown) {
+  const maybeError = error as { code?: string; meta?: unknown; message?: string };
+  if (maybeError.code === "P2021" || maybeError.code === "P2022") return true;
+  const details = `${maybeError.code ?? ""} ${JSON.stringify(maybeError.meta ?? {})} ${
+    maybeError.message ?? ""
+  }`;
+  return [
+    "doesn't exist",
+    "Unknown column",
+    "ER_NO_SUCH_TABLE",
+    "ER_BAD_FIELD_ERROR",
+    "P2010",
+    "kpi_categories",
+    "kpi_types",
+    "kpi_target_types",
+    "kpi_targets",
+    "category_id",
+    "type_id",
+    "target_type_id",
+    "target_team_id",
+    "target_user_id",
+    "target_role",
+    "counts_for_reporting",
+    "counts_for_performance_circle",
+    "sort_order",
+    "valid_from",
+    "targetValue",
+    "evaluationDirection",
+  ].some((needle) => details.includes(needle));
+}
+
+function fallbackKpiCategoryId(code: string) {
+  const normalized = code.toUpperCase();
+  if (["SALES_DAY", "SALES_ORDER", "TOTAL_SALES"].includes(normalized)) {
+    return "kpicat_turnover";
+  }
+  if (["LEADS", "PROSPECT_CUSTOMER"].includes(normalized)) return "kpicat_sales";
+  if (normalized === "FM_ORDER") return "kpicat_orders";
+  if (normalized === "CASH_TRANSFER") return "kpicat_service";
+  return "kpicat_coaching";
+}
+
+function fallbackKpiTypeId(unit: string) {
+  if (unit === "%") return "kpitype_percentage";
+  if (unit === "EUR") return "kpitype_currency";
+  return "kpitype_number";
+}
+
+function fallbackKpiTargetTypeId(country: Country | null) {
+  return country ? "kpitarget_country" : "kpitarget_global";
+}
+
+function normalizeKpiEvaluationDirection(value: string): KpiEvaluationDirection {
+  if (["HIGHER_IS_BETTER", "LOWER_IS_BETTER", "TARGET"].includes(value)) {
+    return value as KpiEvaluationDirection;
+  }
+  return "HIGHER_IS_BETTER";
+}
+
+function groupBy<T>(items: T[], keyForItem: (item: T) => string) {
+  const grouped = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyForItem(item);
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+  return grouped;
 }
 
 function kpiCountriesForActor(actor: MockUser): Country[] {

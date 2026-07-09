@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -100,8 +100,11 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     scope: "",
   });
 
-  async function refresh() {
-    const response = await fetch("/api/management", { cache: "no-store" });
+  const refresh = useCallback(async () => {
+    const response = await fetch(
+      `/api/management?section=${encodeURIComponent(section)}`,
+      { cache: "no-store" }
+    );
     const payload = await response.json() as ManagementConfiguration & {
       details?: string;
       error?: string;
@@ -114,13 +117,13 @@ export function ConfigurationManagement({ section }: { section: Section }) {
       );
     }
     setData(payload);
-  }
+  }, [section]);
 
   useEffect(() => {
     refresh().catch((cause) =>
       setError(cause instanceof Error ? cause.message : "Beheer kon niet worden geladen.")
     );
-  }, []);
+  }, [refresh]);
 
   const mutate: Mutation = async (method, payload) => {
     setError(undefined);

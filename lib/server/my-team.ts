@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { loadPerformanceDatasetFromDatabase } from "@/lib/server/performance";
 import {
@@ -15,7 +15,47 @@ import {
   type MyTeamMember,
   type PlannedCoachingIndicatorSource,
 } from "@/lib/my-team";
-import type { MockUser } from "@/lib/types";
+import type { Country, MockUser, Role } from "@/lib/types";
+
+type MyTeamTeamRow = {
+  id: string;
+  name: string;
+  country: string;
+  primaryLeaderId: string | null;
+};
+
+type MyTeamUserRow = {
+  id: string;
+  representativeId: string | null;
+  firstName: string;
+  lastName: string;
+  role: string;
+  active: boolean | number;
+  teamId: string | null;
+};
+
+type MyTeamLeaderRow = MyTeamUserRow & {
+  linkedTeamId: string;
+};
+
+type MyTeamTeamSnapshot = {
+  id: string;
+  name: string;
+  country: Country;
+  primaryLeader?: MyTeamUser;
+  leaders: { user: MyTeamUser }[];
+  members: MyTeamUser[];
+};
+
+type MyTeamUser = {
+  id: string;
+  representativeId: string | null;
+  firstName: string;
+  lastName: string;
+  role: Role;
+  active: boolean;
+  teamId: string | null;
+};
 
 export function myTeamScopeWhere(actor: MockUser): Prisma.TeamWhereInput {
   if (actor.role === "SALES_LEADER") {
@@ -37,39 +77,7 @@ export function myTeamScopeWhere(actor: MockUser): Prisma.TeamWhereInput {
 }
 export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamMember[]> {
   const [teams, modules] = await Promise.all([
-    prisma.team.findMany({
-      where: { active: true, AND: [myTeamScopeWhere(actor)] },
-      select: {
-        id: true,
-        name: true,
-        country: true,
-        primaryLeader: {
-          select: {
-            id: true, representativeId: true, firstName: true, lastName: true,
-            role: true, active: true,
-          },
-        },
-        leaders: {
-          where: { user: { active: true } },
-          select: {
-            user: {
-              select: {
-                id: true, representativeId: true, firstName: true, lastName: true,
-                role: true, active: true,
-              },
-            },
-          },
-        },
-        members: {
-          where: { active: true },
-          select: {
-            id: true, representativeId: true, firstName: true, lastName: true,
-            role: true, active: true,
-          },
-        },
-      },
-      orderBy: [{ country: "asc" }, { name: "asc" }],
-    }),
+    listMyTeamTeamSnapshots(actor),
     listAppModules(),
   ]);
 
@@ -150,6 +158,116 @@ export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamM
   });
 
   return withPlannedCoachingIndicators(members, plannedCoachings);
+}
+
+async function listMyTeamTeamSnapshots(actor: MockUser): Promise<MyTeamTeamSnapshot[]> {
+  const scopeSql = myTeamScopeSql(actor);
+  const teamRows = await prisma.$queryRaw<MyTeamTeamRow[]>(Prisma.sql`
+    SELECT t.id, t.name, t.country, t.primaryLeaderId
+    FROM \`Team\` t
+    WHERE t.active = TRUE
+      ${scopeSql}
+    ORDER BY t.country ASC, t.name ASC
+  `);
+  const teamIds = teamRows.map((team) => team.id);
+  if (!teamIds.length) return [];
+
+  const primaryLeaderIds = [
+    ...new Set(teamRows.map((team) => team.primaryLeaderId).filter(Boolean) as string[]),
+  ];
+  const [memberRows, leaderRows, primaryLeaderRows] = await Promise.all([
+    prisma.$queryRaw<MyTeamUserRow[]>(Prisma.sql`
+      SELECT u.id, u.representativeId, u.firstName, u.lastName, u.role, u.active, u.teamId
+      FROM \`User\` u
+      WHERE u.active = TRUE
+        AND u.teamId IN (${Prisma.join(teamIds)})
+      ORDER BY u.lastName ASC, u.firstName ASC
+    `),
+    prisma.$queryRaw<MyTeamLeaderRow[]>(Prisma.sql`
+      SELECT
+        tl.teamId AS linkedTeamId,
+        u.id,
+        u.representativeId,
+        u.firstName,
+        u.lastName,
+        u.role,
+        u.active,
+        u.teamId
+      FROM \`TeamLeader\` tl
+      INNER JOIN \`User\` u ON u.id = tl.userId
+      WHERE u.active = TRUE
+        AND tl.teamId IN (${Prisma.join(teamIds)})
+      ORDER BY u.lastName ASC, u.firstName ASC
+    `),
+    primaryLeaderIds.length
+      ? prisma.$queryRaw<MyTeamUserRow[]>(Prisma.sql`
+          SELECT u.id, u.representativeId, u.firstName, u.lastName, u.role, u.active, u.teamId
+          FROM \`User\` u
+          WHERE u.active = TRUE
+            AND u.id IN (${Prisma.join(primaryLeaderIds)})
+        `)
+      : Promise.resolve([]),
+  ]);
+
+  const membersByTeam = groupBy(memberRows.map(toMyTeamUser), (user) => user.teamId ?? "");
+  const leadersByTeam = groupBy(
+    leaderRows.map((row) => ({ teamId: row.linkedTeamId, user: toMyTeamUser(row) })),
+    (entry) => entry.teamId
+  );
+  const primaryLeaders = new Map(primaryLeaderRows.map((row) => [row.id, toMyTeamUser(row)]));
+
+  return teamRows.map((team) => ({
+    id: team.id,
+    name: team.name,
+    country: team.country as Country,
+    primaryLeader: team.primaryLeaderId
+      ? primaryLeaders.get(team.primaryLeaderId)
+      : undefined,
+    leaders: (leadersByTeam.get(team.id) ?? []).map((entry) => ({ user: entry.user })),
+    members: membersByTeam.get(team.id) ?? [],
+  }));
+}
+
+function myTeamScopeSql(actor: MockUser) {
+  if (actor.role === "SALES_LEADER") {
+    return actor.teamId
+      ? Prisma.sql`AND t.id = ${actor.teamId}`
+      : Prisma.sql`AND 1 = 0`;
+  }
+  if (actor.role === "COUNTRY_MANAGER" || actor.role === "ADMIN") {
+    return Prisma.sql`AND t.country = ${actor.country}`;
+  }
+  if (actor.role === "SALES_MANAGER") {
+    const countries = actor.countryAccess ?? [];
+    return countries.length
+      ? Prisma.sql`AND t.country IN (${Prisma.join(countries)})`
+      : Prisma.sql`AND 1 = 0`;
+  }
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
+    return Prisma.empty;
+  }
+  return Prisma.sql`AND 1 = 0`;
+}
+
+function toMyTeamUser(row: MyTeamUserRow): MyTeamUser {
+  return {
+    id: row.id,
+    representativeId: row.representativeId,
+    firstName: row.firstName,
+    lastName: row.lastName,
+    role: row.role as Role,
+    active: Boolean(row.active),
+    teamId: row.teamId,
+  };
+}
+
+function groupBy<T>(items: T[], keyForItem: (item: T) => string) {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyForItem(item);
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  return groups;
 }
 
 async function loadVisiblePlannedCoachingSources(

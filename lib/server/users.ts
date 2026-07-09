@@ -157,7 +157,7 @@ async function fetchRolePermissions() {
 async function fetchUsersWithAccess() {
   return prisma.user.findMany({
     include: {
-      team: true,
+      team: { select: { id: true, name: true, country: true, active: true } },
       countryAccess: true,
       permissions: { include: { permission: true } },
     },
@@ -169,7 +169,7 @@ async function fetchUserWithAccess(id: string) {
   return prisma.user.findUniqueOrThrow({
     where: { id },
     include: {
-      team: true,
+      team: { select: { id: true, name: true, country: true, active: true } },
       countryAccess: true,
       permissions: { include: { permission: true } },
     },

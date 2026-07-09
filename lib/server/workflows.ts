@@ -52,7 +52,7 @@ export async function loadWorkflowStateFromDatabase(
       where: options.interventionWhere,
       distinct: ["id"],
       include: {
-        representative: { include: { team: true } },
+        representative: { include: { team: { select: { id: true, name: true } } } },
         focuses: { include: { focus: true } },
         scores: true,
         contactMoment: true,
@@ -68,7 +68,7 @@ export async function loadWorkflowStateFromDatabase(
     }),
     prisma.helpRequest.findMany({
       include: {
-        representative: { include: { team: true } },
+        representative: { include: { team: { select: { id: true, name: true } } } },
       },
       orderBy: { updatedAt: "desc" },
     }),

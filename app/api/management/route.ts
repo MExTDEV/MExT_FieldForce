@@ -8,6 +8,7 @@ import {
   getManagementConfiguration,
   listManagementKpis,
   listManagementTeams,
+  type ManagementSection,
   saveCriterion,
   saveFocus,
   saveKpi,
@@ -39,19 +40,38 @@ import type {
   KpiUnit,
 } from "@/lib/types";
 
-export async function GET() {
+const managementSections = new Set<ManagementSection>([
+  "teams",
+  "rollen",
+  "kpis",
+  "kapstok",
+]);
+
+export async function GET(request: Request) {
   return handleApi("api/management:get", async () => {
     const actor = await requireAuthenticatedRead();
     if (!actor) badRequest("Beheer vereist een aangemelde gebruiker.");
+    const requestedSection = new URL(request.url).searchParams.get("section");
+    const section = managementSections.has(requestedSection as ManagementSection)
+      ? requestedSection as ManagementSection
+      : undefined;
     if (!["ADMIN", "SUPER_ADMIN"].includes(actor.role)) {
       const canViewTeams = canAccessManagementSection(actor, "teams");
       const canViewKpis = canAccessManagementSection(actor, "kpis");
-      if (canViewTeams || canViewKpis) {
-        const kpiConfiguration = canViewKpis
+      const canReadPartialConfiguration =
+        (!section && (canViewTeams || canViewKpis)) ||
+        (section === "teams" && canViewTeams) ||
+        (section === "kpis" && canViewKpis);
+      if (canReadPartialConfiguration) {
+        const includeKpis = section ? section === "kpis" : canViewKpis;
+        const includeTeams = section
+          ? section === "teams" || section === "kpis"
+          : canViewTeams || canViewKpis;
+        const kpiConfiguration = includeKpis
           ? await listManagementKpis(actor)
           : { kpis: [], kpiCategories: [], kpiTypes: [], kpiTargetTypes: [] };
         return {
-          teams: canViewTeams || canViewKpis ? await listManagementTeams(actor) : [],
+          teams: includeTeams ? await listManagementTeams(actor) : [],
           ...kpiConfiguration,
           focuses: [],
           roles: [],
@@ -59,7 +79,7 @@ export async function GET() {
       }
       badRequest("Je hebt geen toegang tot deze beheerconfiguratie.");
     }
-    return getManagementConfiguration(actor);
+    return getManagementConfiguration(actor, section);
   }, "Beheerconfiguratie kon niet worden geladen.");
 }
 

@@ -31,7 +31,7 @@ async function fetchRepresentativeUsers() {
       active: true,
     },
     include: {
-      team: true,
+      team: { select: { id: true, name: true } },
       level: true,
       kpiSnapshots: {
         where: { kpiDefinition: { active: true, countsForReporting: true } },
