@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
+import { ManagementImportExportPanel } from "@/components/management-import-export-panel";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { fieldForcePermissionGroups } from "@/lib/user-management";
 import {
@@ -20,6 +21,7 @@ import {
   kpiUnitOptions,
 } from "@/lib/kpi-settings";
 import { optionalTeamLeaderLabel } from "@/lib/team-management";
+import type { ManagementImportExportTopic } from "@/lib/management-import-export";
 import type {
   Country,
   FieldForcePermissionKey,
@@ -175,6 +177,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
   const canCreateKpis = hasPermission(user, "kpisCreate");
   const filteredKpis = filterKpis(data, kpiFilters);
   const showAddButton = section !== "rollen" && (section !== "kpis" || canCreateKpis);
+  const importExportTopic = importExportTopicForSection(section);
 
   return (
     <div className="space-y-6">
@@ -197,6 +200,13 @@ export function ConfigurationManagement({ section }: { section: Section }) {
         <p className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">
           {error}
         </p>
+      )}
+
+      {importExportTopic && (
+        <ManagementImportExportPanel
+          topic={importExportTopic}
+          onCommitted={refresh}
+        />
       )}
 
       {section === "teams" && (
@@ -1131,6 +1141,15 @@ function newEditor(
       sortOrder: data.focuses.length + 1,
     };
   }
+  return undefined;
+}
+
+function importExportTopicForSection(
+  section: Section
+): ManagementImportExportTopic | undefined {
+  if (section === "teams") return "teams";
+  if (section === "kpis") return "kpis";
+  if (section === "kapstok") return "kapstok";
   return undefined;
 }
 

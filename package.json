@@ -28,6 +28,7 @@
     "test:coaching-action-persistence": "tsx scripts/test-coaching-action-persistence.ts",
     "test:menu-rights": "tsx scripts/test-menu-rights.ts",
     "test:management-log": "tsx scripts/test-management-log.ts",
+    "test:management-import-export": "tsx scripts/test-management-import-export.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",
     "test:auth-session": "tsx scripts/test-auth-session.ts",
     "test:login-history": "tsx scripts/test-login-history.ts",

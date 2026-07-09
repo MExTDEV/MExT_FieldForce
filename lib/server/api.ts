@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export type ApiErrorPayload = {
   error: string;
   requestId: string;
+  details?: string;
 };
 
 export class ApiRequestError extends Error {
@@ -42,9 +43,13 @@ export async function handleApi<T>(
   } catch (error) {
     const status = error instanceof ApiRequestError ? error.status : 500;
     const message = error instanceof ApiRequestError ? error.message : fallbackMessage;
+    const details =
+      process.env.NODE_ENV === "development" && error instanceof Error
+        ? error.message
+        : undefined;
     console.error(`[${scope}] requestId=${requestId}`, error);
     return NextResponse.json<ApiErrorPayload>(
-      { error: message, requestId },
+      { error: message, requestId, ...(details ? { details } : {}) },
       { status }
     );
   }

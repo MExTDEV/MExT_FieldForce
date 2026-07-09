@@ -160,6 +160,29 @@ When working on authentication, verify session persistence and permission resolu
 
 # Permissions and Roles
 
+## KPI import uses globally unique KPI code
+
+Status:
+
+Confirmed Open / Design Limitation
+
+Description:
+
+The management KPI import uses the existing `KpiDefinition.code` field as the natural key.
+The current Prisma model defines `KpiDefinition.code` as globally unique.
+
+Expected behaviour:
+
+- KPI import can create or update global and country-scoped KPI definitions.
+- It cannot create multiple KPI definitions with the same code for different countries without a schema change.
+- Supporting `code + country` as a true composite natural key requires a reviewed Prisma migration and updates to existing KPI upsert logic.
+
+AI rule:
+
+Do not work around this by inventing derived codes or duplicate KPI tables.
+
+---
+
 ## Sales Manager role does not yet fully exist
 
 Status:

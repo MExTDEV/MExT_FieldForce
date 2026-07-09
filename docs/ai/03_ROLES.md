@@ -377,6 +377,28 @@ Business rules:
 - User-level overrides can enable or disable log access for a specific user.
 - Direct route access and `/api/activity-history` reads must use the same effective log permission.
 
+## Beheer -> Import/export
+
+Management import/export is a Super Admin-only technical function.
+
+Permission:
+
+- `technicalImportExport`
+
+Default visibility:
+
+- Super Admin only
+
+Business rules:
+
+- The permission flag must remain visible in role management under technical management.
+- Client-side visibility requires both role `SUPER_ADMIN` and effective `technicalImportExport`.
+- Server-side API access must always require role `SUPER_ADMIN`, even if the permission flag is misconfigured for another role.
+- Import/export covers users, teams, KPI definitions and the global coaching framework/kapstok.
+- Imports must use validation/preview first and may only be committed after confirmation.
+- Imports must not create dependent business records implicitly, such as missing teams during user import.
+- Import audit logs may store topic and counts, but must not dump full personal CSV data.
+
 ## Nieuwe begeleiding
 
 Visible when the user has permission to create coachings.

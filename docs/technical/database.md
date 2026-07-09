@@ -155,3 +155,26 @@ Rules:
 - Primary leadership join rows in `TeamLeader` are removed when no Verkoopleider is assigned.
 - Existing teams with a Verkoopleider keep their relation during migration.
 - Field users may remain assigned through `User.teamId` even when the team has no primary leader.
+
+## Management import/export
+
+Beheer import/export reuses existing tables and does not introduce a separate staging schema.
+
+CSV export/import topics:
+
+- users: `User` plus `UserCountryAccess`
+- teams: `Team` plus primary `TeamLeader`
+- kpis: `KpiDefinition`
+- kapstok: `CoachingFocus` and `CoachingCriterion`
+
+Rules:
+
+- API access is restricted to `SUPER_ADMIN` and the `technicalImportExport` permission.
+- Import validation runs before commit and reports row-level errors.
+- User import matches on e-mail.
+- Team import matches on `country + name`.
+- KPI import matches on the existing globally unique `KpiDefinition.code`.
+- Kapstok import matches focus by code, or by name for existing focus rows when no code is supplied.
+- User import does not create missing teams.
+- Team import updates the nullable primary leader relation through existing team-save logic.
+- Import audit logs store topic and created/updated/skipped/error counts, not complete CSV content.

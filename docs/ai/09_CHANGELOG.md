@@ -17,7 +17,28 @@ Use this file to document decisions that affect:
 
 ---
 
-# 2026-07-07 – AI Knowledge Base Foundation
+# 2026-07-08 - Super Admin Management Import/Export
+
+## Beheer CSV Import/Export
+
+Decision:
+
+- Add CSV import/export controls inside the existing Beheer screens for Gebruikers, Teams, KPI's and Kapstok.
+- Keep access restricted to `SUPER_ADMIN` server-side and client-side.
+- Use the existing `technicalImportExport` permission flag as the visible role-management switch.
+- Require validation/preview before committing import data.
+- Reuse existing save logic for users, teams, KPI definitions and kapstok records wherever possible.
+- Write import audit logs with topic and counts only, without storing full CSV or personal-data dumps.
+
+Database impact:
+
+- No schema migration was introduced.
+- Existing entities remain the source of truth: `User`, `Team`, `KpiDefinition`, `CoachingFocus` and `CoachingCriterion`.
+- KPI import follows the current global uniqueness of `KpiDefinition.code`.
+
+---
+
+# 2026-07-07 - AI Knowledge Base Foundation
 
 ## Documentation Structure
 

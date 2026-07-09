@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
 import { useModules } from "@/components/module-provider";
+import { ManagementImportExportPanel } from "@/components/management-import-export-panel";
 import { Avatar, EmptyState, PageHeader } from "@/components/ui";
 import {
   getConfigurableMenuDomains,
@@ -65,6 +66,7 @@ export function UsersManagementPage() {
     createManagedUser,
     updateManagedUser,
     deleteManagedUser,
+    retry,
   } = useSession();
   const [mode, setMode] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<string>();
@@ -332,6 +334,8 @@ export function UsersManagementPage() {
           ) : undefined
         }
       />
+
+      <ManagementImportExportPanel topic="users" onCommitted={retry} />
 
       {notice && <Notice notice={notice} />}
 

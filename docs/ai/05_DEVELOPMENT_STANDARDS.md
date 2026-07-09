@@ -646,6 +646,25 @@ Rules:
 
 ---
 
+# Management Import/Export Standards
+
+Bulk management import/export is a high-risk administrative workflow.
+
+Rules:
+
+- Keep import/export under the existing management UI; do not create a separate landing page.
+- Use CSV unless an approved Excel/XLSX pattern already exists for the same workflow.
+- Exports may include inactive records when the actor is a Super Admin.
+- Imports must validate and preview before commit.
+- Imports must report created, updated, skipped and error counts.
+- Imports must show row-level validation errors.
+- Imports must reuse existing save and validation logic wherever possible.
+- Imports must not create dependent records implicitly unless the business explicitly asks for that behaviour.
+- Server-side access must require `SUPER_ADMIN` and the explicit import/export permission.
+- Audit logs for imports must contain actor, topic and counts only; do not store complete CSV contents or personal-data dumps.
+
+---
+
 # Performance Standards
 
 Field users often work on tablets with 5G connectivity.

@@ -132,6 +132,38 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         }
 
         const currentProfile = normalizeManagedUser(mePayload.user);
+        const authenticatedUserId =
+          authSession?.user?.databaseUserId ?? currentProfile.id;
+        if (authenticatedMode) {
+          if (cancelled) return;
+          setManagedUsers([currentProfile]);
+          setUserId(authenticatedUserId);
+          setLanguage(currentProfile.language);
+          setLoading(false);
+          try {
+            const usersResponse = await fetchWithTimeout(
+              "/api/users",
+              { cache: "no-store" },
+              usersTimeoutMs
+            );
+            const usersPayload = (await usersResponse.json()) as {
+              users?: ManagedUser[];
+            };
+            if (usersResponse.ok) {
+              const loadedUsers = (usersPayload.users ?? []).map(normalizeManagedUser);
+              const nextUsers = loadedUsers.some((profile) => profile.id === currentProfile.id)
+                ? loadedUsers
+                : [currentProfile, ...loadedUsers];
+              if (!cancelled) setManagedUsers(nextUsers);
+            }
+          } catch (usersError) {
+            if (!(usersError instanceof RequestTimeoutError)) {
+              console.warn("[session] De bredere gebruikerslijst is tijdelijk niet beschikbaar.", usersError);
+            }
+          }
+          return;
+        }
+
         let loadedUsers: ManagedUser[] = [];
         try {
           const usersResponse = await fetchWithTimeout(
@@ -155,8 +187,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           : [currentProfile, ...loadedUsers];
         if (cancelled) return;
         setManagedUsers(nextUsers);
-        const authenticatedUserId =
-          authSession?.user?.databaseUserId ?? currentProfile.id;
         const stored = demoUserSwitcherEnabled ? readStoredUserId() : null;
         const selected = authenticatedMode
           ? authenticatedUserId
