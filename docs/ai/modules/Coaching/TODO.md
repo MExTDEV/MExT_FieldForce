@@ -12,6 +12,35 @@ Priority levels:
 
 # Beheer / Teams
 
+## Teams groeperen per land
+
+Priority: Medium
+
+Status: Completed on 2026-07-09
+
+Implemented changes:
+
+- De Teams-configuratiepagina groepeert zichtbare teams nu per land binnen de bestaande actieve en niet-actieve teamsecties.
+- Landen worden logisch gesorteerd als BE, NL, DE en daarna overige landcodes alfabetisch indien ze ooit in de gefilterde data voorkomen.
+- Elke landsectie heeft een compacte header met landcode, landnaam, aantal teams, eventueel actief-aantal en totaal aantal leden.
+- Landsecties zijn lokaal in- en uitklapbaar met een chevron; alle landen staan standaard open.
+- Teamrijen gebruiken de compacte `Mijn Team`-look-and-feel; bewerken, deactiveren, definitief verwijderen en de Import/Export-zone blijven de bestaande acties gebruiken.
+- Teams zonder toegewezen Verkoopleider blijven zichtbaar met `Geen verkoopleider toegewezen`.
+
+Validation performed:
+
+- `npm run test:team-leader-optional`
+- `npm run typecheck`
+- `npm run lint`
+- `npx next build`
+
+Remaining checks or known limitations:
+
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+
+---
+
 ## Teams zonder toegewezen Verkoopleider
 
 Priority: High

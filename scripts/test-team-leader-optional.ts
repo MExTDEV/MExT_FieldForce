@@ -60,6 +60,29 @@ assert.match(
   "Beheerpagina's moeten sectie-specifiek laden zodat Teams niet afhankelijk is van KPI/Rollen/Kapstok-data."
 );
 
+const managementComponent = readFileSync(
+  join(root, "components", "configuration-management.tsx"),
+  "utf8"
+);
+
+assert.match(
+  managementComponent,
+  /function CountryTeamSection/,
+  "Teambeheer moet teams per land in inklapbare landsecties tonen."
+);
+
+assert.match(
+  managementComponent,
+  /const countryOrder: Record<string, number> = \{ BE: 0, NL: 1, DE: 2 \}/,
+  "Teambeheer moet landen logisch sorteren: BE, NL, DE en daarna overige landen."
+);
+
+assert.match(
+  managementComponent,
+  /function TeamManagementRow/,
+  "Teambeheer moet teams als compacte rijen tonen met land, verkoopleider, ledenaantal en status."
+);
+
 assert.match(
   readFileSync(join(root, "app/api/management/route.ts"), "utf8"),
   /getManagementConfiguration\(actor,\s*section\)/,

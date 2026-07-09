@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Plus,
   Trash2,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
@@ -34,6 +35,13 @@ import type {
 } from "@/lib/types";
 
 type Section = "teams" | "rollen" | "kpis" | "kapstok";
+type ManagementTeam = ManagementConfiguration["teams"][number];
+type CountryTeamGroup = {
+  country: string;
+  teams: ManagementTeam[];
+  activeCount: number;
+  memberCount: number;
+};
 type Mutation = (
   method: "POST" | "PATCH" | "DELETE",
   payload: Record<string, unknown>
@@ -181,6 +189,8 @@ export function ConfigurationManagement({ section }: { section: Section }) {
   const filteredKpis = filterKpis(data, kpiFilters);
   const showAddButton = section !== "rollen" && (section !== "kpis" || canCreateKpis);
   const importExportTopic = importExportTopicForSection(section);
+  const activeTeams = data.teams.filter((item) => item.active);
+  const inactiveTeams = data.teams.filter((item) => !item.active);
 
   return (
     <div className="space-y-6">
@@ -214,67 +224,23 @@ export function ConfigurationManagement({ section }: { section: Section }) {
 
       {section === "teams" && (
         <>
-          <StatusGroup title="Actieve teams" count={data.teams.filter((item) => item.active).length}>
-            <Grid>
-          {data.teams.filter((item) => item.active).map((item) => (
-            <Card
-              key={item.id}
-              title={item.name}
-              detail={`${item.country} | ${optionalTeamLeaderLabel(item.primaryLeaderName)} | ${item.memberCount} leden`}
-              active={item.active}
-              onEdit={() => setEditor({
-                kind: "team",
-                id: item.id,
-                name: item.name,
-                country: item.country,
-                primaryLeaderId: item.primaryLeaderId ?? "",
-              })}
-              onDelete={() => setEditor({
-                kind: "deactivate",
-                entity: "team",
-                id: item.id,
-                name: item.name,
-              })}
-              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
-                kind: "purge",
-                entity: "team",
-                id: item.id,
-                name: item.name,
-              }) : undefined}
+          <StatusGroup title="Actieve teams" count={activeTeams.length}>
+            <TeamCountrySections
+              teams={activeTeams}
+              canPermanentlyDelete={user.role === "SUPER_ADMIN"}
+              onEdit={(item) => setEditor(teamEditorFromItem(item))}
+              onDeactivate={(item) => setEditor(deactivateEditorFromItem("team", item))}
+              onPermanentDelete={(item) => setEditor(purgeEditorFromItem("team", item))}
             />
-          ))}
-            </Grid>
           </StatusGroup>
-          <StatusGroup title="Niet-actieve teams" count={data.teams.filter((item) => !item.active).length}>
-            <Grid>
-          {data.teams.filter((item) => !item.active).map((item) => (
-            <Card
-              key={item.id}
-              title={item.name}
-              detail={`${item.country} | ${optionalTeamLeaderLabel(item.primaryLeaderName)} | ${item.memberCount} leden`}
-              active={item.active}
-              onEdit={() => setEditor({
-                kind: "team",
-                id: item.id,
-                name: item.name,
-                country: item.country,
-                primaryLeaderId: item.primaryLeaderId ?? "",
-              })}
-              onDelete={() => setEditor({
-                kind: "deactivate",
-                entity: "team",
-                id: item.id,
-                name: item.name,
-              })}
-              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
-                kind: "purge",
-                entity: "team",
-                id: item.id,
-                name: item.name,
-              }) : undefined}
+          <StatusGroup title="Niet-actieve teams" count={inactiveTeams.length}>
+            <TeamCountrySections
+              teams={inactiveTeams}
+              canPermanentlyDelete={user.role === "SUPER_ADMIN"}
+              onEdit={(item) => setEditor(teamEditorFromItem(item))}
+              onDeactivate={(item) => setEditor(deactivateEditorFromItem("team", item))}
+              onPermanentDelete={(item) => setEditor(purgeEditorFromItem("team", item))}
             />
-          ))}
-            </Grid>
           </StatusGroup>
         </>
       )}
@@ -394,6 +360,205 @@ export function ConfigurationManagement({ section }: { section: Section }) {
       )}
     </div>
   );
+}
+
+function TeamCountrySections({
+  teams,
+  canPermanentlyDelete,
+  onEdit,
+  onDeactivate,
+  onPermanentDelete,
+}: {
+  teams: ManagementTeam[];
+  canPermanentlyDelete: boolean;
+  onEdit: (team: ManagementTeam) => void;
+  onDeactivate: (team: ManagementTeam) => void;
+  onPermanentDelete: (team: ManagementTeam) => void;
+}) {
+  const groups = groupTeamsByCountry(teams);
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <CountryTeamSection
+          key={group.country}
+          group={group}
+          canPermanentlyDelete={canPermanentlyDelete}
+          onEdit={onEdit}
+          onDeactivate={onDeactivate}
+          onPermanentDelete={onPermanentDelete}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CountryTeamSection({
+  group,
+  canPermanentlyDelete,
+  onEdit,
+  onDeactivate,
+  onPermanentDelete,
+}: {
+  group: CountryTeamGroup;
+  canPermanentlyDelete: boolean;
+  onEdit: (team: ManagementTeam) => void;
+  onDeactivate: (team: ManagementTeam) => void;
+  onPermanentDelete: (team: ManagementTeam) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const teamLabel = group.teams.length === 1 ? "team" : "teams";
+  const memberLabel = group.memberCount === 1 ? "lid" : "leden";
+  const activeLabel =
+    group.activeCount === group.teams.length
+      ? undefined
+      : `${group.activeCount} actief`;
+  const teamCountLabel = `${group.teams.length} ${teamLabel}`;
+  const memberCountLabel = `${group.memberCount} ${memberLabel}`;
+
+  return (
+    <section className="card overflow-hidden">
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow">Land</p>
+          <h2 className="truncate text-lg font-bold text-slate-950">{countryLabel(group.country)}</h2>
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{teamCountLabel}</span>
+          <span className="hidden rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm sm:inline-flex">{memberCountLabel}</span>
+          {activeLabel && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 md:inline-flex">{activeLabel}</span>}
+        </div>
+      </button>
+      {expanded && (
+        <div className="divide-y divide-slate-100 border-t border-slate-100">
+          {group.teams.map((item) => (
+            <TeamManagementRow
+              key={item.id}
+              item={item}
+              canPermanentlyDelete={canPermanentlyDelete}
+              onEdit={onEdit}
+              onDeactivate={onDeactivate}
+              onPermanentDelete={onPermanentDelete}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TeamManagementRow({
+  item,
+  canPermanentlyDelete,
+  onEdit,
+  onDeactivate,
+  onPermanentDelete,
+}: {
+  item: ManagementTeam;
+  canPermanentlyDelete: boolean;
+  onEdit: (team: ManagementTeam) => void;
+  onDeactivate: (team: ManagementTeam) => void;
+  onPermanentDelete: (team: ManagementTeam) => void;
+}) {
+  const leaderLabel = optionalTeamLeaderLabel(item.primaryLeaderName);
+  return (
+    <article className="grid gap-3 p-3.5 transition hover:bg-brand-50/40 sm:grid-cols-[minmax(210px,1.25fr)_minmax(170px,0.9fr)_minmax(90px,0.45fr)_minmax(95px,0.45fr)_auto] sm:items-center sm:px-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
+          <UsersRound className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
+            {!item.active && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Inactief</span>}
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500">Land {item.country}</p>
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Verkoopleider</p>
+        <p className="mt-1 text-sm text-slate-700">{leaderLabel}</p>
+      </div>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Leden</p>
+        <p className="mt-1 text-sm font-bold text-slate-800">{item.memberCount}</p>
+      </div>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</p>
+        <p className={`mt-1 text-sm font-bold ${item.active ? "text-emerald-700" : "text-slate-500"}`}>
+          {item.active ? "Actief" : "Inactief"}
+        </p>
+      </div>
+      <div className="flex items-center gap-1 sm:justify-end">
+        <Action label="Bewerken" onClick={() => onEdit(item)}><MoreHorizontal /></Action>
+        {item.active && <Action label="Deactiveren" danger onClick={() => onDeactivate(item)}><X /></Action>}
+        {canPermanentlyDelete && <Action label="Definitief verwijderen" danger onClick={() => onPermanentDelete(item)}><Trash2 /></Action>}
+      </div>
+    </article>
+  );
+}
+
+function groupTeamsByCountry(teams: ManagementTeam[]): CountryTeamGroup[] {
+  const groups = new Map<string, ManagementTeam[]>();
+  for (const team of teams) {
+    const current = groups.get(team.country) ?? [];
+    groups.set(team.country, [...current, team]);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => compareCountries(left, right))
+    .map(([country, countryTeams]) => ({
+      country,
+      teams: countryTeams,
+      activeCount: countryTeams.filter((team) => team.active).length,
+      memberCount: countryTeams.reduce((total, team) => total + team.memberCount, 0),
+    }));
+}
+
+function compareCountries(left: string, right: string) {
+  const countryOrder: Record<string, number> = { BE: 0, NL: 1, DE: 2 };
+  const leftOrder = countryOrder[left] ?? 100;
+  const rightOrder = countryOrder[right] ?? 100;
+  if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  return left.localeCompare(right, "nl-BE");
+}
+
+function teamEditorFromItem(item: ManagementTeam): Extract<EditorState, { kind: "team" }> {
+  return {
+    kind: "team",
+    id: item.id,
+    name: item.name,
+    country: item.country,
+    primaryLeaderId: item.primaryLeaderId ?? "",
+  };
+}
+
+function deactivateEditorFromItem(
+  entity: string,
+  item: { id: string; name: string }
+): Extract<EditorState, { kind: "deactivate" }> {
+  return {
+    kind: "deactivate",
+    entity,
+    id: item.id,
+    name: item.name,
+  };
+}
+
+function purgeEditorFromItem(
+  entity: string,
+  item: { id: string; name: string }
+): Extract<EditorState, { kind: "purge" }> {
+  return {
+    kind: "purge",
+    entity,
+    id: item.id,
+    name: item.name,
+  };
 }
 
 function StatusGroup({
@@ -1319,10 +1484,11 @@ function monthEndInputValue() {
   return date.toISOString().slice(0, 10);
 }
 
-function countryLabel(country: Country) {
+function countryLabel(country: Country | string) {
   if (country === "BE") return "België";
   if (country === "NL") return "Nederland";
-  return "Duitsland";
+  if (country === "DE") return "Duitsland";
+  return country;
 }
 
 const roleOptions: Role[] = [
