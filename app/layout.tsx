@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { AuthSessionProvider } from "@/components/auth-session-provider";
 import { ConfigurationProvider } from "@/components/configuration-provider";
 import { ModuleProvider } from "@/components/module-provider";
+import { NotificationProvider } from "@/components/notification-provider";
 import { PersonalCriteriaProvider } from "@/components/personal-criteria-provider";
 import { PerformanceProvider } from "@/components/performance-provider";
 import { RepresentativesProvider } from "@/components/representatives-provider";
@@ -43,7 +44,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <PerformanceProvider>
                     <PersonalCriteriaProvider>
                       <WorkflowProvider>
-                        <AppShell>{children}</AppShell>
+                        <NotificationProvider>
+                          <AppShell>{children}</AppShell>
+                        </NotificationProvider>
                       </WorkflowProvider>
                     </PersonalCriteriaProvider>
                   </PerformanceProvider>

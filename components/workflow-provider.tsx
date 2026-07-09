@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getVisibleWorkflowState } from "@/lib/data-access";
+import { notificationRefreshEventName } from "@/lib/notifications";
 import { dedupeWorkflowState } from "@/lib/coaching/visibility";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
@@ -234,6 +235,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         payload.intervention!,
       ],
     }));
+    window.dispatchEvent(new Event(notificationRefreshEventName));
     return payload.intervention;
   }, [user.id]);
 

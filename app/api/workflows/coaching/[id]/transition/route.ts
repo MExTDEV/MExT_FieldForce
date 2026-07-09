@@ -2,6 +2,10 @@ import { badRequest, forbidden, handleApi, notFound } from "@/lib/server/api";
 import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
 import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
+import {
+  createCoachingApprovalNotification,
+  markCoachingApprovalNotificationHandled,
+} from "@/lib/server/notifications";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
 
 type CoachingTransition = "reopen" | "send_for_approval" | "approve";
@@ -56,14 +60,9 @@ export async function POST(
             sentForApprovalById: actor.id,
           },
         });
-        await tx.approval.upsert({
-          where: { interventionId: id },
-          create: {
-            interventionId: id,
-            representativeId: coaching.representativeId,
-            openedAt: now,
-          },
-          update: { status: null, comment: null, openedAt: now, confirmedAt: null },
+        await createCoachingApprovalNotification(tx, {
+          interventionId: id,
+          representativeId: coaching.representativeId,
         });
         await tx.auditLog.create({
           data: {
@@ -92,9 +91,9 @@ export async function POST(
             approvedByRepId: actor.id,
           },
         });
-        await tx.approval.update({
-          where: { interventionId: id },
-          data: { status: "GELEZEN_AKKOORD", confirmedAt: now },
+        await markCoachingApprovalNotificationHandled(tx, {
+          interventionId: id,
+          handledAt: now,
         });
         await tx.auditLog.create({
           data: {

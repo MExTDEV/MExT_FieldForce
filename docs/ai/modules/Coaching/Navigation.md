@@ -350,6 +350,8 @@ Business rules:
 - Super Admins, management users and Verkoopleiders must not see header ToDo's for other users through their broader scope.
 - Hidden surprise coachings must not be revealed through bell colour, count or dropdown content.
 - `Wachten op akkoord` / `verzonden_ter_akkoord` counts as an approval ToDo for the header bell only for the coached person while the existing approval data still indicates that approval is needed.
+- In-app approval notifications use the existing `Approval` record as source of truth; `Approval.openedAt` is the read marker for the coached person.
+- The header may poll for current-user notifications and show a toast/ping, but it must still open the existing Begeleiding detail route and must not create a second approval workflow.
 - Clicking a ToDo row opens the existing source route or detail flow, such as the Begeleiding form/detail route through the shared coaching open helper.
 - Undefined workflows for Contactmomenten, Retrainingen, Salestrainingen and Hulpaanvragen must not be expanded from the header.
 

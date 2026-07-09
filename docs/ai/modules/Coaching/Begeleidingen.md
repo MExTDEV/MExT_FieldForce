@@ -501,6 +501,8 @@ If disabled:
 - representative must not see the planned coaching
 - representative only sees the coaching once it reaches **Wachten op akkoord**
 
+When a coaching is sent for approval, the existing `Approval` record also feeds the in-app notification bell for the coached person. `Approval.openedAt` is used as the notification read marker, and opening the notification routes to the existing Begeleiding detail page.
+
 Purpose:
 
 - support announced coachings

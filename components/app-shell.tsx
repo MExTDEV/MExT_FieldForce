@@ -39,6 +39,11 @@ import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
 import { SessionFailure } from "@/components/session-state";
 import { AppSwitcherMenu } from "@/components/app-switcher-menu";
+import {
+  notificationBody,
+  notificationTitle,
+  useNotifications,
+} from "@/components/notification-provider";
 import { useModules } from "@/components/module-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { useWorkflow } from "@/components/workflow-provider";
@@ -53,6 +58,7 @@ import {
 } from "@/lib/dashboard-attention";
 import { dedupeById } from "@/lib/coaching/visibility";
 import { reportingUserName } from "@/lib/reporting";
+import type { AppNotification } from "@/lib/notifications";
 import type { AppModuleCode, MockUser } from "@/lib/types";
 
 const iconMap = {
@@ -322,6 +328,7 @@ const todoIcons: Record<DashboardAttentionType, typeof ClipboardCheck> = {
 
 function HeaderTodoBell() {
   const { language, managedUsers, user } = useSession();
+  const { notifications, unreadCount, markAllAsRead, openNotification } = useNotifications();
   const { representatives } = useRepresentatives();
   const { isModuleEnabled } = useModules();
   const {
@@ -364,7 +371,7 @@ function HeaderTodoBell() {
           return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
         },
         ownerName: (id) => id ? reportingUserName(id, managedUsers) : undefined,
-      });
+      }).filter((item) => item.todoKind !== "approval");
     },
     [
       isModuleEnabled,
@@ -378,8 +385,22 @@ function HeaderTodoBell() {
       visibleSalesTrainings,
     ],
   );
-  const hasTodos = todoItems.length > 0;
-  const BellIcon = hasTodos ? BellRing : Bell;
+  const todoCount = todoItems.length;
+  const activeCount = unreadCount + todoCount;
+  const hasUnreadNotifications = unreadCount > 0;
+  const hasTodos = todoCount > 0;
+  const hasActivity = activeCount > 0;
+  const BellIcon = hasActivity ? BellRing : Bell;
+
+  async function handleMarkAllAsRead() {
+    try {
+      await markAllAsRead();
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[notifications] Meldingen konden niet als gelezen worden gemarkeerd.", error);
+      }
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -403,7 +424,7 @@ function HeaderTodoBell() {
   useEffect(() => {
     setWiggling(false);
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!shouldAnimateTodoBell(todoItems.length, prefersReducedMotion)) return;
+    if (!shouldAnimateTodoBell(activeCount, prefersReducedMotion)) return;
 
     let timeoutId: number | undefined;
     const intervalId = window.setInterval(() => {
@@ -416,25 +437,35 @@ function HeaderTodoBell() {
       window.clearInterval(intervalId);
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     };
-  }, [todoItems.length]);
+  }, [activeCount]);
 
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        aria-label={hasTodos ? `${translate(language, "todo.bell.title")}: ${todoItems.length}` : translate(language, "todo.bell.empty")}
+        aria-label={
+          hasUnreadNotifications
+            ? `${translate(language, "notifications.bell.title")}: ${unreadCount}`
+            : hasTodos
+              ? `${translate(language, "todo.bell.title")}: ${todoCount}`
+              : translate(language, "notifications.empty")
+        }
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={`relative grid h-10 w-10 place-items-center rounded-xl border transition ${
-          hasTodos
+          hasUnreadNotifications
             ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
-            : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+            : hasTodos
+              ? "border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
+              : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
         } ${wiggling ? "animate-todo-bell-wiggle" : ""}`}
       >
-        <BellIcon className={`h-5 w-5 ${hasTodos ? "fill-current" : ""}`} />
-        {hasTodos && (
-          <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-rose-600 px-1.5 text-[10px] font-bold leading-5 text-white ring-2 ring-white">
-            {todoItems.length > 99 ? "99+" : todoItems.length}
+        <BellIcon className={`h-5 w-5 ${hasActivity ? "fill-current" : ""}`} />
+        {hasActivity && (
+          <span className={`absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold leading-5 text-white ring-2 ring-white ${
+            hasUnreadNotifications ? "bg-rose-600" : "bg-brand-700"
+          }`}>
+            {activeCount > 99 ? "99+" : activeCount}
           </span>
         )}
       </button>
@@ -442,32 +473,113 @@ function HeaderTodoBell() {
       {open && (
         <div className="card absolute right-0 top-full z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden shadow-2xl">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-            <p className="text-sm font-bold text-slate-950">{translate(language, "todo.bell.title")}</p>
-            {hasTodos && (
-              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700">
-                {todoItems.length} {translate(language, "todo.bell.openCount")}
+            <p className="text-sm font-bold text-slate-950">{translate(language, "notifications.bell.title")}</p>
+            {hasUnreadNotifications ? (
+              <button
+                type="button"
+                onClick={() => void handleMarkAllAsRead()}
+                className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100"
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                {translate(language, "notifications.markAllRead")}
+              </button>
+            ) : hasTodos ? (
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700">
+                {todoCount} {translate(language, "todo.bell.openCount")}
+              </span>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
+                0
               </span>
             )}
           </div>
           <div className="max-h-[26rem] overflow-y-auto p-2">
-            {hasTodos ? (
-              todoItems.map((item) => (
-                <HeaderTodoRow
-                  key={`${item.todoKind}-${item.id}`}
-                  item={item}
-                  language={language}
-                  onOpen={() => setOpen(false)}
-                />
-              ))
-            ) : (
+            {notifications.length > 0 && (
+              <div className="space-y-1">
+                {notifications.map((notification) => (
+                  <HeaderNotificationRow
+                    key={notification.id}
+                    notification={notification}
+                    language={language}
+                    onOpen={() => {
+                      setOpen(false);
+                      void openNotification(notification);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {hasTodos && (
+              <div className={notifications.length > 0 ? "mt-2 border-t border-slate-100 pt-2" : ""}>
+                <p className="px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  {translate(language, "todo.bell.title")}
+                </p>
+                <div className="space-y-1">
+                  {todoItems.map((item) => (
+                    <HeaderTodoRow
+                      key={`${item.todoKind}-${item.id}`}
+                      item={item}
+                      language={language}
+                      onOpen={() => setOpen(false)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {!notifications.length && !hasTodos && (
               <p className="px-3 py-5 text-center text-sm text-slate-500">
-                {translate(language, "todo.bell.empty")}
+                {translate(language, "notifications.empty")}
               </p>
             )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function HeaderNotificationRow({
+  language,
+  notification,
+  onOpen,
+}: {
+  language: MockUser["language"];
+  notification: AppNotification;
+  onOpen: () => void;
+}) {
+  const unread = !notification.isRead;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex min-h-[72px] w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 ${
+        unread ? "bg-rose-50/70" : ""
+      }`}
+    >
+      <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
+        unread ? "bg-rose-100 text-rose-700" : "bg-brand-50 text-brand-700"
+      }`}>
+        <ClipboardCheck className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`text-[11px] font-bold uppercase tracking-wide ${
+          unread ? "text-rose-700" : "text-brand-700"
+        }`}>
+          {unread ? translate(language, "notifications.unread") : translate(language, "notifications.read")}
+        </p>
+        <p className="mt-0.5 truncate text-sm font-semibold text-slate-950">
+          {notificationTitle(notification, language)}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500">
+          {notificationBody(notification, language)}
+        </p>
+        <p className="mt-1 flex min-w-0 items-center gap-1 truncate text-xs text-slate-400">
+          <Clock3 className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{formatNotificationDate(notification.createdAt, language)}</span>
+        </p>
+      </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+    </button>
   );
 }
 
@@ -540,6 +652,18 @@ function formatTodoDate(value: string, language: MockUser["language"]) {
   if (Number.isNaN(date.getTime())) return value;
   const locale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
   return date.toLocaleDateString(locale, { day: "2-digit", month: "short" });
+}
+
+function formatNotificationDate(value: string, language: MockUser["language"]) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const locale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+  return date.toLocaleString(locale, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function NavItem({

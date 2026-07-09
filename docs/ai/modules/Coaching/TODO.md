@@ -121,6 +121,44 @@ Remaining checks or known limitations:
 
 ---
 
+## In-app approval notifications
+
+Priority: High
+
+Status: Completed on 2026-07-09
+
+Implemented changes:
+
+- The first persistent in-app notification trigger is implemented for `COACHING_APPROVAL_REQUEST`.
+- When a completed coaching is sent with `send_for_approval`, the existing `Approval` record is created or reset with `openedAt = null` so the coached person receives an unread notification.
+- The notification source of truth is the existing `Approval` table; no separate notification table or Prisma migration was added.
+- The notification object exposed to the client contains id, target user, type, title, body, link URL, entity type/id, created/read timestamps and triggered-by user where available.
+- The notification API only returns and mutates notifications for the authenticated/current actor. In demo mode it follows the existing `actorId` convention used by other API routes.
+- The global header bell now shows in-app approval notifications above non-approval ToDo items.
+- The client polls current-user notifications every 15 seconds while authenticated and stops polling on unmount/logout.
+- New unread notifications received while the app is open show a compact toast and play one short Web Audio chime per polling batch.
+- Toast and ping deduplication uses notification ids stored in the active browser session, so the same unread notification is not announced again on every poll.
+- Clicking a notification opens the existing Begeleiding detail route and marks `Approval.openedAt`.
+- Representative approval marks the existing `Approval` as read/handled through `status = GELEZEN_AKKOORD`, `openedAt` and `confirmedAt`.
+- New NL/FR/DE locale keys were added for notification title, body, open action and empty state.
+
+Validation performed:
+
+- `npm run test:notifications`
+- `npm run test:header-todos`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build` reached `prisma generate` and was blocked by the known Windows Prisma query-engine file lock.
+- `npx next build` completed successfully with the existing Prisma client.
+
+Remaining checks or known limitations:
+
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+- Browser autoplay policy can block the ping until the user has interacted with the app; the notification remains visible and the audio failure is silent.
+- The reusable notification service has placeholders for future todo/message notification types, but only coaching approval requests are implemented.
+
+---
+
 # Dashboard
 
 ## Aandacht vereist

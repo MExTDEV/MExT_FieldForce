@@ -448,11 +448,11 @@ Related documents:
 
 ---
 
-## Representative notification checkbox exists but workflow is incomplete
+## Representative notification checkbox and approval notification workflow
 
 Status:
 
-Historical / Verify
+Partially Completed / Verify
 
 Description:
 
@@ -461,6 +461,9 @@ During coaching planning, the coach can choose whether the representative should
 Current status:
 
 - Checkbox exists.
+- In-app notification delivery now exists for coachings sent to the coached person for approval.
+- Pending approval notifications use the existing `Approval` record and `Approval.openedAt` as read marker.
+- General todo/message notification triggers are not implemented yet.
 
 Implemented behaviour:
 
