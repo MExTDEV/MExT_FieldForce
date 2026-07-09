@@ -1010,6 +1010,28 @@ Original issue:
 - Na de FieldForce-first sorteerwijziging kregen agenda-items in dag- en weekweergave een vaste uniforme hoogte, waardoor een afspraak van 1 uur even hoog werd getoond als een afspraak van meerdere uren.
 
 ---
+# Rapportage
+
+## Smart management insights
+
+Priority: Medium
+
+Status: Completed on 2026-07-09
+
+Implemented changes:
+
+- The existing **Coaching Trends** and **Management Alerts** widgets were moved from the operational Dashboard to the Rapportering overview.
+- The Dashboard no longer renders these two widgets.
+- The Dashboard still keeps the existing **Team heatmap** management overview.
+- Rapportering reuses the existing reporting dataset, active reporting filters and smart-coaching logic for these two widgets.
+- No new reporting workflow, status model, fields, calculations or permissions were introduced.
+
+Remaining checks or known limitations:
+
+- Detailed Rapportage requirements still need business clarification before broader reporting workflows are implemented.
+- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
+
+---
 # Undefined Coaching Modules
 
 Priority: High

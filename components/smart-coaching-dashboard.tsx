@@ -42,7 +42,7 @@ export function SmartDashboardPanel({
               <RiskBadge risk={insight.risk} />
             </div>
             <ul className="mt-2.5 space-y-1 text-xs leading-4 text-slate-600">
-              {insight.reasons.map((reason) => <li key={reason}>• {reason}</li>)}
+              {insight.reasons.map((reason) => <li key={reason}>- {reason}</li>)}
             </ul>
           </div>
           <RecommendationList recommendations={insight.recommendations} />
@@ -75,61 +75,72 @@ export function SmartDashboardPanel({
 export function SmartManagementSections({ result }: { result: SmartCoachingResult }) {
   return (
     <div className="space-y-5">
-      <section className="card overflow-hidden">
-        <SmartHeader title="Team heatmap" description="Risico, activiteit en opvolging per team." icon={Users} />
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="bg-slate-50">
-                {["Team", "Risico", "Open acties", "Interventies", "Risico VT's", "Niet akkoord"].map((label) => (
-                  <th key={label} className="whitespace-nowrap px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {result.heatmap.map((team) => (
-                <tr key={team.teamId} className="border-t border-slate-100">
-                  <td className="px-5 py-4 font-semibold text-slate-900">{team.team}<span className="block text-xs font-normal text-slate-400">{team.leader} · {team.country}</span></td>
-                  <td className="px-5 py-4"><RiskBadge risk={team.risk} /></td>
-                  <td className="px-5 py-4 text-slate-600">{team.openActionCount}</td>
-                  <td className="px-5 py-4 text-slate-600">{team.interventionCount}</td>
-                  <td className="px-5 py-4 text-slate-600">{team.riskUserCount}</td>
-                  <td className="px-5 py-4 text-slate-600">{team.notAgreedCount}</td>
-                </tr>
+      <SmartTeamHeatmap result={result} />
+      <SmartReportingSections result={result} />
+    </div>
+  );
+}
+
+export function SmartTeamHeatmap({ result }: { result: SmartCoachingResult }) {
+  return (
+    <section className="card overflow-hidden">
+      <SmartHeader title="Team heatmap" description="Risico, activiteit en opvolging per team." icon={Users} />
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead>
+            <tr className="bg-slate-50">
+              {["Team", "Risico", "Open acties", "Interventies", "Risico VT's", "Niet akkoord"].map((label) => (
+                <th key={label} className="whitespace-nowrap px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</th>
               ))}
-            </tbody>
-          </table>
+            </tr>
+          </thead>
+          <tbody>
+            {result.heatmap.map((team) => (
+              <tr key={team.teamId} className="border-t border-slate-100">
+                <td className="px-5 py-4 font-semibold text-slate-900">{team.team}<span className="block text-xs font-normal text-slate-400">{team.leader} - {team.country}</span></td>
+                <td className="px-5 py-4"><RiskBadge risk={team.risk} /></td>
+                <td className="px-5 py-4 text-slate-600">{team.openActionCount}</td>
+                <td className="px-5 py-4 text-slate-600">{team.interventionCount}</td>
+                <td className="px-5 py-4 text-slate-600">{team.riskUserCount}</td>
+                <td className="px-5 py-4 text-slate-600">{team.notAgreedCount}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function SmartReportingSections({ result }: { result: SmartCoachingResult }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+      <section className="card overflow-hidden">
+        <SmartHeader title="Coaching trends" description="Meest voorkomende thema's in de huidige scope." icon={Target} />
+        <div className="grid gap-4 p-5 sm:grid-cols-2">
+          <TrendList title="Werkpunten" items={result.trends.workPoints} />
+          <TrendList title="Focusfasen" items={result.trends.focusPhases} />
+          <TrendList title="Hulpaanvragen" items={result.trends.helpRequests} />
+          <TrendList title="Retrainingen" items={result.trends.retrainings} />
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-        <section className="card overflow-hidden">
-          <SmartHeader title="Coaching trends" description="Meest voorkomende thema's in de huidige scope." icon={Target} />
-          <div className="grid gap-4 p-5 sm:grid-cols-2">
-            <TrendList title="Werkpunten" items={result.trends.workPoints} />
-            <TrendList title="Focusfasen" items={result.trends.focusPhases} />
-            <TrendList title="Hulpaanvragen" items={result.trends.helpRequests} />
-            <TrendList title="Retrainingen" items={result.trends.retrainings} />
-          </div>
-        </section>
-
-        <section id="smart-alerts" className="card overflow-hidden">
-          <SmartHeader title="Management alerts" description="Concrete uitzonderingen die opvolging vragen." icon={Clock3} />
-          <div className="divide-y divide-slate-100">
-            {result.alerts.slice(0, 8).map((alert) => (
-              <Link key={alert.id} href={alert.href} className="flex items-start gap-3 p-4 transition hover:bg-slate-50">
-                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === "red" ? "bg-rose-500" : "bg-amber-500"}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-slate-900">{alert.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{alert.detail}</p>
-                </div>
-                <ArrowRight className="mt-1 h-4 w-4 text-slate-300" />
-              </Link>
-            ))}
-            {result.alerts.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Geen actieve management alerts.</p>}
-          </div>
-        </section>
-      </div>
+      <section id="smart-alerts" className="card overflow-hidden">
+        <SmartHeader title="Management alerts" description="Concrete uitzonderingen die opvolging vragen." icon={Clock3} />
+        <div className="divide-y divide-slate-100">
+          {result.alerts.slice(0, 8).map((alert) => (
+            <Link key={alert.id} href={alert.href} className="flex items-start gap-3 p-4 transition hover:bg-slate-50">
+              <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === "red" ? "bg-rose-500" : "bg-amber-500"}`} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-900">{alert.title}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{alert.detail}</p>
+              </div>
+              <ArrowRight className="mt-1 h-4 w-4 text-slate-300" />
+            </Link>
+          ))}
+          {result.alerts.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Geen actieve management alerts.</p>}
+        </div>
+      </section>
     </div>
   );
 }
@@ -155,7 +166,7 @@ function PriorityCard({ insight }: { insight: RepresentativeCoachingInsight }) {
         <RiskBadge risk={insight.risk} />
       </div>
       <ul className="mt-2.5 space-y-1 text-xs leading-4 text-slate-600">
-        {insight.reasons.slice(0, 3).map((reason) => <li key={reason}>• {reason}</li>)}
+        {insight.reasons.slice(0, 3).map((reason) => <li key={reason}>- {reason}</li>)}
       </ul>
       {recommendation && (
         <Link href={recommendation.href} className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-brand-700">

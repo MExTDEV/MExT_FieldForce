@@ -341,6 +341,12 @@ Purpose:
 
 Displays coaching trends within the selected scope.
 
+Current dashboard behaviour:
+
+- Coaching Trends is no longer rendered on the operational Dashboard.
+- The existing Coaching Trends widget is rendered on the Rapportering overview instead.
+- The underlying data and scope filtering continue to use the existing reporting and smart-coaching logic.
+
 Default visibility:
 
 Visible for management users when effective permissions allow it.
@@ -368,6 +374,12 @@ Trend data must respect the user's country and team visibility scope.
 Purpose:
 
 Highlights exceptional situations requiring management intervention.
+
+Current dashboard behaviour:
+
+- Management Alerts is no longer rendered on the operational Dashboard.
+- The existing Management Alerts widget is rendered on the Rapportering overview instead.
+- The underlying data and scope filtering continue to use the existing reporting and smart-coaching logic.
 
 Default visibility:
 

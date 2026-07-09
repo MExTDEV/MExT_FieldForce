@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/server/db";
+import { columnsExist } from "@/lib/server/schema-inspection";
 import type { FieldForceConfiguration } from "@/lib/types";
 
 const focusColors: Record<string, string> = {
@@ -10,6 +11,7 @@ const focusColors: Record<string, string> = {
 };
 
 export async function getFieldForceConfiguration(): Promise<FieldForceConfiguration> {
+  const hasKpiReportingColumn = await columnsExist("KpiDefinition", ["counts_for_reporting"]);
   const [focuses, kpis] = await Promise.all([
     prisma.coachingFocus.findMany({
       where: { active: true },
@@ -22,7 +24,9 @@ export async function getFieldForceConfiguration(): Promise<FieldForceConfigurat
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.kpiDefinition.findMany({
-      where: { active: true, countsForReporting: true },
+      where: hasKpiReportingColumn
+        ? { active: true, countsForReporting: true }
+        : { active: true },
       orderBy: [{ name: "asc" }],
       select: { name: true },
     }),

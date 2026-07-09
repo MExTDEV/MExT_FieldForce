@@ -41,7 +41,7 @@ import { MyReflectionsPage, MyReportsPage } from "@/components/representative-wo
 import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/contact-help-workflows";
 import { TrainingWorkflowPage } from "@/components/training-workflows";
 import { ReportingDashboard } from "@/components/reporting-dashboard";
-import { SmartDashboardPanel, SmartManagementSections } from "@/components/smart-coaching-dashboard";
+import { SmartDashboardPanel, SmartTeamHeatmap } from "@/components/smart-coaching-dashboard";
 import { ActivityHistoryCard } from "@/components/activity-history-card";
 import { PerformanceEvolution } from "@/components/performance-evolution";
 import { UsersManagementPage } from "@/components/user-management";
@@ -417,7 +417,7 @@ function Dashboard() {
         })}
       </section>
 
-      {teamDashboardAllowed && actionPointsEnabled && <SmartManagementSections result={smartResult} />}
+      {teamDashboardAllowed && actionPointsEnabled && <SmartTeamHeatmap result={smartResult} />}
 
       <section className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         {planningEnabled && <div className="card overflow-hidden">

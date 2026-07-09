@@ -1316,6 +1316,8 @@ Expected direction:
 Current status:
 
 - Reporting requirements still need to be defined further.
+- The existing smart-coaching management insight widgets **Coaching Trends** and **Management Alerts** are shown on the Rapportering overview.
+- These widgets reuse the existing dashboard/reporting data sources and do not introduce a new reporting workflow.
 
 Navigation rule:
 

@@ -19,6 +19,7 @@ import { usePerformance } from "@/components/performance-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { useWorkflow } from "@/components/workflow-provider";
+import { SmartReportingSections } from "@/components/smart-coaching-dashboard";
 import {
   buildReportingDataset,
   emptyReportingFilters,
@@ -34,6 +35,7 @@ import {
   type ReportingIntervention,
 } from "@/lib/reporting";
 import { canViewTeamDashboard } from "@/lib/permissions";
+import { buildSmartCoaching } from "@/lib/smart-coaching";
 import type { Representative } from "@/lib/types";
 
 type ReportSection =
@@ -73,6 +75,10 @@ export function ReportingDashboard({ section = "overzicht" }: { section?: string
     () => filterReportingDataset(dataset, scope, filters, managedUsers),
     [dataset, filters, managedUsers, scope]
   );
+  const smartResult = useMemo(
+    () => buildSmartCoaching(filtered, state, undefined, managedUsers),
+    [filtered, managedUsers, state]
+  );
 
   if (user.role === "REPRESENTATIVE") {
     return <PersonalReporting dataset={filtered} representative={scope[0]} />;
@@ -101,7 +107,12 @@ export function ReportingDashboard({ section = "overzicht" }: { section?: string
         scope={scope}
         userRole={user.role}
       />
-      {normalizedSection === "overzicht" && <OverviewReport dataset={filtered} state={state} />}
+      {normalizedSection === "overzicht" && (
+        <>
+          <SmartReportingSections result={smartResult} />
+          <OverviewReport dataset={filtered} state={state} />
+        </>
+      )}
       {normalizedSection === "verkoopleiders" && <LeaderReport dataset={filtered} />}
       {normalizedSection === "teams" && <TeamReport dataset={filtered} />}
       {normalizedSection === "vertegenwoordigers" && <RepresentativeReport dataset={filtered} state={state} />}

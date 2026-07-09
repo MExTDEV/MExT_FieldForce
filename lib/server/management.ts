@@ -19,6 +19,10 @@ import {
   detectKpiTargetConflicts,
 } from "@/lib/server/kpi-targets";
 import {
+  columnsExist,
+  tableExists,
+} from "@/lib/server/schema-inspection";
+import {
   kpiCategorySeed,
   kpiTargetTypeSeed,
   kpiTypeSeed,
@@ -112,10 +116,6 @@ type RawKpiTypeRow = RawKpiCategoryRow & {
 };
 
 type RawKpiTargetTypeRow = RawKpiCategoryRow;
-
-type SchemaPresenceRow = {
-  countValue: bigint | number;
-};
 
 export async function listManagementTeams(
   actor: MockUser,
@@ -587,36 +587,6 @@ function kpiTargetTypeSeedRows(): RawKpiTargetTypeRow[] {
     isActive: true,
     sortOrder: targetType.sortOrder,
   }));
-}
-
-async function tableExists(tableName: string) {
-  try {
-    const rows = await prisma.$queryRaw<SchemaPresenceRow[]>(Prisma.sql`
-      SELECT COUNT(*) AS countValue
-      FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ${tableName}
-    `);
-    return Number(rows[0]?.countValue ?? 0) > 0;
-  } catch {
-    return true;
-  }
-}
-
-async function columnsExist(tableName: string, columnNames: string[]) {
-  if (!columnNames.length) return true;
-  try {
-    const rows = await prisma.$queryRaw<SchemaPresenceRow[]>(Prisma.sql`
-      SELECT COUNT(DISTINCT COLUMN_NAME) AS countValue
-      FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ${tableName}
-        AND COLUMN_NAME IN (${Prisma.join(columnNames)})
-    `);
-    return Number(rows[0]?.countValue ?? 0) === columnNames.length;
-  } catch {
-    return true;
-  }
 }
 
 function visibleKpiSql(actor: MockUser) {

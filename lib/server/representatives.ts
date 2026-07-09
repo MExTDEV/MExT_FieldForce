@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/server/db";
 import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
+import { columnsExist, tableExists } from "@/lib/server/schema-inspection";
 import type { Country, Representative, Role } from "@/lib/types";
 
 const levelColors: Record<string, string> = {
@@ -25,6 +26,26 @@ export async function listRepresentativesFromDatabase(): Promise<Representative[
 }
 
 async function fetchRepresentativeUsers() {
+  const hasKpiManagementSchema = await hasKpiManagementReadSchema();
+  if (!hasKpiManagementSchema) {
+    return prisma.user.findMany({
+      where: {
+        role: "REPRESENTATIVE",
+        active: true,
+      },
+      include: {
+        team: { select: { id: true, name: true } },
+        level: true,
+        kpiSnapshots: {
+          where: { kpiDefinition: { active: true } },
+          include: { kpiDefinition: { include: { targetOverrides: true } } },
+          orderBy: [{ periodEnd: "desc" }, { kpiDefinition: { name: "asc" } }],
+        },
+      },
+      orderBy: [{ country: "asc" }, { lastName: "asc" }, { firstName: "asc" }],
+    });
+  }
+
   return prisma.user.findMany({
     where: {
       role: "REPRESENTATIVE",
@@ -41,6 +62,14 @@ async function fetchRepresentativeUsers() {
     },
     orderBy: [{ country: "asc" }, { lastName: "asc" }, { firstName: "asc" }],
   });
+}
+
+async function hasKpiManagementReadSchema() {
+  return (await tableExists("kpi_targets")) &&
+    (await columnsExist("KpiDefinition", [
+      "counts_for_reporting",
+      "counts_for_performance_circle",
+    ]));
 }
 
 async function openActionCounts() {

@@ -924,6 +924,46 @@ Related documents:
 - `docs/ai/02_DATABASE.md`
 - `docs/technical/database.md`
 
+## KPI reporting schema mismatch broke shared read paths
+
+Date fixed:
+
+2026-07-09
+
+Description:
+
+When Prisma migrations `0019_action_point_management` and `0020_kpi_management` were not yet applied on the active database, shared read paths that filtered on `KpiDefinition.counts_for_reporting` or `counts_for_performance_circle` could fail. This made Mijn Team, representatives, configuration and performance-backed screens unavailable even though the permission checks themselves were valid.
+
+Fix:
+
+- KPI schema presence checks were moved into a shared server helper.
+- Configuration, representatives and performance reads now keep using the modern KPI inclusion flags when the columns exist.
+- When the runtime database is still on the legacy KPI schema, those reads fall back to active KPI definitions and treat the newer inclusion flags as enabled.
+- This is a compatibility fallback only; Prisma migrations remain the source of truth and still need to be deployed.
+
+Verification:
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm run test:performance`
+- `npm run test:my-team-planned`
+- `npm run test:kpi-settings`
+- `npm run test:team-leader-optional`
+- `npm run test:data-access`
+- `npm run test:fiche-visibility`
+- `npm run test:menu-rights`
+- `npx next build`
+
+Known limitation:
+
+- `npm run build` is still blocked by the known Windows Prisma query-engine file lock during `prisma generate` when the engine is held by the local environment.
+
+Related documents:
+
+- `docs/ai/02_DATABASE.md`
+- `docs/technical/database.md`
+- `docs/ai/modules/Coaching/MijnTeam.md`
+
 When an issue is fixed, move it here with:
 
 - date fixed

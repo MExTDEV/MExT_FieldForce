@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/server/db";
 import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
+import { columnsExist, tableExists } from "@/lib/server/schema-inspection";
 import type {
   HistoricalActionPoint,
   HistoricalCoaching,
@@ -46,6 +47,22 @@ type CoachingActionRow = {
   title: string;
   updatedAt: Date;
 };
+
+type MonthlyKpiSnapshotBaseRow = Prisma.KpiSnapshotGetPayload<{
+  include: {
+    user: true;
+    kpiDefinition: { include: { targetOverrides: true } };
+  };
+}>;
+
+type MonthlyKpiSnapshotManagedRow = Prisma.KpiSnapshotGetPayload<{
+  include: {
+    user: true;
+    kpiDefinition: { include: { targetOverrides: true; targets: true } };
+  };
+}>;
+
+type MonthlyKpiSnapshotRow = MonthlyKpiSnapshotBaseRow | MonthlyKpiSnapshotManagedRow;
 
 export async function loadPerformanceDatasetFromDatabase(
   options: { coachingWhere?: Prisma.InterventionWhereInput } = {}
@@ -306,6 +323,23 @@ export function normalizeHistoricalActionPoints(
 }
 
 async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
+  const hasKpiManagementSchema = await hasKpiManagementReadSchema();
+  if (!hasKpiManagementSchema) {
+    const snapshots = await prisma.kpiSnapshot.findMany({
+      where: {
+        kpiDefinition: {
+          active: true,
+        },
+      },
+      include: {
+        user: true,
+        kpiDefinition: { include: { targetOverrides: true } },
+      },
+      orderBy: [{ periodStart: "asc" }, { kpiDefinition: { name: "asc" } }],
+    });
+    return normalizeMonthlyKpiSnapshots(snapshots);
+  }
+
   const snapshots = await prisma.kpiSnapshot.findMany({
     where: {
       kpiDefinition: {
@@ -320,13 +354,25 @@ async function loadMonthlyKpiSnapshots(): Promise<MonthlyKpiSnapshot[]> {
     },
     orderBy: [{ periodStart: "asc" }, { kpiDefinition: { name: "asc" } }],
   });
+  return normalizeMonthlyKpiSnapshots(snapshots);
+}
+
+async function hasKpiManagementReadSchema() {
+  return (await tableExists("kpi_targets")) &&
+    (await columnsExist("KpiDefinition", [
+      "counts_for_reporting",
+      "counts_for_performance_circle",
+    ]));
+}
+
+function normalizeMonthlyKpiSnapshots(snapshots: MonthlyKpiSnapshotRow[]) {
   const grouped = new Map<string, MonthlyKpiSnapshot>();
 
   for (const snapshot of snapshots) {
     const representativeId = snapshot.user.representativeId ?? snapshot.userId;
     const month = dateOnly(snapshot.periodStart).slice(0, 7);
     const key = `${representativeId}:${month}`;
-    const current = grouped.get(key) ?? {
+    const current: MonthlyKpiSnapshot = grouped.get(key) ?? {
       id: `kpi-${representativeId}-${month}`,
       representativeId,
       month,
