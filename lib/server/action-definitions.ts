@@ -1,4 +1,4 @@
-import { ActionScope, type Priority } from "@prisma/client";
+import { ActionScope, Prisma, type Priority } from "@prisma/client";
 
 import {
   canCreateActionPointDefinition,
@@ -10,6 +10,7 @@ import {
 import { sanitizeRichText } from "@/lib/rich-text";
 import { actorCanAccessCountry } from "@/lib/server/authenticated-user";
 import { prisma } from "@/lib/server/db";
+import { columnsExist, tableExists } from "@/lib/server/schema-inspection";
 import type {
   ActionPointProductOption,
   ActionPointTargetTypeOption,
@@ -37,17 +38,81 @@ type ActionDefinitionInput = {
 
 type ActionDefinitionWithRelations = Awaited<ReturnType<typeof findActionDefinitionForEdit>>;
 
+const ACTION_POINT_MANAGEMENT_SCHEMA_ERROR =
+  "Actiepuntenbeheer vereist database-migratie 0019_action_point_management.";
+
+const fallbackActionPointTargetTypes: ActionPointTargetTypeOption[] = [
+  {
+    id: "apt_global",
+    code: "GLOBAL",
+    name: "Globaal",
+    description: "Actiepunt voor alle relevante gebruikers.",
+    isActive: true,
+    sortOrder: 10,
+  },
+  {
+    id: "apt_country",
+    code: "COUNTRY",
+    name: "Land",
+    description: "Actiepunt voor gebruikers binnen een land.",
+    isActive: true,
+    sortOrder: 20,
+  },
+  {
+    id: "apt_team",
+    code: "TEAM",
+    name: "Team",
+    description: "Actiepunt voor gebruikers binnen een team.",
+    isActive: true,
+    sortOrder: 30,
+  },
+  {
+    id: "apt_user",
+    code: "USER",
+    name: "Gebruiker",
+    description: "Actiepunt voor een individuele gebruiker.",
+    isActive: true,
+    sortOrder: 40,
+  },
+];
+
+const legacyActionDefinitionSelect = {
+  id: true,
+  title: true,
+  description: true,
+  tipsAndTricks: true,
+  targetValue: true,
+  priority: true,
+  scope: true,
+  scopeKey: true,
+  country: true,
+  teamId: true,
+  userId: true,
+  active: true,
+  validFrom: true,
+  validUntil: true,
+  createdById: true,
+  updatedById: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.ActionDefinitionSelect;
+
 export async function listEffectiveActionDefinitions(userId: string, date: Date): Promise<ScopedActionDefinition[]> {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, country: true, teamId: true } });
   const keys = ["GLOBAL", `COUNTRY:${user.country}`, ...(user.teamId ? [`TEAM:${user.teamId}`] : []), `USER:${user.id}`];
+  const where = {
+    active: true,
+    deletedAt: null,
+    scopeKey: { in: keys },
+    validFrom: { lte: date },
+    OR: [{ validUntil: null }, { validUntil: { gte: date } }],
+  };
+  if (!(await hasActionPointManagementSchema())) {
+    return listEffectiveActionDefinitionsWithoutManagementSchema(userId, keys, where);
+  }
+
   const definitions = await prisma.actionDefinition.findMany({
-    where: {
-      active: true,
-      deletedAt: null,
-      scopeKey: { in: keys },
-      validFrom: { lte: date },
-      OR: [{ validUntil: null }, { validUntil: { gte: date } }],
-    },
+    where,
     include: {
       products: { include: { product: true } },
       targetOverrides: { where: { scopeKey: { in: keys } } },
@@ -66,18 +131,23 @@ export async function listEffectiveActionDefinitions(userId: string, date: Date)
 export async function listVisibleActionDefinitions(actor: MockUser) {
   const canManage = canManageActionPointDefinitions(actor);
   const today = startOfToday();
+  const where = {
+    AND: [
+      { deletedAt: null },
+      canManage ? {} : {
+        active: true,
+        validFrom: { lte: today },
+        OR: [{ validUntil: null }, { validUntil: { gte: today } }],
+      },
+      actionDefinitionVisibilityWhere(actor),
+    ],
+  };
+  if (!(await hasActionPointManagementSchema())) {
+    return listVisibleActionDefinitionsWithoutManagementSchema(actor, where);
+  }
+
   const definitions = await prisma.actionDefinition.findMany({
-    where: {
-      AND: [
-        { deletedAt: null },
-        canManage ? {} : {
-          active: true,
-          validFrom: { lte: today },
-          OR: [{ validUntil: null }, { validUntil: { gte: today } }],
-        },
-        actionDefinitionVisibilityWhere(actor),
-      ],
-    },
+    where,
     include: {
       products: { include: { product: true } },
       targetType: true,
@@ -99,33 +169,50 @@ export async function listVisibleActionDefinitions(actor: MockUser) {
 }
 
 export async function listActionPointTargetTypes(): Promise<ActionPointTargetTypeOption[]> {
-  const targetTypes = await prisma.actionPointTargetType.findMany({
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-  });
-  return targetTypes.map((targetType) => ({
-    id: targetType.id,
-    code: targetType.code,
-    name: targetType.name,
-    description: targetType.description ?? undefined,
-    isActive: targetType.isActive,
-    sortOrder: targetType.sortOrder,
-  }));
+  if (!(await tableExists("action_point_target_types"))) return fallbackActionPointTargetTypes;
+  try {
+    const targetTypes = await prisma.actionPointTargetType.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+    if (!targetTypes.length) return fallbackActionPointTargetTypes;
+    return targetTypes.map((targetType) => ({
+      id: targetType.id,
+      code: targetType.code,
+      name: targetType.name,
+      description: targetType.description ?? undefined,
+      isActive: targetType.isActive,
+      sortOrder: targetType.sortOrder,
+    }));
+  } catch (error) {
+    if (isMissingActionPointManagementSchema(error)) return fallbackActionPointTargetTypes;
+    throw error;
+  }
 }
 
 export async function listActionPointProducts(): Promise<ActionPointProductOption[]> {
-  const products = await prisma.product.findMany({
-    where: { active: true },
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-  });
-  return products.map((product) => ({
-    id: product.id,
-    name: product.name,
-    sortOrder: product.sortOrder,
-    active: product.active,
-  }));
+  if (!(await tableExists("Product"))) return [];
+  try {
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+    return products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      sortOrder: product.sortOrder,
+      active: product.active,
+    }));
+  } catch (error) {
+    if (isMissingProductSchema(error)) return [];
+    throw error;
+  }
 }
 
 export async function saveActionDefinition(actor: MockUser, input: ActionDefinitionInput) {
+  if (!(await hasActionPointManagementSchema())) {
+    throw new Error(ACTION_POINT_MANAGEMENT_SCHEMA_ERROR);
+  }
+
   const existing = input.id ? await findActionDefinitionForEdit(input.id) : null;
   if (existing) {
     assertCanManageActionDefinition(actor, existing);
@@ -197,6 +284,17 @@ export async function saveActionDefinition(actor: MockUser, input: ActionDefinit
 }
 
 export async function softDeleteActionDefinition(actor: MockUser, id: string) {
+  if (!(await hasActionPointManagementSchema())) {
+    const item = await findLegacyActionDefinitionForEdit(id);
+    assertCanManageActionDefinition(actor, item);
+    const definition = await prisma.actionDefinition.update({
+      where: { id },
+      data: { active: false, deletedAt: new Date(), updatedById: actor.id },
+      select: legacyActionDefinitionSelect,
+    });
+    return serializeActionDefinition(withLegacyActionDefinitionRelations(definition));
+  }
+
   const item = await findActionDefinitionForEdit(id);
   assertCanManageActionDefinition(actor, item);
   const definition = await prisma.actionDefinition.update({
@@ -274,6 +372,87 @@ function serializeActionDefinition(
     validUntil: definition.validUntil?.toISOString().slice(0, 10),
     createdAt: definition.createdAt?.toISOString(),
     updatedAt: definition.updatedAt?.toISOString(),
+  };
+}
+
+async function hasActionPointManagementSchema() {
+  const [targetTypesTable, productLinksTable, targetTypeColumn] = await Promise.all([
+    tableExists("action_point_target_types"),
+    tableExists("action_point_products"),
+    columnsExist("ActionDefinition", ["target_type_id"]),
+  ]);
+  return targetTypesTable && productLinksTable && targetTypeColumn;
+}
+
+async function listEffectiveActionDefinitionsWithoutManagementSchema(
+  userId: string,
+  keys: string[],
+  where: Prisma.ActionDefinitionWhereInput
+) {
+  if (await tableExists("ActionTargetOverride")) {
+    try {
+      const definitions = await prisma.actionDefinition.findMany({
+        where,
+        select: {
+          ...legacyActionDefinitionSelect,
+          targetOverrides: {
+            where: { scopeKey: { in: keys } },
+            select: { scopeKey: true, targetValue: true },
+          },
+        },
+        orderBy: [{ priority: "desc" }, { title: "asc" }],
+      });
+      return definitions.map((definition) => {
+        const target = [`USER:${userId}`, ...keys.filter((key) => key.startsWith("TEAM:")), ...keys.filter((key) => key.startsWith("COUNTRY:"))]
+          .map((key) => definition.targetOverrides.find((item) => item.scopeKey === key))
+          .find(Boolean)?.targetValue ?? definition.targetValue;
+        return serializeActionDefinition(
+          withLegacyActionDefinitionRelations(definition),
+          target === null ? undefined : Number(target)
+        );
+      });
+    } catch (error) {
+      if (!isMissingActionTargetOverrideSchema(error)) throw error;
+    }
+  }
+
+  const definitions = await prisma.actionDefinition.findMany({
+    where,
+    select: legacyActionDefinitionSelect,
+    orderBy: [{ priority: "desc" }, { title: "asc" }],
+  });
+  return definitions.map((definition) => serializeActionDefinition(withLegacyActionDefinitionRelations(definition)));
+}
+
+async function listVisibleActionDefinitionsWithoutManagementSchema(
+  actor: MockUser,
+  where: Prisma.ActionDefinitionWhereInput
+) {
+  const definitions = await prisma.actionDefinition.findMany({
+    where,
+    select: legacyActionDefinitionSelect,
+    orderBy: [{ active: "desc" }, { priority: "desc" }, { title: "asc" }],
+  });
+  return definitions
+    .filter((definition) =>
+      canViewScopedActionDefinition(actor, {
+        scope: definition.scope,
+        country: definition.country ?? undefined,
+        teamId: definition.teamId ?? undefined,
+        userId: definition.userId ?? undefined,
+        active: definition.active,
+        createdById: definition.createdById,
+      })
+    )
+    .map((definition) => serializeActionDefinition(withLegacyActionDefinitionRelations(definition)));
+}
+
+function withLegacyActionDefinitionRelations<T extends { scope: ActionScope }>(definition: T) {
+  return {
+    ...definition,
+    targetTypeId: null,
+    targetType: { code: definition.scope },
+    products: [],
   };
 }
 
@@ -374,10 +553,19 @@ async function resolveActionScopeData(
 }
 
 async function findActionDefinitionForEdit(id: string) {
+  if (!(await hasActionPointManagementSchema())) return findLegacyActionDefinitionForEdit(id);
   return prisma.actionDefinition.findUniqueOrThrow({
     where: { id },
     include: { products: { include: { product: true } }, targetType: true },
   });
+}
+
+async function findLegacyActionDefinitionForEdit(id: string) {
+  const definition = await prisma.actionDefinition.findUniqueOrThrow({
+    where: { id },
+    select: legacyActionDefinitionSelect,
+  });
+  return withLegacyActionDefinitionRelations(definition);
 }
 
 function assertCanManageActionDefinition(actor: MockUser, item: NonNullable<ActionDefinitionWithRelations>) {
@@ -421,4 +609,38 @@ function stripHtml(value: string) {
 
 function uniqueIds(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function isMissingActionPointManagementSchema(error: unknown) {
+  const text = errorToText(error);
+  if (!mentionsActionPointManagementSchema(text)) return false;
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === "P2021" || error.code === "P2022";
+  }
+  return true;
+}
+
+function isMissingActionTargetOverrideSchema(error: unknown) {
+  const text = errorToText(error);
+  if (!text.includes("ActionTargetOverride")) return false;
+  if (error instanceof Prisma.PrismaClientKnownRequestError) return error.code === "P2021" || error.code === "P2022";
+  return true;
+}
+
+function isMissingProductSchema(error: unknown) {
+  const text = errorToText(error);
+  if (!text.includes("Product")) return false;
+  if (error instanceof Prisma.PrismaClientKnownRequestError) return error.code === "P2021" || error.code === "P2022";
+  return true;
+}
+
+function mentionsActionPointManagementSchema(text: string) {
+  return ["action_point_target_types", "action_point_products", "target_type_id"].some((fragment) => text.includes(fragment));
+}
+
+function errorToText(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return `${error.message} ${JSON.stringify(error.meta ?? {})}`;
+  }
+  return error instanceof Error ? error.message : String(error);
 }

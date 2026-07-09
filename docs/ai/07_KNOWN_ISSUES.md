@@ -964,6 +964,36 @@ Related documents:
 - `docs/technical/database.md`
 - `docs/ai/modules/Coaching/MijnTeam.md`
 
+## Actiepunten page unavailable when action-point management migration is pending
+
+Date fixed:
+
+2026-07-09
+
+Description:
+
+The Actiepunten page could show a red load error when the active database did not yet contain migration `0019_action_point_management`. The failing read path expected `action_point_target_types`, `action_point_products` and `ActionDefinition.target_type_id`, even though existing scoped action definitions can still be read from legacy `ActionDefinition` fields.
+
+Fix:
+
+- Actiepunten reads now inspect schema availability before using the new management relations.
+- When migration `0019_action_point_management` is pending, reads fall back to legacy `ActionDefinition` fields.
+- Fallback target-type options are derived from the known scopes `GLOBAL`, `COUNTRY`, `TEAM` and `USER`.
+- Product links are returned empty in fallback mode.
+- Creating or editing action definitions still returns a clear migration-required message until the migration is deployed.
+
+Verification:
+
+- `npm run typecheck`
+- `npm run test:action-points-overview`
+- `npm run test:action-point-targets`
+- Direct runtime check of `listVisibleActionDefinitions`, `listActionPointTargetTypes` and `listActionPointProducts` against the active database.
+
+Related documents:
+
+- `docs/ai/modules/Coaching/Actiepunten.md`
+- `docs/ai/02_DATABASE.md`
+
 When an issue is fixed, move it here with:
 
 - date fixed

@@ -48,6 +48,12 @@ Current data sources:
 - `ActionDefinitionProduct` links action definitions to `Product`.
 - legacy `ActionPoint` records and current `CoachingAction` records are normalised into the reporting action dataset for workflow-origin action points.
 
+Compatibility note:
+
+- When Prisma migration `0019_action_point_management` has not yet been applied on the active database, the Actiepunten read path falls back to legacy `ActionDefinition` fields.
+- In that fallback mode, the target type is derived from `ActionDefinition.scope` and product links are returned empty.
+- Creating or editing scoped action definitions still requires migration `0019_action_point_management`, because target type and product-link data cannot be stored safely before those tables and columns exist.
+
 Open/closed split:
 
 - `ActionDefinition` records are open when `active = true` and today's date is within `validFrom` / `validUntil`.

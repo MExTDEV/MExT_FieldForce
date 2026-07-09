@@ -36,11 +36,19 @@ import type {
 
 type Section = "teams" | "rollen" | "kpis" | "kapstok";
 type ManagementTeam = ManagementConfiguration["teams"][number];
+type ManagementKpi = ManagementConfiguration["kpis"][number];
 type CountryTeamGroup = {
   country: string;
   teams: ManagementTeam[];
   activeCount: number;
   memberCount: number;
+};
+type KpiScopeGroup = {
+  scope: KpiTargetScope;
+  title: string;
+  kpis: ManagementKpi[];
+  activeCount: number;
+  inactiveCount: number;
 };
 type Mutation = (
   method: "POST" | "PATCH" | "DELETE",
@@ -252,60 +260,15 @@ export function ConfigurationManagement({ section }: { section: Section }) {
             filters={kpiFilters}
             onChange={setKpiFilters}
           />
-          <StatusGroup title="Actieve KPI's" count={filteredKpis.filter((item) => item.active).length}>
-            <Grid>
-          {filteredKpis.filter((item) => item.active).map((item) => (
-            <Card
-              key={item.id}
-              title={item.name}
-              detail={kpiCardDetail(data, item)}
-              active={item.active}
-              onEdit={() => setEditor(kpiEditorFromItem(item))}
-              onExtra={() => setEditor(kpiTargetEditorFromKpi(data, item))}
-              extraLabel="Doelwaarde toevoegen"
-              onDelete={() => setEditor({
-                kind: "deactivate",
-                entity: "kpi",
-                id: item.id,
-                name: item.name,
-              })}
-              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
-                kind: "purge",
-                entity: "kpi",
-                id: item.id,
-                name: item.name,
-              }) : undefined}
-            />
-          ))}
-            </Grid>
-          </StatusGroup>
-          <StatusGroup title="Niet-actieve KPI's" count={filteredKpis.filter((item) => !item.active).length}>
-            <Grid>
-          {filteredKpis.filter((item) => !item.active).map((item) => (
-            <Card
-              key={item.id}
-              title={item.name}
-              detail={kpiCardDetail(data, item)}
-              active={item.active}
-              onEdit={() => setEditor(kpiEditorFromItem(item))}
-              onExtra={() => setEditor(kpiTargetEditorFromKpi(data, item))}
-              extraLabel="Doelwaarde toevoegen"
-              onDelete={() => setEditor({
-                kind: "deactivate",
-                entity: "kpi",
-                id: item.id,
-                name: item.name,
-              })}
-              onPermanentDelete={user.role === "SUPER_ADMIN" ? () => setEditor({
-                kind: "purge",
-                entity: "kpi",
-                id: item.id,
-                name: item.name,
-              }) : undefined}
-            />
-          ))}
-            </Grid>
-          </StatusGroup>
+          <KpiScopeSections
+            data={data}
+            kpis={filteredKpis}
+            canPermanentlyDelete={user.role === "SUPER_ADMIN"}
+            onEdit={(item) => setEditor(kpiEditorFromItem(item))}
+            onAddTarget={(item) => setEditor(kpiTargetEditorFromKpi(data, item))}
+            onDeactivate={(item) => setEditor(deactivateEditorFromItem("kpi", item))}
+            onPermanentDelete={(item) => setEditor(purgeEditorFromItem("kpi", item))}
+          />
         </>
       )}
 
@@ -561,6 +524,154 @@ function purgeEditorFromItem(
   };
 }
 
+function KpiScopeSections({
+  data,
+  kpis,
+  canPermanentlyDelete,
+  onEdit,
+  onAddTarget,
+  onDeactivate,
+  onPermanentDelete,
+}: {
+  data: ManagementConfiguration;
+  kpis: ManagementKpi[];
+  canPermanentlyDelete: boolean;
+  onEdit: (kpi: ManagementKpi) => void;
+  onAddTarget: (kpi: ManagementKpi) => void;
+  onDeactivate: (kpi: ManagementKpi) => void;
+  onPermanentDelete: (kpi: ManagementKpi) => void;
+}) {
+  const groups = groupKpisByScope(data, kpis);
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">KPI&apos;s per scope</h2>
+        <p className="text-sm text-slate-500">
+          {kpis.length} {kpis.length === 1 ? "KPI" : "KPI's"}
+        </p>
+      </div>
+      <div className="space-y-3">
+        {groups.map((group) => (
+          <KpiScopeSection
+            key={group.scope}
+            data={data}
+            group={group}
+            canPermanentlyDelete={canPermanentlyDelete}
+            onEdit={onEdit}
+            onAddTarget={onAddTarget}
+            onDeactivate={onDeactivate}
+            onPermanentDelete={onPermanentDelete}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function KpiScopeSection({
+  data,
+  group,
+  canPermanentlyDelete,
+  onEdit,
+  onAddTarget,
+  onDeactivate,
+  onPermanentDelete,
+}: {
+  data: ManagementConfiguration;
+  group: KpiScopeGroup;
+  canPermanentlyDelete: boolean;
+  onEdit: (kpi: ManagementKpi) => void;
+  onAddTarget: (kpi: ManagementKpi) => void;
+  onDeactivate: (kpi: ManagementKpi) => void;
+  onPermanentDelete: (kpi: ManagementKpi) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const kpiCountLabel = `${group.kpis.length} ${group.kpis.length === 1 ? "KPI" : "KPI's"}`;
+  const inactiveLabel = group.inactiveCount > 0 ? `${group.inactiveCount} inactief` : undefined;
+
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:bg-brand-50/60 sm:px-5"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow">Scope</p>
+          <h3 className="truncate text-lg font-bold text-slate-950">{group.title}</h3>
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{kpiCountLabel}</span>
+          {inactiveLabel && <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 sm:inline-flex">{inactiveLabel}</span>}
+        </div>
+      </button>
+      {expanded && (
+        group.kpis.length ? (
+          <Grid>
+            {group.kpis.map((item) => (
+              <Card
+                key={item.id}
+                title={item.name}
+                detail={kpiCardDetail(data, item)}
+                active={item.active}
+                onEdit={() => onEdit(item)}
+                onExtra={() => onAddTarget(item)}
+                extraLabel="Doelwaarde toevoegen"
+                onDelete={() => onDeactivate(item)}
+                onPermanentDelete={canPermanentlyDelete ? () => onPermanentDelete(item) : undefined}
+              />
+            ))}
+          </Grid>
+        ) : (
+          <div className="card px-5 py-8 text-center text-sm font-semibold text-slate-500">
+            Geen KPI&apos;s in deze scope.
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+function groupKpisByScope(
+  data: ManagementConfiguration,
+  kpis: ManagementKpi[]
+): KpiScopeGroup[] {
+  const orderedScopes: KpiTargetScope[] = ["GLOBAL", "COUNTRY", "TEAM", "USER"];
+  const roleScopedKpis = kpis.filter((kpi) => targetScopeFromId(data, kpi.targetTypeId ?? "") === "ROLE");
+  const scopes = roleScopedKpis.length ? [...orderedScopes, "ROLE" as const] : orderedScopes;
+  return scopes.map((scope) => {
+    const scopeKpis = sortKpisForManagement(
+      kpis.filter((kpi) => targetScopeFromId(data, kpi.targetTypeId ?? "") === scope)
+    );
+    return {
+      scope,
+      title: kpiScopeBucketLabel(scope),
+      kpis: scopeKpis,
+      activeCount: scopeKpis.filter((kpi) => kpi.active).length,
+      inactiveCount: scopeKpis.filter((kpi) => !kpi.active).length,
+    };
+  });
+}
+
+function sortKpisForManagement(kpis: ManagementKpi[]) {
+  return [...kpis].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.name.localeCompare(right.name, "nl-BE") ||
+      left.code.localeCompare(right.code, "nl-BE")
+  );
+}
+
+function kpiScopeBucketLabel(scope: KpiTargetScope) {
+  if (scope === "GLOBAL") return "Globaal";
+  if (scope === "COUNTRY") return "Per land";
+  if (scope === "TEAM") return "Per team";
+  if (scope === "USER") return "Per gebruiker";
+  return "Per rol";
+}
+
 function StatusGroup({
   title,
   count,
@@ -600,6 +711,9 @@ function FocusCard({
 }) {
   const activeCriteria = focus.criteria.filter((criterion) => criterion.active);
   const inactiveCriteria = focus.criteria.filter((criterion) => !criterion.active);
+  const [expanded, setExpanded] = useState(false);
+  const criteriaCount = focus.criteria.length;
+  const criteriaLabel = `${criteriaCount} ${criteriaCount === 1 ? "criterium" : "criteria"}`;
 
   function criterionRows(
     criteria: typeof focus.criteria,
@@ -665,15 +779,28 @@ function FocusCard({
   return (
     <section className="card overflow-hidden">
       <div className="flex flex-wrap items-center gap-3 p-5">
-        <div className="min-w-[220px] flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold">{focus.name}</h3>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${focus.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-              {focus.active ? "Actief" : "Niet-actief"}
+        <button
+          type="button"
+          className="flex min-w-[220px] flex-1 items-center gap-3 text-left"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-slate-500">
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-slate-950">{focus.name}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${focus.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                {focus.active ? "Actief" : "Niet-actief"}
+              </span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
+                {criteriaLabel}
+              </span>
             </span>
-          </div>
-          <p className="text-sm text-slate-500">{focus.code} | volgorde {focus.sortOrder}</p>
-        </div>
+            <span className="mt-1 block text-sm text-slate-500">{focus.code} | volgorde {focus.sortOrder}</span>
+          </span>
+        </button>
         <button
           type="button"
           className="btn-secondary"
@@ -727,8 +854,12 @@ function FocusCard({
           </Action>
         )}
       </div>
-      {criterionRows(activeCriteria, "Actieve criteria")}
-      {criterionRows(inactiveCriteria, "Niet-actieve criteria")}
+      {expanded && (
+        <>
+          {criterionRows(activeCriteria, "Actieve criteria")}
+          {criterionRows(inactiveCriteria, "Niet-actieve criteria")}
+        </>
+      )}
     </section>
   );
 }
