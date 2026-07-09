@@ -425,6 +425,7 @@ async function syncCoachingActions(tx: Transaction, item: CoachingIntervention, 
           scopeKey: `USER:${userId}`, userId, country: item.country, teamId: item.teamId,
           active: true, validFrom: plannedAt, createdById: item.ownerId, updatedById: item.ownerId,
         },
+        select: { id: true },
       });
       definitionId = definition.id;
     }

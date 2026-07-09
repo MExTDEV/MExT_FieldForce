@@ -994,7 +994,7 @@ Related documents:
 - `docs/ai/modules/Coaching/Actiepunten.md`
 - `docs/ai/02_DATABASE.md`
 
-## Planned coaching save fails when action-point management migration is pending
+## Planned or completed coaching save fails when action-point management migration is pending
 
 Date fixed:
 
@@ -1002,18 +1002,20 @@ Date fixed:
 
 Description:
 
-Planning a new coaching could show the generic database-save error and the planned coaching disappeared after refresh. The coaching transaction itself was rolled back because the automatic inheritance of active scoped `ActionDefinition` records used Prisma's default relation selection. On databases where migration `0019_action_point_management` was not yet applied, Prisma tried to read `ActionDefinition.target_type_id`, which does not exist in the legacy action-definition schema.
+Planning a new coaching or completing a coaching with a new action point could show the generic database-save error. The coaching transaction itself was rolled back because the automatic inheritance and creation of scoped `ActionDefinition` records used Prisma's default relation selection. On databases where migration `0019_action_point_management` was not yet applied, Prisma tried to read `ActionDefinition.target_type_id`, which does not exist in the legacy action-definition schema.
 
 Fix:
 
 - Coaching planning still inherits active scoped action definitions for the coached user.
 - The inheritance query now selects only the fields required to create `CoachingAction` rows.
+- Creating the personal follow-up `ActionDefinition` for a new coaching action point now returns only the created id.
 - The query no longer touches `ActionDefinition.target_type_id`, `action_point_target_types` or product links during coaching planning.
 - Prisma migrations remain the source of truth; migration `0019_action_point_management` should still be deployed for full action-point management functionality.
 
 Verification:
 
 - Direct runtime reproduction against a database missing `ActionDefinition.target_type_id`.
+- Direct runtime reproduction of completing a coaching with a new action point.
 - `npm run typecheck`
 - `npm run test:workflow`
 - `npm run test:coaching-visibility`
