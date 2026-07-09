@@ -355,21 +355,160 @@ function RepresentativeStep({
 }
 
 function ParticipantTree({ available, selected, onSelect }: { available: CoachingParticipant[]; selected: string; onSelect: (id: string) => void }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const countries = [...new Set(available.map((item) => item.country))];
-  const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
-  return <div className="mt-6 space-y-3">{countries.map((country) => {
-    const countryKey = `country:${country}`; const countryOpen = !collapsed.has(countryKey);
-    const countryPeople = available.filter((item) => item.country === country);
-    const teams = [...new Map(countryPeople.map((item) => [item.teamId, item.team])).entries()];
-    return <section key={country} className="overflow-hidden rounded-2xl border border-slate-200">
-      <button type="button" onClick={() => toggle(countryKey)} className="flex w-full items-center gap-2 bg-slate-50 px-4 py-3 text-left font-bold text-slate-900">{countryOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}<span className="flex-1">{country === "BE" ? "België" : country === "NL" ? "Nederland" : "Duitsland"}</span><span className="text-xs text-slate-500">{countryPeople.length}</span></button>
-      {countryOpen && <div className="space-y-2 p-3">{teams.map(([teamId, team]) => { const key = `team:${teamId}`; const open = !collapsed.has(key); const people = countryPeople.filter((item) => item.teamId === teamId); return <section key={teamId} className="overflow-hidden rounded-xl border border-slate-200">
-        <button type="button" onClick={() => toggle(key)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-bold">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}<span className="flex-1">{team}</span><span className="text-xs text-slate-400">{people.length}</span></button>
-        {open && <div className="grid gap-2 border-t border-slate-100 p-2 sm:grid-cols-2 xl:grid-cols-3">{people.map((person) => <button type="button" key={person.id} onClick={() => onSelect(person.id)} className={`flex items-center gap-3 rounded-xl border p-3 text-left ${selected === person.id ? "border-brand-700 bg-brand-50" : "border-slate-200 hover:border-brand-200"}`}><Avatar initials={person.initials} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{person.firstName} {person.lastName}</p><p className="mt-0.5 text-xs text-slate-500">{person.role === "SALES_LEADER" ? "Verkoopleider" : "Vertegenwoordiger"}</p></div>{person.role === "SALES_LEADER" && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>}</button>)}</div>}
-      </section>; })}</div>}
-    </section>;
-  })}</div>;
+  const [collapsedOverride, setCollapsedOverride] = useState<Set<string> | null>(null);
+  const [query, setQuery] = useState("");
+  const availableTeams = useMemo(() => [...new Set(available.map((item) => item.teamId))], [available]);
+  const collapseSignature = useMemo(() => [...new Set(available.map((item) => `${item.country}:${item.teamId}`))].sort().join("|"), [available]);
+  const defaultCollapsed = useMemo(() => {
+    const next = new Set<string>();
+    if (availableTeams.length <= 1) {
+      return next;
+    }
+
+    for (const country of [...new Set(available.map((item) => item.country))]) {
+      next.add(`country:${country}`);
+    }
+    for (const teamId of availableTeams) {
+      next.add(`team:${teamId}`);
+    }
+    return next;
+  }, [available, availableTeams]);
+  const collapsed = collapsedOverride ?? defaultCollapsed;
+  const normalizedQuery = query.trim().toLocaleLowerCase("nl-BE");
+  const filtered = useMemo(
+    () => available.filter((person) => participantMatchesQuery(person, normalizedQuery)),
+    [available, normalizedQuery],
+  );
+  const countries = useMemo(() => [...new Set(filtered.map((item) => item.country))], [filtered]);
+  const forceOpen = Boolean(normalizedQuery);
+
+  useEffect(() => {
+    setCollapsedOverride(null);
+  }, [collapseSignature]);
+
+  const toggle = (key: string) =>
+    setCollapsedOverride((current) => {
+      const next = new Set(current ?? defaultCollapsed);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+
+  return (
+    <div className="mt-6 space-y-3">
+      <label className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Vertegenwoordiger zoeken</span>
+        <input
+          type="search"
+          className="field"
+          value={query}
+          placeholder="Typ een naam om de lijst te filteren"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500">
+          Geen begeleidbare gebruiker gevonden.
+        </div>
+      ) : (
+        countries.map((country) => {
+          const countryKey = `country:${country}`;
+          const countryOpen = forceOpen || !collapsed.has(countryKey);
+          const countryPeople = filtered.filter((item) => item.country === country);
+          const teams = [...new Map(countryPeople.map((item) => [item.teamId, item.team])).entries()];
+
+          return (
+            <section key={country} className="overflow-hidden rounded-2xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => toggle(countryKey)}
+                className="flex w-full items-center gap-2 bg-slate-50 px-4 py-3 text-left font-bold text-slate-900"
+              >
+                {countryOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span className="flex-1">{countryDisplayName(country)}</span>
+                <span className="text-xs text-slate-500">{countryPeople.length}</span>
+              </button>
+
+              {countryOpen && (
+                <div className="space-y-2 p-3">
+                  {teams.map(([teamId, team]) => {
+                    const key = `team:${teamId}`;
+                    const teamOpen = forceOpen || !collapsed.has(key);
+                    const people = countryPeople.filter((item) => item.teamId === teamId);
+
+                    return (
+                      <section key={teamId} className="overflow-hidden rounded-xl border border-slate-200">
+                        <button type="button" onClick={() => toggle(key)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-bold">
+                          {teamOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          <span className="flex-1">{team}</span>
+                          <span className="text-xs text-slate-400">{people.length}</span>
+                        </button>
+
+                        {teamOpen && (
+                          <div className="grid gap-2 border-t border-slate-100 p-2 sm:grid-cols-2 xl:grid-cols-3">
+                            {people.map((person) => (
+                              <button
+                                type="button"
+                                key={person.id}
+                                onClick={() => onSelect(person.id)}
+                                className={`flex items-center gap-3 rounded-xl border p-3 text-left ${
+                                  selected === person.id ? "border-brand-700 bg-brand-50" : "border-slate-200 hover:border-brand-200"
+                                }`}
+                              >
+                                <Avatar initials={person.initials} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold">
+                                    {person.firstName} {person.lastName}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {person.role === "SALES_LEADER" ? "Verkoopleider" : "Vertegenwoordiger"}
+                                  </p>
+                                </div>
+                                {person.role === "SALES_LEADER" && (
+                                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function participantMatchesQuery(person: CoachingParticipant, query: string) {
+  if (!query) {
+    return true;
+  }
+
+  return [person.firstName, person.lastName, `${person.firstName} ${person.lastName}`, person.initials].some((value) =>
+    value.toLocaleLowerCase("nl-BE").includes(query),
+  );
+}
+
+function countryDisplayName(country: string) {
+  if (country === "BE") {
+    return "België";
+  }
+  if (country === "NL") {
+    return "Nederland";
+  }
+  if (country === "DE") {
+    return "Duitsland";
+  }
+  return country;
 }
 
 function participantAsRepresentative(person: CoachingParticipant): Representative {

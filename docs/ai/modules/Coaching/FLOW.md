@@ -277,6 +277,9 @@ Business rules:
 - A Verkoopleider is both a possible coach and a possible coaching target.
 - A Vertegenwoordiger must never be able to plan coachings.
 - If the user has access to only one country, the interface may omit redundant country selection or grouping where appropriate.
+- In the planning wizard, the target selector remains grouped by country and team.
+- When the user has access to more than one team, country and team groups start collapsed.
+- The target selector may provide a search field that filters the already permission-scoped target list by user name and opens matching groups while typing.
 
 ---
 
