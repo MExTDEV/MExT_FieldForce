@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 
 import { canEditFutureCoachingPlanning, canManageCoaching, coachingOpenHref } from "../lib/coaching/access";
+import { canRoleEditCoachingForm } from "../lib/coaching/form-access";
 import { canOpenCoachingDetail, visibleCoachings } from "../lib/coaching/visibility";
-import type { CoachingIntervention, MockUser } from "../lib/types";
+import { canManageStoredCoaching } from "../lib/server/coaching-visibility";
+import type { CoachingIntervention, MockUser, Role } from "../lib/types";
 
 const user = (id: string, role: MockUser["role"], country: MockUser["country"], representativeId?: string): MockUser => ({
   id,
@@ -25,6 +27,9 @@ const adminBe = user("admin-be", "ADMIN", "BE");
 const adminNl = user("admin-nl", "ADMIN", "NL");
 const salesManagerBeNl = { ...user("sales-manager", "SALES_MANAGER", "BE"), countryAccess: ["BE", "NL"] as MockUser["country"][] };
 const salesManagerNoCountries = { ...user("sales-manager-empty", "SALES_MANAGER", "BE"), countryAccess: [] as MockUser["country"][] };
+const countryManager = user("country-manager", "COUNTRY_MANAGER", "BE");
+const groupManager = user("group-manager", "GROUP_MANAGER", "NL");
+const serviceOperator = user("service-operator", "SERVICE_OPERATOR", "BE");
 const superAdmin = user("super", "SUPER_ADMIN", "NL");
 
 const coaching: CoachingIntervention = {
@@ -82,7 +87,53 @@ assert.equal(
 assert.equal(canOpenCoachingDetail(representativeB, sentForApproval[0]), true);
 
 assert.equal(canEditFutureCoachingPlanning(leaderA, notified[0], "2026-06-30"), true);
-assert.equal(canManageCoaching(adminBe, notified[0]), false);
+assert.equal(canManageCoaching(representativeB, notified[0]), false);
+assert.equal(canManageCoaching(leaderA, notified[0]), true);
+assert.equal(canManageCoaching(leaderOther, notified[0]), false);
+assert.equal(canManageCoaching(adminBe, notified[0]), true);
+assert.equal(canManageCoaching(adminNl, notified[0]), false);
+assert.equal(canManageCoaching(salesManagerBeNl, notified[0]), true);
+assert.equal(canManageCoaching(salesManagerNoCountries, notified[0]), false);
+assert.equal(canManageCoaching(countryManager, notified[0]), true);
+assert.equal(canManageCoaching(groupManager, notified[0]), true);
+assert.equal(canManageCoaching(serviceOperator, notified[0]), true);
+assert.equal(canManageCoaching(superAdmin, notified[0]), true);
+
+const roles: Role[] = [
+  "REPRESENTATIVE",
+  "SALES_LEADER",
+  "SALES_MANAGER",
+  "SERVICE_OPERATOR",
+  "COUNTRY_MANAGER",
+  "GROUP_MANAGER",
+  "ADMIN",
+  "SUPER_ADMIN",
+];
+for (const role of roles) {
+  assert.equal(
+    canRoleEditCoachingForm(role),
+    role !== "REPRESENTATIVE",
+    `Onverwacht formulierrecht voor ${role}.`
+  );
+}
+const storedCoaching = {
+  representative: { role: "REPRESENTATIVE" },
+  initiatorId: leaderA.id,
+  ownerId: leaderA.id,
+  teamId: "team-be",
+  country: "BE",
+};
+assert.equal(canManageStoredCoaching(representativeB, storedCoaching), false);
+assert.equal(canManageStoredCoaching(leaderA, storedCoaching), true);
+assert.equal(canManageStoredCoaching(leaderOther, storedCoaching), false);
+assert.equal(canManageStoredCoaching(adminBe, storedCoaching), true);
+assert.equal(canManageStoredCoaching(adminNl, storedCoaching), false);
+assert.equal(canManageStoredCoaching(salesManagerBeNl, storedCoaching), true);
+assert.equal(canManageStoredCoaching(salesManagerNoCountries, storedCoaching), false);
+assert.equal(canManageStoredCoaching(countryManager, storedCoaching), true);
+assert.equal(canManageStoredCoaching(groupManager, storedCoaching), true);
+assert.equal(canManageStoredCoaching(serviceOperator, storedCoaching), true);
+assert.equal(canManageStoredCoaching(superAdmin, storedCoaching), true);
 
 const salesLeaderTarget = {
   ...coaching,

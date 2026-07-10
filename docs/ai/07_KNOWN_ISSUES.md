@@ -269,17 +269,17 @@ Verkoopleider:
 Sales Manager:
 
 - sees coachings within assigned country scope
-- opens today/future coachings in view/preparation mode unless explicitly granted edit rights
+- opens and edits visible today/future coachings within assigned country scope
 
 Country Manager:
 
 - sees coachings within assigned country scope
-- opens today/future coachings in view/preparation mode only
+- opens and edits visible today/future coachings within assigned country scope
 
 Admin:
 
 - sees coachings within assigned country scope
-- opens today/future coachings in view/preparation mode only
+- opens and edits visible today/future coachings within assigned country scope
 
 Super Admin:
 
@@ -517,23 +517,23 @@ Related documents:
 
 ---
 
-## Management users must open coachings view-only
+## Coaching creation and edit rights were inconsistent
 
 Status:
 
-Historical / Verify
+Resolved on 2026-07-10
 
 Description:
 
-Country Managers, Sales Managers and Admins can view representative coachings within their scope, but cannot fill in or modify representative coachings by default. The API enforces the same manage rule.
+Management users could create a representative coaching but the stricter manage rule made that same coaching read-only after creation.
 
-Expected behaviour:
+Resolution:
 
-- today and future coachings open in preparation/view mode
-- no form editing
-- no planning modifications
-- no changing representative
-- no changing focus areas
+- Only Representatives are unable to fill in or modify coaching forms.
+- Every other role may edit visible coachings within its effective scope.
+- Client and server use one shared role rule.
+- Country, team and user scope remain enforced.
+- Pending Approval, Completed and other locked lifecycle states remain read-only for every role.
 
 Related documents:
 

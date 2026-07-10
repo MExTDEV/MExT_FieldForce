@@ -179,7 +179,7 @@ Main purpose:
 
 - management follow-up across one or more countries
 - view teams, representatives and coaching activity within assigned countries
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
 - monitor action points, risks and reports
 
 Business rules:
@@ -197,10 +197,10 @@ Coaching navigation rules:
 
 - Can view coachings within assigned country scope.
 - Can view today's coachings, future coachings and historical coachings.
-- Opens representative coachings in preparation/view mode unless explicitly granted edit rights.
-- Must be able to plan and execute coachings on Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
-- Does not fill in representative coaching forms by default.
-- Does not modify representative coaching planning by default.
+- Can fill in and modify visible coaching forms within assigned country scope.
+- Can modify future coaching planning within assigned country scope.
+- Can plan and execute coachings on representatives and Verkoopleiders within assigned country scope.
+- Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
 
 Grouping rules:
 
@@ -221,7 +221,7 @@ Main purpose:
 
 - country-level coaching follow-up
 - view teams and representatives within own country
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
 - monitor risks, action points and reports
 
 General rules:
@@ -230,10 +230,10 @@ General rules:
 - Sees teams and users within assigned country scope.
 - Can view coachings within assigned country scope.
 - Can view today's coachings, future coachings and historical coachings.
-- Opens representative coachings in preparation/view mode.
-- Must be able to plan and execute coachings on Verkoopleiders within assigned country scope when the role has coaching creation/execution permission.
-- Does not edit representative coaching forms by default.
-- Does not modify representative coaching planning by default.
+- Can fill in and modify visible coaching forms within assigned country scope.
+- Can modify future coaching planning within assigned country scope.
+- Can plan and execute coachings on representatives and Verkoopleiders within assigned country scope.
+- Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
 
 Grouping rules:
 
@@ -256,16 +256,16 @@ Main purpose:
 - manage teams within assigned scope
 - manage configuration within assigned scope
 - view coaching data within assigned scope
-- plan and execute coachings on Verkoopleiders within assigned scope when explicitly configured
+- plan and execute coachings on representatives and Verkoopleiders within assigned scope
 
 General rules:
 
 - Sees data within assigned country scope.
 - Can view coachings within assigned country scope.
-- Opens representative coachings in preparation/view mode.
-- Must be able to plan and execute coachings on Verkoopleiders within assigned scope when explicitly configured.
-- Does not edit representative coaching forms by default.
-- Does not modify representative coaching planning by default.
+- Can fill in and modify visible coaching forms within assigned country scope.
+- Can modify future coaching planning within assigned country scope.
+- Can plan and execute coachings on representatives and Verkoopleiders within assigned scope.
+- Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
 - Cannot grant Admin or Super Admin rights unless explicitly allowed by Super Admin policy.
 
 Configuration rules:
@@ -457,6 +457,7 @@ The exact inclusion rules still need to be specified.
 - surprise coachings hidden until Wachten op akkoord / Pending Approval
 - cannot open unfinished coachings
 - can open coachings for approval from Wachten op akkoord onwards
+- cannot fill in or modify coaching forms
 
 ### Verkoopleider
 
@@ -470,24 +471,24 @@ The exact inclusion rules still need to be specified.
 ### Sales Manager
 
 - assigned country scope
-- view mode by default for representative coachings
-- can plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- can fill in and modify visible coaching forms and planning details
+- can plan and execute coachings on representatives and Verkoopleiders within assigned country scope
 - grouped by country, team and user when multiple countries
 - country grouping hidden when only one country is available
 
 ### Country Manager
 
 - assigned country scope
-- view mode by default for representative coachings
-- can plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- can fill in and modify visible coaching forms and planning details
+- can plan and execute coachings on representatives and Verkoopleiders within assigned country scope
 - grouped by country, team and user when multiple countries
 - country grouping hidden when only one country is available
 
 ### Admin
 
 - assigned country scope
-- view mode by default for representative coachings
-- can plan and execute coachings on Verkoopleiders within assigned country scope when explicitly configured
+- can fill in and modify visible coaching forms and planning details
+- can plan and execute coachings on representatives and Verkoopleiders within assigned country scope
 - grouped by country, team and user when multiple countries
 - country grouping hidden when only one country is available
 
@@ -495,7 +496,7 @@ The exact inclusion rules still need to be specified.
 
 - all coachings
 - can open coachings like a Verkoopleider
-- can plan and execute coachings on Verkoopleiders across all countries and teams
+- can plan and execute coachings on representatives and Verkoopleiders across all countries and teams
 - grouped by country, team and user
 - country grouping is always visible
 

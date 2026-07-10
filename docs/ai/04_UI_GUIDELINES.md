@@ -424,8 +424,8 @@ Rules:
 - hide empty sections where possible
 - respect status and role permissions
 - representatives must not see surprise coachings before approval stage
-- management users must open coachings view-only unless explicitly allowed
-- Super Admin can open coachings with Verkoopleider-level access
+- every role except Representative may edit visible coachings within its effective scope
+- lifecycle-locked coachings remain read-only for every role
 
 Reference:
 

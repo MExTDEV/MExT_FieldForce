@@ -805,7 +805,7 @@ Sorting:
 
 - date and time ascending
 
-Navigation for Verkoopleiders and Super Admins:
+Navigation for every role except Representatives:
 
 - opens the same planning/preparation screen used when the coaching was created
 - allows changing:
@@ -820,11 +820,11 @@ Navigation for Verkoopleiders and Super Admins:
   - previous action points
   - other preparation data
 
-Navigation for Country Managers, Sales Managers and Admins:
+Navigation for Representatives:
 
-- opens preparation/view mode only
-- no form editing
-- no planning changes
+- unfinished coachings cannot be opened
+- coaching forms can never be filled in or modified
+- lifecycle visibility rules continue to determine when review is possible
 
 Current behaviour:
 
@@ -962,9 +962,9 @@ In that case, show only:
 
 Navigation rules:
 
-- today and future coachings open in preparation/view mode
-- no editing of the coaching form
-- no planning modifications
+- today and future coachings open in editable planning/execution mode within scope
+- coaching form editing is allowed
+- planning modifications are allowed within scope
 - historical coachings open in read-only report mode
 
 ---
@@ -990,9 +990,9 @@ In that case, show only:
 
 Navigation rules:
 
-- today and future coachings open in preparation/view mode
-- no editing of the coaching form
-- no planning modifications
+- today and future coachings open in editable planning/execution mode within scope
+- coaching form editing is allowed
+- planning modifications are allowed within scope
 - historical coachings open in read-only report mode
 
 ---
@@ -1016,9 +1016,9 @@ In that case, show only:
 
 Navigation rules:
 
-- today and future coachings open in preparation/view mode
-- no editing of the coaching form
-- no planning modifications
+- today and future coachings open in editable planning/execution mode within scope
+- coaching form editing is allowed
+- planning modifications are allowed within scope
 - historical coachings open in read-only report mode
 
 ---
@@ -1053,11 +1053,11 @@ Navigation rules:
 - Representatives only see planned coachings when notification was enabled during planning.
 - Representatives never open unfinished coachings.
 - Representatives only open coachings once they are submitted for approval.
-- Verkoopleiders can open and edit coachings for their own team.
-- Country Managers can view coachings within their scope but cannot edit the coaching form.
-- Sales Managers can view coachings within their scope but cannot edit the coaching form.
-- Admins can view coachings within their scope but cannot edit the coaching form.
-- Super Admins can open coachings with Verkoopleider-level access.
+- Every role except Representative can open and edit visible coachings within its effective scope.
+- This includes Verkoopleider, Sales Manager, Country Manager, Admin, Group Manager, Service Operator and Super Admin.
+- Country, team and user scope continue to restrict which coachings can be edited.
+- Pending Approval, Completed and other locked lifecycle states remain read-only for every role.
+- Representatives can review but never edit a coaching form.
 - If a Country Manager, Sales Manager or Admin only has access to one country, country grouping should be hidden to reduce visual noise.
 - Super Admins always keep country grouping.
 - Today, future and historical sections remain visible when empty.
