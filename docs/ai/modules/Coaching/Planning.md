@@ -87,7 +87,7 @@ For a coaching item:
 
 A Country Manager sees Planning items within the assigned country scope.
 
-A Country Manager may open coaching items in view/preparation mode only unless explicitly granted additional rights.
+A Country Manager may open and edit visible coaching items within the assigned country scope.
 
 ---
 
@@ -99,7 +99,7 @@ A Sales Manager can have access to one or more countries.
 
 A Sales Manager sees Planning items within the assigned country scope.
 
-A Sales Manager may open coaching items in view/preparation mode only unless explicitly granted additional rights.
+A Sales Manager may open and edit visible coaching items within the assigned country scope.
 
 ---
 
@@ -107,7 +107,7 @@ A Sales Manager may open coaching items in view/preparation mode only unless exp
 
 An Admin sees Planning items within the assigned country scope.
 
-An Admin may open coaching items in view/preparation mode only unless explicitly granted additional rights.
+An Admin may open and edit visible coaching items within the assigned country scope.
 
 ---
 

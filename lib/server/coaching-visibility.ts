@@ -1,7 +1,7 @@
 import type { InterventionStatus, Prisma } from "@prisma/client";
+import { canRoleEditCoachingForm } from "@/lib/coaching/form-access";
 import type { MockUser } from "@/lib/types";
 import { actorCanAccessCountry, actorCountryWhere } from "@/lib/server/authenticated-user";
-import { canCreateIntervention } from "@/lib/permissions";
 
 const representativeReviewStatuses = [
   "WACHT_OP_AKKOORD",
@@ -98,7 +98,7 @@ export function canManageStoredCoaching(
     country: string;
   }
 ) {
-  if (!canCreateIntervention(actor)) return false;
+  if (!canRoleEditCoachingForm(actor.role)) return false;
   if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return true;
 
   if (actor.role === "SALES_LEADER") {
@@ -108,10 +108,5 @@ export function canManageStoredCoaching(
       Boolean(actor.teamId && actor.teamId === coaching.teamId);
   }
 
-  if (["COUNTRY_MANAGER", "SALES_MANAGER", "ADMIN"].includes(actor.role)) {
-    return coaching.representative.role === "SALES_LEADER" &&
-      actorCanAccessCountry(actor, coaching.country);
-  }
-
-  return false;
+  return actorCanAccessCountry(actor, coaching.country);
 }

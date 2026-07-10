@@ -515,8 +515,8 @@ Implemented changes:
 - Surprise coachings remain hidden for representatives until Wachten op akkoord / approval stage.
 - Direct detail access uses a stricter open-detail access check than list visibility.
 - Server-side coaching detail and mutation routes enforce the same visibility and manage rules.
-- Country Manager, Sales Manager and Admin users can view representative coachings in scope but cannot edit them by default.
-- Higher-level users with effective intervention rights can still plan and execute coachings on Verkoopleiders within scope.
+- Every role except Representative can open, fill in and modify visible coaching forms within scope.
+- Representatives remain read-only; lifecycle locks remain read-only for every role.
 - Super Admin and Group Manager keep global operational access.
 
 Remaining checks or known limitations:
@@ -563,23 +563,23 @@ Additional required rule:
 
 - Sees coachings within assigned country scope.
 - Can view today, future and historical coachings.
-- Cannot edit coaching forms.
-- Cannot modify planning.
+- Can edit visible coaching forms within assigned country scope.
+- Can modify future coaching planning within assigned country scope.
 
 ### Sales Manager
 
 - Sees coachings within assigned country scope.
 - Can have access to one or more countries.
 - Can view today, future and historical coachings.
-- Cannot edit coaching forms.
-- Cannot modify planning.
+- Can edit visible coaching forms within assigned country scope.
+- Can modify future coaching planning within assigned country scope.
 
 ### Admin
 
 - Sees coachings within assigned country scope.
 - Can view today, future and historical coachings.
-- Cannot edit coaching forms.
-- Cannot modify planning.
+- Can edit visible coaching forms within assigned country scope.
+- Can modify future coaching planning within assigned country scope.
 
 ### Super Admin
 
@@ -708,20 +708,11 @@ Status: Completed on 2026-07-07
 
 Implemented changes:
 
-- Country Manager, Sales Manager and Admin users open representative coachings in read-only preparation/detail mode by default.
-- These users cannot save execution data, change focus areas, change representative/target or modify planning details for representative coachings through the UI or API.
-- The exception for coachings on Verkoopleiders remains permission- and scope-driven.
-
-Required change:
-
-- Country Managers, Sales Managers and Admins must open today and future coachings in view/preparation mode only.
-
-They must not be able to:
-
-- fill in the coaching form
-- modify planning details
-- change focus areas
-- change representative
+- Superseded on 2026-07-10 by the explicit business decision that only Representatives may not fill in or modify coaching forms.
+- Every other role can edit visible coachings within its effective country, team and user scope.
+- Client and server use the same shared role rule.
+- Representatives remain unable to edit coaching forms.
+- Pending Approval, Completed and other locked lifecycle states remain read-only for every role.
 
 ---
 

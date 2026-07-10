@@ -97,8 +97,8 @@ Main coaching actions:
 
 - view coachings within assigned country scope
 - view preparation and reports
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured for this role
-- no coaching form editing for representative coachings unless explicitly granted by permissions
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
+- fill in and modify visible coaching forms within assigned country scope
 
 ## Sales Manager
 
@@ -115,8 +115,8 @@ Main coaching actions:
 
 - view coachings within assigned country scope
 - view preparation and reports
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured for this role
-- no coaching form editing for representative coachings unless explicitly granted by permissions
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
+- fill in and modify visible coaching forms within assigned country scope
 
 Business rules:
 
@@ -137,8 +137,8 @@ Scope:
 Main coaching actions:
 
 - view coachings within assigned scope
-- plan and execute coachings on Verkoopleiders within assigned scope when configured for this role
-- no coaching form editing for representative coachings unless explicitly granted by permissions
+- plan and execute coachings on representatives and Verkoopleiders within assigned scope
+- fill in and modify visible coaching forms within assigned scope
 
 ## Super Admin
 
@@ -441,17 +441,11 @@ Allow the coach to execute a planned coaching session.
 
 Typical users with execution rights:
 
-- Verkoopleider for representatives in own team
-- Sales Manager for Verkoopleiders within assigned country scope, when configured
-- Country Manager for Verkoopleiders within assigned country scope, when configured
-- Admin for Verkoopleiders within assigned country scope, when configured
-- Super Admin for all allowed coaching targets
-
-Management users such as Country Manager, Sales Manager and Admin normally open representative coachings in view/preparation mode only unless permissions explicitly allow editing.
-
-Required exception:
-
-- A user above Verkoopleider level must be able to plan and execute a coaching on a Verkoopleider within the user's effective country and permission scope.
+- Every role except Representative may fill in and modify visible coaching forms.
+- Existing country, team and user scope continues to determine which coachings are visible and editable.
+- Representatives can review coachings only when the lifecycle makes them visible and can never edit the coaching form.
+- Pending Approval, Completed and other locked lifecycle states remain read-only for every role.
+- Planning and execution use the same role and scope rule.
 
 ---
 
@@ -859,14 +853,14 @@ Can:
 - view coachings within assigned country scope
 - view preparation data
 - view historical reports
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
+- fill in and modify visible coaching forms and planning details
+- change focus areas and the coached person within assigned scope
 
-Cannot by default:
+Cannot:
 
-- fill in representative coaching forms
-- edit representative coaching planning details
-- change focus areas for representative coachings
-- change representative for representative coachings
+- edit coachings outside assigned scope or in a locked lifecycle state
+- bypass the assigned country scope for changes
 
 ---
 
@@ -878,14 +872,14 @@ Can:
 - view coachings across one or more assigned countries
 - view preparation data
 - view historical reports
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
+- fill in and modify visible coaching forms and planning details
+- change focus areas and the coached person within assigned scope
 
-Cannot by default:
+Cannot:
 
-- fill in representative coaching forms
-- edit representative coaching planning details
-- change focus areas for representative coachings
-- change representative for representative coachings
+- edit coachings outside assigned scope or in a locked lifecycle state
+- bypass the assigned country scope for changes
 
 ---
 
@@ -896,14 +890,14 @@ Can:
 - view coachings within assigned country scope
 - view preparation data
 - view historical reports
-- plan and execute coachings on Verkoopleiders within assigned country scope when configured
+- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
+- fill in and modify visible coaching forms and planning details
+- change focus areas and the coached person within assigned scope
 
-Cannot by default:
+Cannot:
 
-- fill in representative coaching forms
-- edit representative coaching planning details
-- change focus areas for representative coachings
-- change representative for representative coachings
+- edit coachings outside assigned scope or in a locked lifecycle state
+- bypass the assigned country scope for changes
 
 ---
 
@@ -913,7 +907,7 @@ Can:
 
 - see all coachings
 - open coachings with Verkoopleider-level access
-- plan and execute coachings on Verkoopleiders across all countries and teams
+- plan and execute coachings on representatives and Verkoopleiders across all countries and teams
 - manage coachings across all countries and teams
 
 ---
@@ -927,6 +921,9 @@ Can:
 - A coaching may be opened from multiple entry points.
 - There is only one coaching workflow.
 - There is only one coaching form.
+- Only Representatives are unable to fill in or modify coaching forms.
+- Every other role may edit visible coachings within its effective scope.
+- Pending Approval, Completed and other locked lifecycle states remain read-only for every role.
 - Planning displays coachings but does not own the coaching workflow.
 - Dashboard, Planning, Begeleidingen and Mijn Team may open the same coaching.
 - Business logic must never be duplicated across entry points.

@@ -16,15 +16,21 @@ import type {
 
 export function actorCountryWhere(user: MockUser) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return {};
-  if (["ADMIN", "SALES_MANAGER"].includes(user.role)) {
+  if (user.role === "SALES_MANAGER") {
     return { country: { in: user.countryAccess ?? [] } };
+  }
+  if (user.role === "ADMIN") {
+    return { country: { in: user.countryAccess?.length ? user.countryAccess : [user.country] } };
   }
   return { country: user.country };
 }
 
 export function actorCanAccessCountry(user: MockUser, country: string) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return true;
-  if (["ADMIN", "SALES_MANAGER"].includes(user.role)) return (user.countryAccess ?? []).includes(country as Country);
+  if (user.role === "SALES_MANAGER") return (user.countryAccess ?? []).includes(country as Country);
+  if (user.role === "ADMIN") {
+    return (user.countryAccess?.length ? user.countryAccess : [user.country]).includes(country as Country);
+  }
   return user.country === country;
 }
 

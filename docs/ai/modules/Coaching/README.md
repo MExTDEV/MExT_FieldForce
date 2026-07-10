@@ -99,7 +99,7 @@ A Verkoopleider can plan, execute and follow up coachings for representatives wi
 
 A Country Manager can view data within the assigned country scope.
 
-The Country Manager has management visibility but does not normally fill in coaching forms or modify planned coachings.
+The Country Manager can fill in and modify visible coaching forms within the assigned country scope.
 
 ---
 
@@ -126,6 +126,11 @@ An Admin can view and manage data within the assigned country scope, depending o
 A Super Admin can see all countries, teams and users.
 
 For coaching access, the Super Admin can open items with the same operational access level as a Verkoopleider where needed.
+
+### Coaching form edit rule
+
+Only users with the Representative role are unable to fill in or modify coaching forms. Every other role may edit visible coachings within the existing country, team and user scope.
+Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
 
 ---
 
