@@ -1,0 +1,49 @@
+ALTER TABLE `Intervention`
+  MODIFY `status` ENUM(
+    'CONCEPT',
+    'GEPLAND',
+    'IN_UITVOERING',
+    'WACHT_OP_VT_INPUT',
+    'WACHT_OP_VT',
+    'WACHT_OP_AKKOORD',
+    'GEFINALISEERD',
+    'AFGESLOTEN',
+    'GESLOTEN',
+    'VOLTOOID',
+    'VERZONDEN_TER_AKKOORD',
+    'AKKOORD_DOOR_VERTEGENWOORDIGER',
+    'GEANNULEERD',
+    'NIET_UITGEVOERD'
+  ) NOT NULL;
+
+ALTER TABLE `ContactMomentDetail`
+  ADD COLUMN `subject` VARCHAR(191) NULL,
+  ADD COLUMN `contactType` VARCHAR(191) NULL,
+  ADD COLUMN `location` VARCHAR(191) NULL,
+  ADD COLUMN `internalNotes` TEXT NULL,
+  ADD COLUMN `reportHtml` LONGTEXT NULL,
+  ADD COLUMN `finalSnapshot` LONGTEXT NULL,
+  ADD COLUMN `sharedAt` DATETIME(3) NULL,
+  ADD COLUMN `sharedById` VARCHAR(191) NULL,
+  ADD COLUMN `closedReason` TEXT NULL,
+  ADD COLUMN `closedAt` DATETIME(3) NULL,
+  ADD COLUMN `closedById` VARCHAR(191) NULL,
+  ADD COLUMN `previousStatus` ENUM(
+    'CONCEPT',
+    'GEPLAND',
+    'IN_UITVOERING',
+    'WACHT_OP_VT_INPUT',
+    'WACHT_OP_VT',
+    'WACHT_OP_AKKOORD',
+    'GEFINALISEERD',
+    'AFGESLOTEN',
+    'GESLOTEN',
+    'VOLTOOID',
+    'VERZONDEN_TER_AKKOORD',
+    'AKKOORD_DOOR_VERTEGENWOORDIGER',
+    'GEANNULEERD',
+    'NIET_UITGEVOERD'
+  ) NULL;
+
+CREATE INDEX `ContactMomentDetail_sharedAt_idx` ON `ContactMomentDetail`(`sharedAt`);
+CREATE INDEX `ContactMomentDetail_closedAt_idx` ON `ContactMomentDetail`(`closedAt`);
