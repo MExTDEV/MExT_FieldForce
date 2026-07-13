@@ -64,6 +64,21 @@ npm run db:migrate:deploy
 
 Do not make manual destructive database edits. If existing records must be transformed, add a migration or a reviewed data backfill script.
 
+## Character set and text encoding
+
+All application text storage must use UTF-8 through MariaDB/MySQL `utf8mb4`.
+
+Rules:
+
+- Database defaults should be `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`.
+- Table defaults and textual columns must remain `utf8mb4`.
+- Prisma connection sessions must use `utf8mb4` for client, connection and result character sets.
+- CSV import files are treated as UTF-8 or UTF-8 with BOM. Invalid UTF-8 and already damaged replacement characters are rejected before commit.
+- Do not automatically repair stored `U+FFFD` replacement characters unless the correct value can be derived from a reliable source.
+- Use `npm run utf8:diagnose` to inspect database defaults, text-column character sets and suspicious stored values.
+
+Migration `0022_utf8_database_default_and_aurelie_repair` sets the active database default to `utf8mb4_unicode_ci` and repairs the unambiguous `Aurélie Milet` user record.
+
 ## Action point management
 
 Scoped action points for the Actiepunten module reuse `ActionDefinition`.
@@ -103,6 +118,95 @@ Rules:
 - Active period targets may not overlap for the same KPI and scope.
 - Reporting and Performance Circle inclusion are controlled separately by `counts_for_reporting` and `counts_for_performance_circle`.
 - Seed/config mode upserts KPI categories, types and target types and must not delete business data.
+
+### Operational verification 2026-07-12
+
+The database `MExT_FieldForce` on host `vps-2486653.yourvps.io` was checked for
+the Action point and KPI management migrations.
+
+- `0019_action_point_management` was already applied on 2026-07-10.
+- `0020_kpi_management` was already applied on 2026-07-10.
+- `npm run db:migrate:deploy` reported no pending migrations.
+- A logical SQL backup was created before seed validation:
+  `C:\Users\jand\AppData\Local\Temp\FieldForce-db-backups\FieldForce-MExT_FieldForce-20260712T135436Z.sql`.
+- `npm run db:seed:config` was run twice and remained idempotent.
+- Seeded counts after validation: 4 action-point target types, 7 KPI
+  categories, 5 KPI types, 5 KPI target types and 10 KPI definitions.
+- `npm run db:generate` could not complete locally because the Windows Prisma
+  query-engine DLL was locked during rename. Run it again after the lock is gone.
+- A retry on 2026-07-12 hit the same local lock. `npm run build` remains
+  pending because its prebuild step runs `prisma generate` first.
+
+### Operational verification 2026-07-13
+
+The same database `MExT_FieldForce` on host `vps-2486653.yourvps.io` was
+checked with `npm run db:migrate:status`.
+
+- Prisma found 29 local migrations.
+- Migrations `0021_normalize_user_permission_overrides` through
+  `0028_help_request_open_default` are applied on this database.
+- Migration `0029_contact_moment_private_photos` was pending before deployment.
+- `npm run db:generate` was retried once and again failed before client
+  generation with the Windows query-engine rename lock:
+  `EPERM: operation not permitted, rename ... query_engine-windows.dll.node`.
+- `npm run build` was not repeated because its `prebuild` step would rerun the
+  same blocked `prisma generate` command before Next.js compilation starts.
+
+Deployment update 2026-07-13:
+
+- Backup evidence was confirmed before deployment:
+  `C:\Users\jand\AppData\Local\Temp\FieldForce-db-backups\FieldForce-MExT_FieldForce-20260712T135436Z.sql`
+  existed locally, was last written on 2026-07-12 15:54:44 and was 610202 bytes.
+- `npm run db:migrate:deploy` applied
+  `0029_contact_moment_private_photos` successfully.
+- `npm run db:migrate:status` then reported: `Database schema is up to date!`.
+- The `MExT_FieldForce` database on `vps-2486653.yourvps.io:3306` now has all
+  29 local migrations applied.
+- `npm run db:generate` was retried after the migration deployment and still
+  failed before client generation with the same Windows query-engine rename
+  lock. `npm run build` was not run because it would start the same blocked
+  `prisma generate` command through `prebuild`.
+
+Build-chain update 2026-07-13:
+
+- The lock holder was identified as the externally managed FieldForce
+  development server on port 3000:
+  `npm run dev -- --port 3000` / `next dev --port 3000`.
+- With user approval, only that FieldForce devserver process tree was stopped.
+- `npm run db:generate` then succeeded and generated Prisma Client v6.19.3.
+- `npm run build` then succeeded. The build ran `prebuild`, generated Prisma
+  Client again, compiled Next.js successfully, checked types and generated all
+  static pages.
+- The development server was not restarted by the agent; restart remains
+  user-managed through `keep-fieldforce-dev.ps1`.
+
+## Configurable criterion scopes
+
+Migration `0025_configurable_criterion_scopes` adds the generic scope foundation for configurable criteria and score questions.
+
+Related tables:
+
+- `ConfigurableCriterion`: source table for configurable general coaching questions that were previously hardcoded, such as general evaluation and personality criteria.
+- `CriterionScopeLink`: one or more concrete scope links per criterion with scope `GLOBAL`, `COUNTRY`, `TEAM` or `USER` and an independent `sortOrder` per link.
+- `CoachingCriterionSnapshot`: immutable snapshot rows attached to an `Intervention` at coaching creation/planning time.
+
+Existing source tables remain the source of truth for their domain:
+
+- `KpiDefinition` for KPI criteria.
+- `CoachingCriterion` for Kapstok criteria.
+- `ConfigurableCriterion` for general evaluation, personality and other general coaching score questions.
+
+Rules:
+
+- Scope links are cumulative; they do not override each other.
+- The coached user determines applicable scopes through current country, team and user id.
+- When the same criterion applies through multiple links, it is deduplicated by stable criterion key.
+- The most specific applicable link wins for display grouping and sorting: User, Team, Country, Global.
+- Sort order belongs to the concrete `CriterionScopeLink`, not only to the criterion definition.
+- Existing KPI and Kapstok records are backfilled with scope links.
+- Existing hardcoded general evaluation and personality questions are seeded as global configurable criteria.
+- Existing historical coachings and score rows are not rewritten.
+- New coachings receive snapshots that must not be recalculated after later configuration, scope or user team/country changes.
 
 ## Required check for every future feature
 
@@ -148,6 +252,16 @@ Rules:
 
 ## Team leadership
 
+Permission persistence:
+
+- `Permission` is the basis table for every configurable permission key shown in role management.
+- `RolePermission` stores the configurable default per role and permission.
+- `UserPermission` stores only explicit user deviations; no row means inheritance.
+- Role configuration seed operations only create missing role permission rows.
+- Migration `0021_normalize_user_permission_overrides` deletes redundant user copies equal to their current role defaults and preserves actual overrides.
+- Migration `0024_seed_missing_permission_basis_records` adds missing action point, KPI and Coaching menu permission basis rows so role saves do not fail on unknown permission keys.
+- Saving a role applies its changed default to users without an explicit deviation.
+
 `Team` is the organisational team record. The assigned primary Verkoopleider is optional:
 
 - `Team.primaryLeaderId` is nullable.
@@ -178,3 +292,106 @@ Rules:
 - User import does not create missing teams.
 - Team import updates the nullable primary leader relation through existing team-save logic.
 - Import audit logs store topic and created/updated/skipped/error counts, not complete CSV content.
+
+## Representative levels and peer coaching
+
+Migration `0023_representative_levels_peer_coaching` adds the database
+foundation for Professional/Expert peer coaching:
+
+- `User.representativeLevel` with values Starter, Sales Executive, Professional
+  and Expert.
+- `RepresentativeLevelHistory` for auditable level changes.
+- peer-coaching metadata on `Intervention`, including mandatory-notification
+  choices, deviation flags/reason, actual start, deadlines, late-completion
+  reason, administrative close fields and copy relation.
+- `CoachingAction.reviewStatus` and review metadata for action-point proposals.
+- `Holiday` for central country-specific working-day calculations.
+- `AppSetting` with safe default `MAIL_TEST = true` and configurable
+  `MAIL_TEST_RECIPIENT`.
+- `NotificationDelivery` for event/channel/recipient deduplication and
+  MAIL TEST delivery logging.
+
+The permission-protected `Beheer -> Instellingen` screen reads and updates the
+global `MAIL_TEST` active state and `MAIL_TEST_RECIPIENT` through a dedicated
+API. An absent `MAIL_TEST` row is interpreted as `true`; an absent or invalid
+recipient falls back to `helpdesk@mext.be`. Switching `MAIL_TEST` to `false`
+requires the exact `PRODUCTIE` confirmation and writes an `AuditLog` entry in
+addition to `AppSetting.updatedById`.
+
+Deployment must run `npm run db:migrate:deploy` before code using these fields
+is started.
+# Contactmomenten
+
+Contactmomenten are stored as `Intervention` rows with
+`type = CONTACTMOMENT` and a one-to-one `ContactMomentDetail`.
+
+Migration `0026_contact_moment_execution_contract` adds:
+
+- `NIET_UITGEVOERD` to `InterventionStatus`;
+- optional detail fields for subject, contact type, location and internal
+  notes;
+- `reportHtml` for sanitized rich-text report content;
+- `finalSnapshot` for the immutable shared report snapshot;
+- share metadata: `sharedAt`, `sharedById`;
+- cancellation/not-completed metadata: `closedReason`, `closedAt`,
+  `closedById`, `previousStatus`;
+- indexes on `sharedAt` and `closedAt`.
+
+The existing `ActionPoint.interventionId` relation is the source link for
+action points created from contact moments.
+
+Migration `0029_contact_moment_private_photos` adds nullable
+`ContactMomentDetail.photosJson`. The column stores private photo metadata only.
+The binary files are stored on the application filesystem below
+`FIELD_FORCE_UPLOAD_ROOT/contact-moments/<contactMomentId>/`. If
+`FIELD_FORCE_UPLOAD_ROOT` is absent, the application falls back to
+`storage/uploads` under the application working directory.
+
+Deployment requirements for Contactmoment photos:
+
+- run `npm run db:migrate:deploy` before starting code that exposes the photo
+  API;
+- configure `FIELD_FORCE_UPLOAD_ROOT` to a persistent directory outside
+  transient build output;
+- include the upload root in server backups and restore drills;
+- keep the upload root private and serve files only through the authenticated
+  Contactmoment photo API;
+- do not manually edit `photosJson`; use the API so metadata and files remain
+  consistent.
+
+---
+
+# Hulpaanvragen
+
+Help requests are stored in `HelpRequest`.
+
+Migration `0027_help_request_handling_contract` adds the handling contract:
+
+- canonical enum values `OPEN`, `BEGELEIDING`, `CONTACTMOMENT`, `RETRAINING`,
+  `SALESTRAINING`, `GESLOTEN` and `INGETROKKEN`;
+- nullable `responsibleUserId` with relation `HelpResponsible`;
+- sanitized `descriptionHtml` and searchable `descriptionText`;
+- first-handling metadata: `firstHandledAt`, `firstHandledByUserId`;
+- withdrawal metadata: `withdrawnAt`, `withdrawnByUserId`;
+- `HelpRequestAnswer` with author relation, rich-text/plain-text body,
+  close flag and immutable `createdAt`.
+- Migration `0028_help_request_open_default` sets the database default for new
+  help requests to `OPEN`.
+
+Older enum values remain valid for existing rows:
+
+- `NIEUW`;
+- `IN_BEHANDELING`;
+- `VERVOLGACTIE_GEPLAND`;
+- `AFGESLOTEN`;
+- `GEANNULEERD`.
+
+Persistence rules:
+
+- new requests are created as `OPEN`;
+- representative edits/withdrawals are allowed only before first handling;
+- manager answers append records instead of mutating previous answers;
+- closing requires an answer with `closesRequest = true`;
+- follow-up selection keeps using `followUpType` and `linkedInterventionId`.
+
+---

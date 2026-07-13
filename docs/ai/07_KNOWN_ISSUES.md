@@ -1,20 +1,17 @@
 # Known Issues
 
-This document lists known issues, recurring problems and open implementation risks for MExT FieldForce.
+## Purpose
 
-Purpose:
+This document contains active defects, recurring technical risks and unresolved implementation limitations.
 
-- Prevent AI assistants from repeatedly rediscovering the same problems.
-- Make recurring issues visible before starting new development.
-- Distinguish confirmed open issues from historical issues that must be rechecked.
-- Avoid assumptions about whether a previous bug has already been fixed.
+It does not contain:
 
-This document does not replace `TODO.md`.
+- completed feature history;
+- normal development principles;
+- future business requirements;
+- resolved issues that no longer require verification.
 
-Use:
-
-- `TODO.md` for planned work and feature backlog.
-- `KNOWN_ISSUES.md` for defects, recurring risks and things that regularly break.
+Use the Coaching TODO for planned work and module documents for undefined business behaviour.
 
 ---
 
@@ -22,1015 +19,239 @@ Use:
 
 ## Confirmed Open
 
-The issue is known and still needs implementation or verification.
-
-## Historical / Verify
-
-The issue occurred before and may already be fixed.
-
-Do not assume it is fixed without checking.
+The issue is reproducible or known to remain unresolved.
 
 ## Recurring Risk
 
-The issue is not a single feature bug, but a recurring operational or architectural risk.
+The issue may recur because of the environment or architecture.
+
+## Historical / Verify
+
+The issue occurred previously. Verify only when working in the affected area.
 
 ---
 
-# Development / Runtime Issues
+# Development Environment
 
-## Webserver not running on port 3000
+## Windows Prisma query-engine file lock
 
-Status:
+Status: `Recurring Risk`
 
-Recurring Risk
+Symptoms:
 
-Description:
+- `prisma generate` or the `prebuild` step may fail because the Windows query-engine file is locked;
+- `npm run build` may stop before Next.js compilation.
 
-After Codex changes, the local webserver has repeatedly not been running correctly on port 3000.
+Rules:
 
-Expected behaviour:
+- determine whether the failure occurs before or during Next.js build;
+- do not report the application build as a code failure when only Prisma generation is blocked;
+- use an approved alternative such as existing generated client types or `prisma generate --no-engine` when appropriate;
+- do not repeatedly rerun the same blocked command;
+- report the limitation.
 
-- The development webserver must run on port 3000 unless explicitly changed.
-- After changes, verify that the application is reachable.
-- If the server is not running, restart it.
-- If another port is used temporarily, document it clearly.
+Latest verification:
 
-AI rule:
+- 2026-07-13: `npm run db:generate` failed before Prisma Client generation with
+  `EPERM: operation not permitted, rename ... query_engine-windows.dll.node`.
+- `npm run build` was not repeated because `prebuild` would rerun the same
+  blocked `prisma generate` step before Next.js compilation.
+- `npm run typecheck` passed with the existing generated client.
+- 2026-07-13 after applying `0029_contact_moment_private_photos`: the same
+  `npm run db:generate` rename-lock recurred. Build remains unverified for the
+  same local environment reason.
+- 2026-07-13 follow-up: the lock holder was the FieldForce `next dev --port
+  3000` process tree. After user-approved stop of that devserver, `npm run
+  db:generate` and `npm run build` both succeeded. This remains a recurring
+  local-development risk whenever the devserver has the Prisma engine loaded.
 
-After code changes, always verify the dev server status before considering the task complete.
+## Local development server
 
-Related document:
+Status: `Externally Managed`
 
-- `docs/ai/06_DEPLOYMENT.md`
+The local development server is managed by the user through:
 
----
+- `keep-fieldforce-dev.ps1`
 
-## Slow or unavailable local development server
+AI coding agents must not:
 
-Status:
+- start;
+- stop;
+- restart;
+- repeatedly probe;
+- change ports during normal work.
 
-Partially resolved on 2026-07-08 / Verify
-
-Description:
-
-The application has previously been reachable on a different port or has responded very slowly.
-
-Expected behaviour:
-
-- The application should be reachable on the expected development port.
-- Performance should be acceptable for local validation.
-- Port changes must not be left undocumented.
-
-AI rule:
-
-Do not assume the application is working because the build succeeded.
-
----
-
-## Plesk / VPS deployment instability
-
-Status:
-
-Historical / Verify
-
-Description:
-
-The online environment has previously shown deployment/runtime issues such as application startup failures or server errors.
-
-Expected behaviour:
-
-- Production deployment must follow the deployment documentation.
-- Node/Plesk startup configuration must not be changed without explicit need.
-- Environment variables and startup commands must be verified when deployment fails.
-
-Related documents:
-
-- `docs/ai/06_DEPLOYMENT.md`
-- `docs/technical/vps-deployment.md`
+This rule overrides old historical notes that asked an AI to verify or restart port 3000.
 
 ---
 
-# Authentication and Sessions
+# Coaching Lifecycle
 
-## Microsoft login should be primary authentication method
+## Multiple approval-like technical statuses
 
-Status:
+Status: `Confirmed Open`
 
-Confirmed Open / Ongoing Principle
+The code and schema contain multiple approval-related status variants, including concepts corresponding to:
 
-Description:
+- `WACHT_OP_AKKOORD`;
+- `VERZONDEN_TER_AKKOORD`;
+- approved/finalised states.
 
-The application should use Microsoft Entra ID authentication.
+Risk:
 
-Separate application login credentials should be avoided where possible.
+- filters, notifications, visibility and approval buttons may treat variants differently.
 
-Expected behaviour:
+Required direction:
 
-- First login may require “Aanmelden met Microsoft”.
-- Later sessions should automatically recognise the user whenever possible.
-- User identity and permissions must be derived from the authenticated account.
+- document the functional lifecycle;
+- map technical legacy statuses explicitly;
+- normalise shared status helpers before removing or migrating a legacy status;
+- do not add another status variant as a workaround.
 
-AI rule:
+## Pending Approval and Completed locks
 
-Do not introduce a separate login system unless explicitly requested.
+Status: `Ongoing Rule`
 
----
+Pending Approval and Completed records are read-only for normal editing.
 
-## User sessions must remain reliable
+Changes require the documented lifecycle transition first.
 
-Status:
-
-Historical / Verify
-
-Description:
-
-There have previously been concerns that user sessions were not being stored or recognised correctly.
-
-Expected behaviour:
-
-- Users should remain authenticated when appropriate.
-- Session handling must work consistently across roles.
-- Permission checks must remain tied to the authenticated user.
-
-AI rule:
-
-When working on authentication, verify session persistence and permission resolution.
+This is a rule, not an unresolved bug.
 
 ---
 
-# Permissions and Roles
+# Notifications
 
-## KPI import uses globally unique KPI code
+## Browser autoplay restrictions
 
-Status:
+Status: `Recurring Risk`
 
-Confirmed Open / Design Limitation
+Browsers may block the notification sound until the user has interacted with the application.
 
-Description:
+Required behaviour:
 
-The management KPI import uses the existing `KpiDefinition.code` field as the natural key.
-The current Prisma model defines `KpiDefinition.code` as globally unique.
+- the visual notification remains available;
+- audio failure must not break the notification workflow;
+- do not repeatedly play the same unread notification;
+- respect reduced-motion and browser restrictions.
 
-Expected behaviour:
+## Notification trigger coverage
 
-- KPI import can create or update global and country-scoped KPI definitions.
-- It cannot create multiple KPI definitions with the same code for different countries without a schema change.
-- Supporting `code + country` as a true composite natural key requires a reviewed Prisma migration and updates to existing KPI upsert logic.
+Status: `Confirmed Open`
 
-AI rule:
+Implemented:
 
-Do not work around this by inventing derived codes or duplicate KPI tables.
+- approval request notifications for Begeleidingen.
 
----
+Not fully defined or implemented:
 
-## Sales Manager role does not yet fully exist
+- generic todo notifications;
+- generic message notifications;
+- final planning-time notification behaviour for every intervention type.
 
-Status:
-
-Confirmed Open
-
-Description:
-
-Sales Manager is a separate application role.
-
-It is positioned above Verkoopleider and can have access to one or more countries.
-
-Expected behaviour:
-
-- Sales Manager must be created as a distinct role.
-- It must not be treated as Verkoopleider.
-- It must not be treated as Country Manager.
-- Access is country-scoped.
-- Menu visibility and user-level overrides must support this role.
-
-Related documents:
-
-- `docs/ai/03_ROLES.md`
-- `docs/ai/modules/Coaching/Navigation.md`
-- `docs/ai/modules/Coaching/TODO.md`
+Do not assume that the reusable notification foundation means all triggers exist.
 
 ---
 
-## Menu visibility must be permission-driven
+# KPI Management
 
-Status:
+## KPI code is globally unique
 
-Confirmed Open / Ongoing Principle
+Status: `Known Design Limitation`
 
-Description:
+The current KPI natural key uses a globally unique code.
 
-Main menu items are enabled or disabled through role configuration, with user-level overrides.
+Risk:
 
-Expected behaviour:
+- the same code cannot be independently created per country without a schema change.
 
-- Main menu visibility must not be hardcoded per role.
-- Role configuration defines the default.
-- User-level overrides can overrule the role.
-- Adding a new main menu item requires permission settings in role management.
+Do not work around this using hidden derived codes or duplicate tables.
 
-AI rule:
+A composite natural key requires an approved migration and updated upsert logic.
 
-When adding a new menu item, also update:
+## KPI migration and configuration seed
 
-- role permission configuration
-- user override configuration
-- menu rendering logic
-- documentation
+Status: `Verify Before Release`
 
----
+When KPI management schema changes are pending:
 
-## Begeleidingen role visibility needs implementation and verification
+- run the approved migration;
+- run the configuration seed;
+- verify relevant KPI management tests.
 
-Status:
-
-Historical / Verify
-
-Description:
-
-Begeleidingen role visibility has been implemented in the shared client and server coaching access helpers. Grouping by country, team and user is implemented for Country Manager, Sales Manager, Admin and Super Admin after the existing visibility filtering. Browser-based visual verification remains outside Codex unless explicitly requested.
-
-Expected behaviour:
-
-Representative:
-
-- sees only own coachings
-- sees planned coachings only when notification was enabled during planning
-- does not see surprise coachings before they reach “Wachten op akkoord”
-- cannot open unfinished coachings
-- can open coachings from status “Wachten op akkoord” onwards
-
-Verkoopleider:
-
-- sees coachings for own team
-- can open today coachings in the coaching input form
-- can open future coachings in planning/preparation mode
-- can modify future coachings within own team
-
-Sales Manager:
-
-- sees coachings within assigned country scope
-- opens and edits visible today/future coachings within assigned country scope
-
-Country Manager:
-
-- sees coachings within assigned country scope
-- opens and edits visible today/future coachings within assigned country scope
-
-Admin:
-
-- sees coachings within assigned country scope
-- opens and edits visible today/future coachings within assigned country scope
-
-Super Admin:
-
-- sees all coachings
-- can open coachings like a Verkoopleider
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Begeleidingen.md`
-- `docs/ai/modules/Coaching/TODO.md`
+Do not assume local code completion means the production schema is updated.
 
 ---
 
-# Dashboard Issues
+# Rich Text Editors
 
-## Actiehistoriek probably belongs under Beheer -> Log
+## WYSIWYG cursor reset
 
-Status:
+Status: `Historical / Verify`
 
-Resolved on 2026-07-08
+A controlled WYSIWYG editor previously reset cursor position while typing.
 
-Description:
+When modifying shared rich-text behaviour, verify:
 
-The Dashboard no longer shows action history.
-
-Current behaviour:
-
-- Actiehistoriek is available under Beheer -> Log.
-- Direct route and API reads require effective `menu.coaching.log`.
-- The existing filters and 15-row pagination are preserved.
-
-Reason:
-
-Action history is administrative logging and not part of the operational dashboard workflow.
-
-Verification:
-
-- `npm run test:menu-rights`
-- `npm run test:management-log`
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Dashboard.md`
-- `docs/ai/modules/Coaching/Navigation.md`
-- `docs/ai/modules/Coaching/TODO.md`
+- stable cursor position;
+- no reset on every keystroke;
+- no content loss;
+- correct read-only mode after sharing or lifecycle lock.
 
 ---
 
-# Mijn Team Issues
+# Plesk and Production Runtime
 
-## Included roles need final specification
+## Historical Plesk startup instability
 
-Status:
+Status: `Historical / Verify`
 
-Confirmed Open
+Production has previously experienced:
 
-Description:
+- process startup failures;
+- 504 responses;
+- Node/Plesk configuration issues;
+- missing environment variables;
+- memory or process problems.
 
-Mijn Team currently intends to show field employees.
+Only investigate this when deployment or production runtime is in scope.
 
-Current intended roles:
-
-- Vertegenwoordiger
-- Verkoopleider
-- Service Operator
-
-Open question:
-
-- Confirm whether other operational roles should also appear.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/MijnTeam.md`
-- `docs/ai/modules/Coaching/TODO.md`
+Follow deployment documentation and do not change startup configuration without evidence.
 
 ---
 
-## Fiche must be filtered by active modules
+# Open Role Definition
 
-Status:
+## Group Manager
 
-Resolved on 2026-07-08
+Status: `Confirmed Documentation Gap`
 
-Description:
+The technical role exists, but its complete business defaults and scope are not yet defined.
 
-The employee fiche now shows module-bound information only when the module is active, the user has the effective section permission and the target representative is within scope.
+Do not treat Group Manager as equivalent to Super Admin.
 
-Current behaviour:
+Use explicit effective permissions until the business definition is completed.
 
-- Disabled modules do not appear as fiche tabs or overview sections.
-- User-level overrides already present on the active session user are respected by the fiche visibility helper.
-- Timeline content is restricted to item types from visible module sections.
-- Undefined module workflows were not expanded.
+## Service Operator Coaching behaviour
 
-Verification:
+Status: `Confirmed Documentation Gap`
 
-- `npm run test:fiche-visibility`
-- `npm run test:data-access`
-- `npm run test:menu-rights`
-- `npm run test:coaching-visibility`
-- `npm run typecheck`
-- `npm run lint`
-- `npx next build`
+Service Operator may be included as a field employee, but complete Coaching actions are not defined.
 
-Related documents:
-
-- `docs/ai/modules/Coaching/MijnTeam.md`
-- `docs/ai/modules/Coaching/TODO.md`
+Do not invent Coaching creation, approval or management permissions.
 
 ---
 
-## Visual indicators in Mijn Team are partly complete
-
-Status:
-
-Confirmed Open
-
-Description:
-
-Mijn Team should visually communicate follow-up status. The planned coaching indicator has been implemented; score-based colouring still needs final configuration.
-
-Expected behaviour:
-
-- planned coaching → light-blue row
-- bad score → light-red row
-- planned coaching → badge on row
-- score threshold → configurable in Beheer → Instellingen
-
-Open question:
-
-- Default threshold between bad and good score must be defined.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/MijnTeam.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-# Begeleidingen Issues
-
-## Empty sections should be hidden
-
-Status:
-
-Not planned / Cancelled by business decision on 2026-07-08
-
-Description:
-
-The Begeleidingen page keeps its fixed Today, Future and History main sections visible, even when a section has no rows.
-
-Current behaviour:
-
-- Keep visible:
-
-- Begeleidingen van vandaag when none exist
-- Toekomstige begeleidingen when none exist
-- Uitgevoerde begeleidingen when none exist
-
-Empty country/team/user subgroups are not shown inside grouped management sections.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Begeleidingen.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-## Representative notification checkbox and approval notification workflow
-
-Status:
-
-Partially Completed / Verify
-
-Description:
-
-During coaching planning, the coach can choose whether the representative should be informed.
-
-Current status:
-
-- Checkbox exists.
-- In-app notification delivery now exists for coachings sent to the coached person for approval.
-- Pending approval notifications use the existing `Approval` record and `Approval.openedAt` as read marker.
-- General todo/message notification triggers are not implemented yet.
-
-Implemented behaviour:
-
-If enabled:
-
-- representative sees the coaching before execution
-- coaching appears in today/future sections when relevant
-
-If disabled:
-
-- representative must not see the planned coaching
-- representative only sees it once it reaches “Wachten op akkoord”
-
-Related documents:
-
-- `docs/ai/modules/Coaching/FLOW.md`
-- `docs/ai/modules/Coaching/Begeleidingen.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-## Future coaching edit mode needs implementation
-
-Status:
-
-Historical / Verify
-
-Description:
-
-When a Verkoopleider or Super Admin opens a future coaching, Begeleidingen and Planning now route to the existing planning/preparation screen.
-
-Expected editable fields:
-
-- representative
-- date
-- start time
-- end time
-- focus areas / criteria
-
-Expected preparation information:
-
-- previous Performance Circle
-- previous scores
-- previous action points
-- preparation history
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Begeleidingen.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-## Coaching creation and edit rights were inconsistent
-
-Status:
-
-Resolved on 2026-07-10
-
-Description:
-
-Management users could create a representative coaching but the stricter manage rule made that same coaching read-only after creation.
-
-Resolution:
-
-- Only Representatives are unable to fill in or modify coaching forms.
-- Every other role may edit visible coachings within its effective scope.
-- Client and server use one shared role rule.
-- Country, team and user scope remain enforced.
-- Pending Approval, Completed and other locked lifecycle states remain read-only for every role.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Begeleidingen.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-# Coaching Form Issues
-
-## WYSIWYG cursor jumps to beginning while typing action points
-
-Status:
-
-Historical / Verify
-
-Description:
-
-While filling in the WYSIWYG field for action point Tips & Tricks, the cursor previously jumped back to the beginning after each typed character.
-
-Expected behaviour:
-
-- Cursor position must remain stable while typing.
-- Controlled editor state must not reset on every keystroke.
-- Existing content must not be lost.
-
-AI rule:
-
-When modifying WYSIWYG fields, test typing behaviour.
-
----
-
-## Coaching form lifecycle must remain locked after Pending Approval
-
-Status:
-
-Confirmed Open / Ongoing Rule
-
-Description:
-
-Once a coaching reaches “Wachten op akkoord”, it becomes read-only.
-
-Expected behaviour:
-
-- no modifications while in Pending Approval
-- changes require withdrawing Pending Approval first
-- after changes, the coaching must be submitted again for approval
-
-Related documents:
-
-- `docs/ai/modules/Coaching/FLOW.md`
-
----
-
-# Actiepunten Issues
-
-## Actiepunten page is not functionally implemented
-
-Status:
-
-Resolved on 2026-07-08
-
-Description:
-
-The Actiepunten page now has a scoped overview and management flow based on existing scoped action definitions and concrete action points from visible coaching-related workflow/reporting data.
-
-Current behaviour:
-
-- show global action points
-- show country action points
-- show team action points
-- show personal action points
-- show open / to-do action points in two tabs: Actiepunten and Gebruikers
-- provide a search field in both tabs
-- group the Actiepunten tab in collapsible scope groups
-- group the Gebruikers tab per visible user
-- show type badges
-- apply role and scope visibility
-- show concrete workflow action points as personal/user-scoped items for the related representative
-- direct page and API access require active Actiepunten module and effective permissions
-- allow authorised users to create, edit, activate and deactivate scoped action definitions
-- link scoped action definitions to existing active products
-- count active, in-date scoped action definitions in the Dashboard open action point metric
-
-Known limitations:
-
-- Completion, approval, reopening and reassignment remain open because the detailed action-point lifecycle still needs business definition.
-- Open/Afgesloten follows `active` plus validity dates for scoped action definitions and the existing workflow status for concrete workflow action points; no separate close workflow or `closedAt` field was introduced.
-- Inactive or expired scoped definitions are visible only to management users.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Actiepunten.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
----
-
-## Detailed action point workflow still needs business definition
-
-Status:
-
-Confirmed Open
-
-Open topics:
-
-- who can close action points
-- whether action points require approval
-- whether action points can be reassigned
-- which statuses are required
-
-AI rule:
-
-Do not implement action point workflow assumptions before business definition is complete.
-
----
-
-# Planning Issues
-
-## Undefined planning item workflows
-
-Status:
-
-Confirmed Open
-
-Description:
-
-Some Planning item types exist conceptually but their workflows are not yet defined.
-
-Undefined or partially defined:
-
-- Retraining
-- Salestraining
-- Hulpaanvraag
-
-Expected direction:
-
-- each should eventually open a dedicated input or follow-up form
-
-AI rule:
-
-Do not invent form behaviour, statuses or fields.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Planning.md`
-- `docs/ai/modules/Coaching/Navigation.md`
-
----
-
-# Reporting and Undefined Modules
-
-## Contactmomenten, Retrainingen, Salestrainingen, Hulpaanvragen and Rapportage require business clarification
-
-Status:
-
-Confirmed Open
-
-Description:
-
-These modules exist as intended functional areas, but detailed workflows are still under business discussion.
-
-Required clarification:
-
-- purpose
-- users
-- create/open/edit/close behaviour
-- statuses
-- permissions
-- Planning visibility
-- Dashboard visibility
-- action point interaction
-- reporting inclusion
-
-AI rule:
-
-Do not invent screens, fields, statuses, approval flows, calculations or navigation behaviour for these modules.
-
----
-
-# Performance Circle and KPI Issues
-
-## Performance Circle data visibility must be verified
-
-Status:
-
-Historical / Verify
-
-Description:
-
-There have previously been situations where the Performance Circle did not show all expected data.
-
-Expected behaviour:
-
-- all scored criteria should be reflected correctly
-- current score and comparison score must be clearly displayed
-- colours must follow the defined comparison logic:
-  - better than comparison → green
-  - worse than comparison → red
-  - equal → neutral grey/blue
-
-AI rule:
-
-When modifying scoring or criteria, verify Performance Circle output.
-
----
-
-## KPI value input must be available where required
-
-Status:
-
-Historical / Verify
-
-Description:
-
-There have previously been cases where KPI definitions were visible but no value or target could be entered.
-
-Current behaviour:
-
-- KPI management supports default target values, min/max values and period-specific target values.
-- Period target conflicts are detected for the same KPI and scope.
-- Actual KPI performance values still come from the existing snapshot/import flow and were not redefined.
-
-Expected behaviour:
-
-- KPI definitions should support entering required values
-- target and actual values must be clearly distinguishable
-- permissions must determine who can edit KPI values
-
-AI rule:
-
-When modifying KPI forms, verify both display and input behaviour.
-
----
-
-# Documentation Issues
-
-## Keep documentation synchronized with implementation
-
-Status:
-
-Recurring Risk
-
-Description:
-
-The AI Knowledge Base must remain aligned with the application.
-
-Expected behaviour:
-
-When changing functionality, update relevant documentation:
-
-- module document
-- FLOW.md if workflow changes
-- Navigation.md if navigation changes
-- TODO.md if backlog changes
-- KNOWN_ISSUES.md if a known issue is resolved or discovered
-
-AI rule:
-
-A task is not complete if related documentation is outdated.
-
----
-
-# Resolved Issues
-
-## Team zonder Verkoopleider brak modules door volledige Team-decodering
-
-Date fixed:
-
-2026-07-09
-
-Description:
-
-Teams without assigned Verkoopleider are valid and store `Team.primaryLeaderId` as `null`. Some live routes still loaded full Team objects or Team relations, which could make Prisma fail with `expected non-nullable type String, found incompatible value of "null"` when the deployed Prisma Client was stale or when nullable team leadership data was decoded through a broad relation.
-
-Fix:
-
-- Mijn Team now builds team/member/leader snapshots through explicit null-safe SQL rows.
-- Gebruikers, vertegenwoordigers and workflow-state reads no longer use `team: true`; they select only the team fields they actually display.
-- Management team import/export no longer relies on `prisma.team.findMany()` for team CSV reads.
-- The optional team leader regression test now checks that critical server paths do not reintroduce full Team relation loading.
-
-Verification:
-
-- `npm run test:team-leader-optional`
-- `npm run typecheck`
-
-Related documents:
-
-- `docs/ai/02_DATABASE.md`
-- `docs/ai/modules/Coaching/MijnTeam.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
-## Actiehistoriek dashboard pagination
-
-Date fixed:
-
-2026-07-07
-
-Description:
-
-The Dashboard action history table now uses pagination with 15 items per page. Existing date, team and representative filters remain active while navigating pages.
-
-Verification:
-
-- `npm run lint`
-- `npm run build`
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Dashboard.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
-## Dashboard vandaag vraagt aandacht planned items
-
-Date fixed:
-
-2026-07-07
-
-Description:
-
-The Dashboard **Vandaag vraagt aandacht** card now shows visible FieldForce items planned for today in two sections: **Uit te voeren** and **Uitgevoerd**. It is displayed directly below the page header; smart coaching risks are shown separately as **Coachingprioriteiten** so an empty risk panel no longer contradicts today's planned items.
-
-Verification:
-
-- `npm run test:dashboard-attention`
-- `npm run test:planning-items`
-- `npm run test:coaching-visibility`
-- `npm run typecheck`
-- `npm run lint`
-- `npx next build`
-
-Known limitations:
-
-- Contactmomenten and Hulpaanvragen still follow the current Planning date basis because those workflows do not yet define a separate scheduled date field.
-- `npm run build` is still blocked by the known Windows Prisma query-engine file lock during `prisma generate` when the engine is held by the local environment.
-- Browser-based visual validation and port-3000 checks remain outside Codex according to `AGENTS.md`.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Dashboard.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
-## Mijn Team planned coaching indicator
-
-Date fixed:
-
-2026-07-08
-
-Description:
-
-Mijn Team now highlights a row light blue and shows the compact `Begeleiding gepland` badge when the current user may see a planned Begeleiding for that person today or in the future. Hidden surprise coachings for representatives do not trigger an indirect indicator.
-
-Verification:
-
-- `npm run test:my-team-planned`
-- `npm run test:coaching-visibility`
-- `npm run test:fiche-visibility`
-- `npm run test:menu-rights`
-- `npm run test:data-access`
-- `npm run typecheck`
-- `npm run lint`
-- `npx next build`
-
-Known limitation:
-
-- `npm run build` is still blocked by the known Windows Prisma query-engine file lock during `prisma generate` when the engine is held by the local environment.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/MijnTeam.md`
-- `docs/ai/modules/Coaching/TODO.md`
-
-## KPI management unavailable after team leader hotfix
-
-Date fixed:
-
-2026-07-09
-
-Description:
-
-The Beheer > KPI's screen could fail to load when the runtime database/client did not expose the newer KPI management tables or generated Prisma delegates. The management KPI read path now loads through raw SQL with fallbacks to existing `KpiDefinition` data and seeded category/type/scope metadata, so missing optional KPI management tables no longer block the full page load.
-
-Verification:
-
-- `npm run typecheck`
-- `npm run test:kpi-settings`
-- `npm run test:team-leader-optional`
-
-Related documents:
-
-- `docs/ai/02_DATABASE.md`
-- `docs/technical/database.md`
-
-## KPI reporting schema mismatch broke shared read paths
-
-Date fixed:
-
-2026-07-09
-
-Description:
-
-When Prisma migrations `0019_action_point_management` and `0020_kpi_management` were not yet applied on the active database, shared read paths that filtered on `KpiDefinition.counts_for_reporting` or `counts_for_performance_circle` could fail. This made Mijn Team, representatives, configuration and performance-backed screens unavailable even though the permission checks themselves were valid.
-
-Fix:
-
-- KPI schema presence checks were moved into a shared server helper.
-- Configuration, representatives and performance reads now keep using the modern KPI inclusion flags when the columns exist.
-- When the runtime database is still on the legacy KPI schema, those reads fall back to active KPI definitions and treat the newer inclusion flags as enabled.
-- This is a compatibility fallback only; Prisma migrations remain the source of truth and still need to be deployed.
-
-Verification:
-
-- `npm run typecheck`
-- `npm run lint`
-- `npm run test:performance`
-- `npm run test:my-team-planned`
-- `npm run test:kpi-settings`
-- `npm run test:team-leader-optional`
-- `npm run test:data-access`
-- `npm run test:fiche-visibility`
-- `npm run test:menu-rights`
-- `npx next build`
-
-Known limitation:
-
-- `npm run build` is still blocked by the known Windows Prisma query-engine file lock during `prisma generate` when the engine is held by the local environment.
-
-Related documents:
-
-- `docs/ai/02_DATABASE.md`
-- `docs/technical/database.md`
-- `docs/ai/modules/Coaching/MijnTeam.md`
-
-## Actiepunten page unavailable when action-point management migration is pending
-
-Date fixed:
-
-2026-07-09
-
-Description:
-
-The Actiepunten page could show a red load error when the active database did not yet contain migration `0019_action_point_management`. The failing read path expected `action_point_target_types`, `action_point_products` and `ActionDefinition.target_type_id`, even though existing scoped action definitions can still be read from legacy `ActionDefinition` fields.
-
-Fix:
-
-- Actiepunten reads now inspect schema availability before using the new management relations.
-- When migration `0019_action_point_management` is pending, reads fall back to legacy `ActionDefinition` fields.
-- Fallback target-type options are derived from the known scopes `GLOBAL`, `COUNTRY`, `TEAM` and `USER`.
-- Product links are returned empty in fallback mode.
-- Creating or editing action definitions still returns a clear migration-required message until the migration is deployed.
-
-Verification:
-
-- `npm run typecheck`
-- `npm run test:action-points-overview`
-- `npm run test:action-point-targets`
-- Direct runtime check of `listVisibleActionDefinitions`, `listActionPointTargetTypes` and `listActionPointProducts` against the active database.
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Actiepunten.md`
-- `docs/ai/02_DATABASE.md`
-
-## Planned or completed coaching save fails when action-point management migration is pending
-
-Date fixed:
-
-2026-07-09
-
-Description:
-
-Planning a new coaching or completing a coaching with a new action point could show the generic database-save error. The coaching transaction itself was rolled back because the automatic inheritance and creation of scoped `ActionDefinition` records used Prisma's default relation selection. On databases where migration `0019_action_point_management` was not yet applied, Prisma tried to read `ActionDefinition.target_type_id`, which does not exist in the legacy action-definition schema.
-
-Fix:
-
-- Coaching planning still inherits active scoped action definitions for the coached user.
-- The inheritance query now selects only the fields required to create `CoachingAction` rows.
-- Creating the personal follow-up `ActionDefinition` for a new coaching action point now returns only the created id.
-- The query no longer touches `ActionDefinition.target_type_id`, `action_point_target_types` or product links during coaching planning.
-- Prisma migrations remain the source of truth; migration `0019_action_point_management` should still be deployed for full action-point management functionality.
-
-Verification:
-
-- Direct runtime reproduction against a database missing `ActionDefinition.target_type_id`.
-- Direct runtime reproduction of completing a coaching with a new action point.
-- `npm run typecheck`
-- `npm run test:workflow`
-- `npm run test:coaching-visibility`
-
-Related documents:
-
-- `docs/ai/modules/Coaching/Begeleidingen.md`
-- `docs/ai/02_DATABASE.md`
-
-When an issue is fixed, move it here with:
-
-- date fixed
-- short description
-- verification method
-- related commit if available
+# Removed Historical Issues
+
+The following are no longer active known issues and belong in implementation history:
+
+- Sales Manager role creation;
+- action history location under Beheer → Log;
+- basic Actiepunten management implementation;
+- optional team leader support;
+- basic approval notification implementation;
+- role-based Coaching edit consistency fix;
+- fiche module filtering implementation.
+
+Reintroduce an item only if a new reproducible defect is found.
