@@ -134,10 +134,13 @@ async function main() {
     actorName: "Verkoopleider",
     entityTitle: "Hulp bij offerte",
     linkUrl: "/hulpaanvragen/help-1",
+    contentHtml: "<p><strong>Oefen</strong> dit in het volgende contactmoment.</p>",
   });
   assert.equal(template.subject, "Antwoord op hulpaanvraag");
   assert.match(template.text, /Er is een antwoord toegevoegd/);
   assert.match(template.text, /Hulp bij offerte/);
+  assert.match(template.text, /Oefen dit in het volgende contactmoment/);
+  assert.match(template.html, /<strong>Oefen<\/strong>/);
   assert.match(template.html, /Openen in FieldForce/);
 
   const germanTemplate = buildWorkflowMailTemplate({
@@ -149,6 +152,18 @@ async function main() {
   });
   assert.match(germanTemplate.text, /Aktion durch: Verkaufsleiter/);
   assert.match(germanTemplate.html, /In FieldForce öffnen/);
+
+  const confirmedTemplate = buildWorkflowMailTemplate({
+    type: "COACHING_APPROVAL_CONFIRMED",
+    language: "nl",
+    actorName: "Yoni Peeters",
+    entityTitle: "Begeleiding Yoni (Yoni Peeters - 2026-07-12)",
+    linkUrl: "/begeleidingen/coaching-3",
+  });
+  assert.equal(confirmedTemplate.subject, "Begeleiding akkoord bevestigd");
+  assert.match(confirmedTemplate.text, /De begeleide gebruiker heeft de begeleiding voor akkoord bevestigd/);
+  assert.match(confirmedTemplate.text, /Begeleiding Yoni/);
+  assert.match(confirmedTemplate.text, /Actie door: Yoni Peeters/);
 
   console.log("Centrale mailservice routeert via MAIL TEST en logt geen mailbody.");
 }

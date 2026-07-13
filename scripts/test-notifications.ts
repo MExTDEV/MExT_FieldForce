@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 
+import {
+  buildCoachingApprovalConfirmedEntityTitle,
+  buildCoachingApprovalConfirmedEventKey,
+  resolveCoachingApprovalConfirmedRecipients,
+} from "../lib/coaching/approval-notifications";
 import { buildCoachingApprovalNotification, buildInAppNotification } from "../lib/server/notifications";
 
 const sentForApprovalAt = new Date("2026-07-09T12:15:00.000Z");
@@ -104,8 +109,67 @@ assert.equal(contactNotification.isRead, true);
 assert.equal(contactNotification.readAt, genericUpdatedAt.toISOString());
 assert.equal(contactNotification.title, "Kontakt geteilt");
 
-const unknownNotification = buildInAppNotification({
+const approvalConfirmedNotification = buildInAppNotification({
   id: "delivery-3",
+  eventKey: "COACHING_APPROVAL_CONFIRMED:coaching:coaching-3:approval:approval-3",
+  recipientUserId: "leader-1",
+  status: "unread",
+  sourceModule: "BEGELEIDINGEN",
+  entityType: "coaching",
+  entityId: "coaching-3",
+  originalTo: "rep-user-1",
+  createdAt: genericCreatedAt,
+  updatedAt: genericUpdatedAt,
+}, "nl");
+
+assert.ok(approvalConfirmedNotification);
+assert.equal(approvalConfirmedNotification.type, "COACHING_APPROVAL_CONFIRMED");
+assert.equal(approvalConfirmedNotification.targetUserId, "leader-1");
+assert.equal(approvalConfirmedNotification.linkUrl, "/begeleidingen/coaching-3");
+assert.equal(approvalConfirmedNotification.triggeredByUserId, "rep-user-1");
+assert.equal(approvalConfirmedNotification.title, "Begeleiding akkoord bevestigd");
+assert.equal(
+  approvalConfirmedNotification.body,
+  "De begeleide gebruiker heeft de begeleiding voor akkoord bevestigd."
+);
+
+const approvalConfirmedRecipients = resolveCoachingApprovalConfirmedRecipients({
+  id: "coaching-3",
+  title: "Begeleiding Yoni",
+  ownerId: "leader-1",
+  initiatorId: "planner-1",
+  sentForApprovalById: "leader-1",
+  plannedDate: "2026-07-12",
+}, "rep-user-1");
+assert.deepEqual(approvalConfirmedRecipients, ["leader-1"]);
+assert.deepEqual(
+  resolveCoachingApprovalConfirmedRecipients({
+    id: "coaching-4",
+    title: "Begeleiding zonder eigenaar",
+    ownerId: "",
+    initiatorId: "planner-1",
+    sentForApprovalById: "submitter-1",
+  }, "submitter-1"),
+  ["planner-1"]
+);
+assert.equal(
+  buildCoachingApprovalConfirmedEventKey("coaching-3", "approval-3"),
+  "COACHING_APPROVAL_CONFIRMED:coaching:coaching-3:approval:approval-3"
+);
+assert.equal(
+  buildCoachingApprovalConfirmedEntityTitle({
+    id: "coaching-3",
+    title: "Begeleiding Yoni",
+    ownerId: "leader-1",
+    initiatorId: "planner-1",
+    plannedDate: "2026-07-12",
+    representativeName: "Yoni Peeters",
+  }),
+  "Begeleiding Yoni (Yoni Peeters - 2026-07-12)"
+);
+
+const unknownNotification = buildInAppNotification({
+  id: "delivery-4",
   eventKey: "UNKNOWN_EVENT:helpRequest:help-1",
   recipientUserId: "leader-1",
   status: "unread",

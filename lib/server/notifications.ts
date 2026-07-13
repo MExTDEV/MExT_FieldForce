@@ -59,6 +59,12 @@ const notificationMetadata: Record<
     link: (entityId: string) => string;
   }
 > = {
+  COACHING_APPROVAL_CONFIRMED: {
+    entityType: "coaching",
+    titleKey: "notifications.coachingApproval.confirmed.title",
+    bodyKey: "notifications.coachingApproval.confirmed.body",
+    link: (entityId) => `/begeleidingen/${entityId}`,
+  },
   HELP_REQUEST_CREATED: {
     entityType: "helpRequest",
     titleKey: "notifications.helpRequest.created.title",
@@ -112,6 +118,12 @@ const notificationMetadata: Record<
     titleKey: "notifications.contactMoment.notExecuted.title",
     bodyKey: "notifications.contactMoment.notExecuted.body",
     link: (entityId) => `/contactmomenten/${entityId}`,
+  },
+  ACTION_POINT_CLOSED: {
+    entityType: "actionPoint",
+    titleKey: "notifications.actionPoint.closed.title",
+    bodyKey: "notifications.actionPoint.closed.body",
+    link: (entityId) => `/actiepunten?actionPoint=${encodeURIComponent(entityId)}`,
   },
   PEER_COACHING_ASSIGNED: {
     entityType: "coaching",

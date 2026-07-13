@@ -88,6 +88,12 @@ The FieldForce record remains the business source of truth.
 
 Do not create duplicate FieldForce records when synchronisation retries.
 
+When a Begeleiding is planned from FieldForce, the saved FieldForce record is
+merged into the shared workflow state before the user returns to the
+Begeleidingen overview. Outlook sync success or failure only updates the sync
+status on that record; it does not determine whether the Begeleiding is visible
+in Planning or Begeleidingen.
+
 ---
 
 # Validation

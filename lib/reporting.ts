@@ -57,6 +57,8 @@ export type ReportingAction = {
   status: WorkflowActionPoint["status"];
   ownerId: string;
   updatedAt: string;
+  closedAt?: string;
+  closedByUserId?: string;
 };
 
 export type ReportingKpi = {
@@ -126,6 +128,8 @@ function actionToReporting(
     status: action.status,
     ownerId,
     updatedAt,
+    closedAt: action.closedAt,
+    closedByUserId: action.closedByUserId,
   };
 }
 
@@ -284,6 +288,8 @@ export function buildReportingDataset(
       status: action.status === "achterstallig" ? "in_uitvoering" : action.status,
       ownerId: leaderForTeam(representative.teamId, users)?.id ?? "",
       updatedAt: action.updatedAt,
+      closedAt: action.closedAt,
+      closedByUserId: action.closedByUserId,
     }];
   });
 

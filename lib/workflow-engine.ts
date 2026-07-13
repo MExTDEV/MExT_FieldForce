@@ -475,7 +475,8 @@ export function planHelpRequestFollowUp(
   helpRequestId: string,
   actorId: string,
   followUpType: FollowUpType,
-  representatives: Representative[]
+  representatives: Representative[],
+  answerHtml?: string
 ): WorkflowState {
   const request = current.helpRequests.find((item) => item.id === helpRequestId);
   if (!request) throw new Error("Hulpaanvraag niet gevonden.");
@@ -484,6 +485,9 @@ export function planHelpRequestFollowUp(
     throw new Error("Een begeleiding wordt pas na bevestiging in de planningswizard ingepland.");
   }
   const now = new Date().toISOString();
+  const answer = answerHtml && !isBlankRichText(answerHtml)
+    ? createHelpRequestAnswer(request, actorId, answerHtml, followUpType === "geen_actie", now)
+    : undefined;
   let linkedInterventionId: string | undefined;
   let contactMoments = current.contactMoments;
   let retrainings = current.retrainings;
@@ -546,6 +550,7 @@ export function planHelpRequestFollowUp(
             status: closesImmediately ? "gesloten" : followUpStatus,
             firstHandledAt: item.firstHandledAt ?? now,
             firstHandledByUserId: item.firstHandledByUserId ?? actorId,
+            answers: answer ? [...(item.answers ?? []), answer] : item.answers,
             updatedAt: now,
           }
         : item
@@ -846,16 +851,7 @@ export function sendHelpRequestAnswer(
   if (!canHandleHelpRequest(request)) throw new Error("Deze hulpaanvraag kan niet meer behandeld worden.");
   if (isBlankRichText(input.bodyHtml)) throw new Error("Een inhoudelijk antwoord is verplicht.");
   const now = new Date().toISOString();
-  const bodyHtml = sanitizeRichText(input.bodyHtml);
-  const answer = {
-    id: createId("help-answer"),
-    helpRequestId: request.id,
-    authorId: input.authorId,
-    bodyHtml,
-    bodyText: richTextToPlainText(bodyHtml),
-    closesRequest: Boolean(input.closesRequest),
-    createdAt: now,
-  };
+  const answer = createHelpRequestAnswer(request, input.authorId, input.bodyHtml, Boolean(input.closesRequest), now);
   const updated: HelpRequest = {
     ...request,
     status: input.closesRequest ? "gesloten" : "in_behandeling",
@@ -870,6 +866,25 @@ export function sendHelpRequestAnswer(
       ...current,
       helpRequests: current.helpRequests.map((item) => item.id === request.id ? updated : item),
     },
+  };
+}
+
+function createHelpRequestAnswer(
+  request: HelpRequest,
+  authorId: string,
+  rawBodyHtml: string,
+  closesRequest: boolean,
+  createdAt: string
+) {
+  const bodyHtml = sanitizeRichText(rawBodyHtml);
+  return {
+    id: createId("help-answer"),
+    helpRequestId: request.id,
+    authorId,
+    bodyHtml,
+    bodyText: richTextToPlainText(bodyHtml),
+    closesRequest,
+    createdAt,
   };
 }
 

@@ -22,6 +22,7 @@ const mailService = readFileSync(
 );
 
 assert.match(transitionRoute, /type: "COACHING_APPROVAL_REQUEST"/);
+assert.match(transitionRoute, /coachingApprovalConfirmedNotificationType/);
 assert.match(
   transitionRoute,
   /recipientUserId: coaching\.representativeId/,
@@ -41,6 +42,16 @@ assert.match(
   transitionRoute,
   /catch \(error\)[\s\S]*Begeleidingsmail voor akkoord kon niet worden verzonden/,
   "Een mailfout mag de opgeslagen workflowstatus niet terugdraaien."
+);
+assert.match(
+  transitionRoute,
+  /resolveCoachingApprovalConfirmedRecipients/,
+  "Na akkoord moet de verantwoordelijke coach server-side als ontvanger worden bepaald."
+);
+assert.match(
+  transitionRoute,
+  /Begeleidingsmail voor bevestigd akkoord kon niet worden verzonden/,
+  "Een mailfout bij de akkoord-terugmelding mag de opgeslagen workflowstatus niet terugdraaien."
 );
 assert.match(
   mailService,

@@ -62,6 +62,8 @@ export type HistoricalActionPoint = {
   due: string;
   progress: number;
   updatedAt: string;
+  closedAt?: string;
+  closedByUserId?: string;
 };
 
 export type MonthlyKpiSnapshot = {

@@ -212,6 +212,7 @@ model User {
   updatedKpiTargets        KpiTarget[]                 @relation("KpiTargetUpdatedBy")
   actionPoints             ActionPoint[]               @relation("RepresentativeActions")
   ownedActionPoints        ActionPoint[]               @relation("OwnedActions")
+  closedActionPoints       ActionPoint[]               @relation("ClosedActionPoints")
   reflections              Reflection[]
   approvals                Approval[]
   requestedHelp            HelpRequest[]               @relation("HelpRequester")
@@ -228,6 +229,7 @@ model User {
   loginSessions            UserLoginSession[]
   trainingParticipants     TrainingParticipant[]
   actionAssignments        ActionPointAssignment[]
+  closedActionAssignments  ActionPointAssignment[]      @relation("ClosedActionPointAssignments")
   interventionParticipants InterventionParticipant[]
   scopedActionDefinitions   ActionDefinition[]        @relation("ActionDefinitionUser")
   createdActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionCreatedBy")
@@ -1000,9 +1002,12 @@ model ActionPoint {
   targetValue      Decimal?                @db.Decimal(14, 2)
   currentValue     Decimal?                @db.Decimal(14, 2)
   dueDate          DateTime?
+  closedAt         DateTime?
+  closedByUserId   String?
   representative   User                    @relation("RepresentativeActions", fields: [representativeId], references: [id])
   intervention     Intervention?           @relation(fields: [interventionId], references: [id], onDelete: SetNull)
   owner            User                    @relation("OwnedActions", fields: [ownerId], references: [id])
+  closedBy         User?                   @relation("ClosedActionPoints", fields: [closedByUserId], references: [id], onDelete: SetNull)
   kpiDefinition    KpiDefinition?          @relation(fields: [kpiDefinitionId], references: [id])
   assignments      ActionPointAssignment[]
   createdAt        DateTime                @default(now())
@@ -1012,6 +1017,8 @@ model ActionPoint {
   @@index([ownerId])
   @@index([dueDate])
   @@index([status, dueDate])
+  @@index([closedAt])
+  @@index([closedByUserId])
   @@index([representativeId, updatedAt])
 }
 
@@ -1020,11 +1027,17 @@ model ActionPointAssignment {
   actionPointId    String
   representativeId String
   scope            String      @default("individual")
+  status           ActionPointStatus @default(OPEN)
+  closedAt         DateTime?
+  closedByUserId   String?
   actionPoint      ActionPoint @relation(fields: [actionPointId], references: [id], onDelete: Cascade)
   representative   User        @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+  closedBy         User?       @relation("ClosedActionPointAssignments", fields: [closedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([actionPointId, representativeId])
   @@index([representativeId])
+  @@index([status, closedAt])
+  @@index([closedByUserId])
 }
 
 model ActionDefinition {

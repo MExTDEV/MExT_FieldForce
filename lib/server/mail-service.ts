@@ -41,6 +41,7 @@ export type WorkflowEventMailInput = {
   triggeredByUserId?: string;
   entityTitle?: string;
   linkUrl?: string;
+  contentHtml?: string;
   context: MailRoutingContext;
 };
 
@@ -97,6 +98,7 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
     actorName,
     entityTitle: input.entityTitle,
     linkUrl: input.linkUrl,
+    contentHtml: input.contentHtml,
   });
   const transporter = nodemailer.createTransport(buildSmtpTransportOptions(settings));
   await sendFieldForceMailWithTransport({

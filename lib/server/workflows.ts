@@ -949,6 +949,7 @@ async function replaceAssignedActionPoints(
           create: await Promise.all(action.representativeIds.map(async (id) => ({
             representativeId: (await findRepresentativeUser(tx, id)).id,
             scope: action.scope,
+            status: toActionStatus(action.status),
           }))),
         },
       },
@@ -1118,6 +1119,8 @@ function toWorkflowActionPoint(item: {
   ownerId: string;
   priority: string;
   description: string;
+  closedAt?: Date | null;
+  closedByUserId?: string | null;
 }): WorkflowActionPoint {
   return {
     id: item.id,
@@ -1128,6 +1131,8 @@ function toWorkflowActionPoint(item: {
     owner: item.ownerId,
     priority: fromPriority(item.priority),
     description: item.description || undefined,
+    closedAt: item.closedAt?.toISOString(),
+    closedByUserId: item.closedByUserId ?? undefined,
   };
 }
 

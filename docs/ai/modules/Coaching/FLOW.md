@@ -117,6 +117,13 @@ The Begeleiding is created as Planned and appears in the relevant:
 
 Visibility for the coached Representative depends on the prior-notification choice.
 
+For the planner, the created record must become visible in the shared
+WorkflowProvider state immediately after the FieldForce save succeeds. The
+wizard must not navigate back to the Begeleidingen overview before the backend
+has accepted the create request. Outlook synchronisation status may be returned
+with the saved record, but Outlook failure must not block the valid FieldForce
+record from appearing.
+
 ---
 
 # 2. Preparation
@@ -233,6 +240,13 @@ The coached person may:
 
 The coached person does not edit the Coaching form.
 
+After approval is confirmed, the responsible coach/leader receives a
+server-side generated in-app notification and a best-effort FieldForce e-mail.
+Recipients are derived from the Begeleiding record, preferring the assigned
+owner/coach and falling back to the user who submitted for approval or the
+original initiator. The signer is excluded from the confirmation recipients and
+the notification event key is idempotent for the approval record.
+
 ---
 
 # 7. Completion
@@ -296,6 +310,7 @@ Implemented:
 - approval-request notification after submission;
 - approval-request e-mail to the coached person, with Reply-To set to the submitting user's stored e-mail address;
 - unread/read handling using the existing Approval record;
+- approval-confirmed notification and e-mail to the responsible coach/leader after successful signing;
 - visual notification;
 - sound attempt subject to browser restrictions.
 
@@ -312,7 +327,9 @@ Action Points created inside a Begeleiding are linked to the coached person.
 
 They reuse the shared Action Point model.
 
-The complete Action Point close, approve, reopen and reassign lifecycle remains owned by `Actiepunten.md` and is not fully defined.
+The Action Point close lifecycle remains owned by `Actiepunten.md`.
+Closing a linked Action Point does not modify the Begeleiding lifecycle, scores,
+approval lock, signed report or generated historical PDF.
 
 ---
 

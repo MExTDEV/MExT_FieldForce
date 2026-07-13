@@ -1,4 +1,5 @@
 import { translate } from "@/lib/i18n";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import type { AppNotificationType } from "@/lib/notifications";
 import type { Language } from "@/lib/types";
 
@@ -8,6 +9,7 @@ export type WorkflowMailTemplateInput = {
   actorName?: string;
   entityTitle?: string;
   linkUrl?: string;
+  contentHtml?: string;
 };
 
 export type WorkflowMailTemplate = {
@@ -26,6 +28,10 @@ const templateKeys: Partial<Record<AppNotificationType, { title: Parameters<type
   COACHING_APPROVAL_REQUEST: {
     title: "notifications.coachingApproval.title",
     body: "notifications.coachingApproval.body",
+  },
+  COACHING_APPROVAL_CONFIRMED: {
+    title: "notifications.coachingApproval.confirmed.title",
+    body: "notifications.coachingApproval.confirmed.body",
   },
   HELP_REQUEST_CREATED: {
     title: "notifications.helpRequest.created.title",
@@ -94,12 +100,15 @@ export function buildWorkflowMailTemplate(input: WorkflowMailTemplateInput): Wor
   const body = translate(input.language, keys.body);
   const recordLabel = translate(input.language, "mail.template.recordLabel");
   const actorLabel = translate(input.language, "mail.template.actorLabel");
+  const messageLabel = translate(input.language, "mail.template.messageLabel");
   const openLabel = translate(input.language, "mail.template.openLabel");
   const openAction = translate(input.language, "mail.template.openAction");
+  const contentText = richTextToPlainText(input.contentHtml);
   const lines = [
     body,
     input.entityTitle ? `${recordLabel}: ${input.entityTitle}` : undefined,
     input.actorName ? `${actorLabel}: ${input.actorName}` : undefined,
+    contentText ? `${messageLabel}: ${contentText}` : undefined,
     input.linkUrl ? `${openLabel}: ${input.linkUrl}` : undefined,
   ].filter(Boolean);
   return {
@@ -109,6 +118,7 @@ export function buildWorkflowMailTemplate(input: WorkflowMailTemplateInput): Wor
       `<p>${escapeHtml(body)}</p>`,
       input.entityTitle ? `<p><strong>${escapeHtml(recordLabel)}:</strong> ${escapeHtml(input.entityTitle)}</p>` : "",
       input.actorName ? `<p><strong>${escapeHtml(actorLabel)}:</strong> ${escapeHtml(input.actorName)}</p>` : "",
+      contentText ? `<p><strong>${escapeHtml(messageLabel)}:</strong></p><div>${sanitizeRichText(input.contentHtml ?? "")}</div>` : "",
       input.linkUrl ? `<p><a href="${escapeHtml(input.linkUrl)}">${escapeHtml(openAction)}</a></p>` : "",
     ].join(""),
   };

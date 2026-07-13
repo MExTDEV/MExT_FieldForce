@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  canCloseConcreteActionPoint,
   canCreateActionPointDefinition,
   canManageActionPointDefinitions,
   canManageScopedActionDefinition,
@@ -13,6 +14,7 @@ import {
   type ActionPointOverviewItem,
 } from "../lib/action-points/visibility";
 import { getAvailableDomains } from "../lib/app-switcher";
+import { isBlankRichText, richTextToPlainText, richTextToStructuredPlainText, sanitizeRichText } from "../lib/rich-text";
 import { roleTemplates } from "../lib/user-management";
 import type { AppModuleConfig, ManagedUser, MockUser, Representative, Role } from "../lib/types";
 
@@ -132,6 +134,7 @@ const personalNlAction = action({ id: "personal-nl", scope: "USER", scopeKey: "U
 const representative = user("REPRESENTATIVE");
 assert.equal(canCreateActionPointDefinition(representative), false, "Vertegenwoordiger kan geen actiepuntdefinities aanmaken.");
 assert.equal(canManageActionPointDefinitions(representative), false, "Vertegenwoordiger kan geen actiepuntdefinities beheren.");
+assert.equal(canCloseConcreteActionPoint(representative), false, "Vertegenwoordiger kan geen actiepunten sluiten.");
 assert.equal(canViewScopedActionDefinition(representative, personalOwnAction), true, "Vertegenwoordiger ziet eigen persoonlijke open actiepunten.");
 assert.equal(canViewScopedActionDefinition(representative, personalOtherTeamAction), false, "Vertegenwoordiger ziet geen persoonlijke actiepunten van anderen.");
 assert.equal(canViewScopedActionDefinition(representative, teamOtherAction), false, "Vertegenwoordiger ziet geen teamactiepunten buiten toegestane scope.");
@@ -140,6 +143,7 @@ assert.equal(canViewActionPointUserTab(representative), false, "Vertegenwoordige
 
 const leader = user("SALES_LEADER");
 assert.equal(canCreateActionPointDefinition(leader), true, "Verkoopleider kan persoonlijke actiepunten aanmaken.");
+assert.equal(canCloseConcreteActionPoint(leader), true, "Verkoopleider kan concrete actiepunten sluiten met sluitpermissie.");
 assert.equal(
   canManageScopedActionDefinition(leader, action({ id: "leader-owned", scope: "USER", teamId: "team-be-a", createdById: leader.id })),
   true,
@@ -157,21 +161,25 @@ assert.equal(canViewActionPointUserTab(leader), true, "Verkoopleider behoudt de 
 
 const countryManager = user("COUNTRY_MANAGER", { countryAccess: ["BE"] });
 assert.equal(canCreateActionPointDefinition(countryManager), true, "Country Manager kan actiepuntdefinities aanmaken.");
+assert.equal(canCloseConcreteActionPoint(countryManager), true, "Country Manager kan concrete actiepunten sluiten met sluitpermissie.");
 assert.equal(canManageScopedActionDefinition(countryManager, countryBeAction), true, "Country Manager beheert actiepunten binnen eigen landenscope.");
 assert.equal(canManageScopedActionDefinition(countryManager, globalAction), false, "Country Manager beheert geen globale actiepunten.");
 assert.equal(canViewScopedActionDefinition(countryManager, countryBeAction), true, "Country Manager ziet actiepunten binnen toegewezen landenscope.");
 assert.equal(canViewScopedActionDefinition(countryManager, countryNlAction), false, "Country Manager ziet geen actiepunten buiten toegewezen landenscope.");
 
 const salesManager = user("SALES_MANAGER", { countryAccess: ["BE"] });
+assert.equal(canCloseConcreteActionPoint(salesManager), false, "Sales Manager krijgt geen standaard sluitrecht voor actiepunten.");
 assert.equal(canViewScopedActionDefinition(salesManager, teamBeAction), true, "Sales Manager ziet actiepunten binnen toegewezen landenscope.");
 assert.equal(canViewScopedActionDefinition(salesManager, personalNlAction), false, "Sales Manager ziet geen actiepunten buiten toegewezen landenscope.");
 
 const admin = user("ADMIN", { countryAccess: ["BE"] });
+assert.equal(canCloseConcreteActionPoint(admin), true, "Admin kan concrete actiepunten sluiten met sluitpermissie.");
 assert.equal(canManageScopedActionDefinition(admin, globalAction), true, "Admin kan globale actiepunten beheren.");
 assert.equal(canViewScopedActionDefinition(admin, personalOwnAction), true, "Admin ziet actiepunten binnen toegewezen landenscope.");
 assert.equal(canViewScopedActionDefinition(admin, personalNlAction), false, "Admin ziet geen actiepunten buiten toegewezen landenscope.");
 
 const superAdmin = user("SUPER_ADMIN", { countryAccess: ["BE", "NL", "DE"] });
+assert.equal(canCloseConcreteActionPoint(superAdmin), true, "Super Admin kan concrete actiepunten sluiten.");
 assert.deepEqual(
   [globalAction, countryBeAction, countryNlAction, teamBeAction, teamOtherAction, personalOwnAction, personalNlAction]
     .filter((item) => canViewScopedActionDefinition(superAdmin, item))
@@ -231,4 +239,27 @@ const disabledLinks = getAvailableDomains(leader, inactiveActionPointModules)
   ?.links.map((link) => link.key) ?? [];
 assert.ok(!disabledLinks.includes("actionPoints"), "Disabled Actiepunten-module verdwijnt uit de navigatie.");
 
-console.log("Actiepunten-overview visibility, secties, badges en module-overrides zijn correct.");
+const richDescription = [
+  "<h2>Klantbezoek voorbereiden</h2>",
+  "<p><strong>Vet</strong>, <em>cursief</em>, <u>onderlijnd</u> en éèëçàäöüß.</p>",
+  "<ul><li>Eerste punt</li><li>Tweede punt</li></ul>",
+  "<ol><li>Stap één</li><li>Stap twee</li></ol>",
+  "<p><a href=\"https://mext.example/path\">Veilige link</a></p>",
+  "<script>alert('xss')</script><a href=\"javascript:alert(1)\" onclick=\"bad()\">Onveilig</a><iframe src=\"x\"></iframe>",
+].join("");
+const sanitized = sanitizeRichText(richDescription);
+assert.match(sanitized, /<strong>Vet<\/strong>/, "Toegestane rich-text opmaak blijft bewaard.");
+assert.match(sanitized, /rel="noopener noreferrer"/, "Veilige links krijgen defensieve link-attributen.");
+assert.ok(!sanitized.includes("<script"), "Script-tags worden verwijderd.");
+assert.ok(!sanitized.includes("onclick"), "Eventhandlers worden verwijderd.");
+assert.ok(!sanitized.includes("javascript:"), "Javascript-links worden verwijderd.");
+assert.ok(!sanitized.includes("<iframe"), "Iframe-tags worden verwijderd.");
+assert.equal(isBlankRichText("<p><br></p>"), true, "Lege editor-markup telt als leeg.");
+assert.equal(richTextToPlainText(richDescription).includes("<strong>"), false, "Compacte previews tonen geen HTML-tags.");
+const structured = richTextToStructuredPlainText(richDescription);
+assert.match(structured, /- Eerste punt/, "PDF/plain-text conversie behoudt bullets.");
+assert.match(structured, /1\. Stap één/, "PDF/plain-text conversie behoudt nummering.");
+assert.match(structured, /Veilige link \(https:\/\/mext\.example\/path\)/, "Links blijven leesbaar in niet-HTML uitvoer.");
+assert.match(structured, /éèëçàäöüß/, "Speciale tekens blijven leesbaar.");
+
+console.log("Actiepunten-overview visibility, secties, badges, rich-text en module-overrides zijn correct.");

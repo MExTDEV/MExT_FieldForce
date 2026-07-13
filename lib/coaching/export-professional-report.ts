@@ -11,7 +11,7 @@ import {
   mergeCriterionScores,
   normalizePerformanceScore,
 } from "@/lib/performance-data";
-import { isBlankRichText, richTextToPlainText } from "@/lib/rich-text";
+import { isBlankRichText, richTextToPlainText, richTextToStructuredPlainText } from "@/lib/rich-text";
 
 export type ProfessionalCoachingReportInput = {
   intervention: CoachingIntervention;
@@ -908,9 +908,10 @@ function drawActionPointsTable(pdf: Pdf, input: ProfessionalCoachingReportInput,
   const widths = [22, 68, 34, 30, 24];
   y = drawTableHeader(pdf, [t.priority, t.actionPoints, t.owner, t.deadline, t.status], widths, y + 1);
   for (const action of input.intervention.actionPoints) {
-    const actionText = action.description?.trim() ? `${action.title}\n${action.description}` : action.title;
-    const titleLines = pdf.splitTextToSize(actionText, 62) as string[];
-    const height = Math.max(9, 5 + titleLines.length * 3.2);
+    const description = richTextToStructuredPlainText(action.description);
+    const titleLines = pdf.splitTextToSize(action.title, 62) as string[];
+    const descriptionLines = description ? pdf.splitTextToSize(description, 62) as string[] : [];
+    const height = Math.max(9, 5 + (titleLines.length + descriptionLines.length) * 3.2);
     if (y + height > CONTENT_BOTTOM) {
       addWhitePage(pdf);
       drawSectionHeading(pdf, `${t.actionPoints} - ${t.continued}`, fullName(input.representative));
@@ -922,7 +923,16 @@ function drawActionPointsTable(pdf: Pdf, input: ProfessionalCoachingReportInput,
     pdf.setFontSize(6.6);
     pdf.setTextColor(SLATE_700);
     pdf.text(localizedValue(action.priority ?? "normaal", input.language), MARGIN + 3, y + 5);
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(SLATE_950);
     pdf.text(titleLines, MARGIN + 25, y + 5);
+    if (descriptionLines.length) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(SLATE_700);
+      pdf.text(descriptionLines, MARGIN + 25, y + 5 + titleLines.length * 3.2);
+    }
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor(SLATE_700);
     pdf.text(resolveActionOwner(action.owner ?? "", input), MARGIN + 93, y + 5, { maxWidth: 30 });
     pdf.text(action.due ? formatDate(action.due, input.language) : "-", MARGIN + 127, y + 5, { maxWidth: 26 });
     pdf.text(localizedValue(action.status, input.language), MARGIN + 157, y + 5, { maxWidth: 18 });

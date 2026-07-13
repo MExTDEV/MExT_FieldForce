@@ -338,13 +338,21 @@ Technical model:
 - `ActionDefinitionProduct` links action definitions to existing `Product` records.
 - `ActionTargetOverride` stores optional scoped target overrides.
 - `CoachingAction` and legacy `ActionPoint` remain concrete workflow-origin action points.
+- `ActionDefinition.tipsAndTricks` and concrete action point `description` /
+  `tipsAndTricks` fields store sanitized HTML as the canonical rich-text
+  action point description format.
 
 Rules:
 
 - Do not duplicate scoped action definitions in a second table.
-- Active, in-date `ActionDefinition` records are considered open scoped action points.
+- Active, in-date `ActionDefinition` records are considered open scoped action-point definitions.
 - Inactive or expired definitions remain visible to authorised management users.
-- The close, approval, reassignment and automatic per-user task generation workflows are not yet defined.
+- Concrete `ActionPoint` rows and `ActionPointAssignment` rows store close status
+  and metadata with `AFGEROND`, `closedAt` and `closedByUserId`.
+- Closing an action point must update only the concrete assignment or legacy
+  single-user action point, never the underlying scoped `ActionDefinition`.
+- Approval, reassignment and automatic per-user task generation workflows are
+  not yet defined.
 
 ---
 

@@ -44,12 +44,14 @@ import { ReportingDashboard } from "@/components/reporting-dashboard";
 import { SmartDashboardPanel, SmartTeamHeatmap } from "@/components/smart-coaching-dashboard";
 import { ActivityHistoryCard } from "@/components/activity-history-card";
 import { PerformanceEvolution } from "@/components/performance-evolution";
+import { PerformanceWheel } from "@/components/charts/PerformanceWheel";
 import { UsersManagementPage } from "@/components/user-management";
 import { PlanningCalendar } from "@/components/planning-calendar";
 import { ConfigurationManagement } from "@/components/configuration-management";
 import { SettingsManagement } from "@/components/settings-management";
 import { SessionFailure } from "@/components/session-state";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
+import { RichTextRenderer } from "@/components/rich-text-renderer";
 import { branding } from "@/config/branding";
 import {
   can,
@@ -99,6 +101,13 @@ import {
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
 import {
+  buildHistoricalScoreLookup,
+  historicalScoreKey,
+  type HistoricalComparisonResponse,
+  type HistoricalScoreReference,
+} from "@/lib/coaching/historical-comparison";
+import { translate, type TranslationKey } from "@/lib/i18n";
+import {
   canShowPlannedCoachingIndicator,
   type MyTeamMember,
 } from "@/lib/my-team";
@@ -125,11 +134,11 @@ import {
   hasHtmlMarkup,
   isBlankRichText,
   richTextToPlainText,
-  sanitizeRichText,
 } from "@/lib/rich-text";
 import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
+  canCloseConcreteActionPoint,
   canCreateActionPointDefinition,
   canManageActionPointDefinitions,
   canManageScopedActionDefinition,
@@ -1538,6 +1547,11 @@ function CoachingDossierDetail({
   const [isExportingReport, setIsExportingReport] = useState(false);
   const [reportMessage, setReportMessage] = useState<{ type: "success" | "error"; text: string }>();
   const [transitioning, setTransitioning] = useState(false);
+  const [historicalComparison, setHistoricalComparison] = useState<HistoricalComparisonResponse>({ options: [] });
+  const [historicalComparisonId, setHistoricalComparisonId] = useState("none");
+  const [historicalLoading, setHistoricalLoading] = useState(false);
+  const [historicalError, setHistoricalError] = useState<string>();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const updateActionTips = useCallback((actionId: string, tipsAndTricks: string) => {
     setLocal((current) => ({
       ...current,
@@ -1556,6 +1570,46 @@ function CoachingDossierDetail({
   const canManageCurrentCoaching = canManageCoaching(user, local);
   const canManageCompleted = canManageCurrentCoaching;
   const readOnly = !canManageCurrentCoaching || isApprovalLocked || isCompleted || local.status === "geannuleerd";
+  const historicalScoreLookup = useMemo(
+    () => buildHistoricalScoreLookup(historicalComparison.selected?.scores ?? []),
+    [historicalComparison.selected?.scores]
+  );
+  const currentHistoricalCoaching = useMemo(
+    () => coachingInterventionAsHistory(local, dossier, appointments, reportingUserName(local.ownerId, managedUsers), totalCoachingScore),
+    [appointments, dossier, local, managedUsers, totalCoachingScore]
+  );
+  const comparisonWheelCoachings = historicalComparison.selected
+    ? [historicalComparison.selected.history, currentHistoricalCoaching]
+    : [currentHistoricalCoaching];
+
+  const loadHistoricalComparison = useCallback(async (compareId?: string) => {
+    setHistoricalLoading(true);
+    setHistoricalError(undefined);
+    try {
+      const params = new URLSearchParams({ actorId: user.id });
+      if (compareId) params.set("compareId", compareId);
+      const response = await fetch(
+        `/api/workflows/coaching/${encodeURIComponent(local.id)}/historical-scores?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      const payload = (await response.json()) as HistoricalComparisonResponse & { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? t("coaching.scores.loadHistoricalError"));
+      }
+      setHistoricalComparison(payload);
+      setHistoricalComparisonId(payload.selectedId ?? "none");
+    } catch (error) {
+      setHistoricalComparison((current) => ({ ...current, selected: undefined, selectedId: undefined }));
+      setHistoricalError(error instanceof Error ? error.message : t("coaching.scores.loadHistoricalError"));
+      setHistoricalComparisonId("none");
+    } finally {
+      setHistoricalLoading(false);
+    }
+  }, [local.id, t, user.id]);
+
+  useEffect(() => {
+    void loadHistoricalComparison();
+  }, [loadHistoricalComparison]);
 
   async function transition(action: "reopen" | "send_for_approval" | "approve") {
     setTransitioning(true);
@@ -1619,7 +1673,7 @@ function CoachingDossierDetail({
     }
   }
 
-  function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "voltooid" | "geannuleerd") {
+  async function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "voltooid" | "geannuleerd") {
     if (["gesloten", "gefinaliseerd", "voltooid"].includes(status)) {
       const newActions = local.actionPoints.filter((action) => action.isNew && action.title.trim());
       if (newActions.length < 1) {
@@ -1631,31 +1685,35 @@ function CoachingDossierDetail({
         return;
       }
     }
-    const saved = workflowApi.saveCoachingStatus({
-      id: local.id,
-      representativeId: local.representativeId,
-      initiatorId: user.id,
-      ownerId: local.ownerId,
-      plannedDate: local.plannedDate,
-      startTime: local.startTime,
-      endTime: local.endTime,
-      notifyRepresentative: local.notifyRepresentative,
-      subject: local.subject,
-      internalNotes: local.internalNotes,
-      focusNames: local.focusNames,
-      scores: local.scores,
-      actionPoints: toPersistableCoachingActionPoints(local.actionPoints),
-      dossier: local.dossier,
-      appointments: local.appointments,
-    }, status);
-    setLocal(saved);
-    setMessage(
-      status === "gefinaliseerd"
-        ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger."
-        : status === "geannuleerd"
-          ? "Begeleiding geannuleerd. De gekoppelde Outlook-afspraak wordt verwijderd."
-          : `Begeleiding opgeslagen als ${status.replace("_", " ")}.`
-    );
+    try {
+      const saved = await workflowApi.saveCoachingStatus({
+        id: local.id,
+        representativeId: local.representativeId,
+        initiatorId: user.id,
+        ownerId: local.ownerId,
+        plannedDate: local.plannedDate,
+        startTime: local.startTime,
+        endTime: local.endTime,
+        notifyRepresentative: local.notifyRepresentative,
+        subject: local.subject,
+        internalNotes: local.internalNotes,
+        focusNames: local.focusNames,
+        scores: local.scores,
+        actionPoints: toPersistableCoachingActionPoints(local.actionPoints),
+        dossier: local.dossier,
+        appointments: local.appointments,
+      }, status);
+      setLocal(saved);
+      setMessage(
+        status === "gefinaliseerd"
+          ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger."
+          : status === "geannuleerd"
+            ? "Begeleiding geannuleerd. De gekoppelde Outlook-afspraak wordt verwijderd."
+            : `Begeleiding opgeslagen als ${status.replace("_", " ")}.`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Begeleiding kon niet worden opgeslagen.");
+    }
   }
 
   function updateDossier(partial: Partial<typeof dossier>) {
@@ -1704,6 +1762,11 @@ function CoachingDossierDetail({
           : item
       ),
     }));
+  }
+
+  function selectHistoricalComparison(compareId: string) {
+    setHistoricalComparisonId(compareId);
+    void loadHistoricalComparison(compareId);
   }
 
   function removeAppointment(id: string) {
@@ -1804,8 +1867,21 @@ function CoachingDossierDetail({
         </div>
       </section>
 
-      <ScoreSection title="II. Evaluatie algemene punten" scores={dossier.generalScores} readOnly={readOnly} onChange={(index, patch) => updateSimpleScore("generalScores", index, patch)} />
-      <ScoreSection title="III. Persoonlijkheid" scores={dossier.personalityScores} readOnly={readOnly} onChange={(index, patch) => updateSimpleScore("personalityScores", index, patch)} />
+      <HistoricalScoreComparisonPanel
+        t={t}
+        loading={historicalLoading}
+        error={historicalError}
+        options={historicalComparison.options}
+        selectedId={historicalComparisonId}
+        selected={historicalComparison.selected}
+        currentHistory={currentHistoricalCoaching}
+        wheelCoachings={comparisonWheelCoachings}
+        onSelect={selectHistoricalComparison}
+        onRetry={() => void loadHistoricalComparison(historicalComparisonId === "none" ? undefined : historicalComparisonId)}
+      />
+
+      <ScoreSection title="II. Evaluatie algemene punten" scores={dossier.generalScores} readOnly={readOnly} comparisonCategory="Dossier:Algemeen" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("generalScores", index, patch)} />
+      <ScoreSection title="III. Persoonlijkheid" scores={dossier.personalityScores} readOnly={readOnly} comparisonCategory="Dossier:Persoonlijkheid" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("personalityScores", index, patch)} />
 
       <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1833,6 +1909,8 @@ function CoachingDossierDetail({
                 <AppointmentEditor
                   appointment={appointment}
                   readOnly={readOnly}
+                  historicalScores={historicalScoreLookup}
+                  t={t}
                   onChange={(patch) => updateAppointment(appointment.id, patch)}
                   onScoreChange={(scoreIndex, patch) => updateAppointmentScore(appointment.id, scoreIndex, patch)}
                 />
@@ -2022,7 +2100,7 @@ function CompletedCoachingSummary({
         <div id="actiepunten" className="card scroll-mt-24 p-5">
           <h2 className="text-lg font-bold text-slate-950">Actiepunten</h2>
           <div className="mt-4 space-y-2">
-            {dedupeById(intervention.actionPoints).map((action) => <div key={action.id} className="rounded-xl bg-slate-50 px-4 py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"} · prioriteit {action.priority ?? "normaal"}</p></div><StatusBadge status={action.status} /></div><p className="mt-3 text-sm leading-6 text-slate-600">{action.description?.trim() || "Geen opmerking bij dit actiepunt."}</p></div>)}
+            {dedupeById(intervention.actionPoints).map((action) => <div key={action.id} className="rounded-xl bg-slate-50 px-4 py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"} · prioriteit {action.priority ?? "normaal"}</p></div><StatusBadge status={action.status} /></div>{!isBlankRichText(action.description) && <RichTextRenderer value={action.description} className="mt-3 text-sm leading-6 text-slate-600" />}</div>)}
             {intervention.actionPoints.length === 0 && <p className="text-sm text-slate-500">Geen actiepunten.</p>}
           </div>
         </div>
@@ -2099,7 +2177,7 @@ function OptionalCoachingRemark({ value, className }: { value?: string | null; c
   if (isBlankRichText(value)) return <div className={className} aria-hidden="true" />;
   const text = value ?? "";
   if (hasHtmlMarkup(text)) {
-    return <div className={className} dangerouslySetInnerHTML={{ __html: sanitizeRichText(text) }} />;
+    return <RichTextRenderer value={text} className={className} />;
   }
   return <p className={className}>{richTextToPlainText(text)}</p>;
 }
@@ -2207,7 +2285,7 @@ const RichTextEditor = memo(function RichTextEditor({ label, value, onChange, di
   ] as const;
   return <div><p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     {!disabled && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 p-2">{controls.map(([text, name]) => <button key={name} type="button" title={name} className="grid h-8 min-w-8 place-items-center rounded-md px-2 text-xs font-bold hover:bg-white" onMouseDown={(event) => { event.preventDefault(); command(name); }}>{text}</button>)}<button type="button" className="h-8 rounded-md px-2 text-xs font-bold hover:bg-white" onMouseDown={(event) => { event.preventDefault(); const url = window.prompt("Link (https://…)"); if (url) command("createLink", url); }}>Link</button><input type="color" title="Tekstkleur" className="h-8 w-8" onChange={(event) => command("foreColor", event.target.value)} /></div>}
-    <div ref={editorRef} className="min-h-28 p-3 text-sm leading-6 outline-none" contentEditable={!disabled} suppressContentEditableWarning onInput={emitChange} />
+    <div ref={editorRef} className="rich-text-editor min-h-28 p-3 text-sm leading-6 outline-none" contentEditable={!disabled} suppressContentEditableWarning onInput={emitChange} />
   </div></div>;
 });
 
@@ -2263,23 +2341,120 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 font-semibold text-slate-900">{value || "-"}</p></div>;
 }
 
-function ScoreSection({ title, scores, readOnly, onChange }: { title: string; scores: { criterion: string; score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment: string }[]; readOnly: boolean; onChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void }) {
+function HistoricalScoreComparisonPanel({
+  t,
+  loading,
+  error,
+  options,
+  selectedId,
+  selected,
+  currentHistory,
+  wheelCoachings,
+  onSelect,
+  onRetry,
+}: {
+  t: (key: TranslationKey) => string;
+  loading: boolean;
+  error?: string;
+  options: HistoricalComparisonResponse["options"];
+  selectedId: string;
+  selected?: HistoricalComparisonResponse["selected"];
+  currentHistory: HistoricalCoaching;
+  wheelCoachings: HistoricalCoaching[];
+  onSelect: (id: string) => void;
+  onRetry: () => void;
+}) {
+  return (
+    <section className="card overflow-hidden">
+      <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="eyebrow">{t("coaching.scores.title")}</p>
+          <h2 className="mt-1 text-lg font-bold text-slate-950">{t("coaching.scores.representativeScores")}</h2>
+          {selected && (
+            <p className="mt-1 text-sm text-slate-500">
+              {t("coaching.scores.previousCoaching")}: {formatShortDate(selected.date)} - {selected.ownerName}
+            </p>
+          )}
+        </div>
+        {options.length > 0 ? (
+          <label className="min-w-0 text-xs font-semibold text-slate-500 lg:max-w-md">
+            {t("coaching.scores.compareWithPrevious")}
+            <select
+              className="field mt-1 w-full min-w-0"
+              value={selectedId}
+              disabled={loading}
+              onChange={(event) => onSelect(event.target.value)}
+            >
+              <option value="none">{t("coaching.scores.noComparison")}</option>
+              {options.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {formatShortDate(option.date)} - {option.ownerName}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+            {t("coaching.scores.noHistoricalScores")}
+          </p>
+        )}
+      </div>
+      <div className="space-y-4 p-5 sm:p-6">
+        {loading && (
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+            {t("coaching.scores.loadingHistoricalScores")}
+          </div>
+        )}
+        {error && (
+          <div role="alert" className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            <button type="button" className="btn-secondary bg-white py-2 text-xs" onClick={onRetry}>
+              {t("coaching.scores.retry")}
+            </button>
+          </div>
+        )}
+        {selected && !error && (
+          <div>
+            <PerformanceWheel
+              representativeId={currentHistory.representativeId}
+              currentInterventionId={currentHistory.id}
+              comparisonInterventionId={selected.id}
+              type="kapstok"
+              coachings={wheelCoachings}
+            />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScoreSection({ title, scores, readOnly, comparisonCategory, historicalScores, t, onChange }: { title: string; scores: { criterion: string; score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment: string }[]; readOnly: boolean; comparisonCategory?: string; historicalScores?: ReadonlyMap<string, HistoricalScoreReference>; t: (key: TranslationKey) => string; onChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void }) {
   const options = [0, 1, 2, 3, 4, 5, "nvt"] as const;
+  const showComparison = Boolean(comparisonCategory && historicalScores?.size);
   return (
     <section className="card p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-950">{title}</h2>
       <div className="mt-4 grid gap-3">
-        {scores.map((item, index) => (
-          <div key={item.criterion} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[220px_1fr_1.4fr] lg:items-center">
+        {scores.map((item, index) => {
+          const previousScore = comparisonCategory
+            ? historicalScores?.get(historicalScoreKey(comparisonCategory, item.criterion))?.score
+            : undefined;
+          return (
+          <div key={item.criterion} className={`grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:items-center ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_110px_minmax(260px,1.2fr)_100px_minmax(220px,1fr)]" : "lg:grid-cols-[220px_1fr_1.4fr]"}`}>
             <p className="font-semibold text-slate-900">{item.criterion}</p>
+            {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
             <div className="flex flex-wrap gap-2">
               {options.map((option) => (
                 <button key={option} type="button" disabled={readOnly} onClick={() => onChange(index, { score: option })} className={`rounded-lg border px-3 py-2 text-sm font-bold ${item.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{option === "nvt" ? "NVT" : option}</button>
               ))}
             </div>
+            {showComparison && <ScoreDifferenceCell current={item.score} previous={previousScore} t={t} />}
             <input className="field" disabled={readOnly} placeholder="Opmerking" value={item.comment} onChange={(event) => onChange(index, { comment: event.target.value })} />
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -2288,15 +2463,20 @@ function ScoreSection({ title, scores, readOnly, onChange }: { title: string; sc
 function AppointmentEditor({
   appointment,
   readOnly,
+  historicalScores,
+  t,
   onChange,
   onScoreChange,
 }: {
   appointment: CoachingAppointment;
   readOnly: boolean;
+  historicalScores?: ReadonlyMap<string, HistoricalScoreReference>;
+  t: (key: TranslationKey) => string;
   onChange: (patch: Partial<CoachingAppointment>) => void;
   onScoreChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void;
 }) {
   const options = [1, 2, 3, 4, 5, "nvt"] as const;
+  const showComparison = Boolean(historicalScores?.size);
   return (
     <div className="mb-4 rounded-2xl border border-brand-100 bg-white p-4">
       <div className="grid gap-3 md:grid-cols-5">
@@ -2308,9 +2488,13 @@ function AppointmentEditor({
       </div>
       <div className="mt-4 grid gap-3">
         <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Beoordeling afspraak</p>
-        {appointment.scores.map((score, index) => (
-          <div key={`${score.criterion}-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(180px,1fr)_260px_minmax(220px,1fr)] lg:items-center">
+        {appointment.scores.map((score, index) => {
+          const { group, detail } = splitScoreCriterion(score.criterion);
+          const previousScore = historicalScores?.get(historicalScoreKey(group, detail))?.score;
+          return (
+          <div key={`${score.criterion}-${index}`} className={`grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:items-center ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_90px_260px_90px_minmax(220px,1fr)]" : "lg:grid-cols-[minmax(180px,1fr)_260px_minmax(220px,1fr)]"}`}>
             <p className="text-sm font-semibold text-slate-900">{score.criterion}</p>
+            {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
             <div className="flex flex-wrap gap-1.5">
               {options.map((option) => (
                 <button
@@ -2324,10 +2508,43 @@ function AppointmentEditor({
                 </button>
               ))}
             </div>
+            {showComparison && <ScoreDifferenceCell current={score.score} previous={previousScore} t={t} />}
             <input className="field" disabled={readOnly} placeholder="Opmerking per criterium" value={score.comment} onChange={(event) => onScoreChange(index, { comment: event.target.value })} />
           </div>
-        ))}
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+function HistoricalScoreCell({ score, t }: { score?: number; t: (key: TranslationKey) => string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("coaching.scores.previousScore")}</p>
+      <p className="mt-1 text-sm font-bold text-slate-700">{score === undefined ? "-" : score}</p>
+    </div>
+  );
+}
+
+function ScoreDifferenceCell({ current, previous, t }: { current: CoachingSimpleScore["score"]; previous?: number; t: (key: TranslationKey) => string }) {
+  const difference = typeof current === "number" && previous !== undefined ? current - previous : undefined;
+  const tone = difference === undefined
+    ? "bg-slate-100 text-slate-600"
+    : difference > 0
+      ? "bg-emerald-100 text-emerald-800"
+      : difference < 0
+        ? "bg-rose-100 text-rose-800"
+        : "bg-slate-200 text-slate-700";
+  const label = difference === undefined
+    ? (previous === undefined ? t("coaching.scores.noPreviousScore") : "-")
+    : difference > 0
+      ? `+${difference}`
+      : String(difference);
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("coaching.scores.difference")}</p>
+      <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${tone}`}>{label}</span>
     </div>
   );
 }
@@ -2362,6 +2579,79 @@ function calculateTotalCoachingScore(dossier: CoachingDossier, appointments: Coa
   if (appointmentScore === undefined) return (mainScore ?? 0) * 20;
   if (mainScore === undefined) return appointmentScore * 20;
   return (appointmentScore * 20 * 0.8) + (mainScore * 20 * 0.2);
+}
+
+function coachingInterventionAsHistory(
+  intervention: CoachingWorkflowItem,
+  dossier: CoachingDossier,
+  appointments: CoachingAppointment[],
+  ownerName: string,
+  totalScore?: number
+): HistoricalCoaching {
+  const appointmentCriterionScores = criterionScoresFromRows(
+    appointments.flatMap((appointment) =>
+      appointment.scores.map((score) => ({
+        criterion: score.criterion,
+        score: score.score === "nvt" ? null : score.score,
+        notApplicable: score.score === "nvt",
+      }))
+    )
+  );
+  const dossierCriterionScores = [
+    ...dossier.generalScores.map((score) => ({ ...score, category: "Dossier:Algemeen" })),
+    ...dossier.personalityScores.map((score) => ({ ...score, category: "Dossier:Persoonlijkheid" })),
+  ].flatMap((score) =>
+    score.score === "nvt"
+      ? []
+      : [{
+        focus: score.category,
+        criterion: score.criterion,
+        score: normalizePerformanceScore(score.score),
+        scored: true,
+      }]
+  );
+  const criterionScores = mergeCriterionScores(appointmentCriterionScores, dossierCriterionScores);
+  const phaseScores = averageScoreDimensions(criterionScores
+    .filter((score) => score.scored !== false)
+    .map((score) => ({ label: score.focus, score: score.score })));
+
+  return {
+    id: intervention.id,
+    representativeId: intervention.representativeId,
+    date: intervention.plannedDate ?? intervention.createdAt.slice(0, 10),
+    ownerId: intervention.ownerId,
+    ownerName,
+    status: intervention.status,
+    overallScore: totalScore,
+    focusNames: [...new Set([
+      ...intervention.focusNames,
+      ...criterionScores.map((score) => score.focus),
+    ])],
+    phaseScores: phaseScores.length
+      ? phaseScores
+      : totalScore !== undefined
+        ? [{ label: "Algemene begeleiding", score: Math.round(totalScore) }]
+        : [],
+    generalScores: [...dossier.generalScores, ...dossier.personalityScores].flatMap((score) =>
+      score.score === "nvt"
+        ? []
+        : [{ label: score.criterion, score: normalizePerformanceScore(score.score) }]
+    ),
+    criterionScores,
+  };
+}
+
+function averageScoreDimensions(items: { label: string; score: number }[]) {
+  const grouped = new Map<string, number[]>();
+  for (const item of items) {
+    const current = grouped.get(item.label) ?? [];
+    current.push(item.score);
+    grouped.set(item.label, current);
+  }
+  return [...grouped.entries()].map(([label, values]) => ({
+    label,
+    score: Math.round(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)),
+  }));
 }
 
 function formatPercentage(value?: number) {
@@ -2767,6 +3057,7 @@ function ScopedActionPoints() {
   const [targetTypes, setTargetTypes] = useState<ActionPointTargetTypeOption[]>([]);
   const [products, setProducts] = useState<ActionPointProductOption[]>([]);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [formError, setFormError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -2776,6 +3067,8 @@ function ScopedActionPoints() {
   const [productSearch, setProductSearch] = useState("");
   const [draft, setDraft] = useState<ActionDefinitionDraft>();
   const [detailAction, setDetailAction] = useState<ActionPointOverviewItem>();
+  const [closeCandidate, setCloseCandidate] = useState<ActionPointOverviewItem>();
+  const [closedWorkflowActions, setClosedWorkflowActions] = useState<Record<string, Pick<ActionPointOverviewItem, "status" | "closedAt" | "closedByUserId" | "closedByName" | "updatedAt">>>({});
   const allowed = canAccessActionPointsOverview(user, modules);
   const canCreateDefinitions = canCreateActionPointDefinition(user);
   const canManageDefinitions = canManageActionPointDefinitions(user);
@@ -2792,11 +3085,16 @@ function ScopedActionPoints() {
       if (!representative) return [];
       const ownerName = action.ownerId ? reportingUserName(action.ownerId, managedUsers) : undefined;
       const representativeName = `${representative.firstName} ${representative.lastName}`;
+      const actionPointId = action.id.includes(":") ? action.id.split(":")[0] : action.id;
+      const override = closedWorkflowActions[`${actionPointId}:${action.representativeId}`] ?? closedWorkflowActions[actionPointId];
       return [{
         id: `workflow:${action.id}:${action.representativeId}`,
         source: "workflow",
-        status: action.status,
+        status: override?.status ?? action.status,
         due: action.due,
+        closedAt: override?.closedAt ?? action.closedAt,
+        closedByUserId: override?.closedByUserId ?? action.closedByUserId,
+        closedByName: override?.closedByName ?? (action.closedByUserId ? reportingUserName(action.closedByUserId, managedUsers) : undefined),
         title: action.title,
         description: action.linkedKpi ? `KPI: ${action.linkedKpi}` : "",
         tipsAndTricks: "",
@@ -2809,14 +3107,15 @@ function ScopedActionPoints() {
         active: !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(action.status),
         validFrom: action.updatedAt.slice(0, 10),
         validUntil: action.due || undefined,
-        updatedAt: action.updatedAt,
+        updatedAt: override?.updatedAt ?? action.updatedAt,
+        concreteActionPointId: actionPointId,
         ownerName,
         representativeId: action.representativeId,
         representativeName,
         originLabel: "Gekoppeld actiepunt",
       }];
     });
-  }, [allowed, managedUsers, performanceDataset, representatives, state, user]);
+  }, [allowed, closedWorkflowActions, managedUsers, performanceDataset, representatives, state, user]);
   const actionPointItems = useMemo<ActionPointOverviewItem[]>(
     () => [
       ...definitions.map((definition) => ({ ...definition, source: "definition" as const })),
@@ -2830,8 +3129,8 @@ function ScopedActionPoints() {
     [sections],
   );
   const closedActionPointItems = useMemo(
-    () => canManageDefinitions ? sections.find((section) => section.id === "closed")?.items ?? [] : [],
-    [canManageDefinitions, sections],
+    () => canManageDefinitions || canCloseConcreteActionPoint(user) ? sections.find((section) => section.id === "closed")?.items ?? [] : [],
+    [canManageDefinitions, sections, user],
   );
   const filteredActionItems = openActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
   const filteredClosedActionItems = closedActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
@@ -2883,6 +3182,7 @@ function ScopedActionPoints() {
       ) : undefined}
     />
     {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
+    {notice && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{notice}</p>}
 
     {showActionPointUserTab && <section className="card p-2">
       <div className="grid gap-2 sm:grid-cols-2">
@@ -2908,6 +3208,7 @@ function ScopedActionPoints() {
 
     {visibleActionTab === "actions" ? renderActionsTab() : renderUsersTab()}
     {detailAction && renderDetailModal(detailAction)}
+    {closeCandidate && renderCloseDialog(closeCandidate)}
     {draft && renderActionDefinitionDialog()}
   </div>;
 
@@ -3088,6 +3389,7 @@ function ScopedActionPoints() {
     });
     setSaving(true);
     setError(undefined);
+    setNotice(undefined);
     try {
       const response = await fetch("/api/action-definitions", {
         method: "PATCH",
@@ -3100,6 +3402,68 @@ function ScopedActionPoints() {
       setDetailAction(undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Actiepunt kon niet worden bijgewerkt.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function closeConcreteActionPoint(item: ActionPointOverviewItem) {
+    if (!item.concreteActionPointId) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`/api/action-points/${encodeURIComponent(item.concreteActionPointId)}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: user.id,
+          representativeId: item.representativeId,
+        }),
+      });
+      const payload = await response.json() as {
+        actionPoint?: {
+          actionPointId: string;
+          representativeId: string;
+          status: "afgerond";
+          closedAt: string;
+          closedByUserId: string;
+          closedByName: string;
+        };
+        error?: string;
+      };
+      if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? translate(user.language, "actionPoints.closeError"));
+      const closedAction = payload.actionPoint;
+      const key = `${closedAction.actionPointId}:${closedAction.representativeId}`;
+      setClosedWorkflowActions((current) => ({
+        ...current,
+        [closedAction.actionPointId]: {
+          status: "afgerond",
+          closedAt: closedAction.closedAt,
+          closedByUserId: closedAction.closedByUserId,
+          closedByName: closedAction.closedByName,
+          updatedAt: closedAction.closedAt,
+        },
+        [key]: {
+          status: "afgerond",
+          closedAt: closedAction.closedAt,
+          closedByUserId: closedAction.closedByUserId,
+          closedByName: closedAction.closedByName,
+          updatedAt: closedAction.closedAt,
+        },
+      }));
+      setCloseCandidate(undefined);
+      setDetailAction((current) => current?.id === item.id ? {
+        ...current,
+        status: "afgerond",
+        active: false,
+        closedAt: closedAction.closedAt,
+        closedByUserId: closedAction.closedByUserId,
+        closedByName: closedAction.closedByName,
+        updatedAt: closedAction.closedAt,
+      } : current);
+      setNotice(translate(user.language, "actionPoints.closeSuccess"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : translate(user.language, "actionPoints.closeError"));
     } finally {
       setSaving(false);
     }
@@ -3321,6 +3685,10 @@ function ScopedActionPoints() {
 
   function renderDetailModal(item: ActionPointOverviewItem) {
     const canManageThis = item.source !== "workflow" && canManageScopedActionDefinition(user, item);
+    const canCloseThis = item.source === "workflow" &&
+      canCloseConcreteActionPoint(user) &&
+      item.concreteActionPointId &&
+      !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(item.status ?? "");
     const body = item.tipsAndTricks || item.description;
     return (
       <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
@@ -3348,6 +3716,8 @@ function ScopedActionPoints() {
               <ReadOnlyField label="Periode" value={actionPointDateLabel(item)} />
               <ReadOnlyField label="Eigenaar" value={item.ownerName || "Niet toegewezen"} />
               <ReadOnlyField label="Target" value={item.targetValue === undefined ? "Geen target" : String(item.targetValue)} />
+              {item.closedAt && <ReadOnlyField label={translate(user.language, "actionPoints.closedAt")} value={formatShortDate(item.closedAt.slice(0, 10))} />}
+              {item.closedByName && <ReadOnlyField label={translate(user.language, "actionPoints.closedBy")} value={item.closedByName} />}
             </div>
 
             <div>
@@ -3359,18 +3729,12 @@ function ScopedActionPoints() {
               </div>
             </div>
 
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Omschrijving</p>
-              {body.trim() ? (
-                item.source === "definition" ? (
-                  <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: body }} />
-                ) : (
-                  <p className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">{body}</p>
-                )
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">Geen omschrijving ingevuld.</p>
-              )}
-            </div>
+            {!isBlankRichText(body) && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Omschrijving</p>
+                <RichTextRenderer value={body} className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
@@ -3387,7 +3751,33 @@ function ScopedActionPoints() {
                 </button>
               </>
             )}
+            {canCloseThis && (
+              <button type="button" className="btn-primary" onClick={() => setCloseCandidate(item)} disabled={saving}>
+                {translate(user.language, "actionPoints.actions.close")}
+              </button>
+            )}
             <button type="button" className="btn-secondary" onClick={() => setDetailAction(undefined)}>Sluiten</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCloseDialog(item: ActionPointOverviewItem) {
+    return (
+      <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+          <div className="border-b border-slate-100 p-5">
+            <h2 className="text-lg font-bold text-slate-950">{translate(user.language, "actionPoints.closeDialog.title")}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{translate(user.language, "actionPoints.closeDialog.message")}</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 p-5">
+            <button type="button" className="btn-secondary" onClick={() => setCloseCandidate(undefined)} disabled={saving}>
+              {translate(user.language, "actionPoints.closeDialog.cancel")}
+            </button>
+            <button type="button" className="btn-primary" onClick={() => void closeConcreteActionPoint(item)} disabled={saving}>
+              {translate(user.language, "actionPoints.closeDialog.confirm")}
+            </button>
           </div>
         </div>
       </div>
@@ -3614,14 +4004,14 @@ function ScopedActionPoints() {
       actionPointScopeDetail(item),
       item.source === "workflow" ? `Deadline ${actionPointDateLabel(item)}` : actionPointDateLabel(item),
       item.ownerName ? `Eigenaar ${item.ownerName}` : undefined,
-      item.description.trim() || undefined,
+      richTextToPlainText(item.description).trim() || undefined,
     ].filter(Boolean) as string[];
   }
 
   function matchesActionPointSearch(item: ActionPointOverviewItem, query: string) {
     return matchesText([
       item.title,
-      item.description,
+      richTextToPlainText(item.description),
       item.priority,
       item.status,
       actionPointScopeLabel(item.scope),

@@ -4,6 +4,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { getVisibleWorkflowState } from "@/lib/data-access";
 import { notificationRefreshEventName } from "@/lib/notifications";
 import { dedupeWorkflowState } from "@/lib/coaching/visibility";
+import {
+  applyOutlookSyncToWorkflowStatePatch,
+  mergeWorkflowStatePatch,
+  type WorkflowStatePatch,
+} from "@/lib/workflow-state-patch";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
 import type {
@@ -62,9 +67,9 @@ type WorkflowContextValue = {
   retrySave: () => void;
   clearSaveError: () => void;
   state: WorkflowState;
-  saveConcept: (input: CoachingWorkflowInput) => CoachingIntervention;
-  finalizeCoaching: (input: CoachingWorkflowInput) => CoachingIntervention;
-  saveCoachingStatus: (input: CoachingWorkflowInput, status: Status) => CoachingIntervention;
+  saveConcept: (input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
+  finalizeCoaching: (input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
+  saveCoachingStatus: (input: CoachingWorkflowInput, status: Status) => Promise<CoachingIntervention>;
   transitionCoaching: (id: string, action: "reopen" | "send_for_approval" | "approve") => Promise<CoachingIntervention>;
   submitReflection: (
     reflectionId: string,
@@ -80,7 +85,7 @@ type WorkflowContextValue = {
   updateHelpRequest: (input: HelpRequestUpdateInput) => HelpRequest;
   withdrawHelpRequest: (id: string, requesterId: string) => void;
   sendHelpAnswer: (input: HelpRequestAnswerInput) => HelpRequest;
-  planHelpFollowUp: (id: string, actorId: string, type: FollowUpType) => void;
+  planHelpFollowUp: (id: string, actorId: string, type: FollowUpType, answerHtml?: string) => void;
   scheduleHelpRequestCoaching: (id: string, actorId: string, input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
   setHelpStatus: (id: string, status: HelpRequest["status"]) => void;
   visibleContactMoments: (user: MockUser) => ContactMoment[];
@@ -93,19 +98,11 @@ type WorkflowContextValue = {
 
 const WorkflowContext = createContext<WorkflowContextValue | null>(null);
 
-type WorkflowPatch = Partial<Pick<
-  WorkflowState,
-  | "interventions"
-  | "reflections"
-  | "approvals"
-  | "contactMoments"
-  | "helpRequests"
-  | "retrainings"
-  | "salesTrainings"
->>;
+type WorkflowPatch = WorkflowStatePatch;
 
 type WorkflowPersistResponse = {
   error?: string;
+  patch?: WorkflowPatch;
   outlookSync?: Array<{
     interventionId: string;
     outlookEventId?: string;
@@ -129,12 +126,8 @@ async function postWorkflowPatch(endpoint: string, patch: WorkflowPatch): Promis
   return payload;
 }
 
-function applyOutlookSync<T extends { id: string }>(
-  item: T,
-  syncItems?: WorkflowPersistResponse["outlookSync"]
-) {
-  const sync = syncItems?.find((syncItem) => syncItem.interventionId === item.id);
-  return sync ? { ...item, ...sync, id: item.id } : item;
+function applyPersistedPatch(patch: WorkflowPatch, payload: WorkflowPersistResponse): WorkflowPatch {
+  return applyOutlookSyncToWorkflowStatePatch(payload.patch ?? patch, payload.outlookSync);
 }
 
 export function WorkflowProvider({ children }: { children: React.ReactNode }) {
@@ -189,24 +182,29 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sessionLoading, user.id]);
 
-  const persist = useCallback(async (endpoint: string, patch: WorkflowPatch) => {
+  const persistOrThrow = useCallback(async (endpoint: string, patch: WorkflowPatch) => {
     try {
       setSaveError(null);
       setFailedSave(null);
       const payload = await postWorkflowPatch(endpoint, patch);
-      if (payload.outlookSync?.length) {
-        setState((current) => dedupeWorkflowState({
-          ...current,
-          interventions: current.interventions.map((intervention) => applyOutlookSync(intervention, payload.outlookSync)),
-          contactMoments: current.contactMoments.map((contactMoment) => applyOutlookSync(contactMoment, payload.outlookSync)),
-        }));
-      }
+      const persistedPatch = applyPersistedPatch(patch, payload);
+      window.dispatchEvent(new Event(notificationRefreshEventName));
+      return persistedPatch;
     } catch (error) {
-      console.error("[workflow-provider:persist]", error);
       setFailedSave({ endpoint, patch });
       setSaveError("Wijzigingen konden niet in de database worden opgeslagen. Probeer opnieuw of vernieuw de pagina.");
+      throw error;
     }
   }, []);
+
+  const persist = useCallback(async (endpoint: string, patch: WorkflowPatch) => {
+    try {
+      const persistedPatch = await persistOrThrow(endpoint, patch);
+      setState((current) => mergeWorkflowStatePatch(current, persistedPatch));
+    } catch (error) {
+      console.error("[workflow-provider:persist]", error);
+    }
+  }, [persistOrThrow]);
 
   const retrySave = useCallback(() => {
     if (!failedSave) return;
@@ -225,15 +223,17 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     });
   }, [persist]);
 
-  const upsertIntervention = useCallback((input: CoachingWorkflowInput, status: Status) => {
+  const upsertIntervention = useCallback(async (input: CoachingWorkflowInput, status: Status) => {
     const result = saveCoaching(state, input, status, representatives);
-    setState(dedupeWorkflowState(result.state));
-    void persist("/api/workflows/coaching", {
+    const patch: WorkflowPatch = {
       interventions: [result.intervention],
       reflections: result.state.reflections.filter((item) => item.interventionId === result.intervention.id),
-    });
-    return result.intervention;
-  }, [persist, representatives, state]);
+    };
+    const persistedPatch = await persistOrThrow("/api/workflows/coaching", patch);
+    const saved = persistedPatch.interventions?.find((item) => item.id === result.intervention.id) ?? result.intervention;
+    setState((current) => mergeWorkflowStatePatch(current, persistedPatch));
+    return saved;
+  }, [persistOrThrow, representatives, state]);
 
   const transitionCoaching = useCallback(async (
     id: string,
@@ -388,9 +388,9 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
       void persist("/api/workflows/help-requests", { helpRequests: [result.helpRequest] });
       return result.helpRequest;
     },
-    planHelpFollowUp: (id, actorId, type) => {
+    planHelpFollowUp: (id, actorId, type, answerHtml) => {
       updateState(
-        (current) => planHelpRequestFollowUp(current, id, actorId, type, representatives),
+        (current) => planHelpRequestFollowUp(current, id, actorId, type, representatives, answerHtml),
         "/api/workflows/help-requests",
         (next) => ({
           helpRequests: next.helpRequests.filter((item) => item.id === id),
@@ -407,26 +407,12 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
         interventions: [result.intervention],
       };
       try {
-        setSaveError(null);
-        setFailedSave(null);
-        const payload = await postWorkflowPatch("/api/workflows/help-requests", patch);
-        const intervention = applyOutlookSync(result.intervention, payload.outlookSync);
-        setState((current) => dedupeWorkflowState({
-          ...current,
-          interventions: [
-            ...current.interventions.filter((item) => item.id !== intervention.id),
-            intervention,
-          ],
-          helpRequests: [
-            ...current.helpRequests.filter((item) => item.id !== id),
-            result.helpRequest,
-          ],
-        }));
-        window.dispatchEvent(new Event(notificationRefreshEventName));
+        const persistedPatch = await persistOrThrow("/api/workflows/help-requests", patch);
+        const intervention = persistedPatch.interventions?.find((item) => item.id === result.intervention.id) ?? result.intervention;
+        setState((current) => mergeWorkflowStatePatch(current, persistedPatch));
         return intervention;
       } catch (error) {
         console.error("[workflow-provider:schedule-help-coaching]", error);
-        setSaveError("Wijzigingen konden niet in de database worden opgeslagen. Probeer opnieuw of vernieuw de pagina.");
         throw error;
       }
     },
@@ -461,6 +447,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     retrySave,
     representatives,
     persist,
+    persistOrThrow,
     saveError,
     visibleContactMoments,
     visibleHelpRequests,

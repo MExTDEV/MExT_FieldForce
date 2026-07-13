@@ -35,7 +35,17 @@ type LegacyActionPointRow = {
   type: string;
   status: string;
   dueDate: Date | null;
+  closedAt: Date | null;
+  closedByUserId: string | null;
   updatedAt: Date;
+  assignments: {
+    id: string;
+    representativeId: string;
+    status: string;
+    closedAt: Date | null;
+    closedByUserId: string | null;
+    representative: TargetUserRow;
+  }[];
 };
 
 type CoachingActionRow = {
@@ -240,6 +250,11 @@ async function loadHistoricalActionPoints(): Promise<HistoricalActionPoint[]> {
       },
       include: {
         representative: true,
+        assignments: {
+          include: {
+            representative: true,
+          },
+        },
         intervention: {
           include: {
             representative: true,
@@ -278,23 +293,40 @@ export function normalizeHistoricalActionPoints(
   const legacyActionKeys = new Set<string>();
 
   for (const action of legacyActions) {
-    const representativeId = targetRepresentativeIdForActionPoint(action);
-    if (!representativeId) continue;
-    const status = toActionStatus(action.status);
+    const targets = action.assignments.length
+      ? action.assignments.map((assignment) => ({
+        id: `${action.id}:${assignment.representativeId}`,
+        representativeId: publicRepresentativeId(assignment.representative, assignment.representativeId),
+        status: toActionStatus(assignment.status),
+        closedAt: assignment.closedAt,
+        closedByUserId: assignment.closedByUserId,
+      }))
+      : [{
+        id: action.id,
+        representativeId: targetRepresentativeIdForActionPoint(action),
+        status: toActionStatus(action.status),
+        closedAt: action.closedAt,
+        closedByUserId: action.closedByUserId,
+      }];
     const due = action.dueDate ? dateOnly(action.dueDate) : "";
-    legacyActionKeys.add(actionPointTargetKey(action.interventionId, representativeId, action.title));
-    items.push({
-      id: action.id,
-      representativeId,
-      title: action.title,
-      type: action.type.toLowerCase() as WorkflowActionPoint["type"],
-      status: due && due < referenceDate && !["behaald", "afgerond", "geannuleerd"].includes(status)
-        ? "achterstallig"
-        : status,
-      due,
-      progress: progressForStatus(status),
-      updatedAt: dateOnly(action.updatedAt),
-    });
+    for (const target of targets) {
+      if (!target.representativeId) continue;
+      legacyActionKeys.add(actionPointTargetKey(action.interventionId, target.representativeId, action.title));
+      items.push({
+        id: target.id,
+        representativeId: target.representativeId,
+        title: action.title,
+        type: action.type.toLowerCase() as WorkflowActionPoint["type"],
+        status: due && due < referenceDate && !["behaald", "afgerond", "geannuleerd"].includes(target.status)
+          ? "achterstallig"
+          : target.status,
+        due,
+        progress: progressForStatus(target.status),
+        updatedAt: dateOnly(action.updatedAt),
+        closedAt: target.closedAt?.toISOString(),
+        closedByUserId: target.closedByUserId ?? undefined,
+      });
+    }
   }
 
   for (const action of coachingActions) {

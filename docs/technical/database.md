@@ -90,13 +90,17 @@ Related tables:
 - `action_point_products`: many-to-many link between `ActionDefinition` and existing `Product`.
 - `ActionTargetOverride`: optional scoped target override for an action definition.
 - `CoachingAction` and legacy `ActionPoint`: concrete workflow-origin action points, kept separate from scoped definitions.
+- `ActionPointAssignment`: per-user concrete assignment rows for shared action points.
 
 Rules:
 
 - Do not create a second standalone action-point definition table.
 - Product links must reference existing `Product` rows.
-- Active, in-date `ActionDefinition` records are counted as open scoped action points.
-- Concrete workflow action points continue to use their workflow status for open/closed reporting.
+- Active, in-date `ActionDefinition` records are counted as open scoped action-point definitions.
+- Concrete workflow action points use their workflow status for open/closed reporting.
+- `ActionPoint.closedAt` and `ActionPoint.closedByUserId` store close metadata for legacy single-user action points.
+- `ActionPointAssignment.status`, `closedAt` and `closedByUserId` store per-assignment close state for shared user assignments.
+- Closing an action point never updates or deactivates `ActionDefinition`.
 
 ## KPI management
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -18,6 +18,7 @@ import {
 import { useSession } from "@/components/session-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useWorkflow } from "@/components/workflow-provider";
+import { RichTextRenderer } from "@/components/rich-text-renderer";
 import {
   ActionPointEditor,
   toEditableActionPoint,
@@ -63,6 +64,8 @@ const followUpLabelKeys: Record<FollowUpType, TranslationKey> = {
   enkel_opvolging: "contactHelp.followUp.followUpOnly",
   geen_actie: "contactHelp.followUp.noAction",
 };
+
+type HelpRequestManagerAction = FollowUpType | "respons" | "";
 
 const contactFilterLabelKeys: Record<ContactMomentOverviewFilter, TranslationKey> = {
   all: "contactHelp.contact.filter.all",
@@ -555,7 +558,7 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
         <section className="card space-y-6 p-5 sm:p-7">
           <h2 className="text-lg font-bold text-slate-950">{t("contactHelp.field.report")}</h2>
           {readOnly ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeRichText(contact.reportHtml ?? contact.conclusion) }} />
+            <RichTextRenderer value={contact.reportHtml ?? contact.conclusion} className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700" />
           ) : (
             <>
               <TagPicker label={t("contactHelp.field.discussedThemes")} options={translatedThemeOptions(t)} value={discussedThemes} onChange={setDiscussedThemes} />
@@ -727,7 +730,12 @@ function NewHelpRequest() {
       <PageHeader eyebrow={t("contactHelp.common.new")} title={t("contactHelp.help.newTitle")} description={t("contactHelp.help.newDescription")} />
       <div className="card grid gap-6 p-5 sm:p-7">
         <TextInput label={t("contactHelp.field.subject")} value={form.subject} onChange={(subject) => setForm((current) => ({ ...current, subject }))} />
-        <RichTextArea label={t("contactHelp.field.description")} value={form.descriptionHtml} onChange={(descriptionHtml) => setForm((current) => ({ ...current, descriptionHtml }))} />
+        <RichTextArea
+          label={t("contactHelp.field.description")}
+          value={form.descriptionHtml}
+          onChange={(descriptionHtml) => setForm((current) => ({ ...current, descriptionHtml }))}
+          placeholder={t("contactHelp.help.descriptionPlaceholder")}
+        />
         {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
         <div className="flex justify-end">
           <button type="button" disabled={!valid} onClick={() => {
@@ -757,11 +765,12 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
   const canManage = user.role !== "REPRESENTATIVE" && representative ? canAccessRepresentative(user, representative) : false;
   const canHandle = canManage && ["open", "nieuw", "in_behandeling"].includes(request.status) && !request.linkedInterventionId && !["gesloten", "afgesloten", "ingetrokken", "geannuleerd"].includes(request.status);
   const canPlanCoachingFollowUp = canCreateIntervention(user);
-  const [followUp, setFollowUp] = useState<FollowUpType>(
-    request.followUpType === "begeleiding" && !canPlanCoachingFollowUp
-      ? "contactmoment"
-      : request.followUpType ?? "contactmoment"
-  );
+  const sortedAnswers = [...(request.answers ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const lastAnswer = sortedAnswers.at(-1);
+  const awaitsRequesterResponse = Boolean(isRequester && lastAnswer && !lastAnswer.closesRequest && lastAnswer.authorId !== user.id && request.status === "in_behandeling" && !request.followUpType && !request.linkedInterventionId);
+  const awaitsManagerResponse = Boolean(canManage && (!lastAnswer || lastAnswer.authorId === request.requesterId) && request.status === "in_behandeling" && !request.followUpType && !request.linkedInterventionId);
+  const canManagerHandle = canHandle && !awaitsRequesterResponse && (request.status !== "in_behandeling" || awaitsManagerResponse || !lastAnswer);
+  const [followUp, setFollowUp] = useState<HelpRequestManagerAction>("");
   const [answerHtml, setAnswerHtml] = useState("");
   const [editSubject, setEditSubject] = useState(request.subject);
   const [editDescription, setEditDescription] = useState(request.descriptionHtml ?? request.explanation ?? request.difficulty);
@@ -785,7 +794,7 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
           {canRequesterEdit ? (
             <div className="mt-5 space-y-5">
               <TextInput label={t("contactHelp.field.subject")} value={editSubject} onChange={setEditSubject} />
-              <RichTextArea label={t("contactHelp.field.description")} value={editDescription} onChange={setEditDescription} />
+              <RichTextArea label={t("contactHelp.field.description")} value={editDescription} onChange={setEditDescription} placeholder={t("contactHelp.help.descriptionPlaceholder")} />
               {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
               <div className="flex flex-wrap gap-3">
                 <button type="button" disabled={!editSubject.trim() || isBlankRichText(editDescription)} onClick={() => {
@@ -807,19 +816,33 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
               </div>
             </div>
           ) : (
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeRichText(request.descriptionHtml ?? request.explanation ?? request.difficulty) }} />
+            <RichTextRenderer value={request.descriptionHtml ?? request.explanation ?? request.difficulty} className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700" />
           )}
           {request.withdrawnAt && <InfoBlock label={t("contactHelp.field.withdrawnAt")} value={formatDateTime(request.withdrawnAt, language)} />}
           {request.firstHandledAt && <InfoBlock label={t("contactHelp.field.firstHandledAt")} value={formatDateTime(request.firstHandledAt, language)} />}
           {(request.answers ?? []).length > 0 && (
             <div className="mt-6 space-y-3">
               <h3 className="font-bold text-slate-950">{t("contactHelp.help.answersTitle")}</h3>
-              {(request.answers ?? []).map((answer) => (
+              {sortedAnswers.map((answer) => (
                 <div key={answer.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">{formatDateTime(answer.createdAt, language)}</p>
-                  <div className="text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeRichText(answer.bodyHtml) }} />
+                  <RichTextRenderer value={answer.bodyHtml} className="text-sm leading-6 text-slate-700" />
                 </div>
               ))}
+            </div>
+          )}
+          {awaitsRequesterResponse && (
+            <div className="mt-6 rounded-2xl border border-brand-100 bg-brand-50 p-4">
+              <RichTextArea label={t("contactHelp.help.yourAnswer")} value={answerHtml} onChange={setAnswerHtml} placeholder={t("contactHelp.help.answerPlaceholder")} />
+              {error && <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+              <button type="button" disabled={isBlankRichText(answerHtml)} onClick={() => {
+                try {
+                  sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml });
+                  setUpdated(true);
+                } catch (answerError) {
+                  setError(answerError instanceof Error ? answerError.message : t("contactHelp.help.answerError"));
+                }
+              }} className="btn-primary mt-4"><CheckCircle2 className="h-4 w-4" /> {t("contactHelp.help.sendRepresentativeAnswer")}</button>
             </div>
           )}
         </section>
@@ -844,52 +867,46 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
                 </Link>
               )}
             </>
-          ) : canHandle ? (
+          ) : canManagerHandle ? (
             <>
-              <RichTextArea label={t("contactHelp.field.answer")} value={answerHtml} onChange={setAnswerHtml} />
+              <RichTextArea label={t("contactHelp.field.answer")} value={answerHtml} onChange={setAnswerHtml} placeholder={t("contactHelp.help.answerPlaceholder")} />
               {error && <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
-              <div className="mt-4 grid gap-3">
-                <button type="button" disabled={isBlankRichText(answerHtml)} onClick={() => {
-                  try {
-                    sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml });
-                    setUpdated(true);
-                  } catch (answerError) {
-                    setError(answerError instanceof Error ? answerError.message : t("contactHelp.help.answerError"));
-                  }
-                }} className="btn-secondary">{t("contactHelp.help.sendAnswer")}</button>
-                <button type="button" disabled={isBlankRichText(answerHtml)} onClick={() => {
-                  try {
-                    sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml, closesRequest: true });
-                    setUpdated(true);
-                  } catch (answerError) {
-                    setError(answerError instanceof Error ? answerError.message : t("contactHelp.help.answerError"));
-                  }
-                }} className="btn-primary"><CheckCircle2 className="h-4 w-4" /> {t("contactHelp.help.sendAnswerAndClose")}</button>
-              </div>
               <label className="mt-5 block">
                 <span className="text-sm font-bold text-slate-900">{t("contactHelp.help.chooseFollowUp")}</span>
-                <select className="field mt-2" value={followUp} onChange={(event) => setFollowUp(event.target.value as FollowUpType)}>
+                <select className="field mt-2" value={followUp} onChange={(event) => setFollowUp(event.target.value as HelpRequestManagerAction)}>
+                  <option value="">{t("contactHelp.help.chooseFollowUpPlaceholder")}</option>
                   {Object.entries(followUpLabels)
                     .filter(([value]) => !["enkel_opvolging", "geen_actie"].includes(value))
                     .filter(([value]) => value !== "begeleiding" || canPlanCoachingFollowUp)
                     .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  <option value="geen_actie">{t("contactHelp.followUp.close")}</option>
+                  <option value="respons">{t("contactHelp.followUp.response")}</option>
                 </select>
               </label>
-              <button type="button" onClick={() => {
+              <button type="button" disabled={isBlankRichText(answerHtml) || !followUp} onClick={() => {
                 try {
+                  if (!followUp) {
+                    throw new Error(t("contactHelp.help.chooseFollowUpRequired"));
+                  }
+                  if (followUp === "respons") {
+                    sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml });
+                    setUpdated(true);
+                    return;
+                  }
                   if (followUp === "begeleiding") {
                     if (!canPlanCoachingFollowUp) {
                       throw new Error(t("contactHelp.help.noCoachingRights"));
                     }
+                    sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml });
                     router.push(`/begeleidingen/nieuw?helpRequestId=${encodeURIComponent(request.id)}`);
                     return;
                   }
-                  planHelpFollowUp(request.id, user.id, followUp);
+                  planHelpFollowUp(request.id, user.id, followUp, answerHtml);
                   setUpdated(true);
                 } catch (followUpError) {
                   setError(followUpError instanceof Error ? followUpError.message : t("contactHelp.help.followUpError"));
                 }
-              }} className="btn-primary mt-5 w-full"><ClipboardCheck className="h-4 w-4" /> {t("contactHelp.help.saveFollowUp")}</button>
+              }} className="btn-primary mt-5 w-full"><ClipboardCheck className="h-4 w-4" /> {t("contactHelp.help.send")}</button>
             </>
           ) : (
             <p className="mt-4 text-sm leading-6 text-slate-500">{t("contactHelp.help.readOnly")}</p>
@@ -936,21 +953,55 @@ function TextArea({ label, value, onChange, optional = false }: { label: string;
   );
 }
 
-function RichTextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function RichTextArea({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
   const { language } = useSession();
   const t = makeT(language);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const runCommand = (command: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false);
+    onChange(editorRef.current?.innerHTML ?? "");
+  };
+
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
+    }
+  }, [value]);
+
   return (
-    <label className="block">
+    <div className="block">
       <span className="text-sm font-bold text-slate-900">{label}</span>
-      <textarea
-        rows={8}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-slate-200 p-4 text-sm leading-6 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
-        placeholder={t("contactHelp.form.richTextPlaceholder")}
-      />
+      <div className="mt-2 rounded-2xl border border-slate-200 bg-white focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-100">
+        <div className="flex flex-wrap gap-1 border-b border-slate-200 p-2">
+          <EditorButton label={t("contactHelp.editor.bold")} onClick={() => runCommand("bold")}>B</EditorButton>
+          <EditorButton label={t("contactHelp.editor.italic")} onClick={() => runCommand("italic")}>I</EditorButton>
+          <EditorButton label={t("contactHelp.editor.bulletList")} onClick={() => runCommand("insertUnorderedList")}>•</EditorButton>
+          <EditorButton label={t("contactHelp.editor.numberedList")} onClick={() => runCommand("insertOrderedList")}>1.</EditorButton>
+        </div>
+        <div
+          ref={editorRef}
+          contentEditable
+          role="textbox"
+          aria-label={label}
+          aria-multiline="true"
+          data-placeholder={placeholder ?? t("contactHelp.form.richTextPlaceholder")}
+          onInput={(event) => onChange(event.currentTarget.innerHTML)}
+          onBlur={(event) => onChange(sanitizeRichText(event.currentTarget.innerHTML))}
+          className="rich-text-editor min-h-40 w-full rounded-b-2xl p-4 text-sm leading-6 outline-none empty:before:pointer-events-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)]"
+          suppressContentEditableWarning
+        />
+      </div>
       <span className="mt-2 block text-xs text-slate-400">{t("contactHelp.form.richTextHelp")}</span>
-    </label>
+    </div>
+  );
+}
+
+function EditorButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" title={label} aria-label={label} onClick={onClick} className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950">
+      {children}
+    </button>
   );
 }
 

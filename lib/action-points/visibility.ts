@@ -20,6 +20,10 @@ export type ActionPointOverviewItem = ScopedActionDefinition & {
   source?: ActionPointOverviewSource;
   status?: WorkflowActionPoint["status"];
   due?: string;
+  closedAt?: string;
+  closedByUserId?: string;
+  closedByName?: string;
+  concreteActionPointId?: string;
   ownerName?: string;
   representativeId?: string;
   representativeName?: string;
@@ -85,6 +89,12 @@ export function canManageActionPointDefinitions(user: MockUser) {
   return user.role !== "REPRESENTATIVE" &&
     user.role !== "SERVICE_OPERATOR" &&
     can(user, "actionPointsManage");
+}
+
+export function canCloseConcreteActionPoint(user: MockUser) {
+  return user.role !== "REPRESENTATIVE" &&
+    user.role !== "SERVICE_OPERATOR" &&
+    can(user, "actionPointsClose");
 }
 
 export function canManageScopedActionDefinition(

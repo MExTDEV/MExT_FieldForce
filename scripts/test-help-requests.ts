@@ -115,6 +115,38 @@ assert.equal(repVisible.status, "in_behandeling");
 assert.equal(repVisible.followUpType, undefined);
 assert.equal(repVisible.linkedInterventionId, undefined);
 
+const followedWithAnswerBase = createHelpRequest(empty, {
+  representativeId: "rep-1",
+  requesterId: representative.id,
+  subject: "Contactmoment met antwoord",
+  descriptionHtml: "<p>Graag eerst kaderen.</p>",
+}, representatives);
+const followedWithAnswer = planHelpRequestFollowUp(
+  followedWithAnswerBase.state,
+  followedWithAnswerBase.helpRequest.id,
+  leader.id,
+  "contactmoment",
+  representatives,
+  "<p>We plannen dit als contactmoment.</p>"
+);
+const linkedWithAnswer = followedWithAnswer.helpRequests.find((item) => item.id === followedWithAnswerBase.helpRequest.id)!;
+assert.equal(linkedWithAnswer.answers?.length, 1);
+assert.equal(linkedWithAnswer.answers?.[0]?.authorId, leader.id);
+assert.equal(linkedWithAnswer.answers?.[0]?.closesRequest, false);
+
+const responseBase = sendHelpRequestAnswer(changed.state, {
+  helpRequestId: changed.helpRequest.id,
+  authorId: leader.id,
+  bodyHtml: "<p>Kan je nog aangeven bij welke klant dit speelt?</p>",
+});
+const requesterResponse = sendHelpRequestAnswer(responseBase.state, {
+  helpRequestId: responseBase.helpRequest.id,
+  authorId: representative.id,
+  bodyHtml: "<p>Het gaat vooral over prospect X.</p>",
+});
+assert.equal(requesterResponse.helpRequest.status, "in_behandeling");
+assert.equal(requesterResponse.helpRequest.answers?.at(-1)?.authorId, representative.id);
+
 const coachingFollowUpBase = createHelpRequest(empty, {
   representativeId: "rep-1",
   requesterId: representative.id,

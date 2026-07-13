@@ -42,7 +42,9 @@ The request is linked to:
 - subject and description;
 - current status.
 
-Creating the request produces a persistent notification or attention item for the responsible manager.
+Creating the request produces a persistent notification or attention item for the responsible manager and a best-effort e-mail notification.
+
+The description is stored as sanitized rich text plus plain text. Empty rich-text markup, for example an empty paragraph or only whitespace, is not valid input.
 
 ---
 
@@ -62,7 +64,7 @@ A manager may not close the request with only a generic refusal.
 
 # No Chat
 
-The workflow does not become a multi-message conversation.
+The workflow does not become a free multi-message conversation.
 
 The manager records:
 
@@ -71,7 +73,16 @@ The manager records:
 - planned follow-up;
 - outcome.
 
-The requester may view the request and the information that is shared according to the workflow, but there is no alternating chat thread.
+The requester may view the request and the information that is shared according to the workflow.
+
+A single controlled `Respons` step is allowed when the manager needs information from the requester before deciding the final outcome:
+
+- the manager records a rich-text answer and chooses `Respons`;
+- the request remains `IN_BEHANDELING`;
+- the requester may add one rich-text answer;
+- after that answer, the request returns to the manager for a next decision.
+
+This is a workflow turn, not a chat thread.
 
 ---
 
@@ -101,7 +112,9 @@ Possible results:
 2. plan a Contactmoment;
 3. plan a Retraining when that workflow is defined;
 4. plan a Salestraining when that workflow is defined;
-5. record another concrete response.
+5. close the request with a concrete answer;
+6. request one controlled response from the requester;
+7. record another concrete response.
 
 Examples of another concrete response:
 
@@ -121,15 +134,21 @@ When a follow-up is created from the Hulpaanvraag:
 - the normal permission and validation rules of the target workflow remain active;
 - the manager does not manually reselect another person unless the business flow explicitly allows it.
 
+Begeleiding from a Hulpaanvraag must continue through the existing Begeleiding planning wizard. Retraining and Salestraining may only use the currently implemented technical placeholder flow while their module documents remain `UNDEFINED`; no extra business workflow may be invented here.
+
 ---
 
 # Notification Choice
 
-When recording a response or scheduling follow-up, the manager may choose whether the requester is informed where the workflow provides the notification option.
+When a request is created, answered, closed or linked to a follow-up, FieldForce creates the relevant in-app notification and sends best-effort e-mail when mail is configured.
 
-The choice controls notification delivery, not whether the action is stored.
+Notification recipients are resolved server-side:
 
-The request and response remain visible according to permissions and scope.
+- new request: responsible manager;
+- manager response, closure or follow-up: requester;
+- requester response in a controlled `Respons` step: responsible manager.
+
+The request and response remain visible according to permissions and scope. E-mail delivery failure must not roll back the stored workflow action.
 
 ---
 
@@ -190,6 +209,8 @@ Closing stores:
 - linked follow-up where applicable;
 - notification choice;
 - completion time.
+
+The closing answer is stored as sanitized rich text and plain text. A request may not be closed with a functionally empty rich-text answer.
 
 ---
 

@@ -131,6 +131,7 @@ Main behaviour:
 
 - plans and executes Begeleidingen for permitted team members;
 - creates and follows team or user action points when allowed;
+- closes concrete Action Points for permitted representatives when `actionPointsClose` is active;
 - processes Hulpaanvragen from the own team;
 - plans Contactmomenten for the own team;
 - views team history and relevant preparation data.
@@ -187,6 +188,7 @@ Main behaviour within effective scope:
 - plans and executes Begeleidingen for Representatives and Verkoopleiders;
 - opens and edits visible unlocked Coaching forms;
 - follows action points, risks and reports when allowed;
+- closes concrete Action Points within assigned country scope when `actionPointsClose` is active;
 - processes or oversees Hulpaanvragen;
 - plans Contactmomenten.
 
@@ -205,6 +207,7 @@ Known intended use:
 - group-level management;
 - global or cross-country configuration where explicitly permitted;
 - management of global Coaching criteria and configuration where the relevant permission allows it.
+- closing concrete Action Points only within explicitly assigned scope when `actionPointsClose` is active.
 
 Do not assume that Group Manager automatically has Super Admin access.
 
@@ -236,6 +239,7 @@ Main behaviour within permissions:
 - views and edits visible unlocked Coaching records;
 - plans and executes Begeleidingen for permitted Representatives and Verkoopleiders;
 - manages Contactmomenten and Hulpaanvragen within scope;
+- closes concrete Action Points within administrative scope when `actionPointsClose` is active;
 - manages roles or permissions only within allowed boundaries.
 
 An Admin cannot grant Admin or Super Admin rights unless an explicit Super Admin policy permits it.
@@ -260,6 +264,7 @@ Main behaviour:
 - role, module and user management;
 - planning and execution of Begeleidingen for permitted targets;
 - management of global Coaching configuration.
+- closing concrete Action Points globally when `actionPointsClose` is active.
 
 Super Admin still respects business lifecycle locks unless an explicit administrative override exists.
 

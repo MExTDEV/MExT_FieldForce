@@ -16,6 +16,45 @@ Priority:
 
 ---
 
+# Completed 2026-07-13
+
+## Historical score comparison in Begeleiding execution
+
+Status: `Implemented`
+
+Implemented:
+
+- score comparison selector above the execution score area;
+- eligible previous Begeleidingen filtered server-side by same coached person, visibility scope, non-cancelled historical status, past date and saved scores;
+- read-only historical score columns and textual differences next to current editable scores;
+- Performance Circle comparison using the selected historical Begeleiding as dashed previous line;
+- Dutch, French and German translations;
+- regression script `scripts/test-coaching-historical-comparison.ts`.
+
+Remaining technical debt:
+
+- current appointment score rows still use the persisted category/criterion label as comparison key because the existing appointment score model does not store a stable criterion id.
+
+## Actiepunten sluiten
+
+Status: `Implemented`
+
+Implemented:
+
+- concrete Action Points can be closed with `AFGEROND`, `closedAt` and `closedByUserId`;
+- `ActionPointAssignment` stores per-user close state for shared assignments;
+- default `actionPointsClose` permission for Verkoopleider, Country Manager, Group Manager, Admin and Super Admin;
+- server-side permission and scope checks;
+- auditlogging and best-effort in-app notification;
+- overview close confirmation, immediate open/closed count update and NL/FR/DE strings;
+- regression script `npm run test:action-point-close`.
+
+Remaining technical debt:
+
+- approval, reopen, reassignment, evidence and overdue escalation flows remain business decisions.
+
+---
+
 # High Priority
 
 ## Contactmomenten afronden
@@ -129,17 +168,15 @@ Reference:
 
 - `Rapportage.md`
 
-## Define Action Point operational lifecycle
+## Define remaining Action Point operational lifecycle
 
 Status: `Business decision required`
 
 Required:
 
-- close rights;
 - approval;
 - reopen;
 - reassignment;
-- statuses;
 - evidence or comments;
 - overdue handling.
 

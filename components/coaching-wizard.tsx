@@ -254,7 +254,7 @@ export function CoachingWizard() {
         router.push(`/begeleidingen/${intervention.id}`);
         return;
       }
-      saveCoachingStatus(workflowInput(), "gepland");
+      await saveCoachingStatus(workflowInput(), "gepland");
       setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
       router.push("/begeleidingen");
     } catch (scheduleError) {

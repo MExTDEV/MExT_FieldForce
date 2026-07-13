@@ -30,6 +30,13 @@ import {
 } from "@/lib/server/microsoft-graph";
 import { sendWorkflowEventMail } from "@/lib/server/mail-service";
 import { createInAppNotification } from "@/lib/server/notifications";
+import { applyOutlookSyncToWorkflowStatePatch } from "@/lib/workflow-state-patch";
+import {
+  buildCoachingApprovalConfirmedEntityTitle,
+  buildCoachingApprovalConfirmedEventKey,
+  coachingApprovalConfirmedNotificationType,
+  resolveCoachingApprovalConfirmedRecipients,
+} from "@/lib/coaching/approval-notifications";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -99,7 +106,7 @@ export async function persistWorkflowPatch(
         ];
       }
     }
-    return { ok: true, outlookSync };
+    return { ok: true, patch: applyOutlookSyncToWorkflowStatePatch(patch, outlookSync), outlookSync };
   }, "Workflowgegevens konden niet worden opgeslagen.");
 }
 
@@ -108,6 +115,8 @@ async function createWorkflowInAppNotifications(
   patch: WorkflowPersistencePatch,
   actorId: string
 ) {
+  await createCoachingApprovalConfirmedNotifications(patch, actorId);
+
   for (const request of patch.helpRequests ?? []) {
     if (
       request.status === "open" &&
@@ -131,6 +140,7 @@ async function createWorkflowInAppNotifications(
         triggeredByUserId: actorId,
         entityTitle: request.subject,
         linkUrl: `/hulpaanvragen/${request.id}`,
+        contentHtml: request.descriptionHtml ?? request.explanation ?? request.difficulty,
         context: {
           sourceModule: "HULPAANVRAGEN",
           entityType: "HelpRequest",
@@ -142,8 +152,10 @@ async function createWorkflowInAppNotifications(
     }
 
     const lastAnswer = request.answers?.at(-1);
-    if (lastAnswer?.authorId === actorId) {
-      const recipientUserId = request.requesterId !== actorId ? request.requesterId : request.representativeId;
+    if (lastAnswer?.authorId === actorId && (!request.followUpType || lastAnswer.closesRequest)) {
+      const recipientUserId = lastAnswer.authorId === request.requesterId
+        ? request.responsibleUserId
+        : request.requesterId;
       if (recipientUserId && recipientUserId !== actorId) {
         const type = lastAnswer.closesRequest ? "HELP_REQUEST_CLOSED" : "HELP_REQUEST_ANSWERED";
         await createInAppNotification(prisma, {
@@ -160,6 +172,7 @@ async function createWorkflowInAppNotifications(
           triggeredByUserId: actorId,
           entityTitle: request.subject,
           linkUrl: `/hulpaanvragen/${request.id}`,
+          contentHtml: lastAnswer.bodyHtml,
           context: {
             sourceModule: "HULPAANVRAGEN",
             entityType: "HelpRequest",
@@ -171,7 +184,7 @@ async function createWorkflowInAppNotifications(
       }
     }
 
-    if (request.followUpType && request.status !== "open" && request.status !== "in_behandeling") {
+    if (request.followUpType && request.followUpType !== "geen_actie" && request.status !== "open" && request.status !== "in_behandeling") {
       const recipientUserId = request.requesterId !== actorId ? request.requesterId : request.representativeId;
       if (recipientUserId && recipientUserId !== actorId) {
         await createInAppNotification(prisma, {
@@ -188,6 +201,7 @@ async function createWorkflowInAppNotifications(
           triggeredByUserId: actorId,
           entityTitle: request.subject,
           linkUrl: `/hulpaanvragen/${request.id}`,
+          contentHtml: lastAnswer?.bodyHtml,
           context: {
             sourceModule: "HULPAANVRAGEN",
             entityType: "HelpRequest",
@@ -240,6 +254,81 @@ async function createWorkflowInAppNotifications(
         reason: "Contactmoment update",
       },
     });
+  }
+}
+
+async function createCoachingApprovalConfirmedNotifications(
+  patch: WorkflowPersistencePatch,
+  actorId: string
+) {
+  const confirmedApprovals = (patch.approvals ?? []).filter((approval) => approval.status === "gelezen_akkoord");
+  if (!confirmedApprovals.length) return;
+
+  const coachings = await prisma.intervention.findMany({
+    where: {
+      id: { in: [...new Set(confirmedApprovals.map((approval) => approval.interventionId))] },
+      type: "BEGELEIDING",
+    },
+    select: {
+      id: true,
+      title: true,
+      plannedAt: true,
+      ownerId: true,
+      initiatorId: true,
+      sentForApprovalById: true,
+      representative: { select: { firstName: true, lastName: true } },
+    },
+  });
+  const coachingsById = new Map(coachings.map((coaching) => [coaching.id, coaching]));
+
+  for (const approval of confirmedApprovals) {
+    const coaching = coachingsById.get(approval.interventionId);
+    if (!coaching) continue;
+
+    const eventKey = buildCoachingApprovalConfirmedEventKey(coaching.id, approval.id);
+    const entityTitle = buildCoachingApprovalConfirmedEntityTitle({
+      id: coaching.id,
+      title: coaching.title,
+      ownerId: coaching.ownerId,
+      initiatorId: coaching.initiatorId,
+      sentForApprovalById: coaching.sentForApprovalById ?? undefined,
+      plannedDate: coaching.plannedAt?.toISOString().slice(0, 10),
+      representativeName: `${coaching.representative.firstName} ${coaching.representative.lastName}`.trim(),
+    });
+    const recipientUserIds = resolveCoachingApprovalConfirmedRecipients({
+      id: coaching.id,
+      title: coaching.title,
+      ownerId: coaching.ownerId,
+      initiatorId: coaching.initiatorId,
+      sentForApprovalById: coaching.sentForApprovalById ?? undefined,
+      plannedDate: coaching.plannedAt?.toISOString().slice(0, 10),
+    }, actorId);
+
+    for (const recipientUserId of recipientUserIds) {
+      await createInAppNotification(prisma, {
+        type: coachingApprovalConfirmedNotificationType,
+        recipientUserId,
+        entityId: coaching.id,
+        eventKey,
+        triggeredByUserId: actorId,
+        sourceModule: "BEGELEIDINGEN",
+      });
+      await sendWorkflowMailSafely({
+        type: coachingApprovalConfirmedNotificationType,
+        recipientUserId,
+        triggeredByUserId: actorId,
+        entityTitle,
+        linkUrl: `/begeleidingen/${coaching.id}`,
+        context: {
+          sourceModule: "BEGELEIDINGEN",
+          entityType: "Intervention",
+          entityId: coaching.id,
+          eventKey,
+          reason: "Begeleiding voor akkoord bevestigd",
+          sentAt: approval.confirmedAt ? new Date(approval.confirmedAt) : new Date(),
+        },
+      });
+    }
   }
 }
 
@@ -650,7 +739,7 @@ async function requireHelpRequestsMutable(
   const existing = ids.length
     ? await prisma.helpRequest.findMany({
         where: { id: { in: ids } },
-        include: { answers: { select: { id: true, closesRequest: true } } },
+        include: { answers: { select: { id: true, authorId: true, closesRequest: true }, orderBy: { createdAt: "asc" } } },
       })
     : [];
   const existingById = new Map(existing.map((item) => [item.id, item]));
@@ -679,8 +768,28 @@ async function requireHelpRequestsMutable(
     const requestChanged = stored.subject !== next.subject ||
       (stored.descriptionHtml ?? stored.explanation ?? stored.difficulty ?? "") !== (next.descriptionHtml ?? next.explanation ?? next.difficulty ?? "");
 
+    const nextAnswer = next.answers?.at(-1);
+    const addsOneAnswer = answerCount === stored.answers.length + 1;
+    const lastStoredAnswer = stored.answers.at(-1);
+    const representativeRespondsToManager = actor.role === "REPRESENTATIVE" &&
+      storedRequesterMatchesActor &&
+      addsOneAnswer &&
+      nextAnswer?.authorId === actor.id &&
+      !nextAnswer.closesRequest &&
+      !lastStoredAnswer?.closesRequest &&
+      lastStoredAnswer &&
+      lastStoredAnswer.authorId !== actor.id &&
+      next.status === "in_behandeling" &&
+      !next.followUpType &&
+      !next.linkedInterventionId;
+
     if (actor.role === "REPRESENTATIVE") {
       if (!storedRequesterMatchesActor) forbidden("Je mag alleen je eigen hulpaanvragen beheren.");
+      if (representativeRespondsToManager) {
+        if (requestChanged) forbidden("De oorspronkelijke hulpaanvraag kan tijdens een respons niet gewijzigd worden.");
+        if (isBlankRichText(nextAnswer?.bodyHtml)) forbidden("Een inhoudelijk antwoord is verplicht.");
+        continue;
+      }
       if (!storedIsUntreated) forbidden("Deze hulpaanvraag werd ondertussen behandeld en kan niet meer worden aangepast of ingetrokken.");
       if (next.status === "ingetrokken") continue;
       if (!["open", "nieuw"].includes(next.status)) forbidden("Een vertegenwoordiger mag de behandelingsstatus niet wijzigen.");
@@ -696,6 +805,9 @@ async function requireHelpRequestsMutable(
     }
     if (next.status === "gesloten" && !(next.answers ?? []).some((answer) => answer.closesRequest)) {
       forbidden("Sluiten kan alleen samen met een inhoudelijk antwoord.");
+    }
+    if (answerCount > stored.answers.length && next.answers?.at(-1)?.authorId !== actor.id) {
+      forbidden("Een antwoord moet door de ingelogde gebruiker worden verstuurd.");
     }
     if (answerCount > stored.answers.length && isBlankRichText(next.answers?.at(-1)?.bodyHtml)) {
       forbidden("Een inhoudelijk antwoord is verplicht.");

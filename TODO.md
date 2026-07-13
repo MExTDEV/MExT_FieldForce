@@ -185,7 +185,7 @@ Update 2026-07-13:
 ### FF-P1-006 - Hulpaanvragen en vervolgacties beveiligen tegen undefined workflows
 
 - Categorie: Coaching, Hulpaanvragen, workflow-integratie
-- Status: Deels geïmplementeerd
+- Status: Deels geïmplementeerd; Hulpaanvragen-flow uitgebreid op 2026-07-13
 - Probleem: Hulpaanvragen zijn gedefinieerd en geïmplementeerd, maar vervolgacties naar Contactmoment, Retraining en Salestraining raken modules met verschillende definitiestatussen.
 - Huidige werking: `/hulpaanvragen`, `HelpRequestsWorkflowPage`, `HelpRequest`, `HelpRequestAnswer` en servervalidatie bestaan. Follow-up naar begeleiding wordt strenger gevalideerd; andere vervolgtypes blijven afhankelijk van nog niet volledig gedefinieerde modules.
 - Gewenste werking: Elke vervolgactie is alleen beschikbaar wanneer het doelworkflowcontract is gedefinieerd, server-side afgedwongen en getest.
@@ -197,6 +197,22 @@ Update 2026-07-13:
 - Voorgestelde aanpak: Follow-upmatrix vastleggen; UI-opties en servervalidatie per doeltype koppelen aan workflowstatus; regressietests uitbreiden.
 - Acceptatiecriteria: Geen hidden follow-up detaillekken; managers buiten scope zien niets; geannuleerde wizard maakt geen synthetische begeleiding; server weigert undefined vervolgtypes.
 - Aanbevolen tests: `npm run test:help-requests`, `npm run test:api-persistence`, extra negatieve scope-tests.
+
+Update 2026-07-13:
+
+- Hulpaanvragen gebruikt nu een echte rich-text editor voor omschrijving en antwoorden, met plain-text placeholder en server-side rich-text validatie.
+- Managerdetail heeft één primaire knop `Verzenden`; de manager moet expliciet kiezen tussen Contactmoment, Begeleiding, Retraining, Salestraining, Sluiten of Respons.
+- `Respons` is als gecontroleerde workflowstap toegevoegd zonder chatmodel: na een managerantwoord mag de vertegenwoordiger één antwoord toevoegen, waarna de aanvraag terug bij de manager ligt.
+- Nieuwe aanvragen, managerantwoorden, sluitingen en vertegenwoordigerresponsen gebruiken de bestaande in-app notificatie- en mailroute; mails bevatten de gesanitized rich-text inhoud.
+- Resterend risico: Begeleiding blijft bewust via de bestaande planningswizard lopen, en Retraining/Salestraining blijven afhankelijk van hun `UNDEFINED` modulecontracten.
+
+Update 2026-07-13 WYSIWYG Actiepunten:
+
+- Actiepuntomschrijvingen blijven HTML als canonical rich-textformaat gebruiken en worden via de centrale `RichTextRenderer` / `rich-text-content` styling getoond.
+- Actiepuntenoverzicht en zoek/previews gebruiken veilige plattetekstconversie, zodat ruwe HTML-tags niet zichtbaar worden.
+- Begeleidingsdetails en actiepuntdetails renderen volledige omschrijvingen als gesanitized rich text; lege editor-markup blijft leeg.
+- Professionele begeleidings-PDF zet actiepunt-rich-text om naar gestructureerde tekst met paragrafen, bullets, nummering en leesbare links zonder HTML-tags.
+- Resterende technische schuld: jsPDF reproduceert inline rich-textstijl binnen compacte tabelcellen niet volledig; titels blijven vet en structuur/tekst blijven behouden.
 
 ### FF-P1-007 - Professional/Expert lifecycle volledig maken en documenteren
 
@@ -229,6 +245,22 @@ Update 2026-07-13:
 - Voorgestelde aanpak: Gecontroleerde testmail uitvoeren, delivery log in beheer controleren, approval-mailtrigger finaliseren.
 - Acceptatiecriteria: Testmail gaat naar testontvanger; productie-uitzetten van MAIL TEST vereist bevestiging; delivery log toont status zonder body/secrets.
 - Aanbevolen tests: `npm run test:mail-test-settings`, `npm run test:mail-service`, gecontroleerde stagingtest.
+
+Update 2026-07-13 akkoord-terugmelding:
+
+- De aanvraagmail naar de begeleide gebruiker blijft bestaan.
+- Na succesvolle akkoordbevestiging krijgt de verantwoordelijke coach/leidinggevende nu een in-app notificatie en best-effort FieldForce-mail via hetzelfde notificatie/mailpad.
+- Ontvangers worden server-side bepaald uit de Begeleiding: owner/coach eerst, daarna de submitter of initiator als fallback; de ondertekenaar wordt uitgesloten en event keys zijn idempotent per approval.
+- Externe SMTP-/MAIL TEST-validatie in staging/productie blijft open.
+
+Update 2026-07-13 refresh Begeleidingen na inplannen:
+
+- Uitgevoerd: de normale inplanwizard wacht nu op de bevestigde `/api/workflows/coaching`-persist voordat hij naar `/begeleidingen` navigeert.
+- De workflow-API geeft de opgeslagen patch terug; `WorkflowProvider` merge't die patch in de lokale workflowstate op basis van unieke Begeleiding-id.
+- Het Begeleidingen-overzicht gebruikt geen React Query/SWR/cachetags, maar de gedeelde providerstate uit `/api/workflows` met `cache: "no-store"`; gerichte invalidatie betekent hier een state-merge van de geraakte workflowpatch.
+- Outlook-syncstatus of syncfout wordt op het record bijgewerkt, maar een Outlook-fout blokkeert de zichtbaarheid van de geldige FieldForce-begeleiding niet.
+- Duplicaten na lokale update plus latere refetch worden voorkomen via de gedeelde workflowdeduplicatie.
+- Resterende technische schuld: cross-user realtime datarefresh voor andere geopende sessies bestaat nog niet; zij zien nieuwe coachings na hun normale datarefresh of navigatie.
 
 ## P2 - Normaal
 
@@ -280,21 +312,21 @@ Update 2026-07-13:
 - Acceptatiecriteria: Rapporten zijn gedefinieerd; filters zijn getest per rol/scope; exports zijn wel of niet expliciet ondersteund.
 - Aanbevolen tests: `npm run test:performance`, nieuwe rapportage-fixturetests.
 
-### FF-P2-004 - Actiepunten operationele lifecycle beslissen
+### FF-P2-004 - Resterende actiepunten-lifecycle beslissen
 
 - Categorie: Actiepunten, workflow
 - Status: Deels geïmplementeerd
-- Probleem: Actiepuntdefinities, scoped beheer en workflowactiepunten bestaan, maar operationele sluiting/goedkeuring/heropening is nog niet volledig beslist.
-- Huidige werking: `ActionDefinition`, `ActionPoint`, `CoachingAction` en zichtbaarheid/helpers bestaan; statussen staan in types/schema.
-- Gewenste werking: Duidelijk onderscheid tussen actiepuntdefinitie, workflowactiepunt en toegewezen actiepunt, inclusief wie mag sluiten en heropenen.
-- Bewijs: `docs/ai/modules/Coaching/Actiepunten.md`, `lib/action-points/visibility.ts`, `lib/server/action-definitions.ts`, `prisma/schema.prisma`.
-- Relevante bestanden: `components/workspace-pages.tsx`, `components/action-point-editor.tsx`, `app/api/action-definitions/route.ts`.
+- Probleem: Sluiten van concrete actiepunten is geïmplementeerd, maar goedkeuring, heropening, herverdeling, bewijs/commentaar en overdue-escalatie zijn nog niet volledig beslist.
+- Huidige werking: `ActionDefinition` blijft de scoped definitie; `ActionPoint` en `ActionPointAssignment` dragen concrete status en sluitmetadata; sluiten vereist `actionPointsClose` plus effectieve scope.
+- Gewenste werking: De resterende lifecycle-acties hebben een gedocumenteerd server-side contract.
+- Bewijs: `docs/ai/modules/Coaching/Actiepunten.md`, `lib/server/action-points.ts`, `lib/action-points/visibility.ts`, `prisma/schema.prisma`.
+- Relevante bestanden: `components/workspace-pages.tsx`, `app/api/action-points/[id]/close/route.ts`, `lib/server/action-definitions.ts`.
 - Impact: Normaal; beïnvloedt opvolging, dashboard en rapportage.
-- Risico: Actiepunten blijven open of worden zonder goedkeuringslogica afgesloten.
-- Afhankelijkheden: Businessbeslissing over eigenaarschap en review.
-- Voorgestelde aanpak: Lifecyclebeslissing documenteren, serveracties toevoegen, statusovergangen testen.
-- Acceptatiecriteria: Statusovergangen zijn rol- en scopegedreven; UI en server volgen hetzelfde contract.
-- Aanbevolen tests: `npm run test:action-points-overview`, `npm run test:action-point-targets`, nieuwe lifecycletests.
+- Risico: Resterende acties worden ad hoc ingevuld zonder goedkeuringslogica.
+- Afhankelijkheden: Businessbeslissing over approval, reopen, reassignment, bewijs/commentaar en escalatie.
+- Voorgestelde aanpak: Resterende lifecyclebeslissing documenteren, serveracties toevoegen, statusovergangen testen.
+- Acceptatiecriteria: Resterende statusovergangen zijn rol- en scopegedreven; UI en server volgen hetzelfde contract.
+- Aanbevolen tests: `npm run test:action-points-overview`, `npm run test:action-point-targets`, `npm run test:action-point-close`, nieuwe lifecycletests per vervolgactie.
 
 ### FF-P2-005 - Kapstok/criteria beheer en imports afronden
 

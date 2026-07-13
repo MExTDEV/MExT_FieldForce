@@ -11,13 +11,14 @@ export const permissionsByRole: Record<Role, string[]> = {
     "action:update",
     "actionPointsCreate",
     "actionPointsManage",
+    "actionPointsClose",
     "kpisView",
   ],
   SALES_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
   SERVICE_OPERATOR: ["self:read", "service:write"],
-  COUNTRY_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
-  GROUP_MANAGER: ["group:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
-  ADMIN: ["scope:configure", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage", "kpiCategoriesManage"],
+  COUNTRY_MANAGER: ["country:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "actionPointsClose", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
+  GROUP_MANAGER: ["group:read", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "actionPointsClose", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage"],
+  ADMIN: ["scope:configure", "reporting:read", "intervention:create", "action:create", "action:update", "actionPointsCreate", "actionPointsManage", "actionPointsClose", "kpisView", "kpisCreate", "kpisManage", "kpiTargetsManage", "kpiCategoriesManage"],
   SUPER_ADMIN: ["*"],
 };
 

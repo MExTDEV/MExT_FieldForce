@@ -61,6 +61,7 @@ export type FieldForcePermissionKey =
   | "reportingExport"
   | "actionPointsCreate"
   | "actionPointsManage"
+  | "actionPointsClose"
   | "kpisView"
   | "kpisCreate"
   | "kpisManage"
@@ -462,6 +463,8 @@ export type WorkflowActionPoint = {
   reviewedById?: string;
   reviewedAt?: string;
   activatedAt?: string;
+  closedAt?: string;
+  closedByUserId?: string;
 };
 
 export type ScopedActionDefinition = {

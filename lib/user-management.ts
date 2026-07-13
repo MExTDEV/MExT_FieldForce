@@ -77,6 +77,7 @@ export const fieldForceBasePermissionGroups: {
     permissions: [
       { key: "actionPointsCreate", label: "Actiepunten aanmaken" },
       { key: "actionPointsManage", label: "Actiepunten beheren" },
+      { key: "actionPointsClose", label: "Actiepunten sluiten" },
     ],
   },
   {
@@ -211,6 +212,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "actionPointsClose",
       "kpisView",
       ...internalMenuPermissions
     ),
@@ -270,6 +272,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "actionPointsClose",
       "kpisView",
       "kpisCreate",
       "kpisManage",
@@ -295,6 +298,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "actionPointsClose",
       "kpisView",
       "kpisCreate",
       "kpisManage",
@@ -328,6 +332,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "actionPointsClose",
       "kpisView",
       "kpisCreate",
       "kpisManage",

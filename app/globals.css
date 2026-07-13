@@ -106,4 +106,65 @@ textarea {
   .eyebrow {
     @apply text-xs font-bold uppercase tracking-[0.16em] text-brand-700;
   }
+
+  .rich-text-content {
+    @apply max-w-none break-words;
+  }
+
+  .rich-text-content p {
+    @apply my-2 first:mt-0 last:mb-0;
+  }
+
+  .rich-text-content h1,
+  .rich-text-content h2,
+  .rich-text-content h3,
+  .rich-text-content h4,
+  .rich-text-content h5,
+  .rich-text-content h6 {
+    @apply mb-2 mt-4 font-bold leading-snug text-slate-950 first:mt-0;
+  }
+
+  .rich-text-content h1,
+  .rich-text-content h2 {
+    @apply text-base;
+  }
+
+  .rich-text-content h3,
+  .rich-text-content h4,
+  .rich-text-content h5,
+  .rich-text-content h6 {
+    @apply text-sm;
+  }
+
+  .rich-text-content ul {
+    @apply my-2 list-disc space-y-1 pl-5;
+  }
+
+  .rich-text-content ol {
+    @apply my-2 list-decimal space-y-1 pl-5;
+  }
+
+  .rich-text-content a {
+    @apply font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2 hover:text-brand-900;
+  }
+
+  .rich-text-content blockquote {
+    @apply my-3 border-l-4 border-brand-200 bg-brand-50/60 py-2 pl-4 text-slate-700;
+  }
+
+  .rich-text-content hr {
+    @apply my-4 border-slate-200;
+  }
+
+  .rich-text-editor {
+    @apply break-words;
+  }
+
+  .rich-text-editor ul {
+    @apply list-disc pl-5;
+  }
+
+  .rich-text-editor ol {
+    @apply list-decimal pl-5;
+  }
 }

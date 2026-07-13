@@ -7,10 +7,17 @@ import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server
 import { prisma } from "@/lib/server/db";
 import { sendWorkflowEventMail } from "@/lib/server/mail-service";
 import {
+  createInAppNotification,
   createCoachingApprovalNotification,
   markCoachingApprovalNotificationHandled,
 } from "@/lib/server/notifications";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
+import {
+  buildCoachingApprovalConfirmedEntityTitle,
+  buildCoachingApprovalConfirmedEventKey,
+  coachingApprovalConfirmedNotificationType,
+  resolveCoachingApprovalConfirmedRecipients,
+} from "@/lib/coaching/approval-notifications";
 
 type CoachingTransition = "reopen" | "send_for_approval" | "approve";
 
@@ -41,9 +48,11 @@ export async function POST(
         ownerId: true,
         teamId: true,
         country: true,
+        plannedAt: true,
         sentForApprovalAt: true,
+        sentForApprovalById: true,
         approvedByRepAt: true,
-        representative: { select: { role: true } },
+        representative: { select: { firstName: true, lastName: true, role: true } },
       },
     });
     if (!coaching) notFound("Begeleiding niet gevonden.");
@@ -95,6 +104,7 @@ export async function POST(
       if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
         badRequest("Deze begeleiding staat niet klaar voor akkoord.");
       }
+      let handledApprovalId: string | undefined;
       await prisma.$transaction(async (tx) => {
         await tx.intervention.update({
           where: { id },
@@ -104,10 +114,11 @@ export async function POST(
             approvedByRepId: actor.id,
           },
         });
-        await markCoachingApprovalNotificationHandled(tx, {
+        const handledApproval = await markCoachingApprovalNotificationHandled(tx, {
           interventionId: id,
           handledAt: now,
         });
+        handledApprovalId = handledApproval.id;
         await tx.auditLog.create({
           data: {
             userId: actor.id,
@@ -119,6 +130,20 @@ export async function POST(
           },
         });
       });
+      await sendCoachingApprovalConfirmedNotifications({
+        actorId: actor.id,
+        approvalId: handledApprovalId,
+        confirmedAt: now,
+        intervention: {
+          id: coaching.id,
+          title: coaching.title,
+          ownerId: coaching.ownerId,
+          initiatorId: coaching.initiatorId,
+          sentForApprovalById: coaching.sentForApprovalById ?? undefined,
+          plannedDate: coaching.plannedAt?.toISOString().slice(0, 10),
+          representativeName: `${coaching.representative.firstName} ${coaching.representative.lastName}`.trim(),
+        },
+      });
     }
 
     const state = await loadWorkflowStateFromDatabase({
@@ -128,6 +153,73 @@ export async function POST(
     if (!intervention) notFound("Begeleiding niet gevonden.");
     return { intervention };
   }, "De status van de begeleiding kon niet worden aangepast.");
+}
+
+async function sendCoachingApprovalConfirmedNotifications(input: {
+  actorId: string;
+  approvalId?: string;
+  confirmedAt: Date;
+  intervention: {
+    id: string;
+    title: string;
+    ownerId: string;
+    initiatorId: string;
+    sentForApprovalById?: string;
+    plannedDate?: string;
+    representativeName?: string;
+  };
+}) {
+  const eventKey = buildCoachingApprovalConfirmedEventKey(input.intervention.id, input.approvalId);
+  const recipientUserIds = resolveCoachingApprovalConfirmedRecipients(input.intervention, input.actorId);
+  const entityTitle = buildCoachingApprovalConfirmedEntityTitle(input.intervention);
+
+  for (const recipientUserId of recipientUserIds) {
+    await createInAppNotification(prisma, {
+      type: coachingApprovalConfirmedNotificationType,
+      recipientUserId,
+      entityId: input.intervention.id,
+      eventKey,
+      triggeredByUserId: input.actorId,
+      sourceModule: "BEGELEIDINGEN",
+    });
+    await sendCoachingApprovalConfirmedMailSafely({
+      actorId: input.actorId,
+      interventionId: input.intervention.id,
+      recipientUserId,
+      entityTitle,
+      eventKey,
+      confirmedAt: input.confirmedAt,
+    });
+  }
+}
+
+async function sendCoachingApprovalConfirmedMailSafely(input: {
+  actorId: string;
+  interventionId: string;
+  recipientUserId: string;
+  entityTitle: string;
+  eventKey: string;
+  confirmedAt: Date;
+}) {
+  try {
+    await sendWorkflowEventMail({
+      type: coachingApprovalConfirmedNotificationType,
+      recipientUserId: input.recipientUserId,
+      triggeredByUserId: input.actorId,
+      entityTitle: input.entityTitle,
+      linkUrl: `/begeleidingen/${input.interventionId}`,
+      context: {
+        sourceModule: "BEGELEIDINGEN",
+        entityType: "Intervention",
+        entityId: input.interventionId,
+        eventKey: input.eventKey,
+        reason: "Begeleiding voor akkoord bevestigd",
+        sentAt: input.confirmedAt,
+      },
+    });
+  } catch (error) {
+    console.error("[mail] Begeleidingsmail voor bevestigd akkoord kon niet worden verzonden.", error);
+  }
 }
 
 async function sendCoachingApprovalMailSafely(input: {
