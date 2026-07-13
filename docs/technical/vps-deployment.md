@@ -122,6 +122,31 @@ npm run build
 The `prebuild` lifecycle automatically runs `prisma generate`, so Next.js never
 builds against a stale Prisma Client.
 
+## Persistent uploaded files
+
+Contactmoment photos are not stored in the database. The database stores only
+metadata in `ContactMomentDetail.photosJson`; the original image files are
+stored below:
+
+```env
+FIELD_FORCE_UPLOAD_ROOT="storage/uploads"
+```
+
+Production deployments should set `FIELD_FORCE_UPLOAD_ROOT` to a persistent
+directory that survives code replacement, dependency installation and build
+cleanup. The default `storage/uploads` is acceptable only when that directory is
+part of the deployed app's persistent storage and is included in backups.
+
+Required operational rules:
+
+- keep the upload directory outside public/static web roots;
+- back up the full upload root together with the MariaDB backup;
+- retain at least the same restore window as the database backup;
+- test a restore on a non-production environment before relying on the backup;
+- do not delete uploaded files during deploy cleanup;
+- apply migration `0029_contact_moment_private_photos` before enabling
+  Contactmoment photo uploads in an environment.
+
 In Plesk, click **Enable Node.js** or **Restart App** after
 `deploy:prepare` succeeds. Plesk starts `server.mjs`.
 

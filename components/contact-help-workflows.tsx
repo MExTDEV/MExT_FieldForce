@@ -1,19 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
   CircleHelp,
   ClipboardCheck,
+  FileDown,
   Play,
   Plus,
   Save,
-  Send,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useSession } from "@/components/session-provider";
-import { useConfiguration } from "@/components/configuration-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useWorkflow } from "@/components/workflow-provider";
 import {
@@ -22,39 +24,117 @@ import {
   type EditableActionPoint,
 } from "@/components/action-point-editor";
 import { Avatar, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
-import { canAccessRepresentative } from "@/lib/permissions";
+import { canAccessRepresentative, canCreateIntervention } from "@/lib/permissions";
+import {
+  contactMomentFilterOptions,
+  filterContactMoments,
+  toLocalDateKey,
+  type ContactMomentOverviewFilter,
+} from "@/lib/contact-moment-filters";
+import { translate, type TranslationKey } from "@/lib/i18n";
+import { isBlankRichText, sanitizeRichText } from "@/lib/rich-text";
+import { exportContactMomentPdf, type ContactMomentPdfPhoto } from "@/lib/contact-moment-pdf";
 import type {
   ContactMoment,
+  ContactMomentPhoto,
   FollowUpType,
   HelpRequest,
+  Language,
   Representative,
 } from "@/lib/types";
 
 const themeOptions = [
-  "KPI-opvolging",
-  "Behoefteanalyse",
-  "Demonstratie",
-  "Prijsverdediging",
-  "Afsluiten",
-  "Planning en organisatie",
-];
+  { value: "KPI-opvolging", labelKey: "contactHelp.theme.kpiFollowUp" },
+  { value: "Behoefteanalyse", labelKey: "contactHelp.theme.needsAnalysis" },
+  { value: "Demonstratie", labelKey: "contactHelp.theme.demonstration" },
+  { value: "Prijsverdediging", labelKey: "contactHelp.theme.priceDefense" },
+  { value: "Afsluiten", labelKey: "contactHelp.theme.closing" },
+  { value: "Planning en organisatie", labelKey: "contactHelp.theme.planning" },
+] as const satisfies ReadonlyArray<{
+  value: string;
+  labelKey: TranslationKey;
+}>;
+
+const followUpLabelKeys: Record<FollowUpType, TranslationKey> = {
+  begeleiding: "contactHelp.followUp.coaching",
+  contactmoment: "contactHelp.followUp.contactMoment",
+  retraining: "contactHelp.followUp.retraining",
+  sales_training: "contactHelp.followUp.salesTraining",
+  enkel_opvolging: "contactHelp.followUp.followUpOnly",
+  geen_actie: "contactHelp.followUp.noAction",
+};
+
+const contactFilterLabelKeys: Record<ContactMomentOverviewFilter, TranslationKey> = {
+  all: "contactHelp.contact.filter.all",
+  today: "contactHelp.contact.filter.today",
+  future: "contactHelp.contact.filter.future",
+  draftReports: "contactHelp.contact.filter.draftReports",
+  shared: "contactHelp.contact.filter.shared",
+  cancelled: "contactHelp.contact.filter.cancelled",
+  notCompleted: "contactHelp.contact.filter.notCompleted",
+};
+
+function makeT(language: Language) {
+  return (key: TranslationKey) => translate(language, key);
+}
+
+function localeFor(language: Language) {
+  return language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+}
+
+function statusLabel(language: Language, status: string) {
+  const key = `status.${status}` as TranslationKey;
+  const label = translate(language, key);
+  return label === key ? status.replaceAll("_", " ") : label;
+}
+
+function formatDate(value: string, language: Language) {
+  return new Date(value).toLocaleDateString(localeFor(language));
+}
+
+function formatDateTime(value: string, language: Language) {
+  return new Date(value).toLocaleString(localeFor(language));
+}
+
+function formatPlannedDate(value: string, language: Language) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString(localeFor(language));
+}
+
+function representativeName(representative: Representative | undefined, fallback: string) {
+  return representative ? `${representative.firstName} ${representative.lastName}` : fallback;
+}
+
+function translatedThemeOptions(t: (key: TranslationKey) => string) {
+  return themeOptions.map((option) => ({ value: option.value, label: t(option.labelKey) }));
+}
+
+type ThemeOption = ReturnType<typeof translatedThemeOptions>[number];
 
 export function ContactMomentsPage({ id, isNew }: { id?: string; isNew?: boolean }) {
-  const { user } = useSession();
+  const { user, language } = useSession();
+  const t = makeT(language);
   const workflow = useWorkflow();
   const contacts = workflow.visibleContactMoments(user);
-  const openContacts = [...contacts]
-    .filter((contact) => contact.status !== "afgesloten")
+  const [activeFilter, setActiveFilter] = useState<ContactMomentOverviewFilter>("all");
+  const todayKey = toLocalDateKey();
+  const filteredContacts = filterContactMoments(contacts, activeFilter, todayKey);
+  const filterCounts = contactMomentFilterOptions.map((option) => ({
+    ...option,
+    label: t(contactFilterLabelKeys[option.value]),
+    count: filterContactMoments(contacts, option.value, todayKey).length,
+  }));
+  const openContacts = [...filteredContacts]
+    .filter((contact) => !isFinalContactMoment(contact))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  const closedContacts = [...contacts]
-    .filter((contact) => contact.status === "afgesloten")
+  const closedContacts = [...filteredContacts]
+    .filter(isFinalContactMoment)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
   if (isNew) return <NewContactMoment />;
   if (id) {
     const contact = workflow.state.contactMoments.find((item) => item.id === id);
     if (!contact || !contacts.some((item) => item.id === id)) {
-      return <EmptyState title="Contactmoment niet beschikbaar" description="Dit contactmoment bestaat niet of valt buiten jouw scope." />;
+      return <EmptyState title={t("contactHelp.contact.unavailableTitle")} description={t("contactHelp.contact.unavailableDescription")} />;
     }
     return <ContactMomentDetail contact={contact} />;
   }
@@ -62,29 +142,76 @@ export function ContactMomentsPage({ id, isNew }: { id?: string; isNew?: boolean
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Opvolging"
-        title="Contactmomenten"
-        description="Korte, gerichte afstemming tussen vertegenwoordiger en verkoopleider."
-        actions={["SALES_LEADER", "SUPER_ADMIN"].includes(user.role) ? (
-          <Link href="/contactmomenten/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> Nieuw contactmoment</Link>
+        eyebrow={t("contactHelp.contact.eyebrow")}
+        title={t("contactHelp.contact.pageTitle")}
+        description={t("contactHelp.contact.pageDescription")}
+        actions={canCreateIntervention(user) ? (
+          <Link href="/contactmomenten/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> {t("contactHelp.contact.newAction")}</Link>
         ) : undefined}
       />
-      <ContactMomentSection
-        eyebrow="Actuele opvolging"
-        title="Nieuwe en lopende contactmomenten"
-        description="Concepten, momenten die wachten op VT-input en contactmomenten in uitvoering."
-        contacts={openContacts}
-        emptyMessage="Er zijn momenteel geen nieuwe of lopende contactmomenten."
+      <ContactMomentFilters
+        activeFilter={activeFilter}
+        options={filterCounts}
+        onChange={setActiveFilter}
       />
       <ContactMomentSection
-        eyebrow="Historiek"
-        title="Afgesloten contactmomenten"
-        description="Reeds uitgevoerde contactmomenten, met de meest recente afsluiting eerst."
+        eyebrow={t("contactHelp.contact.sectionOpenEyebrow")}
+        title={t("contactHelp.contact.sectionOpenTitle")}
+        description={t("contactHelp.contact.sectionOpenDescription")}
+        contacts={openContacts}
+        emptyMessage={t("contactHelp.contact.sectionOpenEmpty")}
+        openLabel={t("contactHelp.common.open")}
+        language={language}
+      />
+      <ContactMomentSection
+        eyebrow={t("contactHelp.contact.sectionClosedEyebrow")}
+        title={t("contactHelp.contact.sectionClosedTitle")}
+        description={t("contactHelp.contact.sectionClosedDescription")}
         contacts={closedContacts}
-        emptyMessage="Er zijn nog geen afgesloten contactmomenten."
+        emptyMessage={t("contactHelp.contact.sectionClosedEmpty")}
+        openLabel={t("contactHelp.common.open")}
+        language={language}
         historical
       />
     </div>
+  );
+}
+
+function ContactMomentFilters({
+  activeFilter,
+  options,
+  onChange,
+}: {
+  activeFilter: ContactMomentOverviewFilter;
+  options: Array<{ value: ContactMomentOverviewFilter; label: string; count: number }>;
+  onChange: (value: ContactMomentOverviewFilter) => void;
+}) {
+  return (
+    <section className="card p-4">
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const active = option.value === activeFilter;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(option.value)}
+              className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${
+                active
+                  ? "border-brand-700 bg-brand-700 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-brand-300 hover:text-brand-700"
+              }`}
+            >
+              <span>{option.label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>
+                {option.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -94,6 +221,8 @@ function ContactMomentSection({
   description,
   contacts,
   emptyMessage,
+  openLabel,
+  language,
   historical = false,
 }: {
   eyebrow: string;
@@ -101,6 +230,8 @@ function ContactMomentSection({
   description: string;
   contacts: ContactMoment[];
   emptyMessage: string;
+  openLabel: string;
+  language: Language;
   historical?: boolean;
 }) {
   const { representatives } = useRepresentatives();
@@ -137,8 +268,8 @@ function ContactMomentSection({
                   <StatusBadge status={contact.status} />
                 </div>
                 <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                  <span className="text-xs text-slate-400">{new Date(contact.updatedAt).toLocaleDateString("nl-BE")}</span>
-                  <span className="text-sm font-semibold text-brand-700 group-hover:underline">Openen</span>
+                  <span className="text-xs text-slate-400">{formatDate(contact.updatedAt, language)}</span>
+                  <span className="text-sm font-semibold text-brand-700 group-hover:underline">{openLabel}</span>
                 </div>
               </Link>
             );
@@ -150,44 +281,83 @@ function ContactMomentSection({
 }
 
 function NewContactMoment() {
-  const { user } = useSession();
+  const { user, language } = useSession();
+  const t = makeT(language);
   const { saveContactMoment } = useWorkflow();
   const { representatives } = useRepresentatives();
   const [savedId, setSavedId] = useState<string>();
   const available = representatives.filter((item) => canAccessRepresentative(user, item));
   const [form, setForm] = useState({
     representativeId: available[0]?.id ?? "",
+    plannedDate: "",
+    startTime: "",
+    endTime: "",
+    subject: "",
+    contactType: "",
+    location: "",
+    internalNotes: "",
+    notifyRepresentative: false,
     reason: "",
     reportedProblems: "",
     leaderThemes: [] as string[],
   });
-  const [savedMode, setSavedMode] = useState<"concept" | "wacht_op_vt_input">();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
 
-  if (!["SALES_LEADER", "SUPER_ADMIN"].includes(user.role)) {
-    return <EmptyState title="Geen rechten" description="Alleen een verkoopleider kan een contactmoment voorbereiden." />;
+  if (!canCreateIntervention(user)) {
+    return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("contactHelp.contact.noCreateRights")} />;
   }
   if (savedId) {
-    return <SuccessCard title="Contactmoment aangemaakt" description={savedMode === "concept" ? "Het concept is bewaard en kan later worden verdergezet." : "De vertegenwoordiger kan nu vooraf KPI's en thema's toevoegen."} href={`/contactmomenten/${savedId}`} linkLabel="Contactmoment openen" />;
+    return <SuccessCard title={t("contactHelp.contact.createdTitle")} description={t("contactHelp.contact.createdDescription")} href={`/contactmomenten/${savedId}`} linkLabel={t("contactHelp.contact.openContact")} />;
   }
-  const valid = form.representativeId && form.reason.trim().length >= 3;
-  const save = (status: "concept" | "wacht_op_vt_input") => {
-    const contact = saveContactMoment({ ...form, initiatorId: user.id }, status);
-    setSavedMode(status);
-    setSavedId(contact.id);
+  const valid = form.representativeId && form.plannedDate && form.startTime && form.endTime && form.endTime > form.startTime;
+  const save = () => {
+    if (saving) return;
+    if (!valid) {
+      setError(t("contactHelp.contact.validationPlanning"));
+      return;
+    }
+    setSaving(true);
+    setError(undefined);
+    try {
+      const contact = saveContactMoment({
+        ...form,
+        reason: form.subject.trim() || form.contactType.trim() || t("contactHelp.contact.defaultReason"),
+        initiatorId: user.id,
+      }, "gepland");
+      setSavedId(contact.id);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("contactHelp.contact.saveError"));
+      setSaving(false);
+    }
   };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <BackLink href="/contactmomenten" label="Terug naar contactmomenten" />
-      <PageHeader eyebrow="Nieuw" title="Contactmoment voorbereiden" description="Leg compact vast waarom je contact opneemt en waarover je wilt afstemmen." />
+      <BackLink href="/contactmomenten" label={t("contactHelp.contact.backToList")} />
+      <PageHeader eyebrow={t("contactHelp.common.new")} title={t("contactHelp.contact.newTitle")} description={t("contactHelp.contact.newDescription")} />
       <div className="card space-y-6 p-5 sm:p-7">
-        <RepresentativePicker available={available} value={form.representativeId} onChange={(representativeId) => setForm((current) => ({ ...current, representativeId }))} />
-        <TextArea label="Reden contactmoment" value={form.reason} onChange={(reason) => setForm((current) => ({ ...current, reason }))} />
-        <TextArea label="Gemelde problemen" value={form.reportedProblems} onChange={(reportedProblems) => setForm((current) => ({ ...current, reportedProblems }))} optional />
-        <TagPicker label="Thema's die je wilt bespreken" options={themeOptions} value={form.leaderThemes} onChange={(leaderThemes) => setForm((current) => ({ ...current, leaderThemes }))} />
+        <RepresentativePicker label={t("contactHelp.common.representative")} available={available} value={form.representativeId} onChange={(representativeId) => setForm((current) => ({ ...current, representativeId }))} />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextInput label={t("contactHelp.field.date")} type="date" value={form.plannedDate} onChange={(plannedDate) => setForm((current) => ({ ...current, plannedDate }))} />
+          <TextInput label={t("contactHelp.field.startTime")} type="time" value={form.startTime} onChange={(startTime) => setForm((current) => ({ ...current, startTime }))} />
+          <TextInput label={t("contactHelp.field.endTime")} type="time" value={form.endTime} onChange={(endTime) => setForm((current) => ({ ...current, endTime }))} />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextInput label={t("contactHelp.field.subject")} value={form.subject} onChange={(subject) => setForm((current) => ({ ...current, subject }))} />
+          <TextInput label={t("contactHelp.field.contactType")} value={form.contactType} onChange={(contactType) => setForm((current) => ({ ...current, contactType }))} />
+          <TextInput label={t("contactHelp.field.location")} value={form.location} onChange={(location) => setForm((current) => ({ ...current, location }))} />
+        </div>
+        <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <input className="mt-1" type="checkbox" checked={form.notifyRepresentative} onChange={(event) => setForm((current) => ({ ...current, notifyRepresentative: event.target.checked }))} />
+          <span><strong className="text-slate-900">{t("contactHelp.contact.notifyLabel")}</strong><br />{t("contactHelp.contact.notifyDescription")}</span>
+        </label>
+        <TextArea label={t("contactHelp.field.internalNotes")} value={form.internalNotes} onChange={(internalNotes) => setForm((current) => ({ ...current, internalNotes }))} optional />
+        <TextArea label={t("contactHelp.field.reportedProblems")} value={form.reportedProblems} onChange={(reportedProblems) => setForm((current) => ({ ...current, reportedProblems }))} optional />
+        <TagPicker label={t("contactHelp.field.leaderThemes")} options={translatedThemeOptions(t)} value={form.leaderThemes} onChange={(leaderThemes) => setForm((current) => ({ ...current, leaderThemes }))} />
+        {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button type="button" disabled={!valid} onClick={() => save("concept")} className="btn-secondary"><Save className="h-4 w-4" /> Concept bewaren</button>
-          <button type="button" disabled={!valid} onClick={() => save("wacht_op_vt_input")} className="btn-primary"><Send className="h-4 w-4" /> Vraag VT-input</button>
+          <button type="button" disabled={!valid || saving} onClick={save} className="btn-primary"><Save className="h-4 w-4" /> {saving ? t("contactHelp.common.saving") : t("contactHelp.contact.save")}</button>
         </div>
       </div>
     </div>
@@ -195,100 +365,276 @@ function NewContactMoment() {
 }
 
 function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
-  const { user } = useSession();
-  const { kpiDefinitions } = useConfiguration();
-  const { saveContactMoment, submitContactInput } = useWorkflow();
+  const { user, language } = useSession();
+  const t = makeT(language);
+  const { saveContactMoment } = useWorkflow();
   const { representatives } = useRepresentatives();
   const representative = representatives.find((item) => item.id === contact.representativeId);
-  const isOwnerRepresentative = user.role === "REPRESENTATIVE" && user.representativeId === contact.representativeId;
-  const canManage = ["SALES_LEADER", "SUPER_ADMIN"].includes(user.role);
-  const [kpis, setKpis] = useState(contact.representativeKpis);
-  const [themes, setThemes] = useState(contact.representativeThemes);
+  const canManage = canCreateIntervention(user) && !isFinalContactMoment(contact);
   const [discussedThemes, setDiscussedThemes] = useState(contact.discussedThemes);
-  const [conclusion, setConclusion] = useState(contact.conclusion);
+  const [reportHtml, setReportHtml] = useState(contact.reportHtml ?? contact.conclusion);
   const [actions, setActions] = useState<EditableActionPoint[]>(
     contact.actionPoints.map(toEditableActionPoint)
   );
+  const [photos, setPhotos] = useState<ContactMomentPhoto[]>(contact.photos ?? []);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [closedReason, setClosedReason] = useState("");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string>();
 
   if (saved) {
-    return <SuccessCard title="Contactmoment afgesloten" description="De actiepunten staan nu automatisch in de centrale actiepuntenlijst." href="/contactmomenten" linkLabel="Naar contactmomenten" />;
+    return <SuccessCard title={t("contactHelp.contact.detailUpdatedTitle")} description={t("contactHelp.contact.detailUpdatedDescription")} href="/contactmomenten" linkLabel={t("contactHelp.contact.toList")} />;
   }
 
   const updateStatus = (status: ContactMoment["status"]) => {
-    saveContactMoment({
-      id: contact.id,
-      representativeId: contact.representativeId,
-      initiatorId: contact.ownerId,
-      reason: contact.reason,
-      reportedProblems: contact.reportedProblems,
-      leaderThemes: contact.leaderThemes,
-      representativeKpis: kpis,
-      representativeThemes: themes,
-      discussedThemes,
-      conclusion,
-      actionPoints: actions,
-      sourceHelpRequestId: contact.sourceHelpRequestId,
-    }, status);
-    if (status === "afgesloten") setSaved(true);
+    setError(undefined);
+    try {
+      saveContactMoment({
+        id: contact.id,
+        representativeId: contact.representativeId,
+        initiatorId: contact.ownerId,
+        plannedDate: contact.plannedDate,
+        startTime: contact.startTime,
+        endTime: contact.endTime,
+        notifyRepresentative: contact.notifyRepresentative,
+        subject: contact.subject,
+        contactType: contact.contactType,
+        location: contact.location,
+        internalNotes: contact.internalNotes,
+        reason: contact.reason,
+        reportedProblems: contact.reportedProblems,
+        leaderThemes: contact.leaderThemes,
+        representativeKpis: contact.representativeKpis,
+        representativeThemes: contact.representativeThemes,
+        discussedThemes,
+        conclusion: reportHtml,
+        reportHtml,
+        actionPoints: actions,
+        photos,
+        closedReason,
+        sourceHelpRequestId: contact.sourceHelpRequestId,
+      }, status);
+      setSaved(true);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("contactHelp.contact.saveError"));
+    }
   };
+  const readOnly = isFinalContactMoment(contact) || !canManage;
+  const photoBaseUrl = `/api/workflows/contact-moments/${encodeURIComponent(contact.id)}/photos`;
+  const actorQuery = `actorId=${encodeURIComponent(user.id)}`;
+  const uploadPhoto = async (file?: File) => {
+    if (!file || photoBusy) return;
+    setPhotoBusy(true);
+    setError(undefined);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${photoBaseUrl}?${actorQuery}`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json() as { photos?: ContactMomentPhoto[]; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("contactHelp.contact.photoUploadError"));
+      setPhotos(payload.photos ?? []);
+    } catch (photoError) {
+      setError(photoError instanceof Error ? photoError.message : t("contactHelp.contact.photoUploadError"));
+    } finally {
+      setPhotoBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+  const deletePhoto = async (photoId: string) => {
+    if (photoBusy) return;
+    setPhotoBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`${photoBaseUrl}/${encodeURIComponent(photoId)}?${actorQuery}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json() as { photos?: ContactMomentPhoto[]; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("contactHelp.contact.photoDeleteError"));
+      setPhotos(payload.photos ?? []);
+    } catch (photoError) {
+      setError(photoError instanceof Error ? photoError.message : t("contactHelp.contact.photoDeleteError"));
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+  const downloadPdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    setError(undefined);
+    try {
+      const pdfPhotos = await Promise.all(photos.map(async (photo): Promise<ContactMomentPdfPhoto> => {
+        try {
+          const response = await fetch(`${photoBaseUrl}/${encodeURIComponent(photo.id)}?${actorQuery}`);
+          if (!response.ok) throw new Error("photo");
+          return { ...photo, dataUrl: await blobToDataUrl(await response.blob()) };
+        } catch {
+          return photo;
+        }
+      }));
+      await exportContactMomentPdf({
+        contact: { ...contact, photos },
+        representative,
+        language,
+        photos: pdfPhotos,
+      });
+    } catch {
+      setError(t("contactHelp.contact.pdfError"));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+  const details = [
+    contact.plannedDate ? { label: t("contactHelp.field.date"), value: formatPlannedDate(contact.plannedDate, language) } : undefined,
+    contact.startTime || contact.endTime ? { label: t("contactHelp.field.time"), value: `${contact.startTime ?? ""}${contact.endTime ? ` - ${contact.endTime}` : ""}` } : undefined,
+    contact.subject ? { label: t("contactHelp.field.subject"), value: contact.subject } : undefined,
+    contact.contactType ? { label: t("contactHelp.field.type"), value: contact.contactType } : undefined,
+    contact.location ? { label: t("contactHelp.field.location"), value: contact.location } : undefined,
+    contact.notifyRepresentative ? { label: t("contactHelp.field.notifiedInAdvance"), value: t("contactHelp.common.yes") } : undefined,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <BackLink href="/contactmomenten" label="Terug naar contactmomenten" />
+      <BackLink href="/contactmomenten" label={t("contactHelp.contact.backToList")} />
       <PageHeader
-        eyebrow="Contactmoment"
-        title={representative ? `${representative.firstName} ${representative.lastName}` : "Vertegenwoordiger"}
+        eyebrow={t("contactHelp.contact.singleEyebrow")}
+        title={representativeName(representative, t("contactHelp.common.representative"))}
         description={contact.reason}
-        actions={<StatusBadge status={contact.status} />}
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            {isFinalContactMoment(contact) && (
+              <button type="button" className="btn-secondary" disabled={pdfBusy} onClick={() => void downloadPdf()}>
+                <FileDown className="h-4 w-4" />
+                {pdfBusy ? t("contactHelp.contact.pdfBusy") : t("contactHelp.contact.pdfDownload")}
+              </button>
+            )}
+            <StatusBadge status={contact.status} />
+          </div>
+        )}
       />
       <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
         <section className="card p-5 sm:p-6">
-          <h2 className="font-bold text-slate-950">Voorbereiding verkoopleider</h2>
-          <InfoBlock label="Reden" value={contact.reason} />
-          <InfoBlock label="Gemelde problemen" value={contact.reportedProblems || "Geen gemelde problemen"} />
-          <InfoBlock label="Thema's" value={contact.leaderThemes.join(", ") || "Nog geen thema's gekozen"} />
+          <h2 className="font-bold text-slate-950">{t("contactHelp.contact.basicData")}</h2>
+          {details.map((item) => <InfoBlock key={item.label} label={item.label} value={item.value} />)}
+          <InfoBlock label={t("contactHelp.field.employee")} value={representativeName(representative, t("contactHelp.common.representative"))} />
+          {contact.reportedProblems && <InfoBlock label={t("contactHelp.field.reportedProblems")} value={contact.reportedProblems} />}
+          {contact.leaderThemes.length > 0 && <InfoBlock label={t("contactHelp.field.preparedThemes")} value={contact.leaderThemes.join(", ")} />}
+          {contact.internalNotes && canManage && <InfoBlock label={t("contactHelp.field.internalNote")} value={contact.internalNotes} />}
         </section>
 
-        {isOwnerRepresentative && contact.status === "wacht_op_vt_input" ? (
-          <section className="card p-5 sm:p-6">
-            <h2 className="font-bold text-slate-950">Jouw voorbereiding</h2>
-            <TagPicker label="Aan welke KPI's besteed je extra aandacht?" options={kpiDefinitions} value={kpis} onChange={setKpis} />
-            <TagPicker label="Welke thema's wil je bespreken?" options={themeOptions} value={themes} onChange={setThemes} />
-            <button type="button" onClick={() => submitContactInput(contact.id, contact.representativeId, kpis, themes)} className="btn-primary mt-6">
-              <Send className="h-4 w-4" /> Input indienen
-            </button>
-          </section>
-        ) : (
-          <section className="card p-5 sm:p-6">
-            <h2 className="font-bold text-slate-950">Input vertegenwoordiger</h2>
-            <InfoBlock label="KPI's" value={contact.representativeKpis.join(", ") || "Nog geen input"} />
-            <InfoBlock label="Thema's" value={contact.representativeThemes.join(", ") || "Nog geen input"} />
-          </section>
-        )}
+        <section className="card p-5 sm:p-6">
+          <h2 className="font-bold text-slate-950">{t("contactHelp.contact.statusHistory")}</h2>
+          <InfoBlock label={t("contactHelp.field.status")} value={statusLabel(language, contact.status)} />
+          {contact.sharedAt && <InfoBlock label={t("contactHelp.field.sharedAt")} value={formatDateTime(contact.sharedAt, language)} />}
+          {contact.closedReason && <InfoBlock label={t("contactHelp.field.closedReason")} value={contact.closedReason} />}
+        </section>
       </div>
 
       {canManage && contact.status === "gepland" && (
         <button type="button" onClick={() => updateStatus("in_uitvoering")} className="btn-primary">
-          <Play className="h-4 w-4" /> Contactmoment starten
+          <Play className="h-4 w-4" /> {t("contactHelp.contact.start")}
         </button>
       )}
 
-      {canManage && contact.status === "concept" && (
-        <button type="button" onClick={() => updateStatus("wacht_op_vt_input")} className="btn-primary">
-          <Send className="h-4 w-4" /> Vraag VT-input
-        </button>
-      )}
-
-      {canManage && contact.status === "in_uitvoering" && (
+      {(contact.status === "in_uitvoering" || contact.status === "afgesloten" || contact.status === "geannuleerd" || contact.status === "niet_uitgevoerd") && (
         <section className="card space-y-6 p-5 sm:p-7">
-          <h2 className="text-lg font-bold text-slate-950">Contactmoment afronden</h2>
-          <TagPicker label="Besproken thema's" options={themeOptions} value={discussedThemes} onChange={setDiscussedThemes} />
-          <TextArea label="Conclusie" value={conclusion} onChange={setConclusion} />
-          <ActionPointEditor actions={actions} onChange={setActions} />
-          <button type="button" disabled={conclusion.trim().length < 3} onClick={() => updateStatus("afgesloten")} className="btn-primary">
-            <CheckCircle2 className="h-4 w-4" /> Afsluiten
-          </button>
+          <h2 className="text-lg font-bold text-slate-950">{t("contactHelp.field.report")}</h2>
+          {readOnly ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeRichText(contact.reportHtml ?? contact.conclusion) }} />
+          ) : (
+            <>
+              <TagPicker label={t("contactHelp.field.discussedThemes")} options={translatedThemeOptions(t)} value={discussedThemes} onChange={setDiscussedThemes} />
+              <RichTextArea label={t("contactHelp.field.report")} value={reportHtml} onChange={setReportHtml} />
+              <ActionPointEditor actions={actions} onChange={setActions} />
+              {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {t("contactHelp.contact.shareLockWarning")}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" disabled={isBlankRichText(reportHtml)} onClick={() => updateStatus("afgesloten")} className="btn-primary">
+                  <CheckCircle2 className="h-4 w-4" /> {t("contactHelp.contact.share")}
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {(photos.length > 0 || canManage) && (
+        <section className="card space-y-5 p-5 sm:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-brand-700" />
+                <h2 className="text-lg font-bold text-slate-950">{t("contactHelp.contact.photosTitle")}</h2>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">{t("contactHelp.contact.photosDescription")}</p>
+            </div>
+            {canManage && (
+              <label className={`btn-secondary cursor-pointer ${photoBusy ? "pointer-events-none opacity-60" : ""}`}>
+                <Plus className="h-4 w-4" />
+                {photoBusy ? t("contactHelp.common.busy") : t("contactHelp.contact.addPhoto")}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={photoBusy}
+                  onChange={(event) => void uploadPhoto(event.target.files?.[0])}
+                />
+              </label>
+            )}
+          </div>
+          {photos.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center text-sm text-slate-500">
+              {t("contactHelp.contact.noPhotos")}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {photos.map((photo) => (
+                <figure key={photo.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- Private API-backed photos are not compatible with Next image optimization. */}
+                  <img
+                    src={`${photoBaseUrl}/${encodeURIComponent(photo.id)}?${actorQuery}`}
+                    alt={photo.originalName}
+                    className="aspect-[4/3] w-full object-cover"
+                    loading="lazy"
+                  />
+                  <figcaption className="flex items-center justify-between gap-3 p-3">
+                    <span className="truncate text-xs font-semibold text-slate-600">{photo.originalName}</span>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-700"
+                        disabled={photoBusy}
+                        onClick={() => void deletePhoto(photo.id)}
+                        aria-label={t("contactHelp.contact.deletePhoto")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
+          {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+        </section>
+      )}
+
+      {canManage && !isFinalContactMoment(contact) && (
+        <section className="card space-y-4 p-5 sm:p-6">
+          <h2 className="font-bold text-slate-950">{t("contactHelp.contact.closeWithoutReport")}</h2>
+          <TextArea label={t("contactHelp.field.reason")} value={closedReason} onChange={setClosedReason} />
+          {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+          <div className="flex flex-wrap gap-3">
+            <button type="button" disabled={!closedReason.trim()} onClick={() => updateStatus("geannuleerd")} className="btn-secondary"><X className="h-4 w-4" /> {t("contactHelp.contact.cancel")}</button>
+            <button type="button" disabled={!closedReason.trim()} onClick={() => updateStatus("niet_uitgevoerd")} className="btn-secondary"><X className="h-4 w-4" /> {t("contactHelp.contact.notExecuted")}</button>
+          </div>
         </section>
       )}
     </div>
@@ -296,7 +642,8 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
 }
 
 export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: boolean }) {
-  const { user } = useSession();
+  const { user, language } = useSession();
+  const t = makeT(language);
   const workflow = useWorkflow();
   const { representatives } = useRepresentatives();
   const requests = workflow.visibleHelpRequests(user);
@@ -304,7 +651,7 @@ export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: b
   if (id) {
     const request = workflow.state.helpRequests.find((item) => item.id === id);
     if (!request || !requests.some((item) => item.id === id)) {
-      return <EmptyState title="Hulpaanvraag niet beschikbaar" description="Deze hulpaanvraag bestaat niet of valt buiten jouw scope." />;
+      return <EmptyState title={t("contactHelp.help.unavailableTitle")} description={t("contactHelp.help.unavailableDescription")} />;
     }
     return <HelpRequestDetail request={request} />;
   }
@@ -312,13 +659,13 @@ export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: b
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Ondersteuning"
-        title="Hulpaanvragen"
-        description="Van hulpvraag naar een duidelijke en gekoppelde vervolgactie."
-        actions={<Link href="/hulpaanvragen/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> Nieuwe hulpaanvraag</Link>}
+        eyebrow={t("contactHelp.help.eyebrow")}
+        title={t("contactHelp.help.pageTitle")}
+        description={t("contactHelp.help.pageDescription")}
+        actions={<Link href="/hulpaanvragen/nieuw" className="btn-primary"><Plus className="h-4 w-4" /> {t("contactHelp.help.newAction")}</Link>}
       />
       {requests.length === 0 ? (
-        <EmptyState title="Nog geen hulpaanvragen" description="Maak een hulpaanvraag aan om ondersteuning zichtbaar en opvolgbaar te maken." />
+        <EmptyState title={t("contactHelp.help.emptyTitle")} description={t("contactHelp.help.emptyDescription")} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {[...requests].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((request) => {
@@ -332,7 +679,7 @@ export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: b
                 <h2 className="mt-5 font-bold text-slate-950">{request.subject}</h2>
                 <p className="mt-1 text-sm text-slate-500">{representative?.firstName} {representative?.lastName}</p>
                 <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-600">{request.desiredResult}</p>
-                <p className="mt-5 text-sm font-semibold text-brand-700 group-hover:underline">Bekijken</p>
+                <p className="mt-5 text-sm font-semibold text-brand-700 group-hover:underline">{t("contactHelp.common.view")}</p>
               </Link>
             );
           })}
@@ -343,56 +690,43 @@ export function HelpRequestsWorkflowPage({ id, isNew }: { id?: string; isNew?: b
 }
 
 function NewHelpRequest() {
-  const { user } = useSession();
+  const { user, language } = useSession();
+  const t = makeT(language);
   const { createHelpRequest } = useWorkflow();
-  const { representatives } = useRepresentatives();
-  const available = representatives.filter((item) => canAccessRepresentative(user, item));
-  const lockedRepresentative = user.role === "REPRESENTATIVE" ? user.representativeId : undefined;
   const [createdId, setCreatedId] = useState<string>();
   const [form, setForm] = useState({
-    representativeId: lockedRepresentative ?? available[0]?.id ?? "",
     subject: "",
-    difficulty: "",
-    desiredResult: "",
-    urgency: "normaal" as HelpRequest["urgency"],
-    explanation: "",
+    descriptionHtml: "",
   });
-  const valid = form.representativeId && [form.subject, form.difficulty, form.desiredResult].every((value) => value.trim().length >= 3);
-  const allowed = ["REPRESENTATIVE", "SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role);
+  const [error, setError] = useState<string>();
+  const valid = form.subject.trim().length > 0 && !isBlankRichText(form.descriptionHtml);
+  const representativeId = user.representativeId ?? user.id;
 
-  if (!allowed) {
-    return <EmptyState title="Geen rechten" description="Hulpaanvragen kunnen worden gestart door een vertegenwoordiger, verkoopleider of manager." />;
+  if (user.role !== "REPRESENTATIVE") {
+    return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("contactHelp.help.noCreateRights")} />;
   }
 
   if (createdId) {
-    return <SuccessCard title="Hulpaanvraag aangemaakt" description="De hulpvraag staat klaar voor opvolging door de verkoopleider of het management." href={`/hulpaanvragen/${createdId}`} linkLabel="Hulpaanvraag openen" />;
+    return <SuccessCard title={t("contactHelp.help.createdTitle")} description={t("contactHelp.help.createdDescription")} href={`/hulpaanvragen/${createdId}`} linkLabel={t("contactHelp.help.openHelpRequest")} />;
   }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <BackLink href="/hulpaanvragen" label="Terug naar hulpaanvragen" />
-      <PageHeader eyebrow="Nieuw" title="Hulp aanvragen" description="Beschrijf compact waar ondersteuning nodig is en welk resultaat je wilt bereiken." />
-      <div className="card grid gap-6 p-5 sm:p-7 lg:grid-cols-2">
-        <div className="lg:col-span-2">
-          <RepresentativePicker available={available} value={form.representativeId} disabled={Boolean(lockedRepresentative)} onChange={(representativeId) => setForm((current) => ({ ...current, representativeId }))} />
-        </div>
-        <TextInput label="Onderwerp" value={form.subject} onChange={(subject) => setForm((current) => ({ ...current, subject }))} />
-        <label>
-          <span className="text-sm font-bold text-slate-900">Urgentie</span>
-          <select className="field mt-2" value={form.urgency} onChange={(event) => setForm((current) => ({ ...current, urgency: event.target.value as HelpRequest["urgency"] }))}>
-            <option value="laag">Laag</option><option value="normaal">Normaal</option><option value="hoog">Hoog</option>
-          </select>
-        </label>
-        <TextArea label="Moeilijkheid" value={form.difficulty} onChange={(difficulty) => setForm((current) => ({ ...current, difficulty }))} />
-        <TextArea label="Gewenst resultaat" value={form.desiredResult} onChange={(desiredResult) => setForm((current) => ({ ...current, desiredResult }))} />
-        <div className="lg:col-span-2">
-          <TextArea label="Toelichting" value={form.explanation} onChange={(explanation) => setForm((current) => ({ ...current, explanation }))} optional />
-        </div>
-        <div className="lg:col-span-2 flex justify-end">
+      <BackLink href="/hulpaanvragen" label={t("contactHelp.help.backToList")} />
+      <PageHeader eyebrow={t("contactHelp.common.new")} title={t("contactHelp.help.newTitle")} description={t("contactHelp.help.newDescription")} />
+      <div className="card grid gap-6 p-5 sm:p-7">
+        <TextInput label={t("contactHelp.field.subject")} value={form.subject} onChange={(subject) => setForm((current) => ({ ...current, subject }))} />
+        <RichTextArea label={t("contactHelp.field.description")} value={form.descriptionHtml} onChange={(descriptionHtml) => setForm((current) => ({ ...current, descriptionHtml }))} />
+        {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+        <div className="flex justify-end">
           <button type="button" disabled={!valid} onClick={() => {
-            const request = createHelpRequest({ ...form, requesterId: user.id });
-            setCreatedId(request.id);
-          }} className="btn-primary"><CircleHelp className="h-4 w-4" /> Hulpaanvraag indienen</button>
+            try {
+              const request = createHelpRequest({ ...form, requesterId: user.id, representativeId });
+              setCreatedId(request.id);
+            } catch (requestError) {
+              setError(requestError instanceof Error ? requestError.message : t("contactHelp.help.submitError"));
+            }
+          }} className="btn-primary"><CircleHelp className="h-4 w-4" /> {t("contactHelp.help.submit")}</button>
         </div>
       </div>
     </div>
@@ -400,87 +734,154 @@ function NewHelpRequest() {
 }
 
 function HelpRequestDetail({ request }: { request: HelpRequest }) {
-  const { user } = useSession();
-  const { planHelpFollowUp, setHelpStatus } = useWorkflow();
+  const router = useRouter();
+  const { user, language } = useSession();
+  const t = makeT(language);
+  const { planHelpFollowUp, sendHelpAnswer, updateHelpRequest, withdrawHelpRequest } = useWorkflow();
   const { representatives } = useRepresentatives();
   const representative = representatives.find((item) => item.id === request.representativeId);
-  const canManage = ["SALES_LEADER", "COUNTRY_MANAGER", "GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role);
-  const [followUp, setFollowUp] = useState<FollowUpType>(request.followUpType ?? "contactmoment");
+  const isRequester = user.role === "REPRESENTATIVE" && request.requesterId === user.id;
+  const untreated = ["open", "nieuw"].includes(request.status) && !request.firstHandledAt && !(request.answers ?? []).length && !request.followUpType && !request.linkedInterventionId;
+  const canRequesterEdit = isRequester && untreated;
+  const canManage = user.role !== "REPRESENTATIVE" && representative ? canAccessRepresentative(user, representative) : false;
+  const canHandle = canManage && ["open", "nieuw", "in_behandeling"].includes(request.status) && !request.linkedInterventionId && !["gesloten", "afgesloten", "ingetrokken", "geannuleerd"].includes(request.status);
+  const canPlanCoachingFollowUp = canCreateIntervention(user);
+  const [followUp, setFollowUp] = useState<FollowUpType>(
+    request.followUpType === "begeleiding" && !canPlanCoachingFollowUp
+      ? "contactmoment"
+      : request.followUpType ?? "contactmoment"
+  );
+  const [answerHtml, setAnswerHtml] = useState("");
+  const [editSubject, setEditSubject] = useState(request.subject);
+  const [editDescription, setEditDescription] = useState(request.descriptionHtml ?? request.explanation ?? request.difficulty);
+  const [error, setError] = useState<string>();
   const [updated, setUpdated] = useState(false);
-  const followUpLabels: Record<FollowUpType, string> = {
-    begeleiding: "Begeleiding",
-    contactmoment: "Contactmoment",
-    retraining: "Retraining",
-    sales_training: "Sales training",
-    enkel_opvolging: "Enkel opvolging",
-    geen_actie: "Geen actie",
-  };
+  const followUpLabels = Object.fromEntries(
+    Object.entries(followUpLabelKeys).map(([value, key]) => [value, t(key)])
+  ) as Record<FollowUpType, string>;
 
   if (updated) {
-    return <SuccessCard title="Vervolgactie opgeslagen" description="De hulpaanvraag en eventuele gekoppelde interventie zijn bijgewerkt." href="/hulpaanvragen" linkLabel="Naar hulpaanvragen" />;
+    return <SuccessCard title={t("contactHelp.help.detailUpdatedTitle")} description={t("contactHelp.help.detailUpdatedDescription")} href="/hulpaanvragen" linkLabel={t("contactHelp.help.toList")} />;
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <BackLink href="/hulpaanvragen" label="Terug naar hulpaanvragen" />
-      <PageHeader eyebrow="Hulpaanvraag" title={request.subject} description={representative ? `${representative.firstName} ${representative.lastName} · ${representative.team}` : "Vertegenwoordiger"} actions={<StatusBadge status={request.status} />} />
+      <BackLink href="/hulpaanvragen" label={t("contactHelp.help.backToList")} />
+      <PageHeader eyebrow={t("contactHelp.help.singleEyebrow")} title={request.subject} description={representative ? `${representative.firstName} ${representative.lastName} · ${representative.team}` : t("contactHelp.common.representative")} actions={<StatusBadge status={request.status} />} />
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
         <section className="card p-5 sm:p-7">
-          <div className="flex items-center gap-3"><CircleHelp className="h-5 w-5 text-brand-700" /><h2 className="font-bold text-slate-950">De hulpvraag</h2></div>
-          <InfoBlock label="Moeilijkheid" value={request.difficulty} />
-          <InfoBlock label="Gewenst resultaat" value={request.desiredResult} />
-          <InfoBlock label="Toelichting" value={request.explanation || "Geen extra toelichting"} />
-          <div className="mt-5"><UrgencyBadge urgency={request.urgency} /></div>
+          <div className="flex items-center gap-3"><CircleHelp className="h-5 w-5 text-brand-700" /><h2 className="font-bold text-slate-950">{t("contactHelp.help.questionTitle")}</h2></div>
+          {canRequesterEdit ? (
+            <div className="mt-5 space-y-5">
+              <TextInput label={t("contactHelp.field.subject")} value={editSubject} onChange={setEditSubject} />
+              <RichTextArea label={t("contactHelp.field.description")} value={editDescription} onChange={setEditDescription} />
+              {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+              <div className="flex flex-wrap gap-3">
+                <button type="button" disabled={!editSubject.trim() || isBlankRichText(editDescription)} onClick={() => {
+                  try {
+                    updateHelpRequest({ id: request.id, requesterId: user.id, subject: editSubject, descriptionHtml: editDescription });
+                    setUpdated(true);
+                  } catch (updateError) {
+                    setError(updateError instanceof Error ? updateError.message : t("contactHelp.help.updateError"));
+                  }
+                }} className="btn-primary"><Save className="h-4 w-4" /> {t("contactHelp.help.saveChanges")}</button>
+                <button type="button" onClick={() => {
+                  try {
+                    withdrawHelpRequest(request.id, user.id);
+                    setUpdated(true);
+                  } catch (withdrawError) {
+                    setError(withdrawError instanceof Error ? withdrawError.message : t("contactHelp.help.withdrawError"));
+                  }
+                }} className="btn-secondary"><X className="h-4 w-4" /> {t("contactHelp.help.withdraw")}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeRichText(request.descriptionHtml ?? request.explanation ?? request.difficulty) }} />
+          )}
+          {request.withdrawnAt && <InfoBlock label={t("contactHelp.field.withdrawnAt")} value={formatDateTime(request.withdrawnAt, language)} />}
+          {request.firstHandledAt && <InfoBlock label={t("contactHelp.field.firstHandledAt")} value={formatDateTime(request.firstHandledAt, language)} />}
+          {(request.answers ?? []).length > 0 && (
+            <div className="mt-6 space-y-3">
+              <h3 className="font-bold text-slate-950">{t("contactHelp.help.answersTitle")}</h3>
+              {(request.answers ?? []).map((answer) => (
+                <div key={answer.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">{formatDateTime(answer.createdAt, language)}</p>
+                  <div className="text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizeRichText(answer.bodyHtml) }} />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
         <section className="card p-5 sm:p-7">
-          <h2 className="font-bold text-slate-950">Opvolging</h2>
+          <h2 className="font-bold text-slate-950">{t("contactHelp.help.followUpTitle")}</h2>
           {request.followUpType ? (
             <>
-              <InfoBlock label="Gekozen vervolgactie" value={followUpLabels[request.followUpType]} />
+              <InfoBlock label={t("contactHelp.help.chosenFollowUp")} value={followUpLabels[request.followUpType]} />
               {request.linkedInterventionId && (
                 <Link href={
                   request.followUpType === "contactmoment"
                     ? `/contactmomenten/${request.linkedInterventionId}`
+                    : request.followUpType === "begeleiding"
+                      ? `/begeleidingen/${request.linkedInterventionId}`
                     : request.followUpType === "retraining"
                       ? `/retrainingen/${request.linkedInterventionId}`
                       : request.followUpType === "sales_training"
                         ? `/sales-trainingen/${request.linkedInterventionId}`
                         : `/vertegenwoordigers/${request.representativeId}`
                 } className="btn-secondary mt-5 w-full">
-                  Gekoppelde interventie bekijken
+                  {t("contactHelp.help.openLinkedIntervention")}
                 </Link>
               )}
-              {canManage && request.status === "vervolgactie_gepland" && (
-                <button type="button" onClick={() => {
-                  setHelpStatus(request.id, "afgesloten");
-                  setUpdated(true);
-                }} className="btn-primary mt-3 w-full">
-                  <CheckCircle2 className="h-4 w-4" /> Hulpaanvraag afsluiten
-                </button>
-              )}
             </>
-          ) : canManage ? (
+          ) : canHandle ? (
             <>
-              {request.status === "nieuw" && (
-                <button type="button" onClick={() => setHelpStatus(request.id, "in_behandeling")} className="btn-secondary mt-4 w-full">In behandeling nemen</button>
-              )}
+              <RichTextArea label={t("contactHelp.field.answer")} value={answerHtml} onChange={setAnswerHtml} />
+              {error && <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+              <div className="mt-4 grid gap-3">
+                <button type="button" disabled={isBlankRichText(answerHtml)} onClick={() => {
+                  try {
+                    sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml });
+                    setUpdated(true);
+                  } catch (answerError) {
+                    setError(answerError instanceof Error ? answerError.message : t("contactHelp.help.answerError"));
+                  }
+                }} className="btn-secondary">{t("contactHelp.help.sendAnswer")}</button>
+                <button type="button" disabled={isBlankRichText(answerHtml)} onClick={() => {
+                  try {
+                    sendHelpAnswer({ helpRequestId: request.id, authorId: user.id, bodyHtml: answerHtml, closesRequest: true });
+                    setUpdated(true);
+                  } catch (answerError) {
+                    setError(answerError instanceof Error ? answerError.message : t("contactHelp.help.answerError"));
+                  }
+                }} className="btn-primary"><CheckCircle2 className="h-4 w-4" /> {t("contactHelp.help.sendAnswerAndClose")}</button>
+              </div>
               <label className="mt-5 block">
-                <span className="text-sm font-bold text-slate-900">Kies vervolgactie</span>
+                <span className="text-sm font-bold text-slate-900">{t("contactHelp.help.chooseFollowUp")}</span>
                 <select className="field mt-2" value={followUp} onChange={(event) => setFollowUp(event.target.value as FollowUpType)}>
-                  {Object.entries(followUpLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {Object.entries(followUpLabels)
+                    .filter(([value]) => !["enkel_opvolging", "geen_actie"].includes(value))
+                    .filter(([value]) => value !== "begeleiding" || canPlanCoachingFollowUp)
+                    .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
               <button type="button" onClick={() => {
-                planHelpFollowUp(request.id, user.id, followUp);
-                setUpdated(true);
-              }} className="btn-primary mt-5 w-full"><ClipboardCheck className="h-4 w-4" /> Vervolgactie opslaan</button>
-              <button type="button" onClick={() => {
-                setHelpStatus(request.id, "geannuleerd");
-                setUpdated(true);
-              }} className="btn-secondary mt-3 w-full">Hulpaanvraag annuleren</button>
+                try {
+                  if (followUp === "begeleiding") {
+                    if (!canPlanCoachingFollowUp) {
+                      throw new Error(t("contactHelp.help.noCoachingRights"));
+                    }
+                    router.push(`/begeleidingen/nieuw?helpRequestId=${encodeURIComponent(request.id)}`);
+                    return;
+                  }
+                  planHelpFollowUp(request.id, user.id, followUp);
+                  setUpdated(true);
+                } catch (followUpError) {
+                  setError(followUpError instanceof Error ? followUpError.message : t("contactHelp.help.followUpError"));
+                }
+              }} className="btn-primary mt-5 w-full"><ClipboardCheck className="h-4 w-4" /> {t("contactHelp.help.saveFollowUp")}</button>
             </>
           ) : (
-            <p className="mt-4 text-sm leading-6 text-slate-500">Je verkoopleider of het management kiest hier de passende vervolgactie.</p>
+            <p className="mt-4 text-sm leading-6 text-slate-500">{t("contactHelp.help.readOnly")}</p>
           )}
         </section>
       </div>
@@ -488,10 +889,10 @@ function HelpRequestDetail({ request }: { request: HelpRequest }) {
   );
 }
 
-function RepresentativePicker({ available, value, onChange, disabled = false }: { available: Representative[]; value: string; onChange: (value: string) => void; disabled?: boolean }) {
+function RepresentativePicker({ label, available, value, onChange, disabled = false }: { label: string; available: Representative[]; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return (
     <label className="block">
-      <span className="text-sm font-bold text-slate-900">Vertegenwoordiger</span>
+      <span className="text-sm font-bold text-slate-900">{label}</span>
       <select disabled={disabled} className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)}>
         {available.map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName} · {item.team}</option>)}
       </select>
@@ -499,14 +900,14 @@ function RepresentativePicker({ available, value, onChange, disabled = false }: 
   );
 }
 
-function TagPicker({ label, options, value, onChange }: { label: string; options: readonly string[]; value: string[]; onChange: (value: string[]) => void }) {
+function TagPicker({ label, options, value, onChange }: { label: string; options: readonly ThemeOption[]; value: string[]; onChange: (value: string[]) => void }) {
   return (
     <div className="mt-5">
       <p className="text-sm font-bold text-slate-900">{label}</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {options.map((option) => {
-          const active = value.includes(option);
-          return <button type="button" key={option} onClick={() => onChange(active ? value.filter((item) => item !== option) : [...value, option])} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold transition ${active ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"}`}>{option}</button>;
+          const active = value.includes(option.value);
+          return <button type="button" key={option.value} onClick={() => onChange(active ? value.filter((item) => item !== option.value) : [...value, option.value])} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold transition ${active ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"}`}>{option.label}</button>;
         })}
       </div>
     </div>
@@ -514,16 +915,36 @@ function TagPicker({ label, options, value, onChange }: { label: string; options
 }
 
 function TextArea({ label, value, onChange, optional = false }: { label: string; value: string; onChange: (value: string) => void; optional?: boolean }) {
+  const { language } = useSession();
+  const t = makeT(language);
   return (
     <label className="block">
-      <span className="text-sm font-bold text-slate-900">{label} {optional && <span className="font-normal text-slate-400">(optioneel)</span>}</span>
+      <span className="text-sm font-bold text-slate-900">{label} {optional && <span className="font-normal text-slate-400">{t("contactHelp.form.optional")}</span>}</span>
       <textarea rows={4} value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100" />
     </label>
   );
 }
 
-function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label><span className="text-sm font-bold text-slate-900">{label}</span><input className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+function RichTextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const { language } = useSession();
+  const t = makeT(language);
+  return (
+    <label className="block">
+      <span className="text-sm font-bold text-slate-900">{label}</span>
+      <textarea
+        rows={8}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full rounded-2xl border border-slate-200 p-4 text-sm leading-6 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+        placeholder={t("contactHelp.form.richTextPlaceholder")}
+      />
+      <span className="mt-2 block text-xs text-slate-400">{t("contactHelp.form.richTextHelp")}</span>
+    </label>
+  );
+}
+
+function TextInput({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+  return <label><span className="text-sm font-bold text-slate-900">{label}</span><input type={type} className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function InfoBlock({ label, value }: { label: string; value: string }) {
@@ -537,6 +958,19 @@ function UrgencyBadge({ urgency }: { urgency: HelpRequest["urgency"] }) {
 
 function BackLink({ href, label }: { href: string; label: string }) {
   return <Link href={href} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700"><ArrowLeft className="h-4 w-4" /> {label}</Link>;
+}
+
+function isFinalContactMoment(contact: ContactMoment) {
+  return contact.status === "afgesloten" || contact.status === "geannuleerd" || contact.status === "niet_uitgevoerd";
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("Blob kon niet worden gelezen."));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function SuccessCard({ title, description, href, linkLabel }: { title: string; description: string; href: string; linkLabel: string }) {
