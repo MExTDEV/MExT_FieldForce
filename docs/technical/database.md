@@ -180,6 +180,29 @@ Build-chain update 2026-07-13:
 - The development server was not restarted by the agent; restart remains
   user-managed through `keep-fieldforce-dev.ps1`.
 
+### Country Manager Coaching permission correction
+
+Migration `0030_country_manager_coaching_permission` aligns the persisted
+`COUNTRY_MANAGER` role default with the approved role behaviour:
+
+- `moduleVisitRecord` becomes enabled for the Country Manager role;
+- stale `UserPermission` rows equal to the previous stored role value are
+  removed before the role default changes;
+- genuine user-level deviations remain available through the normal sparse
+  override model;
+- country scope is not changed by this migration.
+
+Deployment and verification 2026-07-13:
+
+- backup evidence was confirmed before deployment;
+- `npm run db:migrate:deploy` applied
+  `0030_country_manager_coaching_permission` successfully;
+- `npm run db:migrate:status` found 30 local migrations and reported that the
+  database schema is up to date;
+- a direct Prisma read confirmed that `COUNTRY_MANAGER` has stored
+  `moduleVisitRecord = true`;
+- country scope records were not changed by the migration.
+
 ## Configurable criterion scopes
 
 Migration `0025_configurable_criterion_scopes` adds the generic scope foundation for configurable criteria and score questions.

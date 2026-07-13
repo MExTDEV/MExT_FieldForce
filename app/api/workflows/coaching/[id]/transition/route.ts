@@ -1,7 +1,11 @@
 import { badRequest, forbidden, handleApi, notFound } from "@/lib/server/api";
-import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
+import {
+  requireAuthenticatedUser,
+  requirePermission,
+} from "@/lib/server/authenticated-user";
 import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
+import { sendWorkflowEventMail } from "@/lib/server/mail-service";
 import {
   createCoachingApprovalNotification,
   markCoachingApprovalNotificationHandled,
@@ -20,6 +24,7 @@ export async function POST(
     const { id } = await context.params;
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
+    requirePermission(actor, "moduleVisitRecord");
     const payload = await request.json() as { action?: CoachingTransition };
     if (!payload.action || !["reopen", "send_for_approval", "approve"].includes(payload.action)) {
       badRequest("Ongeldige statusovergang.");
@@ -29,6 +34,7 @@ export async function POST(
       where: buildVisibleCoachingWhere(actor, { id }),
       select: {
         id: true,
+        title: true,
         status: true,
         representativeId: true,
         initiatorId: true,
@@ -75,6 +81,13 @@ export async function POST(
           },
         });
       });
+      await sendCoachingApprovalMailSafely({
+        actorId: actor.id,
+        interventionId: id,
+        recipientUserId: coaching.representativeId,
+        title: coaching.title,
+        sentAt: now,
+      });
     } else {
       if (!["REPRESENTATIVE", "SALES_LEADER"].includes(actor.role) || coaching.representativeId !== actor.id) {
         forbidden("Alleen de betrokken begeleide gebruiker kan voor akkoord bevestigen.");
@@ -115,6 +128,34 @@ export async function POST(
     if (!intervention) notFound("Begeleiding niet gevonden.");
     return { intervention };
   }, "De status van de begeleiding kon niet worden aangepast.");
+}
+
+async function sendCoachingApprovalMailSafely(input: {
+  actorId: string;
+  interventionId: string;
+  recipientUserId: string;
+  title: string;
+  sentAt: Date;
+}) {
+  try {
+    await sendWorkflowEventMail({
+      type: "COACHING_APPROVAL_REQUEST",
+      recipientUserId: input.recipientUserId,
+      triggeredByUserId: input.actorId,
+      entityTitle: input.title,
+      linkUrl: `/begeleidingen/${input.interventionId}`,
+      context: {
+        sourceModule: "BEGELEIDINGEN",
+        entityType: "Intervention",
+        entityId: input.interventionId,
+        eventKey: `COACHING_APPROVAL_REQUEST:coaching:${input.interventionId}:${input.sentAt.toISOString()}`,
+        reason: "Begeleiding ter akkoord verstuurd",
+        sentAt: input.sentAt,
+      },
+    });
+  } catch (error) {
+    console.error("[mail] Begeleidingsmail voor akkoord kon niet worden verzonden.", error);
+  }
 }
 
 function requireManager(

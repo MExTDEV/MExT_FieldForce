@@ -252,6 +252,7 @@ The following are no longer active known issues and belong in implementation his
 - optional team leader support;
 - basic approval notification implementation;
 - role-based Coaching edit consistency fix;
+- Country Manager Begeleidingen default and direct API enforcement;
 - fiche module filtering implementation.
 
 Reintroduce an item only if a new reproducible defect is found.

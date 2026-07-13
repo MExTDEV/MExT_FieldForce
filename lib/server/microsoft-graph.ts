@@ -2,7 +2,7 @@ import { getToken } from "next-auth/jwt";
 import { unauthorized } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
 import { getValidMicrosoftAccessToken } from "@/lib/server/microsoft-token-store";
-import type { CoachingIntervention } from "@/lib/types";
+import type { CoachingIntervention, ContactMoment } from "@/lib/types";
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const GRAPH_SCOPES = "User.Read Calendars.ReadWrite";
@@ -42,6 +42,20 @@ export type OutlookSyncResult = {
   outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
   lastSyncedAt?: string;
   syncError?: string;
+};
+
+type OutlookSyncItemKind = "BEGELEIDING" | "CONTACTMOMENT";
+
+type PlanningOutlookItem = {
+  id: string;
+  kind: OutlookSyncItemKind;
+  title: string;
+  plannedDate?: string;
+  startTime?: string;
+  endTime?: string;
+  notifyRepresentative?: boolean;
+  location?: string;
+  deleted?: boolean;
 };
 
 export async function requireMicrosoftAccessToken(request: Request) {
@@ -92,10 +106,53 @@ export async function syncCoachingsToOutlook(
   actorId: string,
   coachings: CoachingIntervention[]
 ): Promise<OutlookSyncResult[]> {
+  return syncPlanningItemsToOutlook(
+    accessToken,
+    actorId,
+    coachings.map((coaching) => ({
+      id: coaching.id,
+      kind: "BEGELEIDING",
+      title: coaching.title,
+      plannedDate: coaching.plannedDate,
+      startTime: coaching.startTime,
+      endTime: coaching.endTime,
+      notifyRepresentative: coaching.notifyRepresentative,
+      deleted: Boolean(coaching.deletedAt || coaching.status === "geannuleerd"),
+    }))
+  );
+}
+
+export async function syncContactMomentsToOutlook(
+  accessToken: string,
+  actorId: string,
+  contactMoments: ContactMoment[]
+): Promise<OutlookSyncResult[]> {
+  return syncPlanningItemsToOutlook(
+    accessToken,
+    actorId,
+    contactMoments.map((contactMoment) => ({
+      id: contactMoment.id,
+      kind: "CONTACTMOMENT",
+      title: contactMoment.subject?.trim() || contactMoment.reason,
+      plannedDate: contactMoment.plannedDate,
+      startTime: contactMoment.startTime,
+      endTime: contactMoment.endTime,
+      notifyRepresentative: contactMoment.notifyRepresentative,
+      location: contactMoment.location,
+      deleted: contactMoment.status === "geannuleerd" || contactMoment.status === "niet_uitgevoerd",
+    }))
+  );
+}
+
+async function syncPlanningItemsToOutlook(
+  accessToken: string,
+  actorId: string,
+  items: PlanningOutlookItem[]
+): Promise<OutlookSyncResult[]> {
   const results: OutlookSyncResult[] = [];
-  for (const coaching of coachings) {
+  for (const item of items) {
     const stored = await prisma.intervention.findUnique({
-      where: { id: coaching.id },
+      where: { id: item.id },
       select: {
         id: true,
         type: true,
@@ -105,19 +162,19 @@ export async function syncCoachingsToOutlook(
         representative: { select: { email: true, firstName: true, lastName: true } },
       },
     });
-    if (!stored || stored.type !== "BEGELEIDING") continue;
+    if (!stored || stored.type !== item.kind) continue;
     const ownerAccessToken = stored.ownerId === actorId ? accessToken : await getValidMicrosoftAccessToken(stored.ownerId);
     if (!ownerAccessToken) {
       results.push(await storeSyncError(
         stored.id,
         stored.outlookEventId,
         stored.outlookICalUId,
-        "De begeleider heeft geen geldige Microsoft-agendakoppeling."
+        "De eigenaar heeft geen geldige Microsoft-agendakoppeling."
       ));
       continue;
     }
     try {
-      if (coaching.deletedAt || coaching.status === "geannuleerd") {
+      if (item.deleted) {
         if (stored.outlookEventId) {
           await deleteGraphEvent(ownerAccessToken, stored.outlookEventId);
         }
@@ -130,7 +187,7 @@ export async function syncCoachingsToOutlook(
         continue;
       }
 
-      if (!coaching.plannedDate || !coaching.startTime || !coaching.endTime) {
+      if (!item.plannedDate || !item.startTime || !item.endTime) {
         results.push(await storeSyncError(
           stored.id,
           stored.outlookEventId,
@@ -140,17 +197,17 @@ export async function syncCoachingsToOutlook(
         continue;
       }
 
-      const payload = graphEventPayload(coaching, stored.representative);
+      const payload = buildPlanningOutlookEventPayload(item, stored.representative);
       let event: GraphEvent;
       if (stored.outlookEventId) {
         try {
           event = await updateGraphEvent(ownerAccessToken, stored.outlookEventId, payload);
         } catch (error) {
           if (!(error instanceof GraphRequestError) || error.status !== 404) throw error;
-          event = await createGraphEvent(ownerAccessToken, coaching.id, payload);
+          event = await createGraphEvent(ownerAccessToken, item.id, payload);
         }
       } else {
-        event = await createGraphEvent(ownerAccessToken, coaching.id, payload);
+        event = await createGraphEvent(ownerAccessToken, item.id, payload);
       }
       const synced = await prisma.intervention.update({
         where: { id: stored.id },
@@ -192,14 +249,15 @@ export async function transferCoachingsBetweenOwners(
 
 export async function recordOutlookSyncFailure(
   actorId: string,
-  coachings: CoachingIntervention[],
-  error: unknown
+  items: Array<Pick<CoachingIntervention, "id"> | Pick<ContactMoment, "id">>,
+  error: unknown,
+  type: OutlookSyncItemKind = "BEGELEIDING"
 ): Promise<OutlookSyncResult[]> {
   const results: OutlookSyncResult[] = [];
   const message = graphErrorMessage(error);
-  for (const coaching of coachings) {
+  for (const item of items) {
     const stored = await prisma.intervention.findFirst({
-      where: { id: coaching.id, type: "BEGELEIDING", ownerId: actorId },
+      where: { id: item.id, type, ownerId: actorId },
       select: { id: true, outlookEventId: true, outlookICalUId: true },
     });
     if (!stored) continue;
@@ -222,19 +280,26 @@ const syncSelection = {
   syncError: true,
 } as const;
 
-function graphEventPayload(coaching: CoachingIntervention, participant: { email: string; firstName: string; lastName: string }) {
+export function buildPlanningOutlookEventPayload(
+  item: PlanningOutlookItem,
+  participant: { email: string; firstName: string; lastName: string }
+) {
   const timeZone = process.env.OUTLOOK_TIME_ZONE || "Romance Standard Time";
+  const bodySentence = item.kind === "CONTACTMOMENT"
+    ? "Beheer dit contactmoment uitsluitend in Fieldforce."
+    : "Beheer deze begeleiding uitsluitend in Fieldforce.";
   return {
-    subject: `Fieldforce: ${coaching.title}`,
+    subject: `Fieldforce: ${item.title}`,
     body: {
       contentType: "HTML",
-      content: `<p>${escapeHtml(coaching.title)}</p><p>Beheer deze begeleiding uitsluitend in Fieldforce.</p>`,
+      content: `<p>${escapeHtml(item.title)}</p><p>${bodySentence}</p>`,
     },
-    start: { dateTime: `${coaching.plannedDate}T${coaching.startTime}:00`, timeZone },
-    end: { dateTime: `${coaching.plannedDate}T${coaching.endTime}:00`, timeZone },
+    start: { dateTime: `${item.plannedDate}T${item.startTime}:00`, timeZone },
+    end: { dateTime: `${item.plannedDate}T${item.endTime}:00`, timeZone },
+    location: item.location ? { displayName: item.location } : undefined,
     showAs: "busy",
     sensitivity: "normal",
-    attendees: coaching.notifyRepresentative ? [{ emailAddress: { address: participant.email, name: `${participant.firstName} ${participant.lastName}`.trim() }, type: "required" }] : [],
+    attendees: item.notifyRepresentative ? [{ emailAddress: { address: participant.email, name: `${participant.firstName} ${participant.lastName}`.trim() }, type: "required" }] : [],
   };
 }
 

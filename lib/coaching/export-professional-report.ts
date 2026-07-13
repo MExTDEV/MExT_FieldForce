@@ -11,6 +11,7 @@ import {
   mergeCriterionScores,
   normalizePerformanceScore,
 } from "@/lib/performance-data";
+import { isBlankRichText, richTextToPlainText } from "@/lib/rich-text";
 
 export type ProfessionalCoachingReportInput = {
   intervention: CoachingIntervention;
@@ -491,8 +492,8 @@ function drawAppointment(
   ].filter(([, value]) => value);
   let y = drawCompactKeyValueList(pdf, t.general, meta, MARGIN, 47, CONTENT_WIDTH, 34, 4);
   const narratives = [
-    ...(appointment.activity ? [[t.activity, appointment.activity]] : []),
-    ...(appointment.remarks ? [[t.remarks, appointment.remarks]] : []),
+    ...(!isBlankRichText(appointment.activity) ? [[t.activity, richTextToPlainText(appointment.activity)]] : []),
+    ...(!isBlankRichText(appointment.remarks) ? [[t.remarks, richTextToPlainText(appointment.remarks)]] : []),
   ];
   if (narratives.length) {
     y += 5;
@@ -505,7 +506,7 @@ function drawAppointment(
 
   const scored = appointment.scores.filter((score) => score.score !== "nvt");
   const ranked = [...scored].sort((left, right) => Number(right.score) - Number(left.score));
-  const comments = appointment.scores.filter((score) => score.comment?.trim());
+  const comments = appointment.scores.filter((score) => !isBlankRichText(score.comment));
   if (y + 38 > CONTENT_BOTTOM) {
     addWhitePage(pdf);
     drawSectionHeading(pdf, `${t.appointment} ${index + 1} - ${t.summary}`, fullName(input.representative));
@@ -537,7 +538,7 @@ function drawAppointment(
   drawInsightCard(
     pdf,
     t.coachAdvice,
-    comments.slice(0, 3).map((score) => score.comment),
+    comments.slice(0, 3).map((score) => richTextToPlainText(score.comment)),
     MARGIN + (width + 4) * 2,
     y,
     width,
@@ -567,12 +568,17 @@ function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: 
   drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), MARGIN + (cardWidth + 4) * 2, 98, cardWidth, AMBER);
 
   drawInsightCard(pdf, t.openActions, actions.slice(0, 5).map((action) => `${action.title}${action.due ? ` - ${formatDate(action.due, input.language)}` : ""}`), MARGIN, 153, 117, MID_BLUE);
-  drawInsightCard(pdf, t.nextCoaching, [input.intervention.dossier?.individualAttentionPoint || sorted.at(-1)?.criterion || "-"], 137, 153, 57, AMBER);
+  const nextCoaching = !isBlankRichText(input.intervention.dossier?.individualAttentionPoint)
+    ? richTextToPlainText(input.intervention.dossier?.individualAttentionPoint)
+    : sorted.at(-1)?.criterion || "-";
+  drawInsightCard(pdf, t.nextCoaching, [nextCoaching], 137, 153, 57, AMBER);
 
-  const note = input.intervention.internalNotes?.trim()
-    || rows.find((row) => row.comment?.trim())?.comment
-    || (input.intervention.dossier?.individualAttentionPoint ?? "-");
-  drawCompactKeyValueList(pdf, t.remarks, [[t.summary, note]], MARGIN, 208, CONTENT_WIDTH, 28);
+  const note = !isBlankRichText(input.intervention.internalNotes)
+    ? richTextToPlainText(input.intervention.internalNotes)
+    : rows.find((row) => !isBlankRichText(row.comment))?.comment;
+  if (!isBlankRichText(note)) {
+    drawCompactKeyValueList(pdf, t.remarks, [[t.summary, richTextToPlainText(note)]], MARGIN, 208, CONTENT_WIDTH, 28);
+  }
 
   const approvalValues = [
     [t.leader, `${input.leaderName} - ${formatDateTime(input.intervention.finalizedAt ?? input.intervention.updatedAt, input.language)}`],
@@ -673,7 +679,8 @@ function drawAppointmentScores(pdf: Pdf, input: ProfessionalCoachingReportInput,
     const [group, ...criterionParts] = score.criterion.split(" - ");
     const criterion = criterionParts.length ? criterionParts.join(" - ") : score.criterion;
     const category = criterionParts.length ? group : t.generalEvaluation;
-    const commentLines = pdf.splitTextToSize(score.comment || "", 40) as string[];
+    const comment = richTextToPlainText(score.comment);
+    const commentLines = comment ? pdf.splitTextToSize(comment, 40) as string[] : [];
     const criterionLines = pdf.splitTextToSize(criterion, 46) as string[];
     const height = Math.max(8.5, 5 + Math.max(commentLines.length, criterionLines.length) * 3);
     if (y + height > CONTENT_BOTTOM) {
@@ -861,11 +868,11 @@ function categoryEvolutionLines(rows: ScoreRow[]) {
 
 function drawCoachingRemarks(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: ScoreRow[], startY: number) {
   const t = translations[input.language];
-  const remarks = rows.filter((row) => row.comment?.trim());
+  const remarks = rows.filter((row) => !isBlankRichText(row.comment));
   if (!remarks.length) return startY;
   let y = drawCardTitle(pdf, t.remarks, startY);
   for (const row of remarks) {
-    const lines = pdf.splitTextToSize(row.comment!, CONTENT_WIDTH - 18) as string[];
+    const lines = pdf.splitTextToSize(richTextToPlainText(row.comment), CONTENT_WIDTH - 18) as string[];
     const height = Math.max(16, 11 + lines.length * 3.4);
     if (y + height > CONTENT_BOTTOM) {
       addWhitePage(pdf);

@@ -65,7 +65,17 @@ type BuildDashboardAttentionInput = {
 
 const cancelledStatuses = new Set(["geannuleerd"]);
 const completedContactStatuses = new Set(["afgesloten"]);
-const completedHelpRequestStatuses = new Set(["afgesloten"]);
+const completedHelpRequestStatuses = new Set([
+  "begeleiding",
+  "contactmoment",
+  "retraining",
+  "salestraining",
+  "gesloten",
+  "ingetrokken",
+  "afgesloten",
+  "geannuleerd",
+  "vervolgactie_gepland",
+]);
 const completedTrainingStatuses = new Set(["afgerond"]);
 const pendingApprovalCoachingStatuses = new Set(["wacht_op_akkoord", "verzonden_ter_akkoord"]);
 

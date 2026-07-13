@@ -29,12 +29,18 @@ import {
   saveSalesTraining,
   createHelpRequest,
   planHelpRequestFollowUp,
+  scheduleHelpRequestCoaching as scheduleHelpRequestCoachingState,
+  sendHelpRequestAnswer,
   setHelpRequestStatus,
   submitContactMomentInput,
   submitWorkflowReflection,
+  updateHelpRequest,
+  withdrawHelpRequest,
   type CoachingWorkflowInput,
   type ContactMomentInput,
   type HelpRequestInput,
+  type HelpRequestAnswerInput,
+  type HelpRequestUpdateInput,
   type RetrainingInput,
   type SalesTrainingInput,
 } from "@/lib/workflow-engine";
@@ -71,7 +77,11 @@ type WorkflowContextValue = {
   saveContactMoment: (input: ContactMomentInput, status: ContactMomentStatus) => ContactMoment;
   submitContactInput: (id: string, representativeId: string, kpis: string[], themes: string[]) => void;
   createHelpRequest: (input: HelpRequestInput) => HelpRequest;
+  updateHelpRequest: (input: HelpRequestUpdateInput) => HelpRequest;
+  withdrawHelpRequest: (id: string, requesterId: string) => void;
+  sendHelpAnswer: (input: HelpRequestAnswerInput) => HelpRequest;
   planHelpFollowUp: (id: string, actorId: string, type: FollowUpType) => void;
+  scheduleHelpRequestCoaching: (id: string, actorId: string, input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
   setHelpStatus: (id: string, status: HelpRequest["status"]) => void;
   visibleContactMoments: (user: MockUser) => ContactMoment[];
   visibleHelpRequests: (user: MockUser) => HelpRequest[];
@@ -93,6 +103,39 @@ type WorkflowPatch = Partial<Pick<
   | "retrainings"
   | "salesTrainings"
 >>;
+
+type WorkflowPersistResponse = {
+  error?: string;
+  outlookSync?: Array<{
+    interventionId: string;
+    outlookEventId?: string;
+    outlookICalUId?: string;
+    outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
+    lastSyncedAt?: string;
+    syncError?: string;
+  }>;
+};
+
+async function postWorkflowPatch(endpoint: string, patch: WorkflowPatch): Promise<WorkflowPersistResponse> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const payload = (await response.json()) as WorkflowPersistResponse;
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Workflowgegevens konden niet worden opgeslagen.");
+  }
+  return payload;
+}
+
+function applyOutlookSync<T extends { id: string }>(
+  item: T,
+  syncItems?: WorkflowPersistResponse["outlookSync"]
+) {
+  const sync = syncItems?.find((syncItem) => syncItem.interventionId === item.id);
+  return sync ? { ...item, ...sync, id: item.id } : item;
+}
 
 export function WorkflowProvider({ children }: { children: React.ReactNode }) {
   const { loading: sessionLoading, user } = useSession();
@@ -150,32 +193,12 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     try {
       setSaveError(null);
       setFailedSave(null);
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const payload = (await response.json()) as {
-        error?: string;
-        outlookSync?: Array<{
-          interventionId: string;
-          outlookEventId?: string;
-          outlookICalUId?: string;
-          outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";
-          lastSyncedAt?: string;
-          syncError?: string;
-        }>;
-      };
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Workflowgegevens konden niet worden opgeslagen.");
-      }
+      const payload = await postWorkflowPatch(endpoint, patch);
       if (payload.outlookSync?.length) {
         setState((current) => dedupeWorkflowState({
           ...current,
-          interventions: current.interventions.map((intervention) => {
-            const sync = payload.outlookSync?.find((item) => item.interventionId === intervention.id);
-            return sync ? { ...intervention, ...sync, id: intervention.id } : intervention;
-          }),
+          interventions: current.interventions.map((intervention) => applyOutlookSync(intervention, payload.outlookSync)),
+          contactMoments: current.contactMoments.map((contactMoment) => applyOutlookSync(contactMoment, payload.outlookSync)),
         }));
       }
     } catch (error) {
@@ -346,6 +369,25 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
       void persist("/api/workflows/help-requests", { helpRequests: [result.helpRequest] });
       return result.helpRequest;
     },
+    updateHelpRequest: (input) => {
+      const result = updateHelpRequest(state, input);
+      setState(dedupeWorkflowState(result.state));
+      void persist("/api/workflows/help-requests", { helpRequests: [result.helpRequest] });
+      return result.helpRequest;
+    },
+    withdrawHelpRequest: (id, requesterId) => {
+      updateState(
+        (current) => withdrawHelpRequest(current, id, requesterId),
+        "/api/workflows/help-requests",
+        (next) => ({ helpRequests: next.helpRequests.filter((item) => item.id === id) })
+      );
+    },
+    sendHelpAnswer: (input) => {
+      const result = sendHelpRequestAnswer(state, input);
+      setState(dedupeWorkflowState(result.state));
+      void persist("/api/workflows/help-requests", { helpRequests: [result.helpRequest] });
+      return result.helpRequest;
+    },
     planHelpFollowUp: (id, actorId, type) => {
       updateState(
         (current) => planHelpRequestFollowUp(current, id, actorId, type, representatives),
@@ -357,6 +399,36 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
           salesTrainings: next.salesTrainings.filter((item) => item.sourceHelpRequestId === id),
         })
       );
+    },
+    scheduleHelpRequestCoaching: async (id, actorId, input) => {
+      const result = scheduleHelpRequestCoachingState(state, id, actorId, input, representatives);
+      const patch = {
+        helpRequests: [result.helpRequest],
+        interventions: [result.intervention],
+      };
+      try {
+        setSaveError(null);
+        setFailedSave(null);
+        const payload = await postWorkflowPatch("/api/workflows/help-requests", patch);
+        const intervention = applyOutlookSync(result.intervention, payload.outlookSync);
+        setState((current) => dedupeWorkflowState({
+          ...current,
+          interventions: [
+            ...current.interventions.filter((item) => item.id !== intervention.id),
+            intervention,
+          ],
+          helpRequests: [
+            ...current.helpRequests.filter((item) => item.id !== id),
+            result.helpRequest,
+          ],
+        }));
+        window.dispatchEvent(new Event(notificationRefreshEventName));
+        return intervention;
+      } catch (error) {
+        console.error("[workflow-provider:schedule-help-coaching]", error);
+        setSaveError("Wijzigingen konden niet in de database worden opgeslagen. Probeer opnieuw of vernieuw de pagina.");
+        throw error;
+      }
     },
     setHelpStatus: (id, status) => {
       updateState(

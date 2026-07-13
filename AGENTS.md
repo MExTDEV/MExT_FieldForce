@@ -1,498 +1,249 @@
 # AGENTS.md
 
-# MExT FieldForce - AI Development Guide
+# MExT FieldForce — AI Development Rules
 
 ## Purpose
 
-This document defines the mandatory development rules for every AI assistant working on the MExT FieldForce project.
+This file contains the mandatory repository-wide rules for AI coding agents.
 
-Every AI must read this document before analysing or modifying the codebase.
-
-This file is the root instruction document. Detailed project knowledge is stored in `docs/ai`.
-
-If this file and a more detailed document appear to conflict, apply this order:
-
-1. `AGENTS.md`
-2. `docs/ai/INDEX.md`
-3. `docs/ai/05_DEVELOPMENT_STANDARDS.md`
-4. Module-specific documentation
-5. Technical documentation in `docs/technical`
-
-Never make assumptions when documentation exists.
+Detailed knowledge belongs in `docs/ai` and `docs/technical`. Do not add screen requirements, temporary defects, backlog items or completed-task history here.
 
 ---
 
-# Project Overview
+# 1. Instruction Resolution
 
-MExT FieldForce is an enterprise field coaching and sales platform used by M.Ex.T.
+Apply instructions in this order:
 
-The application supports multiple countries, teams, roles and permission scopes.
+1. Platform and safety instructions
+2. This `AGENTS.md`
+3. The current explicit user request
+4. The document that owns the affected topic
+5. Existing code and tests
 
-Primary goals:
+`docs/ai/INDEX.md` is a router, not a business source of truth.
 
-- Digital coaching
-- Sales planning
-- Performance monitoring
-- KPI tracking
-- Contract management
-- Service management
-- Reporting
-- Microsoft 365 integration
-- Business Central integration
+When an explicit request changes documented behaviour, update the code, tests and owning document together. Do not preserve an outdated rule merely because it was documented first.
 
-Current development focus:
+When code and documentation conflict, determine which reflects the latest approved behaviour. Do not silently choose between material conflicts; report unresolved inconsistencies.
 
-- Coaching module
-
-Future modules:
-
-- Salesday
-- Contract
-- Service
-- PST
-- Offline sales mode
+Do not invent missing business behaviour.
 
 ---
 
-# Mandatory Reading Order
+# 2. Context Selection
 
-Before implementing changes, read the documentation that matches the task.
+Read this file completely. Then use `docs/ai/INDEX.md` to identify the smallest relevant documentation set.
 
-Always start with:
+Do not automatically read:
 
-1. `docs/ai/INDEX.md`
-2. `docs/ai/00_PROJECT.md`
-3. `docs/ai/01_ARCHITECTURE.md`
-4. `docs/ai/05_DEVELOPMENT_STANDARDS.md`
+- all files under `docs/ai`;
+- all Coaching documents;
+- the complete `TODO.md`;
+- the complete `07_KNOWN_ISSUES.md`;
+- unrelated database or deployment documentation.
 
-For Coaching-related work, also read:
+Read a TODO or known-issue section only when it matches the task. Broaden context only when the change crosses modules, permissions, lifecycles, shared data, navigation or integrations.
 
-1. `docs/ai/modules/Coaching/README.md`
-2. `docs/ai/modules/Coaching/Navigation.md`
-3. `docs/ai/modules/Coaching/FLOW.md`
-4. The affected screen document:
-   - `Dashboard.md`
-   - `Begeleidingen.md`
-   - `MijnTeam.md`
-   - `Actiepunten.md`
-   - `Planning.md`
-5. `docs/ai/modules/Coaching/TODO.md`
-6. `docs/ai/07_KNOWN_ISSUES.md`
-
-For database work, also read:
-
-- `docs/ai/02_DATABASE.md`
-- `docs/technical/database.md`
-- `docs/technical/database-development-policy.md`
-
-For deployment work, also read:
-
-- `docs/ai/06_DEPLOYMENT.md`
-- `docs/technical/vps-deployment.md`
+Search narrowly before opening large files or logs.
 
 ---
 
-# Technology Stack
+# 3. Change Discipline
 
-Frontend:
+Make the smallest maintainable change that fully solves the request.
 
-- Next.js
-- React
-- TypeScript
-- TailwindCSS
-- shadcn/ui
+Prefer existing:
 
-Backend:
+- components and UI patterns;
+- services and helpers;
+- data entities and relations;
+- permission and scope logic;
+- workflows and lifecycle handling;
+- translations;
+- targeted tests.
 
-- Next.js
-- Prisma ORM
+Avoid unrelated refactoring, speculative abstractions, unnecessary dependencies, broken contracts and parallel sources of truth.
 
-Database:
-
-- MariaDB / MySQL
-
-Authentication:
-
-- Microsoft Entra ID
-
-Hosting:
-
-- VPS
-- Plesk
-- Node.js
+Multiple pages may open the same business object, but must reuse the same record, workflow, lifecycle, permission checks and update path.
 
 ---
 
-# General Principles
+# 4. Repository Exploration
 
-Always extend existing functionality whenever possible.
+Start with the narrowest relevant search:
 
-Never duplicate components.
+1. Locate the route, component, helper, model, status or permission key.
+2. Inspect the smallest relevant section and nearby callers.
+3. Inspect related tests.
+4. Expand only when required.
 
-Never duplicate business logic.
+Scope or cap commands with potentially large output. Prefer byte caps where supported. Narrow a command before increasing its output.
 
-Never duplicate business workflows.
-
-Keep components reusable.
-
-Keep files small and maintainable.
-
-Always preserve the existing design language.
-
-Always respect the existing permission model.
-
-Multiple pages may open the same workflow, but the workflow itself must exist only once.
+Avoid unbounded recursive listings, broad searches, full large-file dumps, full logs, full diffs and generated or minified output.
 
 ---
 
-# Coding Standards
+# 5. Worktree and Git Safety
 
-Use:
+Preserve changes you did not make.
 
-- TypeScript strict mode
-- Prisma ORM
-- TailwindCSS
-- shadcn/ui components
-- Existing shared components where available
+Never use destructive commands such as:
+
+- `git reset --hard`
+- `git checkout --`
+- `git clean -fd`
+
+unless explicitly requested.
+
+Do not discard unrelated uncommitted work.
+
+Do not automatically create a branch, commit, merge, push or deploy. Perform Git write actions only when explicitly requested or approved.
+
+---
+
+# 6. Code and Architecture
+
+Follow the frameworks, versions and conventions already present in `package.json`, the Prisma schema, the codebase and architecture documentation.
+
+Use TypeScript strict typing, Prisma for persistent data, existing Tailwind/shared UI patterns, clear domain naming, simple control flow and explicit error handling.
 
 Avoid:
 
-- inline CSS
-- duplicated code
-- unnecessary dependencies
-- breaking existing APIs
-- hardcoded user-facing text
-- hardcoded permissions
-- hardcoded business calculations
+- `any` without reason;
+- inline CSS when an existing pattern applies;
+- hardcoded user-facing text;
+- hardcoded permissions;
+- hidden business calculations;
+- comments that only narrate obvious code.
+
+Business calculations must be explicit, reproducible, documented and testable.
 
 ---
 
-# Database Standards
+# 7. Permissions and Scope
 
-The database is managed through Prisma.
+MExT FieldForce is permission-driven and scope-driven.
 
-Whenever the data model changes:
+Effective access may depend on role configuration, module activation, user overrides, country scope, team scope, user scope, lifecycle status and workflow rules.
 
-- update Prisma schema
-- create a migration
-- verify the migration
-- update database documentation
-- never manually modify the production schema
-- never duplicate business data when an existing entity can be reused
+Role behaviour is owned by `docs/ai/03_ROLES.md`. Never infer complete access from a role name alone.
 
-Business calculations must be transparent and documented.
+For every protected action:
 
-Unknown or undocumented calculations must not be implemented.
+- validate access server-side;
+- restrict queries to effective scope;
+- apply least privilege;
+- preserve lifecycle locks.
 
----
+Client-side visibility is not security.
 
-# Roles and Permissions
-
-The application contains role-based and user-overridable permissions.
-
-Permissions must never be hardcoded.
-
-Navigation visibility is permission-driven.
-
-Role configuration defines default access.
-
-User-level overrides may overrule role defaults.
-
-Official roles include:
-
-- Vertegenwoordiger
-- Verkoopleider
-- Sales Manager
-- Country Manager
-- Admin
-- Super Admin
-
-Important:
-
-- Sales Manager is a separate role.
-- Sales Manager is not the same as Verkoopleider.
-- Sales Manager is not the same as Country Manager.
-- Sales Manager sits above Verkoopleider and can have access to one or more countries.
-
-When adding a new main navigation item, also update:
-
-- role permission configuration
-- user-level override configuration
-- menu rendering logic
-- documentation
-
-See:
-
-- `docs/ai/03_ROLES.md`
+New or changed navigation requires role defaults, user overrides, direct route enforcement, API enforcement, translations and documentation.
 
 ---
 
-# UI Principles
+# 8. Database and Prisma
 
-Tablet first.
+The Prisma schema and migrations are the database source of truth.
 
-Responsive.
+When persistent data changes:
 
-Professional.
+1. Inspect existing models and relations.
+2. Confirm the concept is not already stored.
+3. Update the schema and create a migration when required.
+4. Verify MariaDB/MySQL compatibility.
+5. Validate affected queries, permissions and tests.
+6. Update owning documentation.
 
-Consistent.
+Never manually alter the production schema, duplicate business data unnecessarily, add parallel status fields without a plan or hide schema constraints behind undocumented conventions.
 
-Minimal clicks.
-
-High information density.
-
-Fast navigation.
-
-Never introduce a new visual style.
-
-Never change the MExT look-and-feel unless explicitly requested.
-
-Use existing layout patterns, cards, badges, tables, buttons and navigation structures.
-
-See:
-
-- `docs/ai/04_UI_GUIDELINES.md`
+Report pre-existing Prisma or environment failures separately from introduced defects.
 
 ---
 
-# Multi-Language
+# 9. UI, Languages and Encoding
 
-The application supports multiple languages.
+Preserve the existing tablet-first, touch-friendly and compact MExT visual language. Reuse existing headers, cards, tables, badges, buttons, dialogs and empty states.
 
-Every new UI element must support translation.
+Do not introduce a new visual style unless explicitly requested.
 
-Never hardcode user-facing text.
+All user-facing text must use the translation system and support Dutch, French and German.
 
-New labels, warnings, buttons, statuses and messages must be translation-ready.
-
----
-
-# Security
-
-Never expose secrets.
-
-Never expose connection strings.
-
-Never bypass authentication.
-
-Always validate permissions.
-
-Always validate country, team and user scope.
-
-Apply least privilege.
-
-Never broaden access without an explicit request.
+Preserve UTF-8 characters such as `é`, `è`, `ë`, `ç`, `à`, `ü`, `ö`, `ä` and `ß`. Do not convert translated content to ASCII.
 
 ---
 
-# Build Quality
+# 10. Workflows and Lifecycles
 
-Every completed task must leave the project in a buildable state.
+Before changing a status, inspect existing variants, visibility, permission locks, notifications, reporting, history and tests.
 
-Whenever possible, run:
+Do not add a status merely to avoid normalising existing status handling.
 
-- `npm run lint`
-- `npm run build`
+Approval belongs to the responsible or coached person defined by the workflow. Do not assume this is always a Representative.
 
-Resolve introduced errors.
-
-Do not leave TypeScript, lint or build errors behind.
+Use the owning module document to determine whether a workflow is `DEFINED`, `PARTIALLY_DEFINED` or `UNDEFINED`. Implement only documented behaviour.
 
 ---
 
-# Documentation
+# 11. Validation
 
-Update documentation when changes affect:
+Match validation to risk and blast radius. Use existing scripts from `package.json`.
 
-- architecture
-- database
-- permissions
-- navigation
-- workflows
-- UI rules
-- deployment
-- module behaviour
-- known issues
-- TODO items
+For source changes, run the relevant targeted test, `npm run typecheck` and lint where practical.
 
-For Coaching changes, update the affected module document under:
+For permission or scope changes, include relevant permission, menu, data-access and visibility tests.
 
-- `docs/ai/modules/Coaching/`
+For workflow, lifecycle or notification changes, include relevant feature tests.
+
+For Prisma, routing, shared configuration or release-level changes, perform broader checks and a production build where practical.
+
+Do not run every test or a full build automatically for trivial changes. Never claim a check passed when it was not run.
+
+When a known environment issue blocks validation, do not repeat the same command indefinitely. Run the best available alternative and report the exact limitation.
 
 ---
 
-# Impact Analysis
+# 12. Documentation
 
-Before implementing any change, analyse the impact on the complete application.
+Update the document that owns the changed topic:
 
-Always identify:
+- project vision → `00_PROJECT.md`
+- architecture → `01_ARCHITECTURE.md`
+- database → `02_DATABASE.md`
+- roles and scope → `03_ROLES.md`
+- UI → `04_UI_GUIDELINES.md`
+- development process → `05_DEVELOPMENT_STANDARDS.md`
+- active defects → `07_KNOWN_ISSUES.md`
+- module behaviour → relevant module document
+- stable decisions → `DECISIONS.md`
+- open work → `TODO.md`
+- completed work → `history/`
 
-- Which functional module is affected?
-- Which page or workflow is affected?
-- Which user roles are affected?
-- Which permission rules are affected?
-- Which database entities are affected?
-- Which APIs are affected?
-- Which related modules could be impacted?
-- Which documentation requires updating?
-- Whether this change affects navigation, reporting, Planning or Outlook synchronisation.
-
-Never implement changes without understanding their impact on the rest of the application.
-
----
-
-# AI Behaviour
-
-Before implementing:
-
-1. Understand the request.
-2. Read the relevant documentation.
-3. Analyse impact.
-4. Reuse existing components and business logic.
-5. Preserve architecture.
-6. Preserve naming conventions.
-7. Preserve styling.
-8. Preserve permissions.
-9. Preserve database integrity.
-10. Identify required documentation updates.
-
-After implementing:
-
-- verify visual result
-- verify functional result
-- verify permissions
-- verify database impact
-- verify translations
-- verify build
-- update documentation
-- update TODO or Known Issues when relevant
+Avoid duplicating full rules across files. Use cross-references.
 
 ---
 
-# Undefined Requirements
+# 13. Local Development Server
 
-If a module, flow, field, status, permission or calculation is marked as undefined or still under business discussion, do not invent it.
+Do not start, stop, restart or repeatedly probe the local development server during normal coding tasks.
 
-Ask for clarification or document the missing requirement.
+The user manages it through `keep-fieldforce-dev.ps1`.
 
-This applies especially to:
+Do not spend time on `npm run dev`, repeated port checks, browser launch checks, alternate ports, Node restarts or browser-based visual verification unless explicitly requested.
 
-- Contactmomenten
-- Retrainingen
-- Salestrainingen
-- Hulpaanvragen
-- Rapportage
-- Action point detail workflow
-- future offline sales mode
+Allowed validation includes targeted tests, typecheck, lint, relevant Prisma checks and a justified production build.
+
+Deployment and Plesk troubleshooting enter scope only when explicitly requested.
 
 ---
 
-# Coaching-Specific Rules
+# 14. Completion Report
 
-The Coaching module currently has priority.
+Report:
 
-There is only one coaching workflow.
+1. What changed
+2. Important files changed
+3. Validation performed
+4. Documentation updated
+5. Remaining risks or unverified behaviour
 
-There is only one coaching form.
-
-A coaching may be opened from multiple entry points:
-
-- Dashboard
-- Planning
-- Begeleidingen
-- Mijn Team
-
-The entry point may differ, but the same coaching record, form, lifecycle and permissions must be used.
-
-Do not duplicate the coaching form or coaching business logic.
-
-Respect lifecycle status:
-
-- Planned
-- In Progress
-- Incomplete
-- Pending Approval / Wachten op akkoord
-- Completed
-
-When a coaching is in `Pending Approval / Wachten op akkoord`, it is read-only.
-
-Changes are only allowed after withdrawing the pending approval status.
-
-A coaching is only completed after representative approval.
-
----
-
-# Git and Integration Workflow
-
-Unless a different workflow is explicitly requested, use the current simple workflow:
-
-1. Implement the requested change.
-2. Run build/lint where possible.
-3. Update documentation when required.
-4. Merge with main when the user requested or approved this.
-5. Push to Git when the user requested or approved this.
-
-Do not introduce a branch-based workflow unless explicitly requested.
-
-Do not start, stop or restart the local development webserver as part of this workflow.
-
----
-
-# Local Development Server Rule
-
-Do not start, stop or restart the local development webserver.
-
-The local devserver is managed externally by the user through:
-
-- `keep-fieldforce-dev.ps1`
-
-AI assistants must not spend time or credits on:
-
-- `npm run dev`
-- starting the local devserver
-- stopping the local devserver
-- restarting the local devserver
-- checking whether the browser opens
-- checking whether the application is reachable on port 3000
-- repeated server startup attempts
-- browser-based visual verification unless explicitly requested
-
-AI assistants may run:
-
-- `npm run lint`
-- `npm run build`
-- relevant automated tests, if available
-
-The AI must focus on:
-
-- code changes
-- documentation changes
-- lint/build validation
-- Git actions when requested or approved
-
-If the local devserver is not running, the user will handle it outside Codex using the PowerShell watchdog script.
-
-For deployment-specific rules, see:
-
-- `docs/ai/06_DEPLOYMENT.md`
-
----
-
-# Source of Truth
-
-The following documents define the project:
-
-1. `AGENTS.md`
-2. `docs/ai/INDEX.md`
-3. `docs/ai/00_PROJECT.md`
-4. `docs/ai/01_ARCHITECTURE.md`
-5. `docs/ai/02_DATABASE.md`
-6. `docs/ai/03_ROLES.md`
-7. `docs/ai/04_UI_GUIDELINES.md`
-8. `docs/ai/05_DEVELOPMENT_STANDARDS.md`
-9. `docs/ai/modules/Coaching/README.md`
-10. Technical documentation in `docs/technical`
-
-Never make assumptions when documentation exists.
-
-Never ignore explicit business rules in the AI Knowledge Base.
+Keep the summary factual. Do not claim browser, environment or production validation that was not performed.

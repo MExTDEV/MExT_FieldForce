@@ -66,6 +66,10 @@ export function canCreateIntervention(user: MockUser) {
   return user.role === "SUPER_ADMIN" || can(user, "intervention:create");
 }
 
+export function canCreateCoachingIntervention(user: MockUser) {
+  return canCreateIntervention(user) && can(user, "moduleVisitRecord");
+}
+
 export function canAccessSalesday(user: MockUser) {
   return [
     "SALES_LEADER",

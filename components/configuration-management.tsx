@@ -25,6 +25,7 @@ import { optionalTeamLeaderLabel } from "@/lib/team-management";
 import type { ManagementImportExportTopic } from "@/lib/management-import-export";
 import type {
   Country,
+  CriterionScopeType,
   FieldForcePermissionKey,
   KpiEvaluationDirection,
   KpiPeriodType,
@@ -100,6 +101,17 @@ type EditorState =
     }
   | { kind: "focus"; id?: string; code: string; name: string; sortOrder: number }
   | { kind: "criterion"; id?: string; focusId: string; name: string; sortOrder: number }
+  | {
+      kind: "criterionScope";
+      id?: string;
+      criterionId: string;
+      criterionName: string;
+      scopeType: CriterionScopeType;
+      country: Country | null;
+      teamId: string;
+      userId: string;
+      sortOrder: number;
+    }
   | { kind: "deactivate"; entity: string; id: string; name: string }
   | { kind: "purge"; entity: string; id: string; name: string };
 
@@ -277,14 +289,14 @@ export function ConfigurationManagement({ section }: { section: Section }) {
           <StatusGroup title="Actieve kapstokken" count={data.focuses.filter((focus) => focus.active).length}>
             <div className="space-y-4">
               {data.focuses.filter((focus) => focus.active).map((focus) => (
-                <FocusCard key={focus.id} focus={focus} isSuperAdmin={user.role === "SUPER_ADMIN"} onEdit={setEditor} />
+                <FocusCard key={focus.id} focus={focus} isSuperAdmin={user.role === "SUPER_ADMIN"} defaultCountry={user.country} onEdit={setEditor} />
               ))}
             </div>
           </StatusGroup>
           <StatusGroup title="Niet-actieve kapstokken" count={data.focuses.filter((focus) => !focus.active).length}>
             <div className="space-y-4">
               {data.focuses.filter((focus) => !focus.active).map((focus) => (
-                <FocusCard key={focus.id} focus={focus} isSuperAdmin={user.role === "SUPER_ADMIN"} onEdit={setEditor} />
+                <FocusCard key={focus.id} focus={focus} isSuperAdmin={user.role === "SUPER_ADMIN"} defaultCountry={user.country} onEdit={setEditor} />
               ))}
             </div>
           </StatusGroup>
@@ -672,6 +684,15 @@ function kpiScopeBucketLabel(scope: KpiTargetScope) {
   return "Per rol";
 }
 
+const criterionScopeLabels: Record<CriterionScopeType, string> = {
+  GLOBAL: "Globaal",
+  COUNTRY: "Per land",
+  TEAM: "Per team",
+  USER: "Per gebruiker",
+};
+
+const criterionScopeOrder: CriterionScopeType[] = ["GLOBAL", "COUNTRY", "TEAM", "USER"];
+
 function StatusGroup({
   title,
   count,
@@ -703,10 +724,12 @@ function StatusGroup({
 function FocusCard({
   focus,
   isSuperAdmin,
+  defaultCountry,
   onEdit,
 }: {
   focus: ManagementConfiguration["focuses"][number];
   isSuperAdmin: boolean;
+  defaultCountry: Country;
   onEdit: (editor: EditorState) => void;
 }) {
   const activeCriteria = focus.criteria.filter((criterion) => criterion.active);
@@ -724,23 +747,64 @@ function FocusCard({
         <div className="border-y border-slate-100 bg-slate-50 px-5 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
           {title} ({criteria.length})
         </div>
-        {criteria.length ? criteria.map((criterion) => (
-          <div key={criterion.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-b-0">
-            <span className="w-8 text-sm font-bold text-slate-400">{criterion.sortOrder}</span>
-            <span className="flex-1 text-sm font-semibold">{criterion.name}</span>
-            <Action
-              label="Bewerken"
-              onClick={() => onEdit({
-                kind: "criterion",
-                id: criterion.id,
-                focusId: focus.id,
-                name: criterion.name,
-                sortOrder: criterion.sortOrder,
-              })}
-            >
-              <MoreHorizontal />
-            </Action>
-            {isSuperAdmin && (
+        {criteria.length ? criteria.map((criterion) => {
+          const scopeLinks = criterion.scopeLinks ?? [];
+          return (
+          <div key={criterion.id} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
+            <div className="flex items-start gap-3">
+              <span className="w-8 pt-1 text-sm font-bold text-slate-400">{criterion.sortOrder}</span>
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-semibold">{criterion.name}</span>
+                <CriterionScopeBadges
+                  scopeLinks={scopeLinks}
+                  onEdit={(scopeLink) => onEdit({
+                    kind: "criterionScope",
+                    id: scopeLink.id,
+                    criterionId: criterion.id,
+                    criterionName: criterion.name,
+                    scopeType: scopeLink.scopeType,
+                    country: scopeLink.country,
+                    teamId: scopeLink.teamId ?? "",
+                    userId: scopeLink.userId ?? "",
+                    sortOrder: scopeLink.sortOrder,
+                  })}
+                  onDelete={(scopeLink) => onEdit({
+                    kind: "deactivate",
+                    entity: "criterionScope",
+                    id: scopeLink.id,
+                    name: `${criterion.name} - ${criterionScopeDescription(scopeLink)}`,
+                  })}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-secondary px-3 py-2 text-xs"
+                onClick={() => onEdit({
+                  kind: "criterionScope",
+                  criterionId: criterion.id,
+                  criterionName: criterion.name,
+                  scopeType: isSuperAdmin ? "GLOBAL" : "COUNTRY",
+                  country: isSuperAdmin ? null : defaultCountry,
+                  teamId: "",
+                  userId: "",
+                  sortOrder: scopeLinks.length + 1,
+                })}
+              >
+                <Plus className="h-4 w-4" /> Scope
+              </button>
+              <Action
+                label="Bewerken"
+                onClick={() => onEdit({
+                  kind: "criterion",
+                  id: criterion.id,
+                  focusId: focus.id,
+                  name: criterion.name,
+                  sortOrder: criterion.sortOrder,
+                })}
+              >
+                <MoreHorizontal />
+              </Action>
+              {isSuperAdmin && (
               <Action
                 label="Definitief verwijderen"
                 danger
@@ -753,23 +817,24 @@ function FocusCard({
               >
                 <Trash2 />
               </Action>
-            )}
-            {criterion.active && (
-              <Action
-                label="Deactiveren"
-                danger
-                onClick={() => onEdit({
-                  kind: "deactivate",
-                  entity: "criterion",
-                  id: criterion.id,
-                  name: criterion.name,
-                })}
-              >
-                <X />
-              </Action>
-            )}
+              )}
+              {criterion.active && (
+                <Action
+                  label="Deactiveren"
+                  danger
+                  onClick={() => onEdit({
+                    kind: "deactivate",
+                    entity: "criterion",
+                    id: criterion.id,
+                    name: criterion.name,
+                  })}
+                >
+                  <X />
+                </Action>
+              )}
+            </div>
           </div>
-        )) : (
+        )}) : (
           <p className="px-5 py-4 text-sm text-slate-500">Geen criteria in deze groep.</p>
         )}
       </div>
@@ -862,6 +927,65 @@ function FocusCard({
       )}
     </section>
   );
+}
+
+function CriterionScopeBadges({
+  scopeLinks,
+  onEdit,
+  onDelete,
+}: {
+  scopeLinks: ManagementConfiguration["focuses"][number]["criteria"][number]["scopeLinks"];
+  onEdit: (scopeLink: ManagementConfiguration["focuses"][number]["criteria"][number]["scopeLinks"][number]) => void;
+  onDelete: (scopeLink: ManagementConfiguration["focuses"][number]["criteria"][number]["scopeLinks"][number]) => void;
+}) {
+  if (!scopeLinks.length) {
+    return (
+      <p className="mt-2 text-xs font-semibold text-amber-700">
+        Nog geen scope gekoppeld. Dit criterium wordt pas geselecteerd wanneer er een koppeling is.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {criterionScopeOrder.map((scopeType) => {
+        const links = scopeLinks.filter((scopeLink) => scopeLink.scopeType === scopeType);
+        return (
+          <div key={scopeType} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              {criterionScopeLabels[scopeType]}
+            </p>
+            {links.length ? (
+              <div className="space-y-1">
+                {links.map((scopeLink) => (
+                  <div key={scopeLink.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                    <span className="min-w-0 flex-1 truncate">{criterionScopeDescription(scopeLink)}</span>
+                    <button type="button" className="text-slate-400 hover:text-brand-700" onClick={() => onEdit(scopeLink)}>
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                    <button type="button" className="text-slate-400 hover:text-rose-600" onClick={() => onDelete(scopeLink)}>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">Geen koppelingen</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function criterionScopeDescription(
+  scopeLink: ManagementConfiguration["focuses"][number]["criteria"][number]["scopeLinks"][number]
+) {
+  if (scopeLink.scopeType === "GLOBAL") return "Iedereen";
+  if (scopeLink.scopeType === "COUNTRY") return scopeLink.country ? countryLabel(scopeLink.country) : "Land";
+  if (scopeLink.scopeType === "TEAM") return scopeLink.teamName ?? "Team";
+  return scopeLink.userName ?? "Gebruiker";
 }
 
 function RolePermissions({
@@ -1394,6 +1518,122 @@ function KpiTargetEditor({
   );
 }
 
+function CriterionScopeEditor({
+  editor,
+  data,
+  users,
+  canChooseCountry,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  editor: Extract<EditorState, { kind: "criterionScope" }>;
+  data: ManagementConfiguration;
+  users: ReturnType<typeof useSession>["managedUsers"];
+  canChooseCountry: boolean;
+  onChange: (editor: EditorState) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const countries: Country[] = ["BE", "NL", "DE"];
+  const visibleTeams = data.teams.filter((team) => team.active && (!editor.country || team.country === editor.country));
+  const visibleUsers = users.filter((item) => item.active && (!editor.country || item.country === editor.country));
+  const valid = criterionScopeHasValidTarget(editor);
+
+  return (
+    <Modal title={`${editor.id ? "Bewerken" : "Toevoegen"} kapstokscope`} onCancel={onCancel}>
+      <div className="space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Criterium</p>
+          <p className="text-sm font-semibold text-slate-900">{editor.criterionName}</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Scope">
+            <select
+              className="field"
+              value={editor.scopeType}
+              onChange={(event) => {
+                const scopeType = event.target.value as CriterionScopeType;
+                onChange({
+                  ...editor,
+                  scopeType,
+                  country: scopeType === "GLOBAL" ? null : editor.country,
+                  teamId: "",
+                  userId: "",
+                });
+              }}
+            >
+              {criterionScopeOrder.map((scopeType) => (
+                <option key={scopeType} value={scopeType}>{criterionScopeLabels[scopeType]}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Volgorde binnen scope">
+            <input
+              type="number"
+              min="0"
+              className="field"
+              value={editor.sortOrder}
+              onChange={(event) => onChange({ ...editor, sortOrder: Number(event.target.value) })}
+            />
+          </Field>
+        </div>
+        {(editor.scopeType === "COUNTRY" || editor.scopeType === "TEAM" || editor.scopeType === "USER") && (
+          <Field label="Landfilter">
+            <select
+              className="field disabled:bg-slate-100 disabled:text-slate-500"
+              value={editor.country ?? ""}
+              disabled={!canChooseCountry}
+              onChange={(event) => onChange({
+                ...editor,
+                country: event.target.value ? event.target.value as Country : null,
+                teamId: "",
+                userId: "",
+              })}
+            >
+              <option value="">Geen landfilter</option>
+              {countries.map((country) => <option key={country} value={country}>{countryLabel(country)}</option>)}
+            </select>
+          </Field>
+        )}
+        {editor.scopeType === "TEAM" && (
+          <Field label="Team">
+            <select
+              className="field"
+              value={editor.teamId}
+              onChange={(event) => onChange({ ...editor, teamId: event.target.value })}
+            >
+              <option value="">Selecteer team</option>
+              {visibleTeams.map((team) => (
+                <option key={team.id} value={team.id}>{team.name} ({team.country})</option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {editor.scopeType === "USER" && (
+          <Field label="Gebruiker">
+            <select
+              className="field"
+              value={editor.userId}
+              onChange={(event) => onChange({ ...editor, userId: event.target.value })}
+            >
+              <option value="">Selecteer gebruiker</option>
+              {visibleUsers.map((item) => (
+                <option key={item.id} value={item.id}>{item.firstName} {item.lastName} ({item.role})</option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <p className="text-xs leading-5 text-slate-500">
+          Een gebruiker krijgt de cumulatieve Kapstok uit globaal, land, team en persoonlijke koppelingen.
+          Bij dubbele criteria wint de meest specifieke scope.
+        </p>
+      </div>
+      <ModalActions onCancel={onCancel} onSave={onSave} disabled={!valid} />
+    </Modal>
+  );
+}
+
 function newEditor(
   section: Section,
   country: Country,
@@ -1599,6 +1839,13 @@ function kpiTargetEditorHasValidScope(editor: Extract<EditorState, { kind: "kpiT
   return Boolean(editor.role);
 }
 
+function criterionScopeHasValidTarget(editor: Extract<EditorState, { kind: "criterionScope" }>) {
+  if (editor.scopeType === "GLOBAL") return true;
+  if (editor.scopeType === "COUNTRY") return Boolean(editor.country);
+  if (editor.scopeType === "TEAM") return Boolean(editor.teamId);
+  return Boolean(editor.userId);
+}
+
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -1701,6 +1948,19 @@ function ManagementEditor({
   if (editor.kind === "kpiTarget") {
     return (
       <KpiTargetEditor
+        editor={editor}
+        data={data}
+        users={users}
+        canChooseCountry={canChooseCountry}
+        onChange={onChange}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+  if (editor.kind === "criterionScope") {
+    return (
+      <CriterionScopeEditor
         editor={editor}
         data={data}
         users={users}

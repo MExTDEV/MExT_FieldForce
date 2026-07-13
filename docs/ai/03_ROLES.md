@@ -1,745 +1,354 @@
 # Roles and Permission Model
 
-This document describes the functional role model for MExT FieldForce, with the current focus on the Coaching module.
+## Purpose
 
-The purpose of this document is to define who can see, open, create, edit or approve information.
+This document defines functional role behaviour, visibility scope and permission principles for MExT FieldForce.
 
-This document does not describe technical implementation, database tables or UI components.
+Technical enum names and permission storage belong in code and database documentation.
 
 ---
 
 # Core Principle
 
-MExT FieldForce uses permission-driven access.
+Access is permission-driven and scope-driven.
 
-Access must not be hardcoded only by role name.
+Effective access may depend on:
 
-Effective access is determined by:
+1. active role configuration;
+2. module activation;
+3. user-level overrides;
+4. country scope;
+5. team scope;
+6. user scope;
+7. lifecycle status;
+8. a specific workflow rule.
 
-1. role configuration
-2. country scope
-3. team scope
-4. user-level overrides
-5. module activation
-6. specific business rules
+A role name alone never proves complete access.
 
-Business rule:
-
-A user may only see or use functionality when the effective permission model allows it.
-
----
-
-# Permission Configuration
-
-## Role Permissions
-
-Each role defines the default access rights for a user.
-
-Role permissions determine default visibility for:
-
-- main menu items
-- dashboard widgets
-- functional modules
-- actions
-- management screens
-- reporting
-
-## Role Active Status
-
-Roles are fixed system roles, but each role has a configurable active status.
-
-Business rules:
-
-- All existing roles are active by default.
-- Inactive roles remain visible in role management.
-- Inactive roles keep their configured permissions visible for review.
-- Making a role inactive must not remove or change the role of existing users.
-- Inactive roles must not be assignable to new users or to users who do not already have that role.
-- Existing users with an inactive role must remain editable for other safe profile changes.
-
-## User-Level Overrides
-
-A user-level override can overrule the default role configuration.
-
-Business rules:
-
-- Role permissions define the default configuration.
-- User overrides can enable or disable access for an individual user.
-- Effective permissions are calculated from role permissions plus user-level overrides.
-- New main menu items must always support role configuration and user-level override.
+Server-side access must enforce the same effective scope as navigation and UI actions.
 
 ---
 
-# Scope Model
+# Scope Types
 
-Access is not only role-based. It is also scope-based.
+Supported scope concepts include:
 
-The main scopes are:
+- own user;
+- own team;
+- assigned country;
+- multiple assigned countries;
+- all countries.
 
-- own user
-- own team
-- assigned country
-- multiple assigned countries
-- all countries
+Country access may be stored separately from a user's primary country.
 
-A user's role can also determine whether the user is allowed to act as a coach, a coaching target or both.
-
-Business rule:
-
-When showing lists, dashboards or reports, the system must always filter data to the user's effective scope.
+A user without the required assigned scope must not see country-scoped records.
 
 ---
 
-# Roles
+# Role Status
 
-## Vertegenwoordiger
+Roles are system roles.
 
-A Vertegenwoordiger is a field sales representative.
+Role management may mark roles active or inactive.
+
+Rules:
+
+- existing roles are active by default;
+- an inactive role remains visible for review;
+- deactivation does not remove the role from existing users;
+- an inactive role is not assignable to a new user;
+- existing users with an inactive role remain editable for safe profile changes;
+- role permissions and user overrides remain visible.
+
+---
+
+# User-Level Overrides
+
+Role configuration defines defaults.
+
+A user-level override may explicitly enable or disable a permission for one user.
+
+New menu items and management actions must support:
+
+- role default configuration;
+- user-level override;
+- direct route enforcement;
+- server/API enforcement.
+
+---
+
+# Official Roles
+
+The current technical role model contains:
+
+- Vertegenwoordiger (`REPRESENTATIVE`);
+- Verkoopleider (`SALES_LEADER`);
+- Sales Manager (`SALES_MANAGER`);
+- Service Operator (`SERVICE_OPERATOR`);
+- Country Manager (`COUNTRY_MANAGER`);
+- Group Manager (`GROUP_MANAGER`);
+- Admin (`ADMIN`);
+- Super Admin (`SUPER_ADMIN`).
+
+Not every role has a fully defined Coaching workflow.
+
+---
+
+# Vertegenwoordiger
+
+Status: `DEFINED`
 
 Primary scope:
 
-- own data only
-
-Main purpose:
-
-- review own coachings
-- approve completed coaching reports
-- follow up own action points
-
-General rules:
-
-- Does not see the main menu item Mijn Team.
-- Only sees own coachings.
-- Only sees own action points.
-- Does not create coachings.
-- Does not edit coaching forms created by a coach.
-- Can only approve a coaching once it has been submitted for approval.
-
-Coaching visibility rules:
-
-- If the representative was notified during planning, the planned coaching may be visible before execution.
-- If the representative was not notified during planning, the planned coaching must remain hidden.
-- Surprise coachings become visible only from status Wachten op akkoord / Pending Approval onwards.
-- The representative may not open unfinished coachings.
-
----
-
-## Verkoopleider
-
-A Verkoopleider is the direct sales manager of a team.
-
-A Verkoopleider can also be the target of a coaching by a user who is functionally above Verkoopleider level.
-
-A Team can temporarily exist without an assigned Verkoopleider. This does not create additional visibility for ordinary Verkoopleiders; they still see only the team linked to their own user record.
-
-Primary scope:
-
-- own team
-
-Main purpose:
-
-- plan coachings for representatives in own team
-- execute coachings for representatives in own team
-- be coached by higher-level users
-- create action points
-- follow up team members
-- view team coaching history
-
-General rules:
-
-- Sees only own team in Mijn Team.
-- Can plan coachings for representatives in own team.
-- Can open today's coachings in the coaching input form.
-- Can open future coachings in planning/preparation mode.
-- Can edit future coachings within own team when lifecycle status allows it.
-- Can modify representative, date, time and focus areas for future coachings when allowed.
-- Can view previous scores, previous Performance Circle and previous action points as preparation.
-- Can review and approve own coaching when the Verkoopleider is the coaching target.
-- Cannot plan coachings on another Verkoopleider unless explicitly allowed.
-
-Coaching rules:
-
-- Can submit a completed coaching to the representative for approval.
-- Once a coaching is submitted for approval, the coaching becomes read-only.
-- To make changes after submission, the Verkoopleider must withdraw the Wachten op akkoord / Pending Approval status first.
-
----
-
-## Sales Manager
-
-Sales Manager is a separate application role.
-
-A Sales Manager is positioned above the Verkoopleider level.
-
-Primary scope:
-
-- one or more assigned countries
-
-Main purpose:
-
-- management follow-up across one or more countries
-- view teams, representatives and coaching activity within assigned countries
-- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
-- monitor action points, risks and reports
-
-Business rules:
-
-- Sales Manager is not the same as Verkoopleider.
-- Sales Manager is not the same as Country Manager.
-- Sales Manager can have access to one or more countries.
-- Sales Manager country scope is stored separately from the primary user country.
-- A Sales Manager without assigned country rights must not see country-scoped Coaching data.
-- Sales Manager sees teams and users within assigned countries.
-- Sales Manager permissions must be configurable through role management.
-- Sales Manager permissions must support user-level overrides.
-
-Coaching navigation rules:
-
-- Can view coachings within assigned country scope.
-- Can view today's coachings, future coachings and historical coachings.
-- Can fill in and modify visible coaching forms within assigned country scope.
-- Can modify future coaching planning within assigned country scope.
-- Can plan and execute coachings on representatives and Verkoopleiders within assigned country scope.
-- Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
-
-Grouping rules:
-
-- If access covers multiple countries, group by country, team and user.
-- If access covers one country, omit country grouping and show team and user.
-
----
-
-## Country Manager
-
-A Country Manager is responsible for one country.
-
-Primary scope:
-
-- assigned country
-
-Main purpose:
-
-- country-level coaching follow-up
-- view teams and representatives within own country
-- plan and execute coachings on representatives and Verkoopleiders within assigned country scope
-- monitor risks, action points and reports
-
-General rules:
-
-- Sees only the assigned country or countries for which access has been granted.
-- Sees teams and users within assigned country scope.
-- Can view coachings within assigned country scope.
-- Can view today's coachings, future coachings and historical coachings.
-- Can fill in and modify visible coaching forms within assigned country scope.
-- Can modify future coaching planning within assigned country scope.
-- Can plan and execute coachings on representatives and Verkoopleiders within assigned country scope.
-- Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
-
-Grouping rules:
-
-- If access covers one country, country grouping should be omitted.
-- Show team and user grouping instead.
-
----
-
-## Admin
-
-An Admin manages operational configuration within assigned countries.
-
-Primary scope:
-
-- assigned country or countries
-
-Main purpose:
-
-- manage users within assigned scope
-- manage teams within assigned scope
-- manage configuration within assigned scope
-- view coaching data within assigned scope
-- plan and execute coachings on representatives and Verkoopleiders within assigned scope
-
-General rules:
-
-- Sees data within assigned country scope.
-- Can view coachings within assigned country scope.
-- Can fill in and modify visible coaching forms within assigned country scope.
-- Can modify future coaching planning within assigned country scope.
-- Can plan and execute coachings on representatives and Verkoopleiders within assigned scope.
-- Lifecycle locks such as Pending Approval and Completed remain read-only for every role.
-- Cannot grant Admin or Super Admin rights unless explicitly allowed by Super Admin policy.
-
-Configuration rules:
-
-- Can manage users within assigned countries when permission allows it.
-- Can promote or demote users within allowed role boundaries when permission allows it.
-- Must respect role configuration and user-level overrides.
-
----
-
-## Super Admin
-
-A Super Admin has full system access.
-
-Primary scope:
-
-- all countries
-- all teams
-- all users
-
-Main purpose:
-
-- full application administration
-- global configuration
-- cross-country visibility
-- troubleshooting
-- override and correction when required
-
-General rules:
-
-- Sees everything.
-- Can open coachings with the same access level as a Verkoopleider.
-- Can plan and execute coachings on Verkoopleiders across all countries and teams.
-- Can open today's coachings in the coaching input form.
-- Can open future coachings in planning/preparation mode.
-- Can open historical coachings in report mode.
-- Can manage roles, modules, users and settings.
-
-Business rule:
-
-Super Admin access must still preserve lifecycle rules unless an explicit administrative override is implemented.
-
-Example:
-
-- Pending Approval remains read-only unless the status is withdrawn first.
-
----
-
-## Service Operator
-
-A Service Operator is a field employee role that can appear in operational field lists such as Mijn Team.
-
-Current status:
-
-- Inclusion in Mijn Team is intended but still requires further specification.
-
-Known rules:
-
-- Service Operator is considered a field employee for Mijn Team unless business rules later define otherwise.
-- Exact Coaching permissions for Service Operator are not yet fully defined.
-
-AI rule:
-
-Do not invent Service Operator coaching workflows or permissions.
-
----
-
-# Main Menu Visibility
-
-Main menu visibility is permission-driven.
-
-Business rules:
-
-- Menu items are not hardcoded per role.
-- Each main menu item must be configurable through role management.
-- User-level overrides can overrule role defaults.
-- Representatives must not see Mijn Team.
-- New main menu items require role permission configuration and user-level override support.
-- Beheer subitems also require explicit menu permission keys and user-level override support.
-
----
-
-# Coaching-Specific Access Rules
-
-## Dashboard
-
-The Dashboard is available for authenticated users.
-
-Dashboard content depends on effective permissions.
-
-Management widgets such as Team Heatmap, Coaching Trends and Management Alerts are intended for management users only.
-
-## Beheer -> Log
-
-Actiehistoriek is administrative logging and belongs under Beheer -> Log.
-
-Permission:
-
-- `menu.coaching.log`
-
-Default visibility:
-
-- Super Admin
-- Admin
-
-Business rules:
-
-- Sales Manager, Country Manager, Verkoopleider and Vertegenwoordiger have no default log access.
-- User-level overrides can enable or disable log access for a specific user.
-- Direct route access and `/api/activity-history` reads must use the same effective log permission.
-
-## Beheer -> Import/export
-
-Management import/export is a Super Admin-only technical function.
-
-Permission:
-
-- `technicalImportExport`
-
-Default visibility:
-
-- Super Admin only
-
-Business rules:
-
-- The permission flag must remain visible in role management under technical management.
-- Client-side visibility requires both role `SUPER_ADMIN` and effective `technicalImportExport`.
-- Server-side API access must always require role `SUPER_ADMIN`, even if the permission flag is misconfigured for another role.
-- Import/export covers users, teams, KPI definitions and the global coaching framework/kapstok.
-- Imports must use validation/preview first and may only be committed after confirmation.
-- Imports must not create dependent business records implicitly, such as missing teams during user import.
-- Import audit logs may store topic and counts, but must not dump full personal CSV data.
-
-## Nieuwe begeleiding
-
-Visible when the user has permission to create coachings.
-
-Typically visible for:
-
-- Verkoopleider
-- Sales Manager if explicitly allowed
-- Country Manager if explicitly allowed
-- Admin if explicitly allowed
-- Super Admin
-
-Not visible for:
-
-- Vertegenwoordiger
-
-Business rule:
-
-The button must be controlled by permissions, not by hardcoded role checks.
-
----
-
-## Mijn Team
-
-Visibility rules:
-
-- Vertegenwoordiger: not visible
-- Verkoopleider: own team only
-- Sales Manager: assigned country scope
-- Country Manager: assigned country scope
-- Admin: assigned country scope
-- Super Admin: all countries
-
-Mijn Team includes field employees.
-
-Teams without an assigned Verkoopleider remain visible to Country Manager, Sales Manager, Admin and Super Admin users when the team falls inside their existing country or global scope.
-
-Current intended roles:
-
-- Vertegenwoordiger
-- Verkoopleider
-- Service Operator
-
-Open point:
-
-The exact inclusion rules still need to be specified.
-
----
-
-## Begeleidingen
-
-### Vertegenwoordiger
-
-- only own coachings
-- planned coachings only visible when notification was enabled
-- surprise coachings hidden until Wachten op akkoord / Pending Approval
-- cannot open unfinished coachings
-- can open coachings for approval from Wachten op akkoord onwards
-- cannot fill in or modify coaching forms
-
-### Verkoopleider
-
-- own team
-- can open today's coachings in input form for representatives in own team
-- can open future coachings in planning/preparation mode
-- can edit future coachings when allowed by lifecycle
-- can view historical coachings
-- can be the target of a coaching by higher-level users
-
-### Sales Manager
-
-- assigned country scope
-- can fill in and modify visible coaching forms and planning details
-- can plan and execute coachings on representatives and Verkoopleiders within assigned country scope
-- grouped by country, team and user when multiple countries
-- country grouping hidden when only one country is available
-
-### Country Manager
-
-- assigned country scope
-- can fill in and modify visible coaching forms and planning details
-- can plan and execute coachings on representatives and Verkoopleiders within assigned country scope
-- grouped by country, team and user when multiple countries
-- country grouping hidden when only one country is available
-
-### Admin
-
-- assigned country scope
-- can fill in and modify visible coaching forms and planning details
-- can plan and execute coachings on representatives and Verkoopleiders within assigned country scope
-- grouped by country, team and user when multiple countries
-- country grouping hidden when only one country is available
-
-### Super Admin
-
-- all coachings
-- can open coachings like a Verkoopleider
-- can plan and execute coachings on representatives and Verkoopleiders across all countries and teams
-- grouped by country, team and user
-- country grouping is always visible
-
----
-
-## Planning
-
-Planning shows scheduled items.
-
-Planning does not own the underlying business workflow.
-
-Visibility is based on the user's effective scope.
-
-Current Coaching-related item types:
-
-- Begeleiding
-- Contactmoment
-- Retraining
-- Salestraining
-- Hulpaanvraag
-
-Undefined workflows:
-
-- Contactmomenten
-- Retrainingen
-- Salestrainingen
-- Hulpaanvragen
-
-AI rule:
-
-Do not define missing workflows based on assumptions.
-
----
-
-## Actiepunten
-
-Action points exist at multiple scope levels:
-
-- global
-- country
-- team
-- individual user
-
-Access to the Actiepunten overview also requires:
-
-- active `ACTIEPUNTEN` module configuration
-- effective `modulePreparation`
-- effective `menu.coaching.actionPoints`
-
-Action point creation and management are separate configurable permissions:
-
-- `actionPointsCreate`
-- `actionPointsManage`
-
-Visibility rules:
-
-### Vertegenwoordiger
-
-- own action points only
-- sees only the Actiepunten view on the Actiepunten page, not the Gebruikers tab
-- cannot create or manage scoped action definitions
-
-### Verkoopleider
-
-- action points for own country, own team and users in own team
-- can create personal action definitions for active representatives in own team when `actionPointsCreate` is effective
-- can manage own-created personal action definitions in own team when `actionPointsManage` is effective
-- cannot create or manage global, country or team action definitions
-
-### Sales Manager
-
-- action points within assigned country scope
-- can create and manage country, team and personal action definitions within assigned countries
-- cannot create or manage global action definitions by default
-
-### Country Manager
-
-- action points within assigned country scope
-- can create and manage country, team and personal action definitions within assigned countries
-- cannot create or manage global action definitions by default
-
-### Admin
-
-- action points within assigned country scope
-- can create and manage global action definitions
-- can create and manage country, team and personal action definitions within effective country scope
-
-### Super Admin
-
-- all action points
-- can create and manage all action point scopes
-
-### Group Manager
-
-- all action points
-- can create and manage all action point scopes
-
-Open point:
-
-Completion, approval, reopening and reassignment workflow still need business clarification.
-
----
-
-## KPI Management
-
-KPI management is controlled by dedicated permissions:
-
-- `kpisView`
-- `kpisCreate`
-- `kpisManage`
-- `kpiTargetsManage`
-- `kpiCategoriesManage`
-
-Access to `Beheer -> KPI's` also requires:
-
-- effective `menu.coaching.kpis`
-- effective `kpisView`
-
-Visibility and management rules:
-
-### Vertegenwoordiger
-
-- can see applicable KPI data in user-facing KPI/reporting contexts when `kpisView` is effective
-- cannot open KPI management by default
-- cannot create or manage KPI definitions or targets
-
-### Verkoopleider
-
-- can view KPI management for applicable global, country, role and own-team KPI definitions when explicitly allowed by menu permissions
-- cannot create or manage KPI definitions or targets by default
-
-### Sales Manager
-
-- can create and manage KPI definitions and targets within assigned country scope when effective permissions allow it
-- cannot create global KPI definitions or global target values by default
-
-### Country Manager
-
-- can create and manage KPI definitions and targets within assigned country scope when effective permissions allow it
-- cannot create global KPI definitions or global target values by default
-
-### Admin
-
-- can create and manage KPI definitions and targets within effective country scope
-- can manage KPI categories by default
-
-### Super Admin / Group Manager
-
-- can view all KPI definitions and targets
-- can create and manage all KPI scopes, including global definitions and target values
-
-Target priority:
-
-User-specific targets override team targets, team targets override country targets, country targets override role targets, and role targets override global/default values.
-
----
-
-# Coaching Verkoopleiders
-
-Verkoopleiders can be coaching targets.
-
-This means the system must support coachings where the person being coached has the role:
-
-- Verkoopleider
-
-Business rules:
-
-- A Verkoopleider is not only a coach; a Verkoopleider can also be coached.
-- A user who is functionally above a Verkoopleider must be able to plan and execute coachings on Verkoopleiders within the user's effective scope.
-- The selection flow for a new coaching must allow Verkoopleiders as possible coaching targets when permissions allow it.
-- The approval lifecycle must work for Verkoopleiders as coached persons.
-- The system must not assume that the coached person is always a Vertegenwoordiger.
-
-Roles expected to support coaching Verkoopleiders, subject to permissions and scope:
-
-- Sales Manager
-- Country Manager
-- Admin
-- Super Admin
-
-Scope rules:
-
-- Sales Manager: assigned country or countries.
-- Country Manager: assigned country scope.
-- Admin: assigned country scope when explicitly configured.
-- Super Admin: all countries and teams.
+- own data.
+
+Main Coaching behaviour:
+
+- sees own visible coachings;
+- sees own action points;
+- may approve own coaching when the lifecycle requests approval;
+- may create a Hulpaanvraag;
+- may view shared Contactmoment reports related to own user.
 
 Restrictions:
 
-- A regular Verkoopleider may only plan and execute coachings for representatives in own team unless explicitly allowed otherwise.
-- A Vertegenwoordiger may not plan coachings.
-- User-level overrides must be respected.
+- does not create or edit Coaching forms;
+- does not see surprise coachings before the defined lifecycle point;
+- does not see `Mijn Team`;
+- does not see data belonging to other users.
 
 ---
 
-# Lifecycle-Based Permissions
+# Verkoopleider
 
-Coaching access also depends on lifecycle status.
+Status: `DEFINED`
 
-## Planned
+Primary scope:
 
-- editable by authorised coach roles
-- visible according to notification and scope rules
+- own team.
 
-## In Progress
+Main behaviour:
 
-- editable by the coach while completing the form
+- plans and executes Begeleidingen for permitted team members;
+- creates and follows team or user action points when allowed;
+- processes Hulpaanvragen from the own team;
+- plans Contactmomenten for the own team;
+- views team history and relevant preparation data.
 
-## Incomplete
+A Verkoopleider may also be the target of a Begeleiding by a user above Verkoopleider level.
 
-- editable by the coach
-- not yet visible for representative unless business rule allows it
+A team may exist without an assigned Verkoopleider. This does not create extra visibility for ordinary Verkoopleiders.
 
-## Pending Approval / Wachten op akkoord
-
-- read-only
-- representative can review and approve
-- no modifications allowed
-- modifications require withdrawing the Pending Approval status first
-
-## Completed / Afgewerkt
-
-- locked
-- visible in history
-- included in reporting
-- used for future comparisons and Performance Circle calculations
+A Verkoopleider cannot act outside the effective team scope unless an explicit permission and scope rule allows it.
 
 ---
 
-# AI Implementation Rules
+# Sales Manager
 
-AI assistants must follow these rules when implementing role or permission changes.
+Status: `DEFINED`
 
-- Do not hardcode permissions when configuration exists.
-- Do not assume that role name alone determines access.
-- Always check role configuration and user-level overrides.
-- Always apply country, team and user scope.
-- Never give users broader access than explicitly requested.
-- Never make planned surprise coachings visible to representatives.
-- Never allow representatives to open unfinished coachings.
-- Never allow modification of a coaching in Pending Approval unless the status is withdrawn first.
-- Do not invent workflows for undefined modules.
-- When adding a new menu item, also add permission configuration and user-level override support.
-- Do not assume that the coached person is always a Vertegenwoordiger.
-- Support Verkoopleiders as coaching targets where permissions allow it.
-- When changing visibility, update this document and the relevant module documentation.
+Sales Manager is a separate role above Verkoopleider level.
+
+It is not the same as:
+
+- Verkoopleider;
+- Country Manager;
+- Admin.
+
+Primary scope:
+
+- one or more explicitly assigned countries.
+
+Main behaviour within effective scope:
+
+- views teams, users and Coaching data;
+- plans and executes Begeleidingen for Representatives and Verkoopleiders;
+- opens and edits visible unlocked Coaching forms;
+- follows action points and management information;
+- processes or oversees Hulpaanvragen;
+- plans Contactmomenten;
+- uses country grouping when multiple countries are available.
+
+A Sales Manager without assigned country rights must not see country-scoped Coaching data.
+
+---
+
+# Country Manager
+
+Status: `DEFINED`
+
+Primary scope:
+
+- assigned country or explicitly granted countries.
+
+Main behaviour within effective scope:
+
+- views teams and users;
+- plans and executes Begeleidingen for Representatives and Verkoopleiders;
+- opens and edits visible unlocked Coaching forms;
+- follows action points, risks and reports when allowed;
+- processes or oversees Hulpaanvragen;
+- plans Contactmomenten.
+
+Country grouping may be omitted when only one country is available.
+
+---
+
+# Group Manager
+
+Status: `PARTIALLY_DEFINED`
+
+The technical role exists, but its complete functional scope is not yet documented.
+
+Known intended use:
+
+- group-level management;
+- global or cross-country configuration where explicitly permitted;
+- management of global Coaching criteria and configuration where the relevant permission allows it.
+
+Do not assume that Group Manager automatically has Super Admin access.
+
+Until the business definition is completed:
+
+- use explicit effective permissions;
+- use explicitly assigned country or global scope;
+- do not hardcode Group Manager as equivalent to Sales Manager, Admin or Super Admin;
+- document any new Group Manager capability before implementation.
+
+Open decision:
+
+- exact default countries, modules, management rights and Coaching actions.
+
+---
+
+# Admin
+
+Status: `DEFINED`
+
+Primary scope:
+
+- assigned country or countries.
+
+Main behaviour within permissions:
+
+- manages users and teams;
+- manages operational configuration;
+- views and edits visible unlocked Coaching records;
+- plans and executes Begeleidingen for permitted Representatives and Verkoopleiders;
+- manages Contactmomenten and Hulpaanvragen within scope;
+- manages roles or permissions only within allowed boundaries.
+
+An Admin cannot grant Admin or Super Admin rights unless an explicit Super Admin policy permits it.
+
+---
+
+# Super Admin
+
+Status: `DEFINED`
+
+Primary scope:
+
+- all countries;
+- all teams;
+- all users.
+
+Main behaviour:
+
+- global configuration;
+- full visibility;
+- troubleshooting and correction;
+- role, module and user management;
+- planning and execution of Begeleidingen for permitted targets;
+- management of global Coaching configuration.
+
+Super Admin still respects business lifecycle locks unless an explicit administrative override exists.
+
+Full visibility does not justify duplicating workflow logic.
+
+---
+
+# Service Operator
+
+Status: `PARTIALLY_DEFINED`
+
+Known behaviour:
+
+- may be considered a field employee;
+- may appear in `Mijn Team` when module and permission rules allow it.
+
+Undefined:
+
+- complete Coaching creation, execution, approval and action-point behaviour.
+
+Do not invent Service Operator Coaching workflows.
+
+---
+
+# Main Menu and Direct Access
+
+Main navigation is permission-driven.
+
+Every new main menu item requires:
+
+- a permission key;
+- role defaults;
+- user-level override support;
+- client navigation enforcement;
+- direct route enforcement;
+- server/API enforcement;
+- translations;
+- documentation.
+
+Representatives must not see `Mijn Team`.
+
+Beheer subitems require explicit section permissions.
+
+---
+
+# Coaching Form Edit Rule
+
+Only the coached person with a Representative role is prohibited from filling or modifying Coaching forms as an ordinary user.
+
+Other roles may edit only when:
+
+- the record is visible in their effective scope;
+- the relevant permission allows it;
+- the lifecycle is not locked.
+
+Pending Approval and Completed remain read-only unless the documented workflow first changes the lifecycle.
+
+---
+
+# Hulpaanvragen Visibility
+
+A Hulpaanvraag is visible to:
+
+- the requester;
+- the responsible Verkoopleider;
+- higher-level users with the required permission and effective scope.
+
+A request must not become a general chat.
+
+A request may not be rejected without follow-up. It must receive a documented response or planned follow-up action.
+
+---
+
+# Contactmomenten Visibility
+
+A Contactmoment may be planned by users who may plan within the target user's effective scope.
+
+The resulting report is shared with the target person.
+
+Once shared, the Contactmoment report is locked for normal editing.
+
+No approval step is required.
+
+---
+
+# Open Role Decisions
+
+The following require explicit business definition:
+
+- complete Group Manager defaults and scope;
+- complete Service Operator Coaching workflow;
+- whether additional operational roles belong in `Mijn Team`.

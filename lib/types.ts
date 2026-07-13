@@ -10,6 +10,11 @@ export type Role =
 
 export type Country = "BE" | "NL" | "DE";
 export type Language = "nl" | "fr" | "de";
+export type RepresentativeLevel =
+  | "STARTER"
+  | "SALES_EXECUTIVE"
+  | "PROFESSIONAL"
+  | "EXPERT";
 export type KpiEvaluationDirection = "HIGHER_IS_BETTER" | "LOWER_IS_BETTER" | "TARGET";
 export type KpiUnit = "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number";
 export type KpiValueType = "NUMBER" | "DECIMAL" | "CURRENCY" | "BOOLEAN" | "SCORE";
@@ -217,11 +222,26 @@ export type ManagementKpiTarget = {
   conflict: boolean;
 };
 
+export type CriterionScopeType = "GLOBAL" | "COUNTRY" | "TEAM" | "USER";
+
+export type ManagementCriterionScopeLink = {
+  id: string;
+  scopeType: CriterionScopeType;
+  scopeKey: string;
+  country: Country | null;
+  teamId: string | null;
+  teamName: string | null;
+  userId: string | null;
+  userName: string | null;
+  sortOrder: number;
+};
+
 export type ManagementCriterion = {
   id: string;
   name: string;
   active: boolean;
   sortOrder: number;
+  scopeLinks: ManagementCriterionScopeLink[];
 };
 
 export type ManagementFocus = {
@@ -263,6 +283,7 @@ export type ManagedUser = {
   teamId: string;
   teamName: string;
   role: Role;
+  representativeLevel: RepresentativeLevel;
   teamSupervisor: boolean;
   branchNumber: string;
   active: boolean;
@@ -311,7 +332,8 @@ export type Representative = {
   country: Country;
   team: string;
   teamId: string;
-  level: "Starter" | "Vertegenwoordiger" | "Professional" | "Expert";
+  representativeLevel?: RepresentativeLevel;
+  level: "Starter" | "Sales Executive" | "Vertegenwoordiger" | "Professional" | "Expert";
   levelColor: string;
   lastCoaching: string;
   openActions: number;
@@ -327,6 +349,7 @@ export type CoachingParticipant = {
   lastName: string;
   initials: string;
   role: "REPRESENTATIVE" | "SALES_LEADER";
+  representativeLevel?: RepresentativeLevel;
   country: Country;
   teamId: string;
   team: string;
@@ -361,11 +384,20 @@ export type ContactMomentStatus =
   | "wacht_op_vt_input"
   | "gepland"
   | "in_uitvoering"
-  | "afgesloten";
+  | "afgesloten"
+  | "geannuleerd"
+  | "niet_uitgevoerd";
 export type HelpRequestStatus =
   | "nieuw"
+  | "open"
   | "in_behandeling"
   | "vervolgactie_gepland"
+  | "begeleiding"
+  | "contactmoment"
+  | "retraining"
+  | "salestraining"
+  | "gesloten"
+  | "ingetrokken"
   | "afgesloten"
   | "geannuleerd";
 export type HelpUrgency = "laag" | "normaal" | "hoog";
@@ -421,6 +453,15 @@ export type WorkflowActionPoint = {
   achievedScore?: number;
   definitionId?: string;
   isNew?: boolean;
+  reviewStatus?: "proposed" | "approved" | "rejected" | "active";
+  originalTitle?: string;
+  originalDescription?: string;
+  originalTipsAndTricks?: string;
+  rejectionReason?: string;
+  reviewComment?: string;
+  reviewedById?: string;
+  reviewedAt?: string;
+  activatedAt?: string;
 };
 
 export type ScopedActionDefinition = {
@@ -523,6 +564,27 @@ export type CoachingIntervention = {
   startTime?: string;
   endTime?: string;
   notifyRepresentative?: boolean;
+  notifyCoachedRepresentative?: boolean;
+  notifyCoachedTeamLeaders?: boolean;
+  notifyExecutorTeamLeaders?: boolean;
+  peerCoach?: boolean;
+  teamDeviation?: boolean;
+  countryDeviation?: boolean;
+  deviationReason?: string;
+  deviationRecordedById?: string;
+  deviationRecordedAt?: string;
+  actualStartedAt?: string;
+  executionDeadlineAt?: string;
+  approvalDeadlineAt?: string;
+  finalApprovalDeadlineAt?: string;
+  performerAccessExpiresAt?: string;
+  lateCompletion?: boolean;
+  lateCompletionReason?: string;
+  administrativelyClosedAt?: string;
+  administrativelyClosedById?: string;
+  administrativeCloseReason?: string;
+  copiedFromInterventionId?: string;
+  historicAccessSettings?: string;
   deletedAt?: string;
   outlookEventId?: string;
   outlookICalUId?: string;
@@ -575,6 +637,19 @@ export type ContactMoment = {
   country: Country;
   teamId: string;
   status: ContactMomentStatus;
+  plannedDate?: string;
+  startTime?: string;
+  endTime?: string;
+  notifyRepresentative?: boolean;
+  subject?: string;
+  contactType?: string;
+  location?: string;
+  internalNotes?: string;
+  outlookEventId?: string;
+  outlookICalUId?: string;
+  outlookSyncStatus?: "NOT_SYNCED" | "SYNCED" | "ERROR";
+  lastSyncedAt?: string;
+  syncError?: string;
   reason: string;
   reportedProblems: string;
   leaderThemes: string[];
@@ -582,10 +657,29 @@ export type ContactMoment = {
   representativeThemes: string[];
   discussedThemes: string[];
   conclusion: string;
+  reportHtml?: string;
   actionPoints: WorkflowActionPoint[];
+  finalSnapshot?: string;
+  sharedAt?: string;
+  sharedById?: string;
+  closedReason?: string;
+  closedAt?: string;
+  closedById?: string;
+  previousStatus?: ContactMomentStatus;
   sourceHelpRequestId?: string;
+  photos?: ContactMomentPhoto[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type ContactMomentPhoto = {
+  id: string;
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  size: number;
+  uploadedById: string;
+  uploadedAt: string;
 };
 
 export type Retraining = {
@@ -644,18 +738,36 @@ export type HelpRequest = {
   id: string;
   requesterId: string;
   representativeId: string;
+  responsibleUserId?: string;
   country: Country;
   teamId: string;
   subject: string;
+  descriptionHtml?: string;
+  descriptionText?: string;
   difficulty: string;
   desiredResult: string;
   urgency: HelpUrgency;
   explanation: string;
   status: HelpRequestStatus;
+  firstHandledAt?: string;
+  firstHandledByUserId?: string;
+  withdrawnAt?: string;
+  withdrawnByUserId?: string;
+  answers?: HelpRequestAnswer[];
   followUpType?: FollowUpType;
   linkedInterventionId?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type HelpRequestAnswer = {
+  id: string;
+  helpRequestId: string;
+  authorId: string;
+  bodyHtml: string;
+  bodyText: string;
+  closesRequest: boolean;
+  createdAt: string;
 };
 
 export type LinkedIntervention = {

@@ -66,6 +66,8 @@ export type SmartCoachingResult = {
   alerts: ManagementAlert[];
 };
 
+const openHelpRequestStatuses = new Set(["open", "nieuw", "in_behandeling"]);
+
 export function buildSmartCoaching(
   dataset: ReportingDataset,
   state: WorkflowState,
@@ -97,7 +99,7 @@ export function analyzeRepresentative(
   const negativeKpis = kpis.filter((item) => item.trend < 0);
   const helpRequests = state.helpRequests.filter((item) =>
     item.representativeId === representative.id &&
-    !["afgesloten", "geannuleerd"].includes(item.status)
+    openHelpRequestStatuses.has(item.status)
   );
   const helpWithoutFollowUp = helpRequests.filter((item) => !item.followUpType);
   const coachingDays = daysSinceLatest(
@@ -391,7 +393,7 @@ function buildManagementAlerts(
   }
   for (const request of state.helpRequests.filter((item) =>
     representativeIds.has(item.representativeId) &&
-    !item.followUpType && !["afgesloten", "geannuleerd"].includes(item.status)
+    !item.followUpType && openHelpRequestStatuses.has(item.status)
   )) {
     alerts.push({
       id: `help-${request.id}`,

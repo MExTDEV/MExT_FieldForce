@@ -1,6 +1,7 @@
 import { ApiRequestError, badRequest, handleApi } from "@/lib/server/api";
 import {
   deactivateCriterion,
+  deactivateCriterionScopeLink,
   deactivateFocus,
   deactivateKpi,
   deactivateKpiTarget,
@@ -10,6 +11,7 @@ import {
   listManagementTeams,
   type ManagementSection,
   saveCriterion,
+  saveCriterionScopeLink,
   saveFocus,
   saveKpi,
   saveKpiTarget,
@@ -32,6 +34,7 @@ import { parseOptionalKpiNumber, parseRequiredKpiNumber } from "@/lib/kpi-settin
 import { canAccessManagementSection } from "@/lib/management-access";
 import type {
   Country,
+  CriterionScopeType,
   FieldForcePermissionKey,
   KpiPeriodType,
   KpiTargetScope,
@@ -200,14 +203,25 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
               name: String(payload.name ?? ""),
               sortOrder: Number(payload.sortOrder ?? 0),
             });
+      } else if (entity === "criterionScope") {
+        result = operation === "delete"
+          ? await deactivateCriterionScopeLink(actor, String(payload.id))
+          : await saveCriterionScopeLink(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              criterionId: String(payload.criterionId ?? ""),
+              scopeType: String(payload.scopeType ?? "GLOBAL") as CriterionScopeType,
+              country: payload.country ? String(payload.country) as Country : null,
+              teamId: typeof payload.teamId === "string" ? payload.teamId : null,
+              userId: typeof payload.userId === "string" ? payload.userId : null,
+              sortOrder: Number(payload.sortOrder ?? 0),
+            });
       } else if (entity === "role" && operation === "update") {
-        await saveRolePermissions(
+        result = await saveRolePermissions(
           actor,
           String(payload.role) as Role,
           (payload.permissions ?? {}) as Partial<Record<FieldForcePermissionKey, boolean>>,
           typeof payload.active === "boolean" ? payload.active : undefined
         );
-        result = { role: payload.role, active: payload.active };
       } else {
         badRequest("Onbekende beheeractie.");
       }
@@ -256,6 +270,9 @@ function handleManagementMutationError(entity: string, error: unknown): never {
   const code = getPrismaErrorCode(error);
   if (entity === "team" && code === "P2002") {
     badRequest("Er bestaat al een team met deze naam in dit land.");
+  }
+  if (entity === "criterionScope" && code === "P2002") {
+    badRequest("Deze kapstokkoppeling bestaat al voor dit criterium.");
   }
   if (code === "P2003") {
     badRequest("De gekozen koppeling is ongeldig of bestaat niet meer.");
@@ -315,6 +332,15 @@ function isSafeManagementMessage(message: string) {
       "Doelwaarde mag niet lager zijn dan minimumwaarde.",
       "Doelwaarde mag niet hoger zijn dan maximumwaarde.",
       "De globale kapstok kan alleen door een Super Admin worden gewijzigd.",
+      "Je mag kapstokkoppelingen niet beheren.",
+      "Selecteer een geldige kapstokscope.",
+      "Selecteer een land voor deze kapstokkoppeling.",
+      "Selecteer een team voor deze kapstokkoppeling.",
+      "Selecteer een gebruiker voor deze kapstokkoppeling.",
+      "Deze kapstokkoppeling valt buiten je toegestane scope.",
+      "Het gekozen kapstokcriterium bestaat niet meer.",
+      "De gekozen kapstokkoppeling bestaat niet meer.",
+      "Globale kapstokkoppelingen kunnen alleen door een Super Admin worden gewijzigd.",
       "Super Admin vereist.",
       "Rollen en globale rechten kunnen alleen door een Super Admin worden gewijzigd.",
       "Onbekende rol.",

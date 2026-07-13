@@ -33,6 +33,12 @@ import {
   userManagementCapabilities,
   visibleManagedUsers,
 } from "@/lib/user-management";
+import {
+  defaultRepresentativeLevelForRoleReturn,
+  representativeLevelBadgeClass,
+  representativeLevelLabels,
+  representativeLevels,
+} from "@/lib/representative-levels";
 import { optionalTeamLeaderLabel } from "@/lib/team-management";
 import type {
   Country,
@@ -540,7 +546,7 @@ function UsersTable({
 }) {
   return (
     <div className="overflow-hidden">
-        <div className="hidden grid-cols-[minmax(240px,1.3fr)_minmax(190px,1fr)_170px_36px] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
+        <div className="hidden grid-cols-[minmax(240px,1.3fr)_minmax(220px,1fr)_170px_36px] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
           <span>Gebruiker</span>
           <span>Rol en team</span>
           <span>Status en Microsoft</span>
@@ -552,7 +558,7 @@ function UsersTable({
               key={profile.id}
               type="button"
               onClick={() => onOpen(profile)}
-              className="grid w-full gap-3 border-b border-slate-100 px-4 py-4 text-left transition last:border-b-0 hover:bg-brand-50/50 md:grid-cols-[minmax(240px,1.3fr)_minmax(190px,1fr)_170px_36px] md:items-center md:gap-4 md:px-5"
+              className="grid w-full gap-3 border-b border-slate-100 px-4 py-4 text-left transition last:border-b-0 hover:bg-brand-50/50 md:grid-cols-[minmax(240px,1.3fr)_minmax(220px,1fr)_170px_36px] md:items-center md:gap-4 md:px-5"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar
@@ -576,6 +582,11 @@ function UsersTable({
                 <p className="mt-0.5 text-xs text-slate-500">
                   {profile.teamName || profile.country}
                 </p>
+                {profile.role === "REPRESENTATIVE" && (
+                  <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${representativeLevelBadgeClass[profile.representativeLevel]}`}>
+                    {representativeLevelLabels[profile.representativeLevel]}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5 md:flex-col md:items-start">
                 <span
@@ -692,18 +703,20 @@ function UserForm({
   }
 
   function applyRole(role: Role) {
-    const template = roleTemplates[role];
+    const permissions = managementRoles.find((item) => item.role === role)?.permissions
+      ?? roleTemplates[role].permissions;
     const countryAccess = role === "SALES_MANAGER"
       ? (draft.countryAccess.length ? draft.countryAccess : [draft.country])
       : [draft.country];
     onChange({
       ...draft,
       role,
+      representativeLevel: defaultRepresentativeLevelForRoleReturn(role, original ?? draft),
       countryAccess,
       ...(draft.teamId === newTeamSelectionId && role !== "SALES_LEADER" && !draft.teamSupervisor
         ? { teamId: "", teamName: "" }
         : {}),
-      permissions: { ...template.permissions },
+      permissions: { ...permissions },
     });
   }
 
@@ -1024,6 +1037,29 @@ function UserForm({
                   </span>
                 )}
               </Field>
+              {draft.role === "REPRESENTATIVE" && (
+                <Field label="Vertegenwoordigersniveau">
+                  <select
+                    className="field font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+                    value={draft.representativeLevel}
+                    disabled={!capabilities.canEditRepresentativeLevel}
+                    onChange={(event) =>
+                      update("representativeLevel", event.target.value as ManagedUser["representativeLevel"])
+                    }
+                  >
+                    {representativeLevels.map((level) => (
+                      <option key={level} value={level}>
+                        {representativeLevelLabels[level]}
+                      </option>
+                    ))}
+                  </select>
+                  {!capabilities.canEditRepresentativeLevel && (
+                    <span className="mt-1.5 block text-xs text-slate-500">
+                      Je kunt dit niveau alleen wijzigen met de juiste beheerscope.
+                    </span>
+                  )}
+                </Field>
+              )}
               {draft.role === "SALES_MANAGER" && (
                 <div className="sm:col-span-2">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">

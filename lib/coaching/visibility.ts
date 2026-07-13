@@ -1,5 +1,6 @@
 import type {
   CoachingIntervention,
+  ContactMoment,
   MockUser,
   WorkflowState,
 } from "@/lib/types";
@@ -80,6 +81,29 @@ export function visibleCoachings(
 ) {
   return dedupeById(interventions).filter((intervention) =>
     canViewCoaching(currentUser, intervention)
+  );
+}
+
+export function canViewContactMoment(
+  currentUser: MockUser,
+  contactMoment: ContactMoment
+) {
+  if (currentUser.role !== "REPRESENTATIVE") return true;
+  const isTarget = [currentUser.id, currentUser.representativeId].includes(contactMoment.representativeId);
+  if (!isTarget) return false;
+  if (contactMoment.status === "afgesloten") return true;
+  if (contactMoment.status === "geannuleerd" || contactMoment.status === "niet_uitgevoerd") {
+    return contactMoment.notifyRepresentative === true;
+  }
+  return contactMoment.notifyRepresentative === true;
+}
+
+export function visibleContactMoments(
+  currentUser: MockUser,
+  contactMoments: ContactMoment[]
+) {
+  return dedupeById(contactMoments).filter((contactMoment) =>
+    canViewContactMoment(currentUser, contactMoment)
   );
 }
 

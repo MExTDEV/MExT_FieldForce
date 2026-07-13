@@ -3,16 +3,18 @@ import { unauthorized } from "@/lib/server/api";
 import { forbidden } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
 import { can } from "@/lib/permissions";
+import { fieldForcePermissionKeys } from "@/lib/user-management";
 import {
-  fieldForcePermissionKeys,
-  roleTemplates,
-} from "@/lib/user-management";
+  applyPermissionOverrides,
+  resolveRolePermissions,
+} from "@/lib/role-permissions";
 import type {
   Country,
   FieldForcePermissionKey,
   MockUser,
   Role,
 } from "@/lib/types";
+import { canExecutePeerCoaching, canRolePlanPeerCoaching } from "@/lib/coaching/peer-execution";
 
 export function actorCountryWhere(user: MockUser) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return {};
@@ -124,11 +126,28 @@ export async function requireCoachingOwnerScope(actor: MockUser, ownerIds: strin
   const ids = [...new Set(ownerIds.filter(Boolean))];
   if (!ids.length) return;
   const owners = await prisma.user.findMany({
-    where: { id: { in: ids }, active: true, role: { in: ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"] } },
-    select: { id: true, country: true },
+    where: {
+      id: { in: ids },
+      active: true,
+      role: {
+        in: [
+          "REPRESENTATIVE",
+          "SALES_LEADER",
+          "SALES_MANAGER",
+          "COUNTRY_MANAGER",
+          "GROUP_MANAGER",
+          "ADMIN",
+          "SUPER_ADMIN",
+        ],
+      },
+    },
+    select: { id: true, country: true, role: true, representativeLevel: true, active: true },
   });
   if (owners.length !== ids.length) forbidden("De geselecteerde begeleider is ongeldig.");
   const allowed = owners.every((owner) => {
+    if (owner.role === "REPRESENTATIVE") {
+      return canRolePlanPeerCoaching(actor.role) && canExecutePeerCoaching(owner);
+    }
     if (actor.role === "SALES_LEADER") return owner.id === actor.id;
     if (["COUNTRY_MANAGER", "SALES_MANAGER", "ADMIN"].includes(actor.role)) return actorCanAccessCountry(actor, owner.country);
     return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
@@ -202,23 +221,10 @@ async function findEffectivePermissions(
       include: { permission: { select: { key: true } } },
     }),
   ]);
-  const permissions = { ...roleTemplates[role].permissions };
-  for (const grant of roleGrants) {
-    if (isFieldForcePermissionKey(grant.permission.key)) {
-      permissions[grant.permission.key] = grant.enabled;
-    }
-  }
-  for (const grant of userGrants) {
-    if (isFieldForcePermissionKey(grant.permission.key)) {
-      permissions[grant.permission.key] = grant.enabled;
-    }
-  }
+  const rolePermissions = resolveRolePermissions(role, roleGrants);
+  const permissions = applyPermissionOverrides(rolePermissions, userGrants);
   return fieldForcePermissionKeys.reduce(
     (result, key) => ({ ...result, [key]: Boolean(permissions[key]) }),
     {} as Record<FieldForcePermissionKey, boolean>
   );
-}
-
-function isFieldForcePermissionKey(key: string): key is FieldForcePermissionKey {
-  return (fieldForcePermissionKeys as string[]).includes(key);
 }

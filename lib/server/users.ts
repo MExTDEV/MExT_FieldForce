@@ -1,19 +1,23 @@
 import { prisma } from "@/lib/server/db";
 import { assertRoleAssignable } from "@/lib/server/role-configuration";
 import {
-  fieldForcePermissionKeys,
   normalizeManagedUser,
   prepareManagedUserSave,
-  roleTemplates,
 } from "@/lib/user-management";
+import {
+  applyPermissionOverrides,
+  listPermissionOverrides,
+  missingPermissionKeys,
+  resolveRolePermissions,
+} from "@/lib/role-permissions";
 import type {
   Country,
-  FieldForcePermissionKey,
   Language,
   ManagedUser,
   MockUser,
   Role,
 } from "@/lib/types";
+import { normalizeRepresentativeLevel } from "@/lib/representative-levels";
 
 type UserWithAccess = Awaited<ReturnType<typeof fetchUsersWithAccess>>[number];
 
@@ -43,8 +47,15 @@ export async function createManagedUserInDatabase(
   const created = await prisma.user.create({
     data: userDataFromManagedUser(prepared),
   });
+  await recordRepresentativeLevelHistory(
+    created.id,
+    null,
+    created.representativeLevel,
+    actor.id,
+    "user.created"
+  );
   await replaceUserCountryAccess(created.id, prepared.countryAccess);
-  await replaceUserPermissions(created.id, prepared.permissions);
+  await replaceUserPermissions(created.id, prepared.permissions, prepared.role);
   return toManagedUser(
     await fetchUserWithAccess(created.id),
     await fetchRolePermissions()
@@ -61,7 +72,17 @@ async function createSalesLeaderWithTeam(
     );
   }
 
-  const permissionRecords = await prisma.permission.findMany();
+  const [permissionRecords, rolePermissions] = await Promise.all([
+    prisma.permission.findMany(),
+    fetchRolePermissions(),
+  ]);
+  const missing = missingPermissionKeys(permissionRecords.map(({ key }) => key));
+  if (missing.length) throw new Error(`Ontbrekende rechten in de database: ${missing.join(", ")}.`);
+  const roleDefaults = resolveRolePermissions(prepared.role, rolePermissions);
+  const overrides = listPermissionOverrides(prepared.permissions, roleDefaults);
+  const permissionByKey = new Map(
+    permissionRecords.map((permission) => [permission.key, permission])
+  );
   const createdId = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
       data: {
@@ -89,30 +110,15 @@ async function createSalesLeaderWithTeam(
       data: { teamId: team.id },
     });
     await replaceUserCountryAccessInTransaction(tx, created.id, prepared.countryAccess);
-    await Promise.all(
-      permissionRecords.map((permission) =>
-        tx.userPermission.upsert({
-          where: {
-            userId_permissionId: {
-              userId: created.id,
-              permissionId: permission.id,
-            },
-          },
-          update: {
-            enabled: Boolean(
-              prepared.permissions[permission.key as FieldForcePermissionKey]
-            ),
-          },
-          create: {
-            userId: created.id,
-            permissionId: permission.id,
-            enabled: Boolean(
-              prepared.permissions[permission.key as FieldForcePermissionKey]
-            ),
-          },
-        })
-      )
-    );
+    if (overrides.length) {
+      await tx.userPermission.createMany({
+        data: overrides.map(({ key, enabled }) => ({
+          userId: created.id,
+          permissionId: permissionByKey.get(key)!.id,
+          enabled,
+        })),
+      });
+    }
     return created.id;
   });
 
@@ -140,8 +146,17 @@ export async function updateManagedUserInDatabase(
     where: { id: userId },
     data: userDataFromManagedUser(prepared),
   });
+  if (existing.representativeLevel !== prepared.representativeLevel) {
+    await recordRepresentativeLevelHistory(
+      updated.id,
+      existing.representativeLevel,
+      updated.representativeLevel,
+      actor.id,
+      "user.updated"
+    );
+  }
   await replaceUserCountryAccess(updated.id, prepared.countryAccess);
-  await replaceUserPermissions(updated.id, prepared.permissions);
+  await replaceUserPermissions(updated.id, prepared.permissions, prepared.role);
   return toManagedUser(
     await fetchUserWithAccess(updated.id),
     await fetchRolePermissions()
@@ -181,15 +196,8 @@ function toManagedUser(
   rolePermissions: Awaited<ReturnType<typeof fetchRolePermissions>>
 ): ManagedUser {
   const role = user.role as Role;
-  const basePermissions = { ...roleTemplates[role].permissions };
-  for (const grant of rolePermissions.filter((item) => item.role === role)) {
-    basePermissions[grant.permission.key as FieldForcePermissionKey] =
-      grant.enabled;
-  }
-  for (const grant of user.permissions) {
-    basePermissions[grant.permission.key as FieldForcePermissionKey] =
-      grant.enabled;
-  }
+  const roleDefaults = resolveRolePermissions(role, rolePermissions);
+  const effectivePermissions = applyPermissionOverrides(roleDefaults, user.permissions);
 
   return normalizeManagedUser({
     id: user.id,
@@ -203,14 +211,12 @@ function toManagedUser(
     teamId: user.teamId ?? "",
     teamName: user.team?.name ?? "",
     role,
+    representativeLevel: normalizeRepresentativeLevel(user.representativeLevel, "STARTER"),
     teamSupervisor: user.teamSupervisor,
     branchNumber: user.branchNumber ?? "",
     active: user.active,
     avatarUrl: user.avatarUrl ?? "",
-    permissions: fieldForcePermissionKeys.reduce(
-      (result, key) => ({ ...result, [key]: Boolean(basePermissions[key]) }),
-      {} as Record<FieldForcePermissionKey, boolean>
-    ),
+    permissions: effectivePermissions,
     representativeId: user.representativeId ?? undefined,
     microsoftLinked: Boolean(user.entraId),
     entraId: user.entraId ?? undefined,
@@ -244,12 +250,31 @@ function userDataFromManagedUser(user: ManagedUser) {
     branchNumber: user.branchNumber || null,
     representativeId: user.representativeId ?? null,
     role: user.role,
+    representativeLevel: user.representativeLevel,
     country: user.country,
     language: user.language,
     active: user.active,
     teamSupervisor: user.teamSupervisor,
     teamId: user.teamId || null,
   };
+}
+
+async function recordRepresentativeLevelHistory(
+  userId: string,
+  oldValue: ManagedUser["representativeLevel"] | null,
+  newValue: ManagedUser["representativeLevel"],
+  changedById: string,
+  reason: string
+) {
+  await prisma.representativeLevelHistory.create({
+    data: {
+      userId,
+      oldValue,
+      newValue,
+      changedById,
+      reason,
+    },
+  });
 }
 
 async function validateManagedUserTeam(user: ManagedUser) {
@@ -278,29 +303,33 @@ async function validateManagedUserTeam(user: ManagedUser) {
 
 async function replaceUserPermissions(
   userId: string,
-  permissions: Record<FieldForcePermissionKey, boolean>
+  permissions: ManagedUser["permissions"],
+  role: Role
 ) {
-  const permissionRecords = await prisma.permission.findMany();
-  await prisma.$transaction(
-    permissionRecords.map((permission) =>
-      prisma.userPermission.upsert({
-        where: {
-          userId_permissionId: {
-            userId,
-            permissionId: permission.id,
-          },
-        },
-        update: {
-          enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]),
-        },
-        create: {
-          userId,
-          permissionId: permission.id,
-          enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]),
-        },
-      })
-    )
+  const [permissionRecords, rolePermissions] = await Promise.all([
+    prisma.permission.findMany(),
+    fetchRolePermissions(),
+  ]);
+  const missing = missingPermissionKeys(permissionRecords.map(({ key }) => key));
+  if (missing.length) throw new Error(`Ontbrekende rechten in de database: ${missing.join(", ")}.`);
+  const defaults = resolveRolePermissions(role, rolePermissions);
+  const overrides = listPermissionOverrides(permissions, defaults);
+  const permissionByKey = new Map(
+    permissionRecords.map((permission) => [permission.key, permission])
   );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.userPermission.deleteMany({ where: { userId } });
+    if (overrides.length) {
+      await tx.userPermission.createMany({
+        data: overrides.map(({ key, enabled }) => ({
+          userId,
+          permissionId: permissionByKey.get(key)!.id,
+          enabled,
+        })),
+      });
+    }
+  });
 }
 
 async function replaceUserCountryAccess(userId: string, countries: Country[]) {

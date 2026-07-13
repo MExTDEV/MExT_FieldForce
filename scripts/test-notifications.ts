@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { buildCoachingApprovalNotification } from "../lib/server/notifications";
+import { buildCoachingApprovalNotification, buildInAppNotification } from "../lib/server/notifications";
 
 const sentForApprovalAt = new Date("2026-07-09T12:15:00.000Z");
 const createdAt = new Date("2026-07-09T12:10:00.000Z");
@@ -56,4 +56,67 @@ assert.equal(readNotification.readAt, readAt.toISOString());
 assert.equal(readNotification.triggeredByUserId, undefined);
 assert.equal(readNotification.title, "Neue Begleitung zur Bestaetigung");
 
-console.log("Approval-notificaties worden correct opgebouwd met link, unread/read status en vertaling.");
+const genericCreatedAt = new Date("2026-07-12T08:30:00.000Z");
+const genericUpdatedAt = new Date("2026-07-12T08:45:00.000Z");
+const helpRequestNotification = buildInAppNotification({
+  id: "delivery-1",
+  eventKey: "HELP_REQUEST_CREATED:helpRequest:help-1",
+  recipientUserId: "leader-1",
+  status: "unread",
+  sourceModule: "HULPAANVRAGEN",
+  entityType: "helpRequest",
+  entityId: "help-1",
+  originalTo: "rep-user-1",
+  createdAt: genericCreatedAt,
+  updatedAt: genericUpdatedAt,
+}, "nl");
+
+assert.ok(helpRequestNotification);
+assert.equal(helpRequestNotification.id, "delivery-1");
+assert.equal(helpRequestNotification.targetUserId, "leader-1");
+assert.equal(helpRequestNotification.type, "HELP_REQUEST_CREATED");
+assert.equal(helpRequestNotification.entityType, "helpRequest");
+assert.equal(helpRequestNotification.entityId, "help-1");
+assert.equal(helpRequestNotification.linkUrl, "/hulpaanvragen/help-1");
+assert.equal(helpRequestNotification.isRead, false);
+assert.equal(helpRequestNotification.readAt, undefined);
+assert.equal(helpRequestNotification.triggeredByUserId, "rep-user-1");
+assert.equal(helpRequestNotification.title, "Nieuwe hulpaanvraag");
+assert.equal(helpRequestNotification.body, "Er staat een nieuwe hulpaanvraag klaar voor opvolging.");
+
+const contactNotification = buildInAppNotification({
+  id: "delivery-2",
+  eventKey: "CONTACT_MOMENT_SHARED:contactMoment:contact-1",
+  recipientUserId: "rep-user-1",
+  status: "read",
+  sourceModule: "CONTACTMOMENTEN",
+  entityType: "contactMoment",
+  entityId: "contact-1",
+  originalTo: "leader-1",
+  createdAt: genericCreatedAt,
+  updatedAt: genericUpdatedAt,
+}, "de");
+
+assert.ok(contactNotification);
+assert.equal(contactNotification.type, "CONTACT_MOMENT_SHARED");
+assert.equal(contactNotification.linkUrl, "/contactmomenten/contact-1");
+assert.equal(contactNotification.isRead, true);
+assert.equal(contactNotification.readAt, genericUpdatedAt.toISOString());
+assert.equal(contactNotification.title, "Kontakt geteilt");
+
+const unknownNotification = buildInAppNotification({
+  id: "delivery-3",
+  eventKey: "UNKNOWN_EVENT:helpRequest:help-1",
+  recipientUserId: "leader-1",
+  status: "unread",
+  sourceModule: null,
+  entityType: "helpRequest",
+  entityId: "help-1",
+  originalTo: null,
+  createdAt: genericCreatedAt,
+  updatedAt: genericUpdatedAt,
+}, "nl");
+
+assert.equal(unknownNotification, undefined);
+
+console.log("Approval- en generieke in-app notificaties worden correct opgebouwd met link, read-state en vertaling.");

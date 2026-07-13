@@ -260,7 +260,7 @@ function NotificationToastCard({
             {notificationTitle(toast.notification, language)}
           </span>
           <span className="mt-1 block text-sm leading-5 text-slate-600">
-            {translate(language, "notifications.coachingApproval.toastBody")}
+            {notificationBody(toast.notification, language)}
           </span>
           <span className="mt-2 block text-xs font-bold uppercase tracking-wide text-brand-700">
             {translate(language, "notifications.open")}

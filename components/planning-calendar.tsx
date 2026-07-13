@@ -317,11 +317,11 @@ export function PlanningCalendar() {
 
     const contactEvents = isModuleEnabled("CONTACTMOMENTEN") ? workflow.visibleContactMoments(user).map((item) => ({
       id: `contact-${item.id}`,
-      title: "Contactmoment",
+      title: item.subject || "Contactmoment",
       subtitle: representativeName(representatives, item.representativeId),
-      date: dateKey(parseDate(item.createdAt)),
-      hour: deterministicHour(item.id),
-      duration: 1,
+      date: dateKey(parseDate(item.plannedDate ?? item.createdAt)),
+      hour: hourFromTime(item.startTime) ?? deterministicHour(item.id),
+      duration: durationFromTimes(item.startTime, item.endTime),
       type: "Contactmoment",
       planningType: "CONTACT_MOMENT" as const,
       status: item.status,
@@ -329,8 +329,10 @@ export function PlanningCalendar() {
       color: eventColor("Contactmoment"),
       source: "FIELD_FORCE" as const,
       planningSource: "FIELD_FORCE" as const,
-      startMinutes: minutesFromHour(deterministicHour(item.id)),
-      endMinutes: minutesFromHour(deterministicHour(item.id) + 1),
+      startMinutes: minutesFromHour(hourFromTime(item.startTime) ?? deterministicHour(item.id)),
+      endMinutes: minutesFromHour((hourFromTime(item.startTime) ?? deterministicHour(item.id)) + durationFromTimes(item.startTime, item.endTime)),
+      syncStatus: item.outlookSyncStatus,
+      syncError: item.syncError,
     })) : [];
 
     const retrainingEvents = isModuleEnabled("RETRAININGEN") ? workflow.visibleRetrainings(user).map((item) => ({

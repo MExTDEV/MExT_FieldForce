@@ -6,7 +6,6 @@ import type {
   FollowUpType,
   HelpRequest,
   HelpUrgency,
-  LinkedIntervention,
   Retraining,
   SalesTraining,
   TrainingStatus,
@@ -20,6 +19,7 @@ import type {
   CoachingParticipant,
   Representative,
 } from "@/lib/types";
+import { isBlankRichText, richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 
 export type CoachingWorkflowInput = {
   id?: string;
@@ -102,6 +102,14 @@ export type ContactMomentInput = {
   id?: string;
   representativeId: string;
   initiatorId: string;
+  plannedDate?: string;
+  startTime?: string;
+  endTime?: string;
+  notifyRepresentative?: boolean;
+  subject?: string;
+  contactType?: string;
+  location?: string;
+  internalNotes?: string;
   reason: string;
   reportedProblems: string;
   leaderThemes: string[];
@@ -109,18 +117,38 @@ export type ContactMomentInput = {
   representativeThemes?: string[];
   discussedThemes?: string[];
   conclusion?: string;
+  reportHtml?: string;
   actionPoints?: Omit<WorkflowActionPoint, "id" | "status">[];
+  closedReason?: string;
   sourceHelpRequestId?: string;
+  photos?: ContactMoment["photos"];
 };
 
 export type HelpRequestInput = {
+  id?: string;
   representativeId: string;
   requesterId: string;
+  responsibleUserId?: string;
   subject: string;
-  difficulty: string;
-  desiredResult: string;
-  urgency: HelpUrgency;
-  explanation: string;
+  descriptionHtml?: string;
+  difficulty?: string;
+  desiredResult?: string;
+  urgency?: HelpUrgency;
+  explanation?: string;
+};
+
+export type HelpRequestUpdateInput = {
+  id: string;
+  requesterId: string;
+  subject: string;
+  descriptionHtml: string;
+};
+
+export type HelpRequestAnswerInput = {
+  helpRequestId: string;
+  authorId: string;
+  bodyHtml: string;
+  closesRequest?: boolean;
 };
 
 export type RetrainingInput = {
@@ -302,6 +330,32 @@ export function saveContactMoment(
   const now = new Date().toISOString();
   const id = input.id ?? createId("contact");
   const previous = current.contactMoments.find((item) => item.id === id);
+  if (previous && isFinalContactMomentStatus(previous.status)) {
+    if (isSameFinalContactMomentSave(previous, input, status)) {
+      return { state: current, contactMoment: previous };
+    }
+    throw new Error("Een definitief contactmoment kan niet meer aangepast worden.");
+  }
+  assertValidContactMomentTransition(previous?.status, status);
+  assertValidContactMomentPlanning(input, previous);
+  if (status === "afgesloten" && isBlankRichText(input.reportHtml ?? input.conclusion ?? previous?.reportHtml ?? previous?.conclusion)) {
+    throw new Error("Een verslag is verplicht voordat het contactmoment gedeeld kan worden.");
+  }
+  if ((status === "geannuleerd" || status === "niet_uitgevoerd") && !(input.closedReason ?? "").trim()) {
+    throw new Error("Geef een reden op voor annuleren of niet uitvoeren.");
+  }
+  const reportHtml = sanitizeRichText(input.reportHtml ?? previous?.reportHtml ?? input.conclusion ?? previous?.conclusion ?? "");
+  const nextActions = input.actionPoints
+    ? input.actionPoints
+        .filter((action) => action.title.trim())
+        .map((action, index) => ({
+          ...action,
+          id: previous?.actionPoints[index]?.id ?? `${id}-action-${index + 1}`,
+          status: previous?.actionPoints[index]?.status ?? "nieuw",
+          owner: representative.id,
+        }))
+    : previous?.actionPoints ?? [];
+  const sharedAt = status === "afgesloten" ? previous?.sharedAt ?? now : previous?.sharedAt;
   const contactMoment: ContactMoment = {
     id,
     representativeId: representative.id,
@@ -310,6 +364,19 @@ export function saveContactMoment(
     country: representative.country,
     teamId: representative.teamId,
     status,
+    plannedDate: input.plannedDate ?? previous?.plannedDate,
+    startTime: input.startTime ?? previous?.startTime,
+    endTime: input.endTime ?? previous?.endTime,
+    notifyRepresentative: input.notifyRepresentative ?? previous?.notifyRepresentative ?? false,
+    subject: input.subject ?? previous?.subject,
+    contactType: input.contactType ?? previous?.contactType,
+    location: input.location ?? previous?.location,
+    internalNotes: input.internalNotes ?? previous?.internalNotes,
+    outlookEventId: previous?.outlookEventId,
+    outlookICalUId: previous?.outlookICalUId,
+    outlookSyncStatus: previous?.outlookSyncStatus ?? "NOT_SYNCED",
+    lastSyncedAt: previous?.lastSyncedAt,
+    syncError: previous?.syncError,
     reason: input.reason,
     reportedProblems: input.reportedProblems,
     leaderThemes: input.leaderThemes,
@@ -317,16 +384,21 @@ export function saveContactMoment(
     representativeThemes: input.representativeThemes ?? previous?.representativeThemes ?? [],
     discussedThemes: input.discussedThemes ?? previous?.discussedThemes ?? [],
     conclusion: input.conclusion ?? previous?.conclusion ?? "",
-    actionPoints: input.actionPoints
-      ? input.actionPoints
-          .filter((action) => action.title.trim())
-          .map((action, index) => ({
-            ...action,
-            id: previous?.actionPoints[index]?.id ?? `${id}-action-${index + 1}`,
-            status: previous?.actionPoints[index]?.status ?? "nieuw",
-          }))
-      : previous?.actionPoints ?? [],
+    reportHtml,
+    actionPoints: nextActions,
+    finalSnapshot: status === "afgesloten"
+      ? previous?.finalSnapshot ?? buildContactMomentSnapshot(id, representative, input, nextActions, reportHtml, sharedAt, input.initiatorId)
+      : previous?.finalSnapshot,
+    sharedAt,
+    sharedById: status === "afgesloten" ? previous?.sharedById ?? input.initiatorId : previous?.sharedById,
+    closedReason: (status === "geannuleerd" || status === "niet_uitgevoerd")
+      ? input.closedReason?.trim()
+      : previous?.closedReason,
+    closedAt: (status === "geannuleerd" || status === "niet_uitgevoerd") ? previous?.closedAt ?? now : previous?.closedAt,
+    closedById: (status === "geannuleerd" || status === "niet_uitgevoerd") ? previous?.closedById ?? input.initiatorId : previous?.closedById,
+    previousStatus: (status === "geannuleerd" || status === "niet_uitgevoerd") ? previous?.status : previous?.previousStatus,
     sourceHelpRequestId: input.sourceHelpRequestId ?? previous?.sourceHelpRequestId,
+    photos: input.photos ?? previous?.photos ?? [],
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
   };
@@ -368,19 +440,27 @@ export function createHelpRequest(
 ): { state: WorkflowState; helpRequest: HelpRequest } {
   const representative = representatives.find((item) => item.id === input.representativeId);
   if (!representative) throw new Error("Vertegenwoordiger niet gevonden.");
+  const descriptionSource = firstFilled(input.descriptionHtml, input.explanation, input.difficulty, input.desiredResult);
+  assertValidHelpRequestContent(input.subject, descriptionSource);
   const now = new Date().toISOString();
+  const descriptionHtml = sanitizeRichText(descriptionSource);
+  const descriptionText = richTextToPlainText(descriptionHtml);
   const helpRequest: HelpRequest = {
-    id: createId("help"),
+    id: input.id ?? createId("help"),
     requesterId: input.requesterId,
     representativeId: representative.id,
+    responsibleUserId: input.responsibleUserId,
     country: representative.country,
     teamId: representative.teamId,
-    subject: input.subject,
-    difficulty: input.difficulty,
-    desiredResult: input.desiredResult,
-    urgency: input.urgency,
-    explanation: input.explanation,
-    status: "nieuw",
+    subject: input.subject.trim(),
+    descriptionHtml,
+    descriptionText,
+    difficulty: input.difficulty ?? descriptionText,
+    desiredResult: input.desiredResult ?? "",
+    urgency: input.urgency ?? "normaal",
+    explanation: input.explanation ?? descriptionHtml,
+    status: "open",
+    answers: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -399,10 +479,13 @@ export function planHelpRequestFollowUp(
 ): WorkflowState {
   const request = current.helpRequests.find((item) => item.id === helpRequestId);
   if (!request) throw new Error("Hulpaanvraag niet gevonden.");
+  if (!canHandleHelpRequest(request)) throw new Error("Deze hulpaanvraag kan niet meer behandeld worden.");
+  if (followUpType === "begeleiding") {
+    throw new Error("Een begeleiding wordt pas na bevestiging in de planningswizard ingepland.");
+  }
   const now = new Date().toISOString();
   let linkedInterventionId: string | undefined;
   let contactMoments = current.contactMoments;
-  let linkedInterventions = current.linkedInterventions;
   let retrainings = current.retrainings;
   let salesTrainings = current.salesTrainings;
 
@@ -445,27 +528,13 @@ export function planHelpRequestFollowUp(
     }, "concept", representatives);
     linkedInterventionId = result.salesTraining.id;
     salesTrainings = result.state.salesTrainings;
-  } else if (followUpType === "begeleiding") {
-    const linked: LinkedIntervention = {
-      id: createId("followup"),
-      representativeId: request.representativeId,
-      country: request.country,
-      teamId: request.teamId,
-      type: followUpType as LinkedIntervention["type"],
-      title: `${followUpType.replace("_", " ")}: ${request.subject}`,
-      status: "gepland",
-      sourceHelpRequestId: request.id,
-      createdAt: now,
-    };
-    linkedInterventionId = linked.id;
-    linkedInterventions = [...current.linkedInterventions, linked];
   }
 
   const closesImmediately = followUpType === "geen_actie";
+  const followUpStatus = statusForHelpFollowUp(followUpType);
   return {
     ...current,
     contactMoments,
-    linkedInterventions,
     retrainings,
     salesTrainings,
     helpRequests: current.helpRequests.map((item) =>
@@ -474,11 +543,61 @@ export function planHelpRequestFollowUp(
             ...item,
             followUpType,
             linkedInterventionId,
-            status: closesImmediately ? "afgesloten" : "vervolgactie_gepland",
+            status: closesImmediately ? "gesloten" : followUpStatus,
+            firstHandledAt: item.firstHandledAt ?? now,
+            firstHandledByUserId: item.firstHandledByUserId ?? actorId,
             updatedAt: now,
           }
         : item
     ),
+  };
+}
+
+export function scheduleHelpRequestCoaching(
+  current: WorkflowState,
+  helpRequestId: string,
+  actorId: string,
+  input: CoachingWorkflowInput,
+  representatives: Representative[]
+): { state: WorkflowState; intervention: CoachingIntervention; helpRequest: HelpRequest } {
+  const request = current.helpRequests.find((item) => item.id === helpRequestId);
+  if (!request) throw new Error("Hulpaanvraag niet gevonden.");
+  if (!canHandleHelpRequest(request)) throw new Error("Deze hulpaanvraag kan niet meer behandeld worden.");
+  if (input.id) throw new Error("Een hulpaanvraag kan alleen een nieuwe begeleiding plannen.");
+  if (input.representativeId && input.representativeId !== request.representativeId) {
+    throw new Error("De begeleiding moet gekoppeld blijven aan de vertegenwoordiger van de hulpaanvraag.");
+  }
+  assertValidCoachingPlanning(input);
+  if (!input.focusNames.length) {
+    throw new Error("Selecteer minstens een focusfase voor de begeleiding.");
+  }
+
+  const now = new Date().toISOString();
+  const result = saveCoaching(current, {
+    ...input,
+    id: undefined,
+    representativeId: request.representativeId,
+    initiatorId: actorId,
+  }, "gepland", representatives);
+  const updatedHelpRequest: HelpRequest = {
+    ...request,
+    status: "begeleiding",
+    followUpType: "begeleiding",
+    linkedInterventionId: result.intervention.id,
+    firstHandledAt: request.firstHandledAt ?? now,
+    firstHandledByUserId: request.firstHandledByUserId ?? actorId,
+    updatedAt: now,
+  };
+
+  return {
+    intervention: result.intervention,
+    helpRequest: updatedHelpRequest,
+    state: {
+      ...result.state,
+      helpRequests: result.state.helpRequests.map((item) =>
+        item.id === helpRequestId ? updatedHelpRequest : item
+      ),
+    },
   };
 }
 
@@ -489,6 +608,10 @@ export function setHelpRequestStatus(
 ): WorkflowState {
   if (!current.helpRequests.some((item) => item.id === helpRequestId)) {
     throw new Error("Hulpaanvraag niet gevonden.");
+  }
+  const request = current.helpRequests.find((item) => item.id === helpRequestId)!;
+  if ((status === "gesloten" || status === "afgesloten") && !(request.answers ?? []).some((answer) => answer.closesRequest)) {
+    throw new Error("Een hulpaanvraag kan niet zonder inhoudelijk antwoord gesloten worden.");
   }
   return {
     ...current,
@@ -593,6 +716,55 @@ export function saveCoaching(
   };
 }
 
+export function canEditOrWithdrawHelpRequest(request: HelpRequest) {
+  return (request.status === "open" || request.status === "nieuw") &&
+    !request.firstHandledAt &&
+    !(request.answers ?? []).length &&
+    !request.followUpType &&
+    !request.linkedInterventionId;
+}
+
+export function canHandleHelpRequest(request: HelpRequest) {
+  return ["open", "nieuw", "in_behandeling"].includes(request.status) &&
+    !request.linkedInterventionId &&
+    request.status !== "ingetrokken" &&
+    request.status !== "gesloten" &&
+    request.status !== "afgesloten";
+}
+
+function statusForHelpFollowUp(followUpType: FollowUpType): HelpRequest["status"] {
+  if (followUpType === "begeleiding") return "begeleiding";
+  if (followUpType === "contactmoment") return "contactmoment";
+  if (followUpType === "retraining") return "retraining";
+  if (followUpType === "sales_training") return "salestraining";
+  if (followUpType === "geen_actie") return "gesloten";
+  return "in_behandeling";
+}
+
+function assertValidHelpRequestContent(subject: string, descriptionHtml: string) {
+  if (!subject.trim()) throw new Error("Onderwerp is verplicht.");
+  if (isBlankRichText(descriptionHtml)) throw new Error("Omschrijving is verplicht.");
+}
+
+function assertValidCoachingPlanning(input: CoachingWorkflowInput) {
+  if (!input.plannedDate || Number.isNaN(new Date(`${input.plannedDate}T12:00:00`).getTime())) {
+    throw new Error("Kies een geldige datum voor de begeleiding.");
+  }
+  if (!input.startTime || !input.endTime || !/^\d{2}:\d{2}$/.test(input.startTime) || !/^\d{2}:\d{2}$/.test(input.endTime)) {
+    throw new Error("Kies een geldig begin- en einduur.");
+  }
+  if (input.endTime <= input.startTime) {
+    throw new Error("Het einduur moet later zijn dan het beginuur.");
+  }
+  if (!input.ownerId) {
+    throw new Error("Kies een begeleider voor de begeleiding.");
+  }
+}
+
+function firstFilled(...values: Array<string | undefined>) {
+  return values.find((value) => value && !isBlankRichText(value)) ?? "";
+}
+
 function coachingParticipantAsRepresentative(subject: CoachingParticipant): Representative {
   return {
     id: subject.id,
@@ -610,6 +782,180 @@ function coachingParticipantAsRepresentative(subject: CoachingParticipant): Repr
     phone: "",
     kpis: [],
   };
+}
+
+export function updateHelpRequest(
+  current: WorkflowState,
+  input: HelpRequestUpdateInput
+): { state: WorkflowState; helpRequest: HelpRequest } {
+  const request = current.helpRequests.find((item) => item.id === input.id);
+  if (!request) throw new Error("Hulpaanvraag niet gevonden.");
+  if (request.requesterId !== input.requesterId) throw new Error("Je mag deze hulpaanvraag niet aanpassen.");
+  if (!canEditOrWithdrawHelpRequest(request)) {
+    throw new Error("Deze hulpaanvraag werd ondertussen behandeld en kan niet meer worden aangepast.");
+  }
+  assertValidHelpRequestContent(input.subject, input.descriptionHtml);
+  const now = new Date().toISOString();
+  const descriptionHtml = sanitizeRichText(input.descriptionHtml);
+  const updated: HelpRequest = {
+    ...request,
+    subject: input.subject.trim(),
+    descriptionHtml,
+    descriptionText: richTextToPlainText(descriptionHtml),
+    difficulty: richTextToPlainText(descriptionHtml),
+    explanation: descriptionHtml,
+    updatedAt: now,
+  };
+  return {
+    helpRequest: updated,
+    state: {
+      ...current,
+      helpRequests: current.helpRequests.map((item) => item.id === input.id ? updated : item),
+    },
+  };
+}
+
+export function withdrawHelpRequest(
+  current: WorkflowState,
+  helpRequestId: string,
+  requesterId: string
+): WorkflowState {
+  const request = current.helpRequests.find((item) => item.id === helpRequestId);
+  if (!request) throw new Error("Hulpaanvraag niet gevonden.");
+  if (request.requesterId !== requesterId) throw new Error("Je mag deze hulpaanvraag niet intrekken.");
+  if (!canEditOrWithdrawHelpRequest(request)) {
+    throw new Error("Een behandelde hulpaanvraag kan niet meer worden ingetrokken.");
+  }
+  const now = new Date().toISOString();
+  return {
+    ...current,
+    helpRequests: current.helpRequests.map((item) =>
+      item.id === helpRequestId
+        ? { ...item, status: "ingetrokken", withdrawnAt: now, withdrawnByUserId: requesterId, updatedAt: now }
+        : item
+    ),
+  };
+}
+
+export function sendHelpRequestAnswer(
+  current: WorkflowState,
+  input: HelpRequestAnswerInput
+): { state: WorkflowState; helpRequest: HelpRequest } {
+  const request = current.helpRequests.find((item) => item.id === input.helpRequestId);
+  if (!request) throw new Error("Hulpaanvraag niet gevonden.");
+  if (!canHandleHelpRequest(request)) throw new Error("Deze hulpaanvraag kan niet meer behandeld worden.");
+  if (isBlankRichText(input.bodyHtml)) throw new Error("Een inhoudelijk antwoord is verplicht.");
+  const now = new Date().toISOString();
+  const bodyHtml = sanitizeRichText(input.bodyHtml);
+  const answer = {
+    id: createId("help-answer"),
+    helpRequestId: request.id,
+    authorId: input.authorId,
+    bodyHtml,
+    bodyText: richTextToPlainText(bodyHtml),
+    closesRequest: Boolean(input.closesRequest),
+    createdAt: now,
+  };
+  const updated: HelpRequest = {
+    ...request,
+    status: input.closesRequest ? "gesloten" : "in_behandeling",
+    firstHandledAt: request.firstHandledAt ?? now,
+    firstHandledByUserId: request.firstHandledByUserId ?? input.authorId,
+    answers: [...(request.answers ?? []), answer],
+    updatedAt: now,
+  };
+  return {
+    helpRequest: updated,
+    state: {
+      ...current,
+      helpRequests: current.helpRequests.map((item) => item.id === request.id ? updated : item),
+    },
+  };
+}
+
+export function isFinalContactMomentStatus(status: ContactMomentStatus) {
+  return status === "afgesloten" || status === "geannuleerd" || status === "niet_uitgevoerd";
+}
+
+function assertValidContactMomentTransition(previous: ContactMomentStatus | undefined, next: ContactMomentStatus) {
+  if (!previous) return;
+  const allowed: Record<ContactMomentStatus, ContactMomentStatus[]> = {
+    concept: ["concept", "gepland", "wacht_op_vt_input", "geannuleerd", "niet_uitgevoerd"],
+    wacht_op_vt_input: ["wacht_op_vt_input", "gepland", "geannuleerd", "niet_uitgevoerd"],
+    gepland: ["gepland", "in_uitvoering", "afgesloten", "geannuleerd", "niet_uitgevoerd"],
+    in_uitvoering: ["in_uitvoering", "afgesloten", "geannuleerd", "niet_uitgevoerd"],
+    afgesloten: ["afgesloten"],
+    geannuleerd: ["geannuleerd"],
+    niet_uitgevoerd: ["niet_uitgevoerd"],
+  };
+  if (!allowed[previous].includes(next)) {
+    throw new Error("Deze statusovergang is niet toegestaan voor een contactmoment.");
+  }
+}
+
+function assertValidContactMomentPlanning(input: ContactMomentInput, previous?: ContactMoment) {
+  const plannedDate = input.plannedDate ?? previous?.plannedDate;
+  const startTime = input.startTime ?? previous?.startTime;
+  const endTime = input.endTime ?? previous?.endTime;
+  if (!plannedDate && !startTime && !endTime) return;
+  if (!plannedDate || Number.isNaN(new Date(`${plannedDate}T12:00:00`).getTime())) {
+    throw new Error("Kies een geldige datum voor het contactmoment.");
+  }
+  if (!startTime || !endTime || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    throw new Error("Kies een geldig begin- en einduur.");
+  }
+  if (endTime <= startTime) {
+    throw new Error("Het einduur moet later zijn dan het beginuur.");
+  }
+}
+
+function isSameFinalContactMomentSave(previous: ContactMoment, input: ContactMomentInput, status: ContactMomentStatus) {
+  return previous.status === status &&
+    previous.representativeId === input.representativeId &&
+    previous.reason === input.reason &&
+    previous.reportHtml === sanitizeRichText(input.reportHtml ?? previous.reportHtml ?? "") &&
+    (previous.closedReason ?? "") === (input.closedReason ?? previous.closedReason ?? "");
+}
+
+function buildContactMomentSnapshot(
+  id: string,
+  representative: Representative,
+  input: ContactMomentInput,
+  actionPoints: WorkflowActionPoint[],
+  reportHtml: string,
+  sharedAt: string | undefined,
+  sharedById: string
+) {
+  return JSON.stringify({
+    id,
+    representative: {
+      id: representative.id,
+      firstName: representative.firstName,
+      lastName: representative.lastName,
+      country: representative.country,
+      teamId: representative.teamId,
+    },
+    planning: {
+      plannedDate: input.plannedDate,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      subject: input.subject,
+      contactType: input.contactType,
+      location: input.location,
+    },
+    reportHtml,
+    actionPoints: actionPoints.map((action) => ({
+      id: action.id,
+      title: action.title,
+      type: action.type,
+      due: action.due,
+      status: action.status,
+      priority: action.priority,
+      description: action.description,
+    })),
+    sharedAt,
+    sharedById,
+  });
 }
 
 export function submitWorkflowReflection(

@@ -109,6 +109,7 @@ function managedUser(input: Partial<ManagedUser>): ManagedUser {
     teamId: "team-be-a",
     teamName: "Team BE A",
     role: "REPRESENTATIVE",
+    representativeLevel: "SALES_EXECUTIVE",
     teamSupervisor: false,
     branchNumber: "",
     active: true,

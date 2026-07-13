@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { ChevronDown, Plus, Save, X } from "lucide-react";
 
 import { useSession } from "@/components/session-provider";
+import { decodeUtf8CsvBytes } from "@/lib/csv-encoding";
 import { translate } from "@/lib/i18n";
 import {
   managementImportExportTopics,
@@ -74,7 +75,17 @@ export function ManagementImportExportPanel({ topic, onCommitted }: Props) {
       setNotice({ type: "error", message: translate(user.language, "importExport.invalidFile") });
       return;
     }
-    const text = await file.text();
+    const decoded = decodeUtf8CsvBytes(await file.arrayBuffer());
+    if (!decoded.ok) {
+      setNotice({
+        type: "error",
+        message: decoded.problem === "invalid-utf8"
+          ? translate(user.language, "importExport.invalidEncoding")
+          : translate(user.language, "importExport.replacementCharacter"),
+      });
+      return;
+    }
+    const text = decoded.text;
     setCsv(text);
     setFileName(file.name);
     await validateCsv(text);

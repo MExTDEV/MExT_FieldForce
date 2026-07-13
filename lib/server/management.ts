@@ -3,12 +3,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { can, roleLabels } from "@/lib/permissions";
 import {
+  missingPermissionKeys,
+  resolveRolePermissions,
+} from "@/lib/role-permissions";
+import {
   applicationRoles,
   listRoleConfigurations,
 } from "@/lib/server/role-configuration";
 import {
+  fieldForcePermissionGroups,
   fieldForcePermissionKeys,
-  roleTemplates,
 } from "@/lib/user-management";
 import {
   normalizeOptionalTeamLeaderId,
@@ -18,6 +22,7 @@ import {
   createKpiTargetScopeKey,
   detectKpiTargetConflicts,
 } from "@/lib/server/kpi-targets";
+import { criterionScopeKey } from "@/lib/server/criterion-scopes";
 import {
   columnsExist,
   tableExists,
@@ -35,6 +40,7 @@ import {
 import type {
   Country,
   FieldForcePermissionKey,
+  CriterionScopeType,
   KpiPeriodType,
   KpiTargetScope,
   KpiValueType,
@@ -177,7 +183,7 @@ export async function getManagementConfiguration(
   actor: MockUser,
   section?: ManagementSection
 ): Promise<ManagementConfiguration> {
-  const needsTeams = !section || section === "teams" || section === "kpis";
+  const needsTeams = !section || section === "teams" || section === "kpis" || section === "kapstok";
   const needsKpis = !section || section === "kpis";
   const needsFocuses = !section || section === "kapstok";
   const needsRoles = !section || section === "rollen";
@@ -210,7 +216,20 @@ function emptyKpiConfiguration() {
 
 async function listManagementFocuses() {
   const focuses = await prisma.coachingFocus.findMany({
-    include: { criteria: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
+    include: {
+      criteria: {
+        include: {
+          criterionScopeLinks: {
+            include: {
+              team: { select: { id: true, name: true } },
+              user: { select: { id: true, firstName: true, lastName: true } },
+            },
+            orderBy: [{ scopeType: "asc" }, { sortOrder: "asc" }, { scopeKey: "asc" }],
+          },
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      },
+    },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
   return focuses.map((focus) => ({
@@ -224,21 +243,31 @@ async function listManagementFocuses() {
       name: criterion.name,
       active: criterion.active,
       sortOrder: criterion.sortOrder,
+      scopeLinks: criterion.criterionScopeLinks.map((scopeLink) => ({
+        id: scopeLink.id,
+        scopeType: scopeLink.scopeType as CriterionScopeType,
+        scopeKey: scopeLink.scopeKey,
+        country: scopeLink.country as Country | null,
+        teamId: scopeLink.teamId,
+        teamName: scopeLink.team?.name ?? null,
+        userId: scopeLink.userId,
+        userName: scopeLink.user
+          ? `${scopeLink.user.firstName} ${scopeLink.user.lastName}`.trim()
+          : null,
+        sortOrder: Number(scopeLink.sortOrder),
+      })),
     })),
   }));
 }
 
 async function listManagementRoles() {
-  const [permissions, roleGrants, roleCounts, roleConfigurations] = await Promise.all([
-    prisma.permission.findMany({ orderBy: [{ group: "asc" }, { label: "asc" }] }),
-    prisma.rolePermission.findMany(),
+  await ensureFieldForcePermissionRecords();
+  const [roleGrants, roleCounts, roleConfigurations] = await Promise.all([
+    prisma.rolePermission.findMany({ include: { permission: { select: { key: true } } } }),
     prisma.user.groupBy({ by: ["role"], _count: { id: true } }),
     listRoleConfigurations(),
   ]);
 
-  const grantMap = new Map(
-    roleGrants.map((grant) => [`${grant.role}:${grant.permissionId}`, grant.enabled])
-  );
   const countMap = new Map(roleCounts.map((item) => [item.role, item._count.id]));
   const activeMap = new Map(
     roleConfigurations.map((configuration) => [
@@ -252,14 +281,36 @@ async function listManagementRoles() {
     label: roleLabels[role],
     userCount: countMap.get(role) ?? 0,
     active: activeMap.get(role) ?? true,
-    permissions: Object.fromEntries(
-      fieldForcePermissionKeys.map((key) => {
-        const permission = permissions.find((item) => item.key === key);
-        const stored = permission ? grantMap.get(`${role}:${permission.id}`) : undefined;
-        return [key, stored ?? roleTemplates[role].permissions[key]];
-      })
-    ) as Record<FieldForcePermissionKey, boolean>,
+    permissions: resolveRolePermissions(role, roleGrants),
   }));
+}
+
+async function ensureFieldForcePermissionRecords() {
+  const permissionDefinitions = fieldForcePermissionGroups.flatMap((group) =>
+    group.permissions.map((permission) => ({
+      key: permission.key,
+      label: permission.label,
+      group: group.title,
+      description: group.description,
+    }))
+  );
+  const existingPermissions = await prisma.permission.findMany({
+    where: { key: { in: fieldForcePermissionKeys } },
+    select: { key: true },
+  });
+  const existingPermissionKeys = new Set(
+    existingPermissions.map((permission) => permission.key)
+  );
+  const missingPermissions = permissionDefinitions.filter(
+    (permission) => !existingPermissionKeys.has(permission.key)
+  );
+
+  if (missingPermissions.length) {
+    await prisma.permission.createMany({
+      data: missingPermissions,
+      skipDuplicates: true,
+    });
+  }
 }
 
 export async function listManagementKpis(actor: MockUser) {
@@ -1249,6 +1300,172 @@ export async function deactivateCriterion(actor: MockUser, id: string) {
   return prisma.coachingCriterion.update({ where: { id }, data: { active: false } });
 }
 
+export async function saveCriterionScopeLink(
+  actor: MockUser,
+  input: {
+    id?: string;
+    criterionId: string;
+    scopeType: CriterionScopeType;
+    country: Country | null;
+    teamId: string | null;
+    userId: string | null;
+    sortOrder: number;
+  }
+) {
+  requireCriterionScopeManagement(actor);
+  const criterion = await prisma.coachingCriterion.findUnique({
+    where: { id: input.criterionId },
+    select: { id: true },
+  });
+  if (!criterion) throw new Error("Het gekozen kapstokcriterium bestaat niet meer.");
+
+  if (input.id) {
+    const existing = await prisma.criterionScopeLink.findUnique({
+      where: { id: input.id },
+      select: { coachingCriterionId: true, country: true, teamId: true, userId: true },
+    });
+    if (!existing || existing.coachingCriterionId !== criterion.id) {
+      throw new Error("De gekozen kapstokkoppeling bestaat niet meer.");
+    }
+    await assertCriterionScopeLinkAccess(actor, existing);
+  }
+
+  const scope = await resolveCriterionScopeLink(actor, input);
+  const data = {
+    criterionType: "COAT_RACK" as const,
+    criterionKey: `COAT_RACK:${criterion.id}`,
+    coachingCriterionId: criterion.id,
+    scopeType: scope.scopeType,
+    scopeKey: scope.scopeKey,
+    country: scope.country,
+    teamId: scope.teamId,
+    userId: scope.userId,
+    sortOrder: Math.max(0, Math.trunc(input.sortOrder || 0)),
+    updatedById: actor.id,
+  };
+
+  return input.id
+    ? prisma.criterionScopeLink.update({ where: { id: input.id }, data })
+    : prisma.criterionScopeLink.create({ data: { ...data, createdById: actor.id } });
+}
+
+export async function deactivateCriterionScopeLink(actor: MockUser, id: string) {
+  requireCriterionScopeManagement(actor);
+  const existing = await prisma.criterionScopeLink.findUnique({
+    where: { id },
+    select: { id: true, criterionType: true, country: true, teamId: true, userId: true },
+  });
+  if (!existing || existing.criterionType !== "COAT_RACK") {
+    throw new Error("De gekozen kapstokkoppeling bestaat niet meer.");
+  }
+  await assertCriterionScopeLinkAccess(actor, existing);
+  return prisma.criterionScopeLink.delete({ where: { id } });
+}
+
+function requireCriterionScopeManagement(actor: MockUser) {
+  if (!["ADMIN", "SUPER_ADMIN"].includes(actor.role)) {
+    throw new Error("Je mag kapstokkoppelingen niet beheren.");
+  }
+}
+
+async function resolveCriterionScopeLink(
+  actor: MockUser,
+  input: {
+    scopeType: CriterionScopeType;
+    country: Country | null;
+    teamId: string | null;
+    userId: string | null;
+  }
+) {
+  if (input.scopeType === "GLOBAL") {
+    if (actor.role !== "SUPER_ADMIN") {
+      throw new Error("Globale kapstokkoppelingen kunnen alleen door een Super Admin worden gewijzigd.");
+    }
+    return {
+      scopeType: input.scopeType,
+      scopeKey: criterionScopeKey("GLOBAL"),
+      country: null,
+      teamId: null,
+      userId: null,
+    };
+  }
+
+  if (input.scopeType === "COUNTRY") {
+    if (!input.country) throw new Error("Selecteer een land voor deze kapstokkoppeling.");
+    if (!actorCanAccessKpiCountry(actor, input.country)) {
+      throw new Error("Deze kapstokkoppeling valt buiten je toegestane scope.");
+    }
+    return {
+      scopeType: input.scopeType,
+      scopeKey: criterionScopeKey("COUNTRY", { country: input.country }),
+      country: input.country,
+      teamId: null,
+      userId: null,
+    };
+  }
+
+  if (input.scopeType === "TEAM") {
+    const teamId = normalizeId(input.teamId);
+    if (!teamId) throw new Error("Selecteer een team voor deze kapstokkoppeling.");
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, active: true },
+      select: { id: true, country: true },
+    });
+    if (!team) throw new Error("Het gekozen team bestaat niet meer.");
+    const country = team.country as Country;
+    if (!actorCanAccessKpiCountry(actor, country)) {
+      throw new Error("Deze kapstokkoppeling valt buiten je toegestane scope.");
+    }
+    return {
+      scopeType: input.scopeType,
+      scopeKey: criterionScopeKey("TEAM", { teamId: team.id }),
+      country,
+      teamId: team.id,
+      userId: null,
+    };
+  }
+
+  if (input.scopeType === "USER") {
+    const userId = normalizeId(input.userId);
+    if (!userId) throw new Error("Selecteer een gebruiker voor deze kapstokkoppeling.");
+    const user = await prisma.user.findFirst({
+      where: { id: userId, active: true },
+      select: { id: true, country: true, teamId: true },
+    });
+    if (!user) throw new Error("De gekozen gebruiker bestaat niet meer.");
+    const country = user.country as Country;
+    if (!actorCanAccessKpiCountry(actor, country)) {
+      throw new Error("Deze kapstokkoppeling valt buiten je toegestane scope.");
+    }
+    return {
+      scopeType: input.scopeType,
+      scopeKey: criterionScopeKey("USER", { userId: user.id }),
+      country,
+      teamId: user.teamId,
+      userId: user.id,
+    };
+  }
+
+  throw new Error("Selecteer een geldige kapstokscope.");
+}
+
+async function assertCriterionScopeLinkAccess(
+  actor: MockUser,
+  scope: { country: Country | null; teamId: string | null; userId: string | null }
+) {
+  if (actor.role === "SUPER_ADMIN") return;
+  if (scope.country && actorCanAccessKpiCountry(actor, scope.country)) return;
+  if (scope.teamId) {
+    const team = await prisma.team.findUnique({ where: { id: scope.teamId }, select: { country: true } });
+    if (team && actorCanAccessKpiCountry(actor, team.country as Country)) return;
+  }
+  if (scope.userId) {
+    const user = await prisma.user.findUnique({ where: { id: scope.userId }, select: { country: true } });
+    if (user && actorCanAccessKpiCountry(actor, user.country as Country)) return;
+  }
+  throw new Error("Deze kapstokkoppeling valt buiten je toegestane scope.");
+}
+
 export async function saveRolePermissions(
   actor: MockUser,
   role: Role,
@@ -1261,31 +1478,74 @@ export async function saveRolePermissions(
   if (!roles.includes(role)) {
     throw new Error("Onbekende rol.");
   }
-  const records = await prisma.permission.findMany({
-    where: { key: { in: fieldForcePermissionKeys } },
-  });
-  await prisma.$transaction(
-    [
-      ...records.map((permission) =>
-      prisma.rolePermission.upsert({
-        where: { role_permissionId: { role, permissionId: permission.id } },
-        update: { enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]) },
-        create: {
-          role,
-          permissionId: permission.id,
-          enabled: Boolean(permissions[permission.key as FieldForcePermissionKey]),
-        },
-      })
-      ),
-      ...(typeof active === "boolean"
-        ? [
-            prisma.roleConfiguration.upsert({
-              where: { role },
-              update: { active },
-              create: { role, active },
-            }),
-          ]
-        : []),
-    ]
+  const missingPayloadKeys = fieldForcePermissionKeys.filter(
+    (key) => typeof permissions[key] !== "boolean"
   );
+  if (missingPayloadKeys.length) {
+    throw new Error(
+      `De rollenwijziging mist ${missingPayloadKeys.length} rechten: ${missingPayloadKeys.join(", ")}.`
+    );
+  }
+
+  await ensureFieldForcePermissionRecords();
+
+  const [records, currentGrants, currentConfiguration] = await Promise.all([
+    prisma.permission.findMany({ where: { key: { in: fieldForcePermissionKeys } } }),
+    prisma.rolePermission.findMany({
+      where: { role },
+      include: { permission: { select: { key: true } } },
+    }),
+    prisma.roleConfiguration.findUnique({ where: { role } }),
+  ]);
+  const missingRecords = missingPermissionKeys(records.map((record) => record.key));
+  if (missingRecords.length) {
+    throw new Error(
+      `Permission-basisrecords ontbreken: ${missingRecords.join(", ")}. Voer de configuratieseed uit.`
+    );
+  }
+
+  const previousPermissions = resolveRolePermissions(role, currentGrants);
+  const nextPermissions = Object.fromEntries(
+    fieldForcePermissionKeys.map((key) => [key, Boolean(permissions[key])])
+  ) as Record<FieldForcePermissionKey, boolean>;
+  const changedPermissions = fieldForcePermissionKeys
+    .filter((key) => previousPermissions[key] !== nextPermissions[key])
+    .map((key) => ({ key, from: previousPermissions[key], to: nextPermissions[key] }));
+  const recordsByKey = new Map(
+    records.map((record) => [record.key as FieldForcePermissionKey, record])
+  );
+
+  await prisma.$transaction(async (transaction) => {
+    for (const change of changedPermissions) {
+      const permission = recordsByKey.get(change.key);
+      if (!permission) continue;
+
+      await transaction.userPermission.deleteMany({
+        where: {
+          permissionId: permission.id,
+          enabled: change.from,
+          user: { role },
+        },
+      });
+      await transaction.rolePermission.upsert({
+        where: { role_permissionId: { role, permissionId: permission.id } },
+        update: { enabled: change.to },
+        create: { role, permissionId: permission.id, enabled: change.to },
+      });
+    }
+    if (typeof active === "boolean") {
+      await transaction.roleConfiguration.upsert({
+        where: { role },
+        update: { active },
+        create: { role, active },
+      });
+    }
+  });
+
+  return {
+    role,
+    active: active ?? currentConfiguration?.active ?? true,
+    permissions: nextPermissions,
+    changedPermissions,
+  };
 }

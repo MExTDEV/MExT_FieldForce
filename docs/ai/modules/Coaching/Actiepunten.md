@@ -1,191 +1,119 @@
 # Actiepunten
 
-## Purpose
+## Status
 
-The Actiepunten page is the central overview and management screen for action points within the Coaching module.
+Functional area status: `PARTIALLY_DEFINED`
 
-It shows every action point that applies to the current user, based on effective module, permission, country, team and user scope.
+The overview and management of scoped Action Point definitions are defined.
 
-Action points can apply at four target levels:
-
-- Globaal
-- Land
-- Team
-- Persoonlijk / Gebruiker
-
-The objective is to make follow-up visible, structured and actionable without duplicating the coaching action workflow.
+The complete operational close, approve, reopen and reassign lifecycle is not yet defined.
 
 ---
 
-## Current Status
+# Purpose
 
-The Actiepunten page has a functional scoped overview and management flow.
-
-Implemented behaviour:
-
-- visible open action points are shown in the **Actiepunten** tab.
-- users with management scope also get a **Gebruikers** tab.
-- the Vertegenwoordiger role only sees the Actiepunten tab.
-- both tabs have search.
-- open action points are grouped in collapsible scope groups:
-  - Globaal
-  - Land
-  - Team
-  - Persoonlijk
-- users with action-point management rights also see non-active or out-of-validity action definitions.
-- clicking an action point opens a detail modal.
-- authorised users can create and edit `ActionDefinition` records.
-- authorised users can set an action definition active or inactive.
-- action definitions can be linked to active products.
-- each action definition has a target type, valid-from date, optional valid-until date, optional numeric target, priority, active flag and rich-text description.
-- the Dashboard open-action count includes active, in-date scoped action definitions plus concrete workflow action points.
-
-Current data sources:
-
-- `ActionDefinition` is the source for global, country, team and personal scoped action points.
-- concrete coaching/workflow action points remain separate workflow data and are only shown in the overview as personal follow-up items.
-- `ActionPointTargetType` stores the allowed target levels.
-- `ActionDefinitionProduct` links action definitions to `Product`.
-- legacy `ActionPoint` records and current `CoachingAction` records are normalised into the reporting action dataset for workflow-origin action points.
-
-Compatibility note:
-
-- When Prisma migration `0019_action_point_management` has not yet been applied on the active database, the Actiepunten read path falls back to legacy `ActionDefinition` fields.
-- In that fallback mode, the target type is derived from `ActionDefinition.scope` and product links are returned empty.
-- Creating or editing scoped action definitions still requires migration `0019_action_point_management`, because target type and product-link data cannot be stored safely before those tables and columns exist.
-
-Open/closed split:
-
-- `ActionDefinition` records are open when `active = true` and today's date is within `validFrom` / `validUntil`.
-- inactive or expired definitions are visible only to users with management rights.
-- workflow action points use their existing workflow status for the open/closed split.
+Actiepunten convert Coaching observations and management objectives into concrete follow-up for users.
 
 ---
 
-## Navigation And Access
+# Definition Scope
 
-The page is accessed through the main navigation item **Actiepunten**.
+Configured Action Point definitions may use:
 
-The page is visible only when:
+- Global;
+- Country;
+- Team;
+- User.
 
-- the Actiepunten module is active.
-- the user has effective `modulePreparation`.
-- the user has effective `menu.coaching.actionPoints`.
+A definition contains:
 
-Creating action definitions requires effective `actionPointsCreate`.
+- name;
+- WYSIWYG description;
+- target;
+- from date;
+- to date;
+- optional linked products;
+- active status;
+- one or more allowed scope assignments where supported.
 
-Managing existing action definitions requires effective `actionPointsManage` and scope access to the selected action point.
+Global definitions apply to all users.
 
----
+Country, Team and User definitions apply only to their assigned scope.
 
-## Role Rules
-
-### Vertegenwoordiger
-
-A Vertegenwoordiger:
-
-- sees global action points when the module and menu permissions allow it.
-- sees own personal action points.
-- does not see team or country action points.
-- does not see personal action points of other users.
-- does not see the Gebruikers tab.
-- cannot create or manage action definitions.
-
-### Verkoopleider
-
-A Verkoopleider:
-
-- sees country, team and personal action points that apply to own country/team scope.
-- can create personal action definitions for active representatives in own team.
-- can manage own-created personal action definitions for representatives in own team.
-- cannot create or manage global, country or team action definitions.
-
-### Sales Manager
-
-A Sales Manager:
-
-- sees action points within assigned country scope.
-- can create and manage country, team and personal action definitions within assigned countries.
-- cannot create or manage global action definitions by default.
-
-Sales Manager is a separate role and must not be treated as Verkoopleider or Country Manager.
-
-### Country Manager
-
-A Country Manager:
-
-- sees action points within assigned country scope.
-- can create and manage country, team and personal action definitions within assigned countries.
-- cannot create or manage global action definitions by default.
-
-### Admin
-
-An Admin:
-
-- can create and manage global action definitions.
-- can create and manage country, team and personal action definitions within effective country scope.
-
-### Group Manager And Super Admin
-
-Group Manager and Super Admin:
-
-- see all action points.
-- can create and manage all target levels.
+Effective user Action Points may combine all applicable definitions.
 
 ---
 
-## Detail And Edit Flow
+# Management Rights
 
-Clicking an action point opens a detail modal with:
+Authorised management users may create and manage definitions within effective scope.
 
-- source
-- target type
-- target label
-- active/status badge
-- priority
-- validity period
-- owner display when available
-- optional numeric target
-- linked products
-- rich-text description
+A Verkoopleider may manage user Action Points for permitted members of the own team.
 
-Management actions are available only for scoped `ActionDefinition` records and only when the current user may manage that record.
+Management access requires explicit permissions.
 
-Concrete workflow action points can be opened for detail display, but their lifecycle remains owned by the originating workflow.
+Inactive definitions remain reviewable by authorised management users.
 
 ---
 
-## Business Rules
+# Workflow-Created Action Points
 
-- Action definitions may exist at global, country, team or user level.
-- Product links are optional and reuse the existing `Product` entity.
-- A target type is required and must match the selected scope.
-- `validFrom` is required.
-- `validUntil` is optional and must not be before `validFrom`.
-- Rich text must be sanitised before storage.
-- Users must only see and manage action points within their effective scope.
-- Personal coaching-origin action points remain targeted by the coached user / representative, not by creator or owner.
-- Creator and updater data may be used for audit and management restrictions.
-- Inactive and expired definitions remain available for authorised management users.
+A Begeleiding may create a user Action Point for the coached person.
+
+A Contactmoment may create a user Action Point for the target person.
+
+These concrete items reuse the shared Action Point model and appear in personal follow-up.
 
 ---
 
-## Still Undefined
+# Overview
 
-The following workflow details are still not defined and must not be invented:
+The overview may include:
 
-- close/completion workflow for scoped action definitions.
-- approval workflow for action points.
-- reopening rules.
-- reassignment rules.
-- action-point history screen.
-- whether scoped action definitions should create concrete per-user tasks automatically.
+- Action Points grouped by scope;
+- users and their concrete Action Points;
+- open and closed presentation based on current available fields;
+- search;
+- type or scope badges.
+
+Representatives see only own visible Action Points.
+
+Management users see only records inside effective scope.
 
 ---
 
-## Related Documentation
+# Current Limitations
 
-- Navigation.md - Actiepunten navigation
-- Dashboard.md - Dashboard action count
-- FLOW.md - Coaching flow and concrete workflow action points
-- TODO.md - Completed and remaining action-point items
+Not yet fully defined:
+
+- who closes an Action Point;
+- whether closure needs approval;
+- whether a closed point may reopen;
+- reassignment rules;
+- final required statuses;
+- evidence or comment requirements;
+- overdue escalation.
+
+Do not invent these rules.
+
+Until a close workflow is approved, existing active, validity and concrete workflow status fields determine current presentation.
+
+---
+
+# Products
+
+Linked products reuse existing product entities.
+
+Do not create duplicate product records from Action Point management.
+
+---
+
+# Validation
+
+Relevant tests may include:
+
+- Action Point overview;
+- Action Point targets;
+- data access;
+- menu rights;
+- Coaching action persistence.

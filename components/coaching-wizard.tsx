@@ -28,7 +28,12 @@ import { useWorkflow } from "@/components/workflow-provider";
 import { coachingsForRepresentative, latestHistoricalCoaching } from "@/lib/performance-data";
 import { getPerformanceWheelData, type PerformanceWheelCriterion } from "@/lib/performance/performance-wheel";
 import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
-import { canCreateIntervention } from "@/lib/permissions";
+import { canCreateCoachingIntervention } from "@/lib/permissions";
+import {
+  isPeerCoachingRepresentativeLevel,
+  representativeLevelBadgeClass,
+  representativeLevelLabels,
+} from "@/lib/representative-levels";
 import { offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
 import type { CoachingFrameworkFocus, CoachingParticipant, Representative, ScoreValue } from "@/lib/types";
 
@@ -50,6 +55,10 @@ type Draft = {
   startTime: string;
   endTime: string;
   notifyRepresentative: boolean;
+  notifyCoachedRepresentative: boolean;
+  notifyCoachedTeamLeaders: boolean;
+  notifyExecutorTeamLeaders: boolean;
+  deviationReason: string;
   focusNames: string[];
   scores: Record<string, ScoreValue>;
   actions: EditableActionPoint[];
@@ -68,8 +77,9 @@ export function CoachingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
+  const helpRequestId = searchParams.get("helpRequestId");
   const { user, managedUsers } = useSession();
-  const { hydrated, state, saveCoachingStatus } = useWorkflow();
+  const { hydrated, state, saveCoachingStatus, scheduleHelpRequestCoaching } = useWorkflow();
   const { isModuleEnabled } = useModules();
   const { representatives } = useRepresentatives();
   const [participants, setParticipants] = useState<CoachingParticipant[]>([]);
@@ -82,6 +92,10 @@ export function CoachingWizard() {
     startTime: "09:00",
     endTime: "11:00",
     notifyRepresentative: false,
+    notifyCoachedRepresentative: false,
+    notifyCoachedTeamLeaders: false,
+    notifyExecutorTeamLeaders: false,
+    deviationReason: "",
     focusNames: [],
     scores: {},
     actions: [],
@@ -89,8 +103,16 @@ export function CoachingWizard() {
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string>();
   const [error, setError] = useState<string>();
+  const [saving, setSaving] = useState(false);
   const editMissing = Boolean(editId && hydrated && !existing);
   const editForbidden = Boolean(existing && !canEditFutureCoachingPlanning(user, existing));
+  const sourceHelpRequest = helpRequestId ? state.helpRequests.find((item) => item.id === helpRequestId) : undefined;
+  const helpRequestMissing = Boolean(helpRequestId && hydrated && !sourceHelpRequest);
+  const helpRequestHandled = Boolean(sourceHelpRequest && (
+    sourceHelpRequest.linkedInterventionId ||
+    sourceHelpRequest.followUpType ||
+    !["open", "nieuw", "in_behandeling"].includes(sourceHelpRequest.status)
+  ));
 
   useEffect(() => {
     let active = true;
@@ -116,6 +138,10 @@ export function CoachingWizard() {
       startTime: existing.startTime ?? "09:00",
       endTime: existing.endTime ?? "11:00",
       notifyRepresentative: existing.notifyRepresentative ?? false,
+      notifyCoachedRepresentative: existing.notifyCoachedRepresentative ?? false,
+      notifyCoachedTeamLeaders: existing.notifyCoachedTeamLeaders ?? false,
+      notifyExecutorTeamLeaders: existing.notifyExecutorTeamLeaders ?? false,
+      deviationReason: existing.deviationReason ?? "",
       focusNames: existing.focusNames,
       scores: {},
       actions: [],
@@ -123,7 +149,22 @@ export function CoachingWizard() {
     setLoadedId(existing.id);
   }, [existing, loadedId]);
 
+  useEffect(() => {
+    if (!sourceHelpRequest) return;
+    setDraft((current) => ({
+      ...current,
+      representativeId: sourceHelpRequest.representativeId,
+    }));
+  }, [sourceHelpRequest]);
+
   const selectedParticipant = participants.find((item) => item.id === draft.representativeId);
+  const selectableParticipants = sourceHelpRequest
+    ? participants.filter((item) => item.id === sourceHelpRequest.representativeId)
+    : participants;
+  const selectedOwner = managedUsers.find((item) => item.id === draft.ownerId);
+  const teamDeviation = Boolean(selectedOwner?.teamId && selectedParticipant?.teamId && selectedOwner.teamId !== selectedParticipant.teamId);
+  const countryDeviation = Boolean(selectedOwner && selectedParticipant && selectedOwner.country !== selectedParticipant.country);
+  const requiresDeviationReason = teamDeviation || countryDeviation;
   const representative = representatives.find((item) => item.id === draft.representativeId) ?? (selectedParticipant ? participantAsRepresentative(selectedParticipant) : undefined);
   const currentStepIndex = wizardSteps.findIndex((item) => item.id === step);
 
@@ -139,7 +180,7 @@ export function CoachingWizard() {
     return <EmptyState title="Module niet actief" description="Begeleidingen is momenteel gedeactiveerd in FieldForce." />;
   }
 
-  if (!canCreateIntervention(user)) {
+  if (!canCreateCoachingIntervention(user)) {
     return <EmptyState title="Geen rechten om een begeleiding te maken" description="Je rol mag geen begeleiding aanmaken." />;
   }
 
@@ -155,6 +196,18 @@ export function CoachingWizard() {
     return <EmptyState title="Alleen bekijken" description="Deze geplande begeleiding mag door jouw rol niet worden aangepast." />;
   }
 
+  if (helpRequestId && !hydrated) {
+    return <EmptyState title="Hulpaanvraag laden" description="De gekoppelde hulpaanvraag wordt opgehaald." />;
+  }
+
+  if (helpRequestMissing) {
+    return <EmptyState title="Hulpaanvraag niet gevonden" description="Deze hulpaanvraag bestaat niet of valt buiten jouw scope." />;
+  }
+
+  if (helpRequestHandled) {
+    return <EmptyState title="Hulpaanvraag al behandeld" description="Deze hulpaanvraag heeft al een vervolgactie of is afgesloten." />;
+  }
+
   function workflowInput() {
     return {
       id: draft.id,
@@ -165,6 +218,13 @@ export function CoachingWizard() {
       startTime: draft.startTime,
       endTime: draft.endTime,
       notifyRepresentative: draft.notifyRepresentative,
+      notifyCoachedRepresentative: draft.notifyCoachedRepresentative,
+      notifyCoachedTeamLeaders: draft.notifyCoachedTeamLeaders,
+      notifyExecutorTeamLeaders: draft.notifyExecutorTeamLeaders,
+      peerCoach: selectedOwner?.role === "REPRESENTATIVE",
+      teamDeviation,
+      countryDeviation,
+      deviationReason: draft.deviationReason,
       subject: selectedParticipant,
       focusNames: draft.focusNames,
       scores: [],
@@ -172,15 +232,36 @@ export function CoachingWizard() {
     };
   }
 
-  function handleSchedule() {
+  async function handleSchedule() {
     setError(undefined);
     if (!draft.representativeId) {
       setError("Selecteer eerst een persoon.");
       return;
     }
-    saveCoachingStatus(workflowInput(), "gepland");
-    setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
-    router.push("/begeleidingen");
+    if (requiresDeviationReason && !draft.deviationReason.trim()) {
+      setError("Geef een afwijkingsreden op wanneer uitvoerder en begeleide persoon niet in hetzelfde team of land zitten.");
+      return;
+    }
+    if (draft.endTime <= draft.startTime) {
+      setError("Het einduur moet later zijn dan het beginuur.");
+      return;
+    }
+    try {
+      setSaving(true);
+      if (helpRequestId) {
+        const intervention = await scheduleHelpRequestCoaching(helpRequestId, user.id, workflowInput());
+        setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+        router.push(`/begeleidingen/${intervention.id}`);
+        return;
+      }
+      saveCoachingStatus(workflowInput(), "gepland");
+      setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+      router.push("/begeleidingen");
+    } catch (scheduleError) {
+      setError(scheduleError instanceof Error ? scheduleError.message : "De begeleiding kon niet worden ingepland.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleCancel() {
@@ -191,6 +272,10 @@ export function CoachingWizard() {
     setError(undefined);
     if (step === "representative" && !draft.representativeId) {
       setError("Selecteer eerst een vertegenwoordiger of verkoopleider.");
+      return;
+    }
+    if (step === "representative" && requiresDeviationReason && !draft.deviationReason.trim()) {
+      setError("Geef een afwijkingsreden op voor deze team- of landafwijking.");
       return;
     }
     if (step === "focus" && draft.focusNames.length === 0) {
@@ -249,15 +334,29 @@ export function CoachingWizard() {
       <div className="card min-h-[480px] p-5 sm:p-7">
         {step === "representative" && (
           <RepresentativeStep
-            available={participants}
-            coaches={managedUsers.filter((profile) => profile.active && ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(profile.role) && (user.role === "SALES_LEADER" ? profile.id === user.id : ["COUNTRY_MANAGER", "ADMIN"].includes(user.role) ? profile.country === user.country : user.role === "SALES_MANAGER" ? user.countryAccess?.includes(profile.country) : true))}
+            available={selectableParticipants}
+            coaches={managedUsers.filter((profile) => profile.active && (
+              ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(profile.role) ||
+              (profile.role === "REPRESENTATIVE" && isPeerCoachingRepresentativeLevel(profile.representativeLevel) && ["SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(user.role))
+            ) && (user.role === "SALES_LEADER" ? profile.id === user.id : ["COUNTRY_MANAGER", "ADMIN"].includes(user.role) ? (profile.role === "REPRESENTATIVE" && isPeerCoachingRepresentativeLevel(profile.representativeLevel)) || profile.country === user.country : user.role === "SALES_MANAGER" ? (profile.role === "REPRESENTATIVE" && isPeerCoachingRepresentativeLevel(profile.representativeLevel)) || user.countryAccess?.includes(profile.country) : true))}
             selected={draft.representativeId}
             ownerId={draft.ownerId}
-            onSelect={(representativeId) => setDraft((current) => ({ ...current, representativeId }))}
+            onSelect={(representativeId) => {
+              if (sourceHelpRequest) return;
+              setDraft((current) => ({ ...current, representativeId }));
+            }}
             plannedDate={draft.plannedDate}
             startTime={draft.startTime}
             endTime={draft.endTime}
             notifyRepresentative={draft.notifyRepresentative}
+            notifyCoachedRepresentative={draft.notifyCoachedRepresentative}
+            notifyCoachedTeamLeaders={draft.notifyCoachedTeamLeaders}
+            notifyExecutorTeamLeaders={draft.notifyExecutorTeamLeaders}
+            deviationReason={draft.deviationReason}
+            requiresDeviationReason={requiresDeviationReason}
+            teamDeviation={teamDeviation}
+            countryDeviation={countryDeviation}
+            lockedRepresentative={Boolean(sourceHelpRequest)}
             onPlanningChange={(planning) => setDraft((current) => ({ ...current, ...planning }))}
           />
         )}
@@ -293,8 +392,8 @@ export function CoachingWizard() {
               <button type="button" onClick={handleCancel} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50">
                 Annuleren
               </button>
-              <button type="button" onClick={handleSchedule} className="btn-primary">
-                <Save className="h-4 w-4" /> Inplannen
+              <button type="button" onClick={handleSchedule} disabled={saving} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
+                <Save className="h-4 w-4" /> {saving ? "Inplannen..." : "Inplannen"}
               </button>
             </>
           )}
@@ -314,6 +413,14 @@ function RepresentativeStep({
   startTime,
   endTime,
   notifyRepresentative,
+  notifyCoachedRepresentative,
+  notifyCoachedTeamLeaders,
+  notifyExecutorTeamLeaders,
+  deviationReason,
+  requiresDeviationReason,
+  teamDeviation,
+  countryDeviation,
+  lockedRepresentative,
   onPlanningChange,
 }: {
   available: CoachingParticipant[];
@@ -325,7 +432,15 @@ function RepresentativeStep({
   startTime: string;
   endTime: string;
   notifyRepresentative: boolean;
-  onPlanningChange: (planning: Partial<Pick<Draft, "plannedDate" | "startTime" | "endTime" | "notifyRepresentative" | "ownerId">>) => void;
+  notifyCoachedRepresentative: boolean;
+  notifyCoachedTeamLeaders: boolean;
+  notifyExecutorTeamLeaders: boolean;
+  deviationReason: string;
+  requiresDeviationReason: boolean;
+  teamDeviation: boolean;
+  countryDeviation: boolean;
+  lockedRepresentative: boolean;
+  onPlanningChange: (planning: Partial<Pick<Draft, "plannedDate" | "startTime" | "endTime" | "notifyRepresentative" | "notifyCoachedRepresentative" | "notifyCoachedTeamLeaders" | "notifyExecutorTeamLeaders" | "deviationReason" | "ownerId">>) => void;
 }) {
   return (
     <div>
@@ -343,18 +458,63 @@ function RepresentativeStep({
           <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Einduur</span>
           <input type="time" className="field" value={endTime} onChange={(event) => onPlanningChange({ endTime: event.target.value })} />
         </label>
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
-          <input type="checkbox" checked={notifyRepresentative} onChange={(event) => onPlanningChange({ notifyRepresentative: event.target.checked })} />
-          Begeleide vooraf verwittigen
+        <label>
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Begeleider</span>
+          <select className="field" value={ownerId} onChange={(event) => onPlanningChange({ ownerId: event.target.value })}>
+            {coaches.map((coach) => (
+              <option key={coach.id} value={coach.id}>
+                {coach.firstName} {coach.lastName}
+                {coach.role === "REPRESENTATIVE" ? ` — ${representativeLevelLabels[coach.representativeLevel]}` : ""}
+              </option>
+            ))}
+          </select>
         </label>
-        <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Begeleider</span><select className="field" value={ownerId} onChange={(event) => onPlanningChange({ ownerId: event.target.value })}>{coaches.map((coach) => <option key={coach.id} value={coach.id}>{coach.firstName} {coach.lastName}</option>)}</select></label>
       </div>
-      <ParticipantTree available={available} selected={selected} onSelect={onSelect} />
+      <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+          <input className="mt-1" type="checkbox" checked={notifyCoachedRepresentative || notifyRepresentative} onChange={(event) => onPlanningChange({ notifyCoachedRepresentative: event.target.checked, notifyRepresentative: event.target.checked })} />
+          <span>Begeleide vertegenwoordiger vooraf op de hoogte brengen</span>
+        </label>
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+          <input className="mt-1" type="checkbox" checked={notifyCoachedTeamLeaders} onChange={(event) => onPlanningChange({ notifyCoachedTeamLeaders: event.target.checked })} />
+          <span>Verkoopleider(s) van de begeleide vertegenwoordiger informeren</span>
+        </label>
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+          <input className="mt-1" type="checkbox" checked={notifyExecutorTeamLeaders} onChange={(event) => onPlanningChange({ notifyExecutorTeamLeaders: event.target.checked })} />
+          <span>Verkoopleider(s) van de uitvoerende Professional/Expert informeren</span>
+        </label>
+      </div>
+      {requiresDeviationReason && (
+        <label className="mt-4 block rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-amber-700">
+            Afwijkingsreden verplicht
+          </span>
+          <p className="mb-3 text-sm text-amber-800">
+            {teamDeviation && countryDeviation
+              ? "De uitvoerder zit in een ander team en ander land dan de begeleide persoon."
+              : teamDeviation
+                ? "De uitvoerder zit in een ander team dan de begeleide persoon."
+                : "De uitvoerder zit in een ander land dan de begeleide persoon."}
+          </p>
+          <textarea
+            className="field min-h-24"
+            value={deviationReason}
+            onChange={(event) => onPlanningChange({ deviationReason: event.target.value })}
+            placeholder="Leg kort uit waarom deze afwijkende combinatie gekozen wordt."
+          />
+        </label>
+      )}
+      {lockedRepresentative && (
+        <p className="mt-4 rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800">
+          Deze begeleiding is gekoppeld aan de vertegenwoordiger van de hulpaanvraag.
+        </p>
+      )}
+      <ParticipantTree available={available} selected={selected} onSelect={onSelect} locked={lockedRepresentative} />
     </div>
   );
 }
 
-function ParticipantTree({ available, selected, onSelect }: { available: CoachingParticipant[]; selected: string; onSelect: (id: string) => void }) {
+function ParticipantTree({ available, selected, onSelect, locked = false }: { available: CoachingParticipant[]; selected: string; onSelect: (id: string) => void; locked?: boolean }) {
   const [collapsedOverride, setCollapsedOverride] = useState<Set<string> | null>(null);
   const [query, setQuery] = useState("");
   const availableTeams = useMemo(() => [...new Set(available.map((item) => item.teamId))], [available]);
@@ -454,8 +614,9 @@ function ParticipantTree({ available, selected, onSelect }: { available: Coachin
                               <button
                                 type="button"
                                 key={person.id}
+                                disabled={locked}
                                 onClick={() => onSelect(person.id)}
-                                className={`flex items-center gap-3 rounded-xl border p-3 text-left ${
+                                className={`flex items-center gap-3 rounded-xl border p-3 text-left disabled:cursor-not-allowed ${
                                   selected === person.id ? "border-brand-700 bg-brand-50" : "border-slate-200 hover:border-brand-200"
                                 }`}
                               >
@@ -467,6 +628,11 @@ function ParticipantTree({ available, selected, onSelect }: { available: Coachin
                                   <p className="mt-0.5 text-xs text-slate-500">
                                     {person.role === "SALES_LEADER" ? "Verkoopleider" : "Vertegenwoordiger"}
                                   </p>
+                                  {person.role === "REPRESENTATIVE" && person.representativeLevel && (
+                                    <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${representativeLevelBadgeClass[person.representativeLevel]}`}>
+                                      {representativeLevelLabels[person.representativeLevel]}
+                                    </span>
+                                  )}
                                 </div>
                                 {person.role === "SALES_LEADER" && (
                                   <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>
@@ -935,6 +1101,8 @@ function FocusStep({ selected, onToggle }: { selected: string[]; onToggle: (name
   );
 }
 
+// Kept for the later full execution flow; the current wizard only plans coachings.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CriteriaStep({
   selectedFocus,
   personalCriteria,
@@ -984,6 +1152,8 @@ function CriteriaStep({
   );
 }
 
+// Kept for the later full execution flow; the current wizard only plans coachings.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ScoreStep({
   criteria,
   scores,
@@ -1044,6 +1214,8 @@ function personalScoreKey(id: string) {
   return `personal:${id}`;
 }
 
+// Kept for restoring score drafts when the full execution flow is re-enabled.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function scoreKeyFromStoredScore(score: {
   criterion: string;
   focus: string;
@@ -1056,6 +1228,8 @@ function scoreKeyFromStoredScore(score: {
   return fixedScoreKey(score.focus, score.criterion);
 }
 
+// Kept for the later full execution flow; the current wizard only plans coachings.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ActionsStep({
   actions,
   onChange,

@@ -57,6 +57,18 @@ const reportLinks: { section: ReportSection; label: string }[] = [
   { section: "kpi-evolutie", label: "KPI-evolutie" },
 ];
 
+const helpRequestHandledStatuses = new Set([
+  "begeleiding",
+  "contactmoment",
+  "retraining",
+  "salestraining",
+  "gesloten",
+  "afgesloten",
+  "vervolgactie_gepland",
+]);
+const helpRequestOpenStatuses = new Set(["open", "nieuw", "in_behandeling"]);
+const helpRequestTerminalStatuses = new Set(["gesloten", "ingetrokken", "afgesloten", "geannuleerd"]);
+
 export function ReportingDashboard({ section = "overzicht" }: { section?: string }) {
   const { user, managedUsers } = useSession();
   const { state } = useWorkflow();
@@ -225,7 +237,7 @@ function ReportFilterBar({
         <FilterField label="Status">
           <select className="field" value={filters.status} onChange={(event) => onChange({ ...filters, status: event.target.value })}>
             <option value="">Alle statussen</option>
-            {["concept", "gepland", "in_uitvoering", "wacht_op_vt", "wacht_op_akkoord", "afgerond", "afgesloten", "nieuw", "in_behandeling", "vervolgactie_gepland", "behaald", "niet_behaald", "geannuleerd"].map((item) => (
+            {["concept", "gepland", "in_uitvoering", "wacht_op_vt", "wacht_op_akkoord", "afgerond", "afgesloten", "open", "nieuw", "in_behandeling", "begeleiding", "contactmoment", "retraining", "salestraining", "gesloten", "ingetrokken", "vervolgactie_gepland", "behaald", "niet_behaald", "geannuleerd"].map((item) => (
               <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
             ))}
           </select>
@@ -326,7 +338,7 @@ function LeaderReport({ dataset }: { dataset: ReportingDataset }) {
               <Cell strong>{leader.name}<span className="block text-xs font-normal text-slate-400">{leader.country}</span></Cell>
               <Cell>{countType(rows, "begeleiding")}</Cell><Cell>{countType(rows, "contactmoment")}</Cell>
               <Cell>{countType(rows, "retraining")}</Cell><Cell>{countType(rows, "sales_training")}</Cell>
-              <Cell>{rows.filter((item) => item.type === "hulpaanvraag" && ["afgesloten", "vervolgactie_gepland"].includes(item.status)).length}</Cell>
+              <Cell>{rows.filter((item) => item.type === "hulpaanvraag" && helpRequestHandledStatuses.has(item.status)).length}</Cell>
               <Cell>{actions.filter(isOpenAction).length}</Cell>
               <Cell alert={actions.some((item) => isOverdue(item.due, item.status))}>{actions.filter((item) => isOverdue(item.due, item.status)).length}</Cell>
               <Cell>{finalizationDays.length ? `${Math.round(average(finalizationDays))} d` : "—"}</Cell>
@@ -390,7 +402,7 @@ function RepresentativeReport({ dataset, state }: { dataset: ReportingDataset; s
               <Cell>{latestCoaching ? daysBetween(latestCoaching.date, "2026-06-11") : coachingAge(representative.lastCoaching)}</Cell>
               <Cell>{actions.filter(isOpenAction).length}</Cell>
               <Cell alert={actions.some((item) => isOverdue(item.due, item.status))}>{actions.filter((item) => isOverdue(item.due, item.status)).length}</Cell>
-              <Cell>{dataset.interventions.filter((item) => item.type === "hulpaanvraag" && item.representativeIds.includes(representative.id) && !["afgesloten", "geannuleerd"].includes(item.status)).length}</Cell>
+              <Cell>{dataset.interventions.filter((item) => item.type === "hulpaanvraag" && item.representativeIds.includes(representative.id) && helpRequestOpenStatuses.has(item.status) && !helpRequestTerminalStatuses.has(item.status)).length}</Cell>
               <Cell>{latestKpi ? `${latestKpi.kpi}: ${latestKpi.currentValue}` : "—"}</Cell>
               <Cell>{latestApproval ? <StatusBadge status={latestApproval.status ?? "concept"} /> : "Nog geen"}</Cell>
             </tr>

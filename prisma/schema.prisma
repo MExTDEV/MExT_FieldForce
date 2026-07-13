@@ -35,6 +35,13 @@ enum TeamLeaderType {
   EXTRA
 }
 
+enum RepresentativeLevel {
+  STARTER
+  SALES_EXECUTIVE
+  PROFESSIONAL
+  EXPERT
+}
+
 enum InterventionType {
   BEGELEIDING
   CONTACTMOMENT
@@ -57,6 +64,7 @@ enum InterventionStatus {
   VERZONDEN_TER_AKKOORD
   AKKOORD_DOOR_VERTEGENWOORDIGER
   GEANNULEERD
+  NIET_UITGEVOERD
 }
 
 enum ActionPointType {
@@ -73,6 +81,13 @@ enum ActionPointStatus {
   BEHAALD
   NIET_BEHAALD
   GEANNULEERD
+}
+
+enum CoachingActionReviewStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  ACTIVE
 }
 
 enum Priority {
@@ -93,6 +108,21 @@ enum KpiTargetScope {
   TEAM
   USER
   ROLE
+}
+
+enum CriterionType {
+  KPI
+  COAT_RACK
+  GENERAL_EVALUATION
+  PERSONALITY
+  GENERAL_COACHING_SCORE
+}
+
+enum CriterionScopeType {
+  GLOBAL
+  COUNTRY
+  TEAM
+  USER
 }
 
 enum KpiValueType {
@@ -131,8 +161,15 @@ enum ApprovalStatus {
 
 enum HelpRequestStatus {
   NIEUW
+  OPEN
   IN_BEHANDELING
   VERVOLGACTIE_GEPLAND
+  BEGELEIDING
+  CONTACTMOMENT
+  RETRAINING
+  SALESTRAINING
+  GESLOTEN
+  INGETROKKEN
   AFGESLOTEN
   GEANNULEERD
 }
@@ -154,6 +191,7 @@ model User {
   country                  Country
   language                 Language                    @default(nl)
   active                   Boolean                     @default(true)
+  representativeLevel      RepresentativeLevel         @default(STARTER)
   teamSupervisor           Boolean                     @default(false)
   teamId                   String?
   levelId                  String?
@@ -178,6 +216,8 @@ model User {
   approvals                Approval[]
   requestedHelp            HelpRequest[]               @relation("HelpRequester")
   receivedHelp             HelpRequest[]               @relation("HelpRepresentative")
+  responsibleHelpRequests   HelpRequest[]               @relation("HelpResponsible")
+  helpRequestAnswers        HelpRequestAnswer[]         @relation("HelpAnswerAuthor")
   productAnalyses          ProductAnalysis[]
   auditLogs                AuditLog[]
   microsoftAuthToken       MicrosoftAuthToken?
@@ -193,14 +233,32 @@ model User {
   createdActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionCreatedBy")
   updatedActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionUpdatedBy")
   actionTargetOverrides     ActionTargetOverride[]
+  criterionScopeLinks       CriterionScopeLink[]      @relation("CriterionScopeLinkUser")
   coachingActions           CoachingAction[]
   coachingChangeLogs        CoachingChangeLog[]
+  representativeLevelHistory RepresentativeLevelHistory[]
   countryAccess             UserCountryAccess[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
   @@index([country, role])
   @@index([teamId])
+  @@index([role, representativeLevel])
+}
+
+model RepresentativeLevelHistory {
+  id             String              @id @default(cuid())
+  userId         String
+  oldValue       RepresentativeLevel?
+  newValue       RepresentativeLevel
+  changedById    String?
+  changedAt      DateTime            @default(now())
+  reason         String?             @db.Text
+  migrationKey   String?             @unique
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, changedAt])
+  @@index([changedById])
 }
 
 model UserCountryAccess {
@@ -282,6 +340,7 @@ model Team {
   kpiTargets         KpiTarget[]                 @relation("KpiTargetTeam")
   actionDefinitions ActionDefinition[]
   actionTargetOverrides ActionTargetOverride[]
+  criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkTeam")
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -392,6 +451,7 @@ model KpiDefinition {
   actionPoints        ActionPoint[]
   targetOverrides     KpiTargetOverride[]
   targets             KpiTarget[]
+  criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkKpi")
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -546,9 +606,32 @@ model Intervention {
   startTime            String?
   endTime              String?
   notifyRepresentative Boolean                   @default(false)
+  notifyCoachedRepresentative Boolean            @default(false)
+  notifyCoachedTeamLeaders Boolean               @default(false)
+  notifyExecutorTeamLeaders Boolean              @default(false)
+  notifyCoachedLeaderIntent Boolean              @default(false)
+  notifyExecutorLeaderIntent Boolean             @default(false)
+  peerCoach            Boolean                   @default(false)
+  teamDeviation        Boolean                   @default(false)
+  countryDeviation     Boolean                   @default(false)
+  deviationReason      String?                   @db.Text
+  deviationRecordedById String?
+  deviationRecordedAt  DateTime?
   startedAt            DateTime?
+  actualStartedAt      DateTime?
   completedAt          DateTime?
   finalizedAt          DateTime?
+  executionDeadlineAt  DateTime?
+  approvalDeadlineAt   DateTime?
+  finalApprovalDeadlineAt DateTime?
+  performerAccessExpiresAt DateTime?
+  lateCompletion       Boolean                   @default(false)
+  lateCompletionReason String?                   @db.Text
+  administrativelyClosedAt DateTime?
+  administrativelyClosedById String?
+  administrativeCloseReason String?              @db.Text
+  copiedFromInterventionId String?
+  historicAccessSettings String?                 @db.LongText
   sentForApprovalAt    DateTime?
   sentForApprovalById  String?
   approvedByRepAt      DateTime?
@@ -567,6 +650,7 @@ model Intervention {
   actionPoints         ActionPoint[]
   reflection           Reflection?
   approval             Approval?
+  criterionSnapshots   CoachingCriterionSnapshot[]
   helpRequest          HelpRequest?
   contactMoment        ContactMomentDetail?
   coachingDetail       CoachingDetail?
@@ -585,6 +669,10 @@ model Intervention {
   @@index([plannedAt])
   @@index([status, plannedAt])
   @@index([outlookEventId])
+  @@index([ownerId, peerCoach])
+  @@index([executionDeadlineAt])
+  @@index([performerAccessExpiresAt])
+  @@index([copiedFromInterventionId])
 }
 
 enum OutlookSyncStatus {
@@ -597,16 +685,32 @@ model ContactMomentDetail {
   id                   String       @id @default(cuid())
   interventionId       String       @unique
   reason               String
+  subject              String?
+  contactType          String?
+  location             String?
+  internalNotes        String?      @db.Text
   reportedProblems     String?      @db.Text
   leaderThemes         String       @db.LongText
   representativeKpis   String       @db.LongText
   representativeThemes String       @db.LongText
   discussedThemes      String       @db.LongText
   conclusion           String?      @db.Text
+  reportHtml           String?      @db.LongText
+  finalSnapshot        String?      @db.LongText
+  photosJson           String?      @db.LongText
+  sharedAt             DateTime?
+  sharedById           String?
+  closedReason         String?      @db.Text
+  closedAt             DateTime?
+  closedById           String?
+  previousStatus       InterventionStatus?
   sourceHelpRequestId  String?
   intervention         Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+
+  @@index([sharedAt])
+  @@index([closedAt])
 }
 
 model CoachingFocus {
@@ -630,10 +734,35 @@ model CoachingCriterion {
   sortOrder Int
   focus     CoachingFocus @relation(fields: [focusId], references: [id], onDelete: Cascade)
   scores    Score[]
+  criterionScopeLinks CriterionScopeLink[] @relation("CriterionScopeLinkCoatRack")
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
   @@unique([focusId, name])
+}
+
+model ConfigurableCriterion {
+  id             String               @id @default(cuid())
+  type           CriterionType
+  code           String               @unique
+  title          String
+  description    String?              @db.Text
+  section        String?
+  answerType     String               @default("SCORE_0_5")
+  scoreType      String               @default("SCORE")
+  minScore       Int                  @default(0)
+  maxScore       Int                  @default(5)
+  weight         Decimal?             @db.Decimal(8, 2)
+  targetValue    Decimal?             @db.Decimal(14, 2)
+  required       Boolean              @default(false)
+  active         Boolean              @default(true)
+  createdById    String?
+  updatedById    String?
+  scopeLinks     CriterionScopeLink[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([type, active])
 }
 
 model PersonalCoachingCriterion {
@@ -686,6 +815,7 @@ model Score {
   interventionId      String
   criterionId         String?
   personalCriterionId String?
+  criterionSnapshotId String?
   category            String?
   label               String?
   score               Int?
@@ -695,10 +825,79 @@ model Score {
   intervention        Intervention               @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   criterion           CoachingCriterion?         @relation(fields: [criterionId], references: [id])
   personalCriterion   PersonalCoachingCriterion? @relation(fields: [personalCriterionId], references: [id])
+  criterionSnapshot   CoachingCriterionSnapshot? @relation(fields: [criterionSnapshotId], references: [id])
 
   @@unique([interventionId, criterionId])
   @@index([personalCriterionId])
+  @@index([criterionSnapshotId])
   @@index([interventionId, category])
+}
+
+model CriterionScopeLink {
+  id                      String                 @id @default(cuid())
+  criterionType           CriterionType
+  criterionKey            String
+  kpiDefinitionId         String?
+  coachingCriterionId     String?
+  configurableCriterionId String?
+  scopeType               CriterionScopeType
+  scopeKey                String
+  country                 Country?
+  teamId                  String?
+  userId                  String?
+  sortOrder               Int                    @default(0)
+  createdById             String?
+  updatedById             String?
+  kpiDefinition           KpiDefinition?         @relation("CriterionScopeLinkKpi", fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+  coachingCriterion       CoachingCriterion?     @relation("CriterionScopeLinkCoatRack", fields: [coachingCriterionId], references: [id], onDelete: Cascade)
+  configurableCriterion   ConfigurableCriterion? @relation(fields: [configurableCriterionId], references: [id], onDelete: Cascade)
+  team                    Team?                  @relation("CriterionScopeLinkTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  user                    User?                  @relation("CriterionScopeLinkUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  @@unique([criterionKey, scopeType, scopeKey])
+  @@index([criterionType])
+  @@index([scopeType, scopeKey])
+  @@index([kpiDefinitionId])
+  @@index([coachingCriterionId])
+  @@index([configurableCriterionId])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model CoachingCriterionSnapshot {
+  id                    String             @id @default(cuid())
+  interventionId        String
+  criterionType         CriterionType
+  sourceCriterionId     String
+  sourceCriterionKey    String
+  sourceScopeLinkId     String?
+  title                 String
+  description           String?            @db.Text
+  focusName             String?
+  section               String?
+  answerType            String
+  scoreType             String
+  minScore              Int?
+  maxScore              Int?
+  weight                Decimal?           @db.Decimal(8, 2)
+  targetValue           Decimal?           @db.Decimal(14, 2)
+  required              Boolean            @default(false)
+  appliedScopeType      CriterionScopeType
+  appliedScopeKey       String
+  appliedScopeLabel     String
+  sortOrder             Int                @default(0)
+  snapshotVersion       Int                @default(1)
+  intervention          Intervention       @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  scores                Score[]
+  createdAt             DateTime           @default(now())
+
+  @@unique([interventionId, criterionType, sourceCriterionId])
+  @@index([interventionId, criterionType])
+  @@index([sourceCriterionKey])
+  @@index([appliedScopeType, appliedScopeKey])
 }
 
 model CoachingDetail {
@@ -927,6 +1126,15 @@ model CoachingAction {
   achievedScore      Decimal?          @db.Decimal(14, 2)
   priority           Priority
   isNew              Boolean           @default(false)
+  reviewStatus       CoachingActionReviewStatus @default(PROPOSED)
+  originalTitle      String?           @db.Text
+  originalDescription String?          @db.Text
+  originalTipsAndTricks String?        @db.LongText
+  rejectionReason    String?           @db.Text
+  reviewComment      String?           @db.Text
+  reviewedById       String?
+  reviewedAt         DateTime?
+  activatedAt        DateTime?
   intervention       Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   actionDefinition   ActionDefinition? @relation(fields: [actionDefinitionId], references: [id], onDelete: SetNull)
   user               User              @relation(fields: [userId], references: [id])
@@ -935,6 +1143,58 @@ model CoachingAction {
 
   @@unique([interventionId, actionDefinitionId])
   @@index([userId])
+  @@index([reviewStatus])
+  @@index([reviewedById])
+}
+
+model Holiday {
+  id          String   @id @default(cuid())
+  country     Country
+  date        DateTime @db.Date
+  name        String
+  active      Boolean  @default(true)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([country, date, name])
+  @@index([country, date, active])
+}
+
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.LongText
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+model NotificationDelivery {
+  id                  String   @id @default(cuid())
+  eventKey            String
+  recipientUserId     String
+  channel             String
+  status              String
+  sourceModule        String?
+  entityType          String?
+  entityId            String?
+  mailTestActive      Boolean  @default(true)
+  originalTo          String?  @db.Text
+  originalCc          String?  @db.Text
+  originalBcc         String?  @db.Text
+  actualTo            String?  @db.Text
+  error               String?  @db.Text
+  sentAt              DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([eventKey, recipientUserId, channel])
+  @@index([recipientUserId, createdAt])
+  @@index([entityType, entityId])
 }
 
 model CoachingChangeLog {
@@ -986,19 +1246,50 @@ model HelpRequest {
   interventionId       String?           @unique
   requesterId          String
   representativeId     String
+  responsibleUserId    String?
   subject              String
+  descriptionHtml      String?           @db.LongText
+  descriptionText      String?           @db.Text
   difficulty           String
   desiredResult        String
   explanation          String?
   urgency              Priority
-  status               HelpRequestStatus @default(NIEUW)
+  status               HelpRequestStatus @default(OPEN)
+  firstHandledAt       DateTime?
+  firstHandledByUserId String?
+  withdrawnAt          DateTime?
+  withdrawnByUserId    String?
   followUpType         InterventionType?
   linkedInterventionId String?
   intervention         Intervention?     @relation(fields: [interventionId], references: [id], onDelete: SetNull)
   requester            User              @relation("HelpRequester", fields: [requesterId], references: [id])
   representative       User              @relation("HelpRepresentative", fields: [representativeId], references: [id])
+  responsible          User?             @relation("HelpResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  answers              HelpRequestAnswer[]
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
+
+  @@index([requesterId])
+  @@index([responsibleUserId])
+  @@index([status])
+  @@index([representativeId])
+  @@index([firstHandledAt])
+  @@index([createdAt])
+}
+
+model HelpRequestAnswer {
+  id             String      @id @default(cuid())
+  helpRequestId  String
+  authorId       String
+  bodyHtml       String      @db.LongText
+  bodyText       String      @db.Text
+  closesRequest  Boolean     @default(false)
+  helpRequest    HelpRequest @relation(fields: [helpRequestId], references: [id], onDelete: Cascade)
+  author         User        @relation("HelpAnswerAuthor", fields: [authorId], references: [id])
+  createdAt      DateTime    @default(now())
+
+  @@index([helpRequestId, createdAt])
+  @@index([authorId])
 }
 
 model Product {

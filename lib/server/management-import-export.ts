@@ -20,7 +20,8 @@ import {
   validateKpiDates,
   validateKpiRange,
 } from "@/lib/kpi-settings";
-import { prepareManagedUserSave, roleTemplates } from "@/lib/user-management";
+import { prepareManagedUserSave } from "@/lib/user-management";
+import { resolveRolePermissions } from "@/lib/role-permissions";
 import type {
   Country,
   KpiEvaluationDirection,
@@ -298,6 +299,11 @@ async function importUsers(
     FROM \`Team\`
     WHERE active = TRUE
   `);
+  const rolePermissions = await prisma.rolePermission.findMany({
+    include: {
+      permission: { select: { key: true } },
+    },
+  });
   const teamByCountryName = new Map(
     activeTeams.map((team) => [teamKey(team.country as Country, team.name), team])
   );
@@ -345,15 +351,17 @@ async function importUsers(
       }
     }
 
-    const permissions = existing && existing.role === role
+    const selectedRole = role ?? "REPRESENTATIVE";
+    const permissions = existing && existing.role === selectedRole
       ? { ...existing.permissions }
-      : { ...(role ? roleTemplates[role].permissions : roleTemplates.REPRESENTATIVE.permissions) };
+      : resolveRolePermissions(selectedRole, rolePermissions);
     const draft: ManagedUser = {
       id: existing?.id ?? "",
       firstName: read(row, "firstName"),
       lastName: read(row, "lastName"),
       email,
       role: role ?? "REPRESENTATIVE",
+      representativeLevel: existing?.representativeLevel ?? (role === "REPRESENTATIVE" || !role ? "SALES_EXECUTIVE" : "STARTER"),
       country: country ?? "BE",
       teamId,
       teamName,

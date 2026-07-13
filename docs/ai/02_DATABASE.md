@@ -26,12 +26,15 @@ MExT FieldForce uses:
 
 - Prisma ORM
 - MariaDB / MySQL
+- UTF-8 / `utf8mb4` for all application text
 
 Prisma is the source of truth for application-level database access.
 
 Database changes must be made through the Prisma schema and migration workflow.
 
 Direct manual schema changes in production are not allowed unless explicitly documented as an exceptional recovery action.
+
+All names and free text must preserve Dutch, French and German characters end to end. Imports must not silently convert Windows-1252, ISO-8859-1 or already damaged text into stored business data. Use the UTF-8 diagnostic script before repairing stored text, and only repair `U+FFFD` records when the intended value is known from a reliable source.
 
 ---
 
@@ -125,6 +128,10 @@ Expected shared entities include:
 - Role module permissions
 - Login/session metadata
 
+Representative users also have a separate `representativeLevel` value. This is
+stored on `User`, not as a separate role. Changes are auditable through
+`RepresentativeLevelHistory`.
+
 These entities are shared across modules and should not be duplicated inside individual modules.
 
 ---
@@ -162,8 +169,31 @@ Important Coaching-related business entities include:
 - Coaching Report / Dossier
 - Approval status
 - Outlook synchronisation metadata
+- peer-coaching planning metadata for Professional/Expert representatives
+- notification and e-mail delivery deduplication metadata
+- central holiday calendar for country-specific working-day deadlines
 
 The exact technical model must be verified in `docs/technical/database.md` and the Prisma schema.
+
+Migration `0023_representative_levels_peer_coaching` adds the foundation for:
+
+- representative levels and level history;
+- Professional/Expert representatives as assigned coaching executors;
+- team/country deviation flags and deviation reason;
+- three pre-notification settings for coached representative and team leaders;
+- actual start and deadline timestamps;
+- administrative closing and copy relation metadata;
+- action-point review status before activation;
+- central `Holiday` records per country;
+- global `MAIL_TEST` application setting;
+- notification/e-mail deduplication through `NotificationDelivery`.
+
+`MAIL_TEST` is managed through `Beheer -> Instellingen`. A missing setting is
+treated as active, which is the safe default. The test recipient is stored as
+`MAIL_TEST_RECIPIENT` with `helpdesk@mext.be` as safe fallback when no value has
+been configured yet. Disabling `MAIL_TEST` requires the exact confirmation
+`PRODUCTIE`; every change stores the actor on `AppSetting` and is also recorded
+in `AuditLog`.
 
 ---
 
@@ -246,6 +276,40 @@ Rules:
 - `counts_for_reporting` controls report inclusion.
 - `counts_for_performance_circle` controls Performance Circle inclusion.
 - KPI definitions and targets must always be filtered by role, country, team and user scope.
+
+---
+
+## Configurable Criteria and Snapshots
+
+Configurable Coaching criteria use a shared scope model.
+
+Criterion sources:
+
+- KPI criteria remain in `KpiDefinition`.
+- Kapstok criteria remain in `CoachingCriterion`.
+- General evaluation, personality and other general coaching score questions use `ConfigurableCriterion`.
+
+Scope links:
+
+- `CriterionScopeLink` stores the applicable scope and concrete target.
+- Supported scopes are `GLOBAL`, `COUNTRY`, `TEAM` and `USER`.
+- A criterion may have multiple scope links.
+- Each scope link has its own `sortOrder`.
+- Duplicate exact criterion/scope/target links are blocked.
+
+Selection:
+
+- Applicable criteria are selected based only on the coached user.
+- Global, country, team and user links are cumulative.
+- The same criterion is deduplicated by stable criterion key.
+- If multiple applicable links exist for the same criterion, display uses the most specific link: User, Team, Country, Global.
+
+Snapshots:
+
+- `CoachingCriterionSnapshot` stores the immutable criteria snapshot for a coaching.
+- Snapshots are created for new coachings when the coaching is persisted.
+- Later changes to criterion text, scope links, sort order, country or team do not change existing snapshots.
+- Existing historical coachings and scores are preserved.
 
 ---
 
@@ -336,6 +400,15 @@ Business rules:
 - Inactive roles must not be assigned to new users or to users who do not already have the role.
 - Existing users with an inactive role can still be loaded and saved for other safe profile changes.
 
+
+Role and user permission storage:
+
+- `RolePermission` is the persistent runtime default for a role.
+- Configuration seeding creates missing role grants and does not overwrite saved business configuration.
+- `UserPermission` contains only explicit deviations from the user's current role defaults.
+- Missing `UserPermission` rows mean inheritance from `RolePermission`.
+- Migration `0021_normalize_user_permission_overrides` removes historical user rows that duplicated their role defaults while preserving real deviations.
+- Role updates remove obsolete inherited snapshots and keep explicit user overrides intact.
 ---
 
 # Sales Manager Role
@@ -459,3 +532,61 @@ This document does not contain SQL migration scripts.
 This document does not replace detailed technical database documentation.
 
 Use this document as the AI-facing database architecture guide.
+# Contactmomenten
+
+Contactmomenten gebruiken het bestaande `Intervention`-model met
+`Intervention.type = CONTACTMOMENT`.
+
+Migratie `0026_contact_moment_execution_contract` voegt de uitvoeringsvelden toe
+op `ContactMomentDetail`:
+
+- planning- en notifyvelden blijven op `Intervention`;
+- onderwerp, type, locatie en interne notitie staan op `ContactMomentDetail`;
+- rich-text verslag staat in `reportHtml`;
+- definitieve snapshot staat in `finalSnapshot`;
+- delen wordt vastgelegd met `sharedAt` en `sharedById`;
+- annuleren/niet-uitvoeren wordt vastgelegd met `closedReason`, `closedAt`,
+  `closedById` en `previousStatus`;
+- `NIET_UITGEVOERD` is toegevoegd aan `InterventionStatus`.
+
+Definitieve snapshots mogen niet worden aangepast door latere wijzigingen aan
+actiepunten of gebruikersdata.
+
+---
+
+# Hulpaanvragen
+
+Hulpaanvragen gebruiken het bestaande `HelpRequest`-model als bronrecord.
+
+Migratie `0027_help_request_handling_contract` voegt de behandelingsvelden toe:
+
+- nieuwe canonieke statussen `OPEN`, `BEGELEIDING`, `CONTACTMOMENT`,
+  `RETRAINING`, `SALESTRAINING`, `GESLOTEN` en `INGETROKKEN`;
+- `responsibleUserId` als server-side bepaalde verantwoordelijke manager;
+- `descriptionHtml` en `descriptionText` voor gesaneerde rich-text inhoud en
+  zoekbare platte tekst;
+- `firstHandledAt` en `firstHandledByUserId` voor de eerste behandeling;
+- `withdrawnAt` en `withdrawnByUserId` voor intrekking door de aanvrager;
+- het nieuwe `HelpRequestAnswer`-model voor immutable antwoorden.
+- Migratie `0028_help_request_open_default` zet de database-default voor nieuwe
+  hulpaanvragen op `OPEN`.
+
+Legacy statussen blijven bestaan voor historische records:
+
+- `NIEUW`;
+- `VERVOLGACTIE_GEPLAND`;
+- `AFGESLOTEN`;
+- `GEANNULEERD`.
+
+Regels:
+
+- Een vertegenwoordiger maakt alleen een eigen hulpaanvraag aan.
+- De verantwoordelijke wordt niet door de gebruiker gekozen maar uit team- en
+  scopegegevens afgeleid.
+- Antwoorden worden toegevoegd als afzonderlijke `HelpRequestAnswer`-records en
+  mogen niet achteraf worden overschreven.
+- Sluiten vereist een antwoord met `closesRequest = true`.
+- Gekoppelde opvolging blijft via de bestaande workflowvelden
+  `followUpType` en `linkedInterventionId` lopen.
+
+---

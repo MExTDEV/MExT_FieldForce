@@ -2,13 +2,7 @@ import { prisma } from "@/lib/server/db";
 import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
 import { columnsExist, tableExists } from "@/lib/server/schema-inspection";
 import type { Country, Representative, Role } from "@/lib/types";
-
-const levelColors: Record<string, string> = {
-  Starter: "bg-amber-100 text-amber-800",
-  Vertegenwoordiger: "bg-sky-100 text-sky-800",
-  Professional: "bg-indigo-100 text-indigo-800",
-  Expert: "bg-emerald-100 text-emerald-800",
-};
+import { representativeLevelBadgeClass, representativeLevelLabel } from "@/lib/representative-levels";
 
 type RepresentativeUser = Awaited<ReturnType<typeof fetchRepresentativeUsers>>[number];
 
@@ -110,7 +104,8 @@ function toRepresentative(
   lastCoachingDate?: Date
 ): Representative {
   const representativeId = user.representativeId ?? user.id;
-  const level = user.level?.name ?? "Vertegenwoordiger";
+  const representativeLevel = user.representativeLevel;
+  const level = representativeLevelLabel(representativeLevel);
   const latestByKpi = latestSnapshotsByKpi(user.kpiSnapshots);
   return {
     id: representativeId,
@@ -120,8 +115,9 @@ function toRepresentative(
     country: user.country as Country,
     team: user.team?.name ?? "",
     teamId: user.teamId ?? "",
+    representativeLevel,
     level: level as Representative["level"],
-    levelColor: levelColors[level] ?? "bg-slate-100 text-slate-700",
+    levelColor: representativeLevelBadgeClass[representativeLevel] ?? "bg-slate-100 text-slate-700",
     lastCoaching: lastCoachingDate ? formatDateNl(lastCoachingDate) : "Nog niet",
     openActions,
     email: user.email,

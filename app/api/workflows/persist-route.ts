@@ -8,19 +8,28 @@ import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server
 import { prisma } from "@/lib/server/db";
 import {
   requireAuthenticatedUser,
+  actorCanAccessCountry,
   requireCoachingParticipantScope,
   requireCoachingOwnerScope,
   requirePermission,
   requireRepresentativeScope,
   requireRole,
 } from "@/lib/server/authenticated-user";
-import { canCreateIntervention } from "@/lib/permissions";
+import {
+  canCreateCoachingIntervention,
+  canCreateIntervention,
+} from "@/lib/permissions";
+import { isBlankRichText } from "@/lib/rich-text";
+import { assertCanPlanPeerCoaching, canExecutePeerCoaching } from "@/lib/coaching/peer-execution";
 import {
   recordOutlookSyncFailure,
   requireMicrosoftAccessToken,
   syncCoachingsToOutlook,
+  syncContactMomentsToOutlook,
   transferCoachingsBetweenOwners,
 } from "@/lib/server/microsoft-graph";
+import { sendWorkflowEventMail } from "@/lib/server/mail-service";
+import { createInAppNotification } from "@/lib/server/notifications";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -32,41 +41,258 @@ export async function persistWorkflowPatch(
     const selectedPatch = selectPatch(payload);
     const actor = await requireAuthenticatedUser(actorIdFromPatch(selectedPatch));
     requireWorkflowPermission(routeName, actor);
-    if (routeName === "coaching") {
-      await requireCoachingParticipantScope(actor, selectedPatch.interventions?.map((item) => item.representativeId) ?? []);
-      await requireCoachingOwnerScope(actor, selectedPatch.interventions?.map((item) => item.ownerId) ?? []);
-    } else {
+    const interventionPatch = selectedPatch.interventions ?? [];
+    const hasCoachings = interventionPatch.length > 0;
+    if (routeName !== "coaching" && hasCoachings && !canCreateCoachingIntervention(actor)) {
+      forbidden("Je mag geen begeleiding inplannen.");
+    }
+    if (hasCoachings) {
+      const peerScopeValidated = await validatePeerCoachingScope(actor, interventionPatch);
+      if (!peerScopeValidated) {
+        await requireCoachingParticipantScope(actor, interventionPatch.map((item) => item.representativeId));
+      }
+      await requireCoachingOwnerScope(actor, interventionPatch.map((item) => item.ownerId));
+    }
+    if (routeName !== "coaching") {
       await requireRepresentativeScope(actor, representativeIdsFromPatch(selectedPatch));
     }
     if (selectedPatch.interventions?.length) {
       await requireExistingCoachingsMutable(actor, selectedPatch.interventions);
     }
-    const coachingBefore = routeName === "coaching"
+    if (selectedPatch.contactMoments?.length) {
+      await requireExistingContactMomentsMutable(actor, selectedPatch.contactMoments);
+    }
+    if (selectedPatch.helpRequests?.length) {
+      await requireHelpRequestsMutable(actor, selectedPatch.helpRequests);
+    }
+    if (routeName === "help-requests") {
+      await requireHelpRequestCoachingFollowUps(actor, selectedPatch);
+    }
+    const coachingBefore = hasCoachings
       ? await loadCoachingSnapshots(selectedPatch.interventions?.map((item) => item.id) ?? [])
       : new Map<string, Record<string, unknown>>();
     const patch = await applyAuthenticatedActor(selectedPatch, actor.id);
     await saveWorkflowPatchToDatabase(patch);
-    if (routeName === "coaching") {
+    await createWorkflowInAppNotifications(routeName, patch, actor.id);
+    if (patch.interventions?.length) {
       await writeCoachingChangeLogs(actor.id, patch.interventions ?? [], coachingBefore);
     }
     await writeAuditLogs(auditEntriesFromWorkflowPatch(routeName, patch, actor.id, coachingBefore));
     let outlookSync = undefined;
-    if (routeName === "coaching" && patch.interventions?.length) {
+    if (patch.interventions?.length || patch.contactMoments?.length) {
       try {
         const accessToken = await requireMicrosoftAccessToken(request);
-        await transferCoachingsBetweenOwners(accessToken, actor.id, patch.interventions.flatMap((item) => {
+        await transferCoachingsBetweenOwners(accessToken, actor.id, (patch.interventions ?? []).flatMap((item) => {
           const old = coachingBefore.get(item.id);
           const oldOwnerId = typeof old?.ownerId === "string" ? old.ownerId : item.ownerId;
           return oldOwnerId !== item.ownerId ? [{ interventionId: item.id, oldOwnerId, newOwnerId: item.ownerId, outlookEventId: typeof old?.outlookEventId === "string" ? old.outlookEventId : undefined }] : [];
         }));
-        outlookSync = await syncCoachingsToOutlook(accessToken, actor.id, patch.interventions);
+        outlookSync = [
+          ...await syncCoachingsToOutlook(accessToken, actor.id, patch.interventions ?? []),
+          ...await syncContactMomentsToOutlook(accessToken, actor.id, patch.contactMoments ?? []),
+        ];
       } catch (error) {
         console.error("[outlook-sync] Fieldforce-opslag is behouden.", error);
-        outlookSync = await recordOutlookSyncFailure(actor.id, patch.interventions, error);
+        outlookSync = [
+          ...await recordOutlookSyncFailure(actor.id, patch.interventions ?? [], error),
+          ...await recordOutlookSyncFailure(actor.id, patch.contactMoments ?? [], error, "CONTACTMOMENT"),
+        ];
       }
     }
     return { ok: true, outlookSync };
   }, "Workflowgegevens konden niet worden opgeslagen.");
+}
+
+async function createWorkflowInAppNotifications(
+  routeName: string,
+  patch: WorkflowPersistencePatch,
+  actorId: string
+) {
+  for (const request of patch.helpRequests ?? []) {
+    if (
+      request.status === "open" &&
+      request.responsibleUserId &&
+      request.responsibleUserId !== actorId &&
+      !(request.answers ?? []).length &&
+      !request.followUpType &&
+      !request.withdrawnAt
+    ) {
+      await createInAppNotification(prisma, {
+        type: "HELP_REQUEST_CREATED",
+        recipientUserId: request.responsibleUserId,
+        entityId: request.id,
+        eventKey: `HELP_REQUEST_CREATED:helpRequest:${request.id}`,
+        triggeredByUserId: actorId,
+        sourceModule: "HULPAANVRAGEN",
+      });
+      await sendWorkflowMailSafely({
+        type: "HELP_REQUEST_CREATED",
+        recipientUserId: request.responsibleUserId,
+        triggeredByUserId: actorId,
+        entityTitle: request.subject,
+        linkUrl: `/hulpaanvragen/${request.id}`,
+        context: {
+          sourceModule: "HULPAANVRAGEN",
+          entityType: "HelpRequest",
+          entityId: request.id,
+          eventKey: `HELP_REQUEST_CREATED:helpRequest:${request.id}`,
+          reason: "Nieuwe hulpaanvraag",
+        },
+      });
+    }
+
+    const lastAnswer = request.answers?.at(-1);
+    if (lastAnswer?.authorId === actorId) {
+      const recipientUserId = request.requesterId !== actorId ? request.requesterId : request.representativeId;
+      if (recipientUserId && recipientUserId !== actorId) {
+        const type = lastAnswer.closesRequest ? "HELP_REQUEST_CLOSED" : "HELP_REQUEST_ANSWERED";
+        await createInAppNotification(prisma, {
+          type,
+          recipientUserId,
+          entityId: request.id,
+          eventKey: `${type}:helpRequest:${request.id}:answer:${lastAnswer.id}`,
+          triggeredByUserId: actorId,
+          sourceModule: "HULPAANVRAGEN",
+        });
+        await sendWorkflowMailSafely({
+          type,
+          recipientUserId,
+          triggeredByUserId: actorId,
+          entityTitle: request.subject,
+          linkUrl: `/hulpaanvragen/${request.id}`,
+          context: {
+            sourceModule: "HULPAANVRAGEN",
+            entityType: "HelpRequest",
+            entityId: request.id,
+            eventKey: `${type}:helpRequest:${request.id}:answer:${lastAnswer.id}`,
+            reason: lastAnswer.closesRequest ? "Hulpaanvraag gesloten" : "Antwoord op hulpaanvraag",
+          },
+        });
+      }
+    }
+
+    if (request.followUpType && request.status !== "open" && request.status !== "in_behandeling") {
+      const recipientUserId = request.requesterId !== actorId ? request.requesterId : request.representativeId;
+      if (recipientUserId && recipientUserId !== actorId) {
+        await createInAppNotification(prisma, {
+          type: "HELP_REQUEST_FOLLOW_UP",
+          recipientUserId,
+          entityId: request.id,
+          eventKey: `HELP_REQUEST_FOLLOW_UP:helpRequest:${request.id}:${request.followUpType}:${request.linkedInterventionId ?? request.updatedAt}`,
+          triggeredByUserId: actorId,
+          sourceModule: "HULPAANVRAGEN",
+        });
+        await sendWorkflowMailSafely({
+          type: "HELP_REQUEST_FOLLOW_UP",
+          recipientUserId,
+          triggeredByUserId: actorId,
+          entityTitle: request.subject,
+          linkUrl: `/hulpaanvragen/${request.id}`,
+          context: {
+            sourceModule: "HULPAANVRAGEN",
+            entityType: "HelpRequest",
+            entityId: request.id,
+            eventKey: `HELP_REQUEST_FOLLOW_UP:helpRequest:${request.id}:${request.followUpType}:${request.linkedInterventionId ?? request.updatedAt}`,
+            reason: "Opvolging voor hulpaanvraag",
+          },
+        });
+      }
+    }
+  }
+
+  for (const contactMoment of patch.contactMoments ?? []) {
+    const recipientUserId = contactMoment.representativeId;
+    if (!recipientUserId || recipientUserId === actorId) continue;
+
+    const visibleToRepresentative = Boolean(contactMoment.notifyRepresentative || contactMoment.sharedAt);
+    if (!visibleToRepresentative) continue;
+
+    const type =
+      contactMoment.status === "afgesloten"
+        ? "CONTACT_MOMENT_SHARED"
+        : contactMoment.status === "geannuleerd"
+          ? "CONTACT_MOMENT_CANCELLED"
+          : contactMoment.status === "niet_uitgevoerd"
+            ? "CONTACT_MOMENT_NOT_EXECUTED"
+            : routeName === "contact-moments" && contactMoment.createdAt === contactMoment.updatedAt
+              ? "CONTACT_MOMENT_PLANNED"
+              : "CONTACT_MOMENT_UPDATED";
+
+    await createInAppNotification(prisma, {
+      type,
+      recipientUserId,
+      entityId: contactMoment.id,
+      eventKey: `${type}:contactMoment:${contactMoment.id}:${contactMoment.sharedAt ?? contactMoment.closedAt ?? contactMoment.updatedAt}`,
+      triggeredByUserId: actorId,
+      sourceModule: "CONTACTMOMENTEN",
+    });
+    await sendWorkflowMailSafely({
+      type,
+      recipientUserId,
+      triggeredByUserId: actorId,
+      entityTitle: contactMoment.subject || contactMoment.reason,
+      linkUrl: `/contactmomenten/${contactMoment.id}`,
+      context: {
+        sourceModule: "CONTACTMOMENTEN",
+        entityType: "Intervention",
+        entityId: contactMoment.id,
+        eventKey: `${type}:contactMoment:${contactMoment.id}:${contactMoment.sharedAt ?? contactMoment.closedAt ?? contactMoment.updatedAt}`,
+        reason: "Contactmoment update",
+      },
+    });
+  }
+}
+
+async function sendWorkflowMailSafely(input: Parameters<typeof sendWorkflowEventMail>[0]) {
+  try {
+    await sendWorkflowEventMail(input);
+  } catch (error) {
+    console.error("[mail] Workflowmail kon niet worden verzonden.", error);
+  }
+}
+
+async function validatePeerCoachingScope(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  interventions: NonNullable<WorkflowPersistencePatch["interventions"]>
+) {
+  const peerCandidates = interventions.filter((item) => item.peerCoach || item.ownerId !== actor.id);
+  if (!peerCandidates.length) return false;
+  const ownerIds = [...new Set(peerCandidates.map((item) => item.ownerId).filter(Boolean))];
+  const representativeIds = [...new Set(peerCandidates.map((item) => item.representativeId).filter(Boolean))];
+  const [owners, targets] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: ownerIds }, active: true },
+      select: { id: true, role: true, representativeLevel: true, active: true, country: true, teamId: true },
+    }),
+    prisma.user.findMany({
+      where: {
+        active: true,
+        role: "REPRESENTATIVE",
+        OR: [{ id: { in: representativeIds } }, { representativeId: { in: representativeIds } }],
+      },
+      select: { id: true, representativeId: true, role: true, representativeLevel: true, active: true, country: true, teamId: true },
+    }),
+  ]);
+  const ownersById = new Map(owners.map((owner) => [owner.id, owner]));
+  const targetsById = new Map(targets.flatMap((target) => [[target.id, target], ...(target.representativeId ? [[target.representativeId, target] as const] : [])]));
+
+  for (const item of peerCandidates) {
+    const executor = ownersById.get(item.ownerId);
+    const target = targetsById.get(item.representativeId);
+    if (!executor || !target || !canExecutePeerCoaching(executor)) return false;
+    const deviation = assertCanPlanPeerCoaching({
+      actor,
+      executor,
+      target,
+      deviationReason: item.deviationReason,
+    });
+    item.peerCoach = true;
+    item.teamDeviation = deviation.teamDeviation;
+    item.countryDeviation = deviation.countryDeviation;
+    item.deviationRecordedById = deviation.requiresReason ? actor.id : undefined;
+    item.deviationRecordedAt = deviation.requiresReason ? new Date().toISOString() : undefined;
+  }
+  return true;
 }
 
 async function requireExistingCoachingsMutable(
@@ -218,7 +444,11 @@ function requireWorkflowPermission(
   routeName: string,
   actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>
 ) {
-  if (["coaching", "contact-moments"].includes(routeName)) {
+  if (routeName === "coaching") {
+    if (!canCreateCoachingIntervention(actor)) forbidden("Je mag geen begeleidingen aanmaken of uitvoeren.");
+    return;
+  }
+  if (routeName === "contact-moments") {
     if (!canCreateIntervention(actor)) forbidden("Je mag geen interventies aanmaken of uitvoeren.");
     return;
   }
@@ -243,7 +473,7 @@ function requireWorkflowPermission(
 }
 
 function canCreateHelpWorkflow(actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>) {
-  return ["SALES_LEADER", "ADMIN", "SUPER_ADMIN"].includes(actor.role);
+  return ["REPRESENTATIVE", "SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "ADMIN", "GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
 }
 
 function representativeIdsFromPatch(patch: WorkflowPersistencePatch) {
@@ -262,6 +492,9 @@ function actorIdFromPatch(patch: WorkflowPersistencePatch) {
   return patch.interventions?.[0]?.initiatorId ??
     patch.interventions?.[0]?.ownerId ??
     patch.contactMoments?.[0]?.ownerId ??
+    patch.helpRequests?.[0]?.firstHandledByUserId ??
+    patch.helpRequests?.[0]?.answers?.at(-1)?.authorId ??
+    patch.helpRequests?.[0]?.withdrawnByUserId ??
     patch.helpRequests?.[0]?.requesterId ??
     patch.retrainings?.[0]?.initiatorId ??
     patch.salesTrainings?.[0]?.initiatorId ??
@@ -278,6 +511,22 @@ async function applyAuthenticatedActor(patch: WorkflowPersistencePatch, actorId:
       })
     : [];
   const existingById = new Map(existingCoachings.map((item) => [item.id, item]));
+  const contactIds = patch.contactMoments?.map((item) => item.id) ?? [];
+  const existingContacts = contactIds.length
+    ? await prisma.intervention.findMany({
+        where: { id: { in: contactIds }, type: "CONTACTMOMENT" },
+        select: { id: true, initiatorId: true, ownerId: true },
+      })
+    : [];
+  const existingContactById = new Map(existingContacts.map((item) => [item.id, item]));
+  const helpIds = patch.helpRequests?.map((item) => item.id) ?? [];
+  const existingHelpRequests = helpIds.length
+    ? await prisma.helpRequest.findMany({
+        where: { id: { in: helpIds } },
+        select: { id: true, requesterId: true },
+      })
+    : [];
+  const existingHelpById = new Map(existingHelpRequests.map((item) => [item.id, item]));
   return {
     ...patch,
     interventions: patch.interventions?.map((item) => {
@@ -288,11 +537,298 @@ async function applyAuthenticatedActor(patch: WorkflowPersistencePatch, actorId:
         ownerId: item.ownerId || existing?.ownerId || actorId,
       };
     }),
-    contactMoments: patch.contactMoments?.map((item) => ({ ...item, initiatorId: actorId, ownerId: actorId })),
-    helpRequests: patch.helpRequests?.map((item) => ({ ...item, requesterId: actorId })),
+    contactMoments: patch.contactMoments?.map((item) => {
+      const existing = existingContactById.get(item.id);
+      return {
+        ...item,
+        initiatorId: existing?.initiatorId ?? actorId,
+        ownerId: item.ownerId || existing?.ownerId || actorId,
+      };
+    }),
+    helpRequests: patch.helpRequests?.map((item) => {
+      const existing = existingHelpById.get(item.id);
+      return {
+        ...item,
+        requesterId: existing?.requesterId ?? actorId,
+      };
+    }),
     retrainings: patch.retrainings?.map((item) => ({ ...item, initiatorId: actorId })),
     salesTrainings: patch.salesTrainings?.map((item) => ({ ...item, initiatorId: actorId })),
   };
+}
+
+async function requireExistingContactMomentsMutable(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  incoming: NonNullable<WorkflowPersistencePatch["contactMoments"]>
+) {
+  const ids = [...new Set(incoming.map((item) => item.id).filter(Boolean))];
+  const existing = await prisma.intervention.findMany({
+    where: { id: { in: ids }, type: "CONTACTMOMENT" },
+    select: {
+      id: true,
+      status: true,
+      representativeId: true,
+      initiatorId: true,
+      ownerId: true,
+      teamId: true,
+      country: true,
+      notifyRepresentative: true,
+      representative: { select: { representativeId: true, role: true } },
+      contactMoment: {
+        select: {
+          reportHtml: true,
+          conclusion: true,
+          finalSnapshot: true,
+          sharedAt: true,
+        },
+      },
+    },
+    distinct: ["id"],
+  });
+
+  const existingById = new Map(existing.map((item) => [item.id, item]));
+  const newRepresentativeIds = incoming
+    .filter((item) => !existingById.has(item.id))
+    .map((item) => item.representativeId);
+  if (newRepresentativeIds.length) {
+    const activeRepresentatives = await prisma.user.findMany({
+      where: {
+        active: true,
+        role: "REPRESENTATIVE",
+        OR: [
+          { id: { in: newRepresentativeIds } },
+          { representativeId: { in: newRepresentativeIds } },
+        ],
+      },
+      select: { id: true, representativeId: true },
+    });
+    const activeIds = new Set(activeRepresentatives.flatMap((item) => [item.id, item.representativeId].filter(Boolean)));
+    if (!newRepresentativeIds.every((id) => activeIds.has(id))) {
+      forbidden("Inactieve gebruikers kunnen niet geselecteerd worden voor nieuwe contactmomenten.");
+    }
+  }
+  for (const next of incoming) {
+    const stored = existingById.get(next.id);
+    if (next.status === "afgesloten" && isBlankRichText(next.reportHtml ?? next.conclusion)) {
+      forbidden("Een verslag is verplicht voordat het contactmoment gedeeld kan worden.");
+    }
+    if ((next.status === "geannuleerd" || next.status === "niet_uitgevoerd") && !next.closedReason?.trim()) {
+      forbidden("Geef een reden op voor annuleren of niet uitvoeren.");
+    }
+    if ((next.startTime || next.endTime) && (!next.startTime || !next.endTime || next.endTime <= next.startTime)) {
+      forbidden("Het einduur moet later zijn dan het beginuur.");
+    }
+    if (!stored) continue;
+    if (!isAllowedContactMomentStatusTransition(stored.status, next.status)) {
+      forbidden("Deze statusovergang is niet toegestaan voor een contactmoment.");
+    }
+    if (!canManageStoredContactMoment(actor, stored)) {
+      forbidden("Je mag dit contactmoment niet beheren.");
+    }
+    if (["AFGESLOTEN", "GEANNULEERD", "NIET_UITGEVOERD"].includes(stored.status)) {
+      const idempotentFinalSave = stored.status === next.status.toUpperCase() &&
+        stored.contactMoment?.finalSnapshot &&
+        JSON.stringify({
+          representativeId: stored.representative.representativeId ?? stored.representativeId,
+          status: stored.status,
+          report: stored.contactMoment.reportHtml ?? stored.contactMoment.conclusion ?? "",
+        }) === JSON.stringify({
+          representativeId: next.representativeId,
+          status: next.status.toUpperCase(),
+          report: next.reportHtml ?? next.conclusion ?? "",
+        });
+      if (!idempotentFinalSave) forbidden("Een definitief contactmoment is volledig read-only.");
+    }
+  }
+}
+
+async function requireHelpRequestsMutable(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  incoming: NonNullable<WorkflowPersistencePatch["helpRequests"]>
+) {
+  const ids = [...new Set(incoming.map((item) => item.id).filter(Boolean))];
+  const existing = ids.length
+    ? await prisma.helpRequest.findMany({
+        where: { id: { in: ids } },
+        include: { answers: { select: { id: true, closesRequest: true } } },
+      })
+    : [];
+  const existingById = new Map(existing.map((item) => [item.id, item]));
+
+  for (const next of incoming) {
+    const stored = existingById.get(next.id);
+    const answerCount = next.answers?.length ?? 0;
+    if (!stored) {
+      if (actor.role !== "REPRESENTATIVE") forbidden("Alleen een vertegenwoordiger kan een eigen hulpaanvraag indienen.");
+      if (![actor.id, actor.representativeId].includes(next.representativeId)) {
+        forbidden("Een vertegenwoordiger kan alleen voor zichzelf een hulpaanvraag indienen.");
+      }
+      if (!next.subject.trim() || isBlankRichText(next.descriptionHtml ?? next.explanation ?? next.difficulty)) {
+        forbidden("Onderwerp en omschrijving zijn verplicht.");
+      }
+      if (!["open", "nieuw"].includes(next.status)) forbidden("Nieuwe hulpaanvragen starten altijd als open.");
+      continue;
+    }
+
+    const storedRequesterMatchesActor = stored.requesterId === actor.id;
+    const storedIsUntreated = ["NIEUW", "OPEN"].includes(stored.status) &&
+      !stored.firstHandledAt &&
+      stored.answers.length === 0 &&
+      !stored.linkedInterventionId &&
+      !stored.followUpType;
+    const requestChanged = stored.subject !== next.subject ||
+      (stored.descriptionHtml ?? stored.explanation ?? stored.difficulty ?? "") !== (next.descriptionHtml ?? next.explanation ?? next.difficulty ?? "");
+
+    if (actor.role === "REPRESENTATIVE") {
+      if (!storedRequesterMatchesActor) forbidden("Je mag alleen je eigen hulpaanvragen beheren.");
+      if (!storedIsUntreated) forbidden("Deze hulpaanvraag werd ondertussen behandeld en kan niet meer worden aangepast of ingetrokken.");
+      if (next.status === "ingetrokken") continue;
+      if (!["open", "nieuw"].includes(next.status)) forbidden("Een vertegenwoordiger mag de behandelingsstatus niet wijzigen.");
+      if (!next.subject.trim() || isBlankRichText(next.descriptionHtml ?? next.explanation ?? next.difficulty)) {
+        forbidden("Onderwerp en omschrijving zijn verplicht.");
+      }
+      continue;
+    }
+
+    if (requestChanged) forbidden("Een manager mag de oorspronkelijke hulpaanvraag niet wijzigen.");
+    if (["GESLOTEN", "AFGESLOTEN", "INGETROKKEN", "GEANNULEERD", "BEGELEIDING", "CONTACTMOMENT", "RETRAINING", "SALESTRAINING"].includes(stored.status)) {
+      forbidden("Deze hulpaanvraag kan niet meer behandeld worden.");
+    }
+    if (next.status === "gesloten" && !(next.answers ?? []).some((answer) => answer.closesRequest)) {
+      forbidden("Sluiten kan alleen samen met een inhoudelijk antwoord.");
+    }
+    if (answerCount > stored.answers.length && isBlankRichText(next.answers?.at(-1)?.bodyHtml)) {
+      forbidden("Een inhoudelijk antwoord is verplicht.");
+    }
+    if (next.linkedInterventionId && !["begeleiding", "contactmoment", "retraining", "sales_training"].includes(next.followUpType ?? "")) {
+      forbidden("Een gekoppelde vervolgactie vereist een geldig type.");
+    }
+  }
+}
+
+async function requireHelpRequestCoachingFollowUps(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  patch: WorkflowPersistencePatch
+) {
+  const coachings = patch.interventions ?? [];
+  const helpRequests = patch.helpRequests ?? [];
+  const coachingLinks = helpRequests.filter((item) =>
+    item.followUpType === "begeleiding" || item.status === "begeleiding"
+  );
+
+  if (!coachings.length && !coachingLinks.length) return;
+  if (!coachings.length || coachings.length !== coachingLinks.length) {
+    forbidden("Een begeleiding vanuit een hulpaanvraag moet via de planningswizard worden bevestigd.");
+  }
+
+  const coachingsById = new Map(coachings.map((item) => [item.id, item]));
+  const linkedIds = new Set<string>();
+  for (const request of coachingLinks) {
+    if (!request.linkedInterventionId) {
+      forbidden("Een gekoppelde begeleiding vereist een echte begeleiding.");
+    }
+    if (linkedIds.has(request.linkedInterventionId) || !coachingsById.has(request.linkedInterventionId)) {
+      forbidden("De gekoppelde begeleiding hoort niet bij deze hulpaanvraag.");
+    }
+    linkedIds.add(request.linkedInterventionId);
+  }
+  if (coachings.some((item) => !linkedIds.has(item.id))) {
+    forbidden("De help-request route mag alleen de gekoppelde begeleiding bewaren.");
+  }
+
+  const existingCoachings = await prisma.intervention.findMany({
+    where: { id: { in: coachings.map((item) => item.id) } },
+    select: { id: true },
+  });
+  if (existingCoachings.length) {
+    forbidden("De gekoppelde begeleiding bestaat al.");
+  }
+
+  const storedRequests = await prisma.helpRequest.findMany({
+    where: { id: { in: coachingLinks.map((item) => item.id) } },
+    include: {
+      representative: { select: { id: true, representativeId: true, country: true, teamId: true } },
+    },
+  });
+  const storedById = new Map(storedRequests.map((item) => [item.id, item]));
+
+  for (const request of coachingLinks) {
+    const stored = storedById.get(request.id);
+    if (!stored) forbidden("Hulpaanvraag niet gevonden.");
+    if (!["OPEN", "NIEUW", "IN_BEHANDELING"].includes(stored.status)) {
+      forbidden("Deze hulpaanvraag kan niet meer behandeld worden.");
+    }
+    if (stored.linkedInterventionId || stored.followUpType) {
+      forbidden("Deze hulpaanvraag heeft al een vervolgactie.");
+    }
+    if (request.status !== "begeleiding" || request.followUpType !== "begeleiding") {
+      forbidden("De hulpaanvraag moet als begeleiding worden gekoppeld.");
+    }
+    if (request.firstHandledByUserId && request.firstHandledByUserId !== actor.id) {
+      forbidden("De behandelaar van de hulpaanvraag moet de aangemelde gebruiker zijn.");
+    }
+
+    const coaching = coachingsById.get(request.linkedInterventionId!);
+    if (!coaching) forbidden("De gekoppelde begeleiding hoort niet bij deze hulpaanvraag.");
+    const representativeId = stored.representative.representativeId ?? stored.representativeId;
+    if (request.representativeId !== representativeId || coaching.representativeId !== representativeId) {
+      forbidden("De begeleiding moet gekoppeld blijven aan de vertegenwoordiger van de hulpaanvraag.");
+    }
+    if (coaching.initiatorId !== actor.id) {
+      forbidden("De planner van de begeleiding moet de aangemelde gebruiker zijn.");
+    }
+    if (coaching.status !== "gepland") {
+      forbidden("Een hulpaanvraag kan alleen een geplande begeleiding aanmaken.");
+    }
+    if (!coaching.ownerId) {
+      forbidden("Kies een begeleider voor de begeleiding.");
+    }
+    if (!coaching.plannedDate || Number.isNaN(new Date(`${coaching.plannedDate}T12:00:00`).getTime())) {
+      forbidden("Kies een geldige datum voor de begeleiding.");
+    }
+    if (!coaching.startTime || !coaching.endTime || coaching.endTime <= coaching.startTime) {
+      forbidden("Kies een geldig begin- en einduur voor de begeleiding.");
+    }
+    if (!coaching.focusNames.length) {
+      forbidden("Selecteer minstens een focusfase voor de begeleiding.");
+    }
+  }
+}
+
+function isAllowedContactMomentStatusTransition(previous: string, next: string) {
+  const allowed: Record<string, string[]> = {
+    CONCEPT: ["concept", "gepland", "wacht_op_vt_input", "geannuleerd", "niet_uitgevoerd"],
+    WACHT_OP_VT_INPUT: ["wacht_op_vt_input", "gepland", "geannuleerd", "niet_uitgevoerd"],
+    GEPLAND: ["gepland", "in_uitvoering", "afgesloten", "geannuleerd", "niet_uitgevoerd"],
+    IN_UITVOERING: ["in_uitvoering", "afgesloten", "geannuleerd", "niet_uitgevoerd"],
+    AFGESLOTEN: ["afgesloten"],
+    GEANNULEERD: ["geannuleerd"],
+    NIET_UITGEVOERD: ["niet_uitgevoerd"],
+  };
+  return (allowed[previous] ?? []).includes(next);
+}
+
+function canManageStoredContactMoment(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  contactMoment: {
+    representativeId: string;
+    initiatorId: string;
+    ownerId: string;
+    teamId: string | null;
+    country: string;
+    representative: { representativeId: string | null; role: string };
+  }
+) {
+  if (["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) return true;
+  if (actor.role === "SALES_MANAGER" || actor.role === "COUNTRY_MANAGER" || actor.role === "ADMIN") {
+    return actorCanAccessCountry(actor, contactMoment.country);
+  }
+  if (actor.role === "SALES_LEADER") {
+    return contactMoment.ownerId === actor.id ||
+      contactMoment.initiatorId === actor.id ||
+      Boolean(actor.teamId && contactMoment.teamId === actor.teamId);
+  }
+  return false;
 }
 
 function auditEntriesFromWorkflowPatch(

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -287,8 +287,9 @@ function NewContactMoment() {
   const { representatives } = useRepresentatives();
   const [savedId, setSavedId] = useState<string>();
   const available = representatives.filter((item) => canAccessRepresentative(user, item));
+  const firstAvailableRepresentativeId = available[0]?.id;
   const [form, setForm] = useState({
-    representativeId: available[0]?.id ?? "",
+    representativeId: firstAvailableRepresentativeId ?? "",
     plannedDate: "",
     startTime: "",
     endTime: "",
@@ -303,6 +304,16 @@ function NewContactMoment() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    setForm((current) => {
+      const representativeId =
+        current.representativeId || firstAvailableRepresentativeId || "";
+      return representativeId === current.representativeId
+        ? current
+        : { ...current, representativeId };
+    });
+  }, [firstAvailableRepresentativeId]);
 
   if (!canCreateIntervention(user)) {
     return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("contactHelp.contact.noCreateRights")} />;

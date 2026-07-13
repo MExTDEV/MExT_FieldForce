@@ -5,6 +5,12 @@ import type {
   Role,
 } from "@/lib/types";
 import { menuPermissionGroups, menuPermissionKeys } from "@/lib/app-switcher";
+import {
+  canManageRepresentativeLevel,
+  defaultRepresentativeLevelForNewUser,
+  defaultRepresentativeLevelForRoleReturn,
+  normalizeRepresentativeLevel,
+} from "@/lib/representative-levels";
 
 export const fieldForceBasePermissionGroups: {
   title: string;
@@ -250,6 +256,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "moduleDashboard",
       "moduleAgenda",
       "modulePreparation",
+      "moduleVisitRecord",
       "moduleMyTeam",
       "moduleReporting",
       "modulePdfExport",
@@ -353,6 +360,7 @@ export function createEmptyManagedUser(actor: MockUser): ManagedUser {
     teamId: actor.teamId ?? "",
     teamName: "",
     role,
+    representativeLevel: defaultRepresentativeLevelForNewUser(role),
     teamSupervisor: false,
     branchNumber: "",
     active: true,
@@ -378,6 +386,10 @@ export function normalizeManagedUser(user: ManagedUser): ManagedUser {
     countryAccess: user.countryAccess ?? [],
     teamId: user.teamId ?? "",
     teamName: user.teamName ?? "",
+    representativeLevel: normalizeRepresentativeLevel(
+      user.representativeLevel,
+      defaultRepresentativeLevelForNewUser(user.role)
+    ),
     teamSupervisor: Boolean(user.teamSupervisor),
     branchNumber: user.branchNumber ?? "",
     active: user.active !== false,
@@ -414,6 +426,7 @@ export type UserManagementCapabilities = {
   canEditPersonal: boolean;
   canEditScope: boolean;
   canEditRoleRights: boolean;
+  canEditRepresentativeLevel: boolean;
   canEditActive: boolean;
 };
 
@@ -440,6 +453,7 @@ export function userManagementCapabilities(
       canEditPersonal: true,
       canEditScope: true,
       canEditRoleRights: true,
+      canEditRepresentativeLevel: true,
       canEditActive: true,
     };
   }
@@ -453,6 +467,7 @@ export function userManagementCapabilities(
       canEditPersonal: Boolean(editable),
       canEditScope: Boolean(editable),
       canEditRoleRights: Boolean(editable),
+      canEditRepresentativeLevel: Boolean(editable),
       canEditActive: Boolean(editable),
     };
   }
@@ -463,6 +478,7 @@ export function userManagementCapabilities(
       canEditPersonal: false,
       canEditScope: false,
       canEditRoleRights: false,
+      canEditRepresentativeLevel: false,
       canEditActive: false,
     };
   }
@@ -473,6 +489,7 @@ export function userManagementCapabilities(
       canEditPersonal: false,
       canEditScope: false,
       canEditRoleRights: false,
+      canEditRepresentativeLevel: false,
       canEditActive: false,
     };
   }
@@ -484,6 +501,7 @@ export function userManagementCapabilities(
       canEditPersonal: own,
       canEditScope: false,
       canEditRoleRights: false,
+      canEditRepresentativeLevel: false,
       canEditActive: false,
     };
   }
@@ -495,6 +513,7 @@ export function userManagementCapabilities(
       canEditPersonal: false,
       canEditScope: false,
       canEditRoleRights: false,
+      canEditRepresentativeLevel: canManageRepresentativeLevel(actor, target),
       canEditActive: false,
     };
   }
@@ -505,6 +524,7 @@ export function userManagementCapabilities(
       canEditPersonal: false,
       canEditScope: false,
       canEditRoleRights: false,
+      canEditRepresentativeLevel: canManageRepresentativeLevel(actor, target),
       canEditActive: false,
     };
   }
@@ -514,6 +534,7 @@ export function userManagementCapabilities(
     canEditPersonal: false,
     canEditScope: false,
     canEditRoleRights: false,
+    canEditRepresentativeLevel: canManageRepresentativeLevel(actor, target),
     canEditActive: false,
   };
 }
@@ -571,12 +592,22 @@ export function prepareManagedUserSave(
       throw new Error("Alleen een Super Admin kan de rol Super Admin toekennen.");
     }
     next.role = draft.role;
+    next.representativeLevel = defaultRepresentativeLevelForRoleReturn(draft.role, existing);
     next.permissions = Object.fromEntries(
       fieldForcePermissionKeys.map((key) => [
         key,
         Boolean(draft.permissions[key]),
       ])
     ) as Record<FieldForcePermissionKey, boolean>;
+  }
+  if (capabilities.canEditRepresentativeLevel && next.role === "REPRESENTATIVE") {
+    next.representativeLevel = normalizeRepresentativeLevel(
+      draft.representativeLevel,
+      defaultRepresentativeLevelForRoleReturn(next.role, existing)
+    );
+  }
+  if (next.role !== "REPRESENTATIVE" && !existing) {
+    next.representativeLevel = defaultRepresentativeLevelForNewUser(next.role);
   }
 
   if (actor.role === "ADMIN") next.country = actor.country;

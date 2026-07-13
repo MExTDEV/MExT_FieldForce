@@ -109,6 +109,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const item = manageNav.find((candidate) => candidate.section === section.section);
     return item ? [{ ...section, icon: item.icon }] : [];
   });
+  const settingsChildManagementNav = visibleManagementNav.filter((item) =>
+    item.section === "rollen" || item.section === "modules"
+  );
+  const topLevelManagementNav = visibleManagementNav.filter((item) =>
+    item.section !== "rollen" && item.section !== "modules"
+  );
+  const groupedManagementNav = buildGroupedManagementNav(
+    topLevelManagementNav,
+    settingsChildManagementNav
+  );
   const activeModuleNav = appModuleRegistry
     .filter((module) => isModuleEnabled(module.code) && canSeeModuleNav(user, module.code))
     .map((module) => ({
@@ -191,20 +201,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
         ))}
-        {visibleManagementNav.length > 0 && (
+        {groupedManagementNav.length > 0 && (
           <>
             {!collapsed && <p className="px-3 pb-1 pt-5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Beheer</p>}
-            {visibleManagementNav.map((item) => (
-              <NavItem
-                key={item.href}
-                href={item.href}
-                icon={item.icon}
-                label={translate(language, item.navKey as TranslationKey)}
-                active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
-                collapsed={collapsed}
-                onClick={() => setMobileOpen(false)}
-              />
-            ))}
+            {groupedManagementNav.map((item) => {
+              const isSettingsParent = item.section === "instellingen";
+              const settingsChildActive = settingsChildManagementNav.some((child) =>
+                pathname === child.href || pathname.startsWith(`${child.href}/`)
+              );
+              return (
+                <div key={item.href}>
+                  <NavItem
+                    href={item.href}
+                    icon={item.icon}
+                    label={translate(language, item.navKey as TranslationKey)}
+                    active={
+                      pathname === item.href ||
+                      pathname.startsWith(`${item.href}/`) ||
+                      (isSettingsParent && settingsChildActive)
+                    }
+                    collapsed={collapsed}
+                    onClick={() => setMobileOpen(false)}
+                  />
+                  {isSettingsParent && settingsChildManagementNav.length > 0 && !collapsed && (
+                    <div className="mt-1 space-y-1 pl-6">
+                      {settingsChildManagementNav.map((child) => (
+                        <SubNavItem
+                          key={child.href}
+                          href={child.href}
+                          icon={child.icon}
+                          label={translate(language, child.navKey as TranslationKey)}
+                          active={pathname === child.href || pathname.startsWith(`${child.href}/`)}
+                          onClick={() => setMobileOpen(false)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
       </nav>
@@ -696,3 +731,59 @@ function NavItem({
   );
 }
 
+function SubNavItem({
+  href,
+  label,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition ${
+        active ? "bg-white/95 text-brand-800 shadow-sm" : "text-blue-100/85 hover:bg-white/10 hover:text-white"
+      }`}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+function buildGroupedManagementNav<
+  T extends {
+    section: string;
+    href: string;
+    navKey: string;
+    icon: React.ComponentType<{ className?: string }>;
+  },
+>(topLevel: T[], settingsChildren: T[]) {
+  if (
+    settingsChildren.length === 0 ||
+    topLevel.some((item) => item.section === "instellingen")
+  ) {
+    return topLevel;
+  }
+  const settingsParent = {
+    ...settingsChildren[0],
+    section: "instellingen",
+    href: settingsChildren[0].href,
+    navKey: "nav.settings",
+    icon: Settings,
+  } as T;
+  const logIndex = topLevel.findIndex((item) => item.section === "log");
+  if (logIndex < 0) return [...topLevel, settingsParent];
+  return [
+    ...topLevel.slice(0, logIndex),
+    settingsParent,
+    ...topLevel.slice(logIndex),
+  ];
+}

@@ -47,6 +47,7 @@ export function developmentManagedUsers(): ManagedUser[] {
       teamId: representative.teamId,
       teamName: representative.team,
       role,
+      representativeLevel: representative.representativeLevel ?? "STARTER",
       teamSupervisor: false,
       branchNumber: `${representative.country}-${String(
         Number(representative.id.replace("rep-", "")) + 100
@@ -73,6 +74,7 @@ export function developmentManagedUsers(): ManagedUser[] {
         teamId: account.teamId ?? "",
         teamName: teamName(account.teamId),
         role: account.role,
+        representativeLevel: "STARTER",
         teamSupervisor: account.role === "SALES_LEADER",
         branchNumber: `${account.country}-001`,
         active: true,

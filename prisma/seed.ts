@@ -22,6 +22,7 @@ import {
   kpiTargetTypeSeed,
   kpiTypeSeed,
 } from "../lib/kpi-settings";
+import { listPermissionOverrides } from "../lib/role-permissions";
 let developmentManagedUsers: typeof import("../lib/development-seed").developmentManagedUsers;
 let developmentTeamOptions: typeof import("../lib/development-seed").developmentTeamOptions;
 let developmentRepresentatives: typeof import("../lib/mock-data").representatives;
@@ -641,7 +642,7 @@ async function seedPermissions() {
             permissionId: permission.id,
           },
         },
-        update: { enabled: Boolean(enabled) },
+        update: {},
         create: {
           role: role as Role,
           permissionId: permission.id,
@@ -652,6 +653,8 @@ async function seedPermissions() {
   }
 }
 
+// Legacy prototype seed retained for reference; dev-demo now uses generated scoped data.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function seedPrototypeUsers() {
   const managedUsers = developmentManagedUsers();
   for (const profile of managedUsers) {
@@ -754,8 +757,12 @@ async function seedPrototypeUsers() {
       });
     }
 
-    for (const [permissionKey, enabled] of Object.entries(profile.permissions)) {
-      const permission = permissionByKey.get(permissionKey);
+    const permissionOverrides = listPermissionOverrides(
+      profile.permissions,
+      roleTemplates[profile.role].permissions
+    );
+    for (const { key, enabled } of permissionOverrides) {
+      const permission = permissionByKey.get(key);
       if (!permission) continue;
       await prisma.userPermission.upsert({
         where: {

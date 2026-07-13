@@ -32,6 +32,7 @@ export async function GET(request: Request) {
         lastName: user.lastName,
         initials: `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`,
         role: user.role,
+        representativeLevel: user.representativeLevel,
         country: user.country,
         teamId: user.teamId ?? "",
         team: user.team?.name ?? "Geen team",

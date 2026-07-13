@@ -27,7 +27,14 @@ import type {
 import type { Country } from "@/lib/types";
 import { dedupeById, dedupeWorkflowState } from "@/lib/coaching/visibility";
 import { toPriority as toActionDefinitionPriority } from "@/lib/server/action-definitions";
-import { sanitizeRichText } from "@/lib/rich-text";
+import {
+  ensureCriterionSnapshotsForIntervention,
+  listCriterionSnapshotsForInterventions,
+  sortApplicableCriteria,
+  type CriterionSnapshotRow,
+} from "@/lib/server/criterion-scopes";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
+import { loadContactMomentPhotosByInterventionIds } from "@/lib/server/contact-moment-photos";
 
 type JsonArray = string[];
 
@@ -69,6 +76,7 @@ export async function loadWorkflowStateFromDatabase(
     prisma.helpRequest.findMany({
       include: {
         representative: { include: { team: { select: { id: true, name: true } } } },
+        answers: { orderBy: { createdAt: "asc" } },
       },
       orderBy: { updatedAt: "desc" },
     }),
@@ -78,7 +86,10 @@ export async function loadWorkflowStateFromDatabase(
   const coachingIds = interventions
     .filter((item) => item.type === "BEGELEIDING")
     .map((item) => item.id);
-  const [auditLogs, changeLogs] = coachingIds.length
+  const contactPhotoByIntervention = await loadContactMomentPhotosByInterventionIds(
+    interventions.filter((item) => item.type === "CONTACTMOMENT").map((item) => item.id)
+  );
+  const [auditLogs, changeLogs, criterionSnapshots] = coachingIds.length
     ? await Promise.all([prisma.auditLog.findMany({
         where: { entityType: "Intervention", entityId: { in: coachingIds } },
         include: { user: { select: { firstName: true, lastName: true } } },
@@ -87,9 +98,15 @@ export async function loadWorkflowStateFromDatabase(
         where: { interventionId: { in: coachingIds } },
         include: { user: { select: { firstName: true, lastName: true } } },
         orderBy: { createdAt: "desc" },
-      })])
-    : [[], []];
+      }), listCriterionSnapshotsForInterventions(coachingIds)])
+    : [[], [], []];
   const auditByIntervention = new Map<string, CoachingIntervention["auditTrail"]>();
+  const snapshotsByIntervention = new Map<string, CriterionSnapshotRow[]>();
+  for (const snapshot of criterionSnapshots) {
+    const current = snapshotsByIntervention.get(snapshot.interventionId) ?? [];
+    current.push(snapshot);
+    snapshotsByIntervention.set(snapshot.interventionId, current);
+  }
   for (const audit of auditLogs) {
     const entries = auditByIntervention.get(audit.entityId) ?? [];
     entries.push({
@@ -115,6 +132,13 @@ export async function loadWorkflowStateFromDatabase(
     auditByIntervention.set(change.interventionId, entries);
   }
   for (const item of interventions) {
+    const snapshots = snapshotsByIntervention.get(item.id) ?? [];
+    const storedGeneralScores = item.scores
+      .filter((score) => score.category === "Dossier:Algemeen")
+      .map(toSimpleScore);
+    const storedPersonalityScores = item.scores
+      .filter((score) => score.category === "Dossier:Persoonlijkheid")
+      .map(toSimpleScore);
     const representativeId = publicRepresentativeId(item.representative);
     if (item.type === "BEGELEIDING") {
       state.interventions.push({
@@ -141,6 +165,27 @@ export async function loadWorkflowStateFromDatabase(
         startTime: item.startTime ?? undefined,
         endTime: item.endTime ?? undefined,
         notifyRepresentative: item.notifyRepresentative,
+        notifyCoachedRepresentative: item.notifyCoachedRepresentative,
+        notifyCoachedTeamLeaders: item.notifyCoachedTeamLeaders,
+        notifyExecutorTeamLeaders: item.notifyExecutorTeamLeaders,
+        peerCoach: item.peerCoach,
+        teamDeviation: item.teamDeviation,
+        countryDeviation: item.countryDeviation,
+        deviationReason: item.deviationReason ?? undefined,
+        deviationRecordedById: item.deviationRecordedById ?? undefined,
+        deviationRecordedAt: item.deviationRecordedAt?.toISOString(),
+        actualStartedAt: item.actualStartedAt?.toISOString(),
+        executionDeadlineAt: item.executionDeadlineAt?.toISOString(),
+        approvalDeadlineAt: item.approvalDeadlineAt?.toISOString(),
+        finalApprovalDeadlineAt: item.finalApprovalDeadlineAt?.toISOString(),
+        performerAccessExpiresAt: item.performerAccessExpiresAt?.toISOString(),
+        lateCompletion: item.lateCompletion,
+        lateCompletionReason: item.lateCompletionReason ?? undefined,
+        administrativelyClosedAt: item.administrativelyClosedAt?.toISOString(),
+        administrativelyClosedById: item.administrativelyClosedById ?? undefined,
+        administrativeCloseReason: item.administrativeCloseReason ?? undefined,
+        copiedFromInterventionId: item.copiedFromInterventionId ?? undefined,
+        historicAccessSettings: item.historicAccessSettings ?? undefined,
         deletedAt: item.deletedAt?.toISOString(),
         outlookEventId: item.outlookEventId ?? undefined,
         outlookICalUId: item.outlookICalUId ?? undefined,
@@ -162,8 +207,12 @@ export async function loadWorkflowStateFromDatabase(
               sector: item.coachingDetail.sector ?? "",
               groupAttentionPoints: parseJsonArray(item.coachingDetail.groupAttentionPoints),
               individualAttentionPoint: item.coachingDetail.individualAttentionPoint ?? "",
-              generalScores: item.scores.filter((score) => score.category === "Dossier:Algemeen").map(toSimpleScore),
-              personalityScores: item.scores.filter((score) => score.category === "Dossier:Persoonlijkheid").map(toSimpleScore),
+              generalScores: storedGeneralScores.length
+                ? storedGeneralScores
+                : snapshotsToSimpleScores(snapshots, "GENERAL_EVALUATION"),
+              personalityScores: storedPersonalityScores.length
+                ? storedPersonalityScores
+                : snapshotsToSimpleScores(snapshots, "PERSONALITY"),
             }
           : undefined,
         appointments: dedupeById(item.coachingDetail?.appointments ?? []).map((appointment) => ({
@@ -206,6 +255,19 @@ export async function loadWorkflowStateFromDatabase(
         country: item.country as Country,
         teamId: item.teamId ?? item.representative.teamId ?? "",
         status: fromContactStatus(item.status),
+        plannedDate: dateOnly(item.plannedAt),
+        startTime: item.startTime ?? undefined,
+        endTime: item.endTime ?? undefined,
+        notifyRepresentative: item.notifyRepresentative,
+        subject: item.contactMoment.subject ?? undefined,
+        contactType: item.contactMoment.contactType ?? undefined,
+        location: item.contactMoment.location ?? undefined,
+        internalNotes: item.contactMoment.internalNotes ?? item.description ?? undefined,
+        outlookEventId: item.outlookEventId ?? undefined,
+        outlookICalUId: item.outlookICalUId ?? undefined,
+        outlookSyncStatus: item.outlookSyncStatus,
+        lastSyncedAt: item.lastSyncedAt?.toISOString(),
+        syncError: item.syncError ?? undefined,
         reason: item.contactMoment.reason,
         reportedProblems: item.contactMoment.reportedProblems ?? "",
         leaderThemes: parseJsonArray(item.contactMoment.leaderThemes),
@@ -213,8 +275,17 @@ export async function loadWorkflowStateFromDatabase(
         representativeThemes: parseJsonArray(item.contactMoment.representativeThemes),
         discussedThemes: parseJsonArray(item.contactMoment.discussedThemes),
         conclusion: item.contactMoment.conclusion ?? "",
+        reportHtml: item.contactMoment.reportHtml ?? item.contactMoment.conclusion ?? "",
         actionPoints: item.actionPoints.map(toWorkflowActionPoint),
+        finalSnapshot: item.contactMoment.finalSnapshot ?? undefined,
+        sharedAt: item.contactMoment.sharedAt?.toISOString(),
+        sharedById: item.contactMoment.sharedById ?? undefined,
+        closedReason: item.contactMoment.closedReason ?? undefined,
+        closedAt: item.contactMoment.closedAt?.toISOString(),
+        closedById: item.contactMoment.closedById ?? undefined,
+        previousStatus: item.contactMoment.previousStatus ? fromContactStatus(item.contactMoment.previousStatus) : undefined,
         sourceHelpRequestId: item.contactMoment.sourceHelpRequestId ?? undefined,
+        photos: contactPhotoByIntervention.get(item.id) ?? [],
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       });
@@ -302,14 +373,30 @@ export async function loadWorkflowStateFromDatabase(
     id: item.id,
     requesterId: item.requesterId,
     representativeId: publicRepresentativeId(item.representative),
+    responsibleUserId: item.responsibleUserId ?? undefined,
     country: item.representative.country as Country,
     teamId: item.representative.teamId ?? "",
     subject: item.subject,
+    descriptionHtml: item.descriptionHtml ?? item.explanation ?? item.difficulty,
+    descriptionText: item.descriptionText ?? item.explanation ?? item.difficulty,
     difficulty: item.difficulty,
     desiredResult: item.desiredResult,
     urgency: item.urgency === "HIGH" ? "hoog" : item.urgency === "LOW" ? "laag" : "normaal",
     explanation: item.explanation ?? "",
     status: fromHelpStatus(item.status),
+    firstHandledAt: item.firstHandledAt?.toISOString(),
+    firstHandledByUserId: item.firstHandledByUserId ?? undefined,
+    withdrawnAt: item.withdrawnAt?.toISOString(),
+    withdrawnByUserId: item.withdrawnByUserId ?? undefined,
+    answers: item.answers.map((answer) => ({
+      id: answer.id,
+      helpRequestId: answer.helpRequestId,
+      authorId: answer.authorId,
+      bodyHtml: answer.bodyHtml,
+      bodyText: answer.bodyText,
+      closesRequest: answer.closesRequest,
+      createdAt: answer.createdAt.toISOString(),
+    })),
     followUpType: item.followUpType ? fromFollowUpType(item.followUpType) : undefined,
     linkedInterventionId: item.linkedInterventionId ?? item.interventionId ?? undefined,
     createdAt: item.createdAt.toISOString(),
@@ -368,6 +455,7 @@ async function upsertCoaching(tx: Transaction, item: CoachingIntervention) {
       syncError: null,
     },
   });
+  await ensureCriterionSnapshotsForIntervention(tx, item.id, representative.id);
   await replaceInterventionFocuses(tx, item.id, item.focusNames);
   await replaceScores(tx, item.id, item.scores, item.dossier);
   await upsertCoachingDetail(tx, item.id, item);
@@ -434,6 +522,15 @@ async function syncCoachingActions(tx: Transaction, item: CoachingIntervention, 
       description: action.description ?? "", tipsAndTricks: sanitizeRichText(action.tipsAndTricks ?? ""),
       targetValue: action.targetValue, achievedScore: action.achievedScore,
       priority: toActionDefinitionPriority(action.priority ?? "normaal"), isNew: Boolean(action.isNew),
+      reviewStatus: toCoachingActionReviewStatus(action.reviewStatus),
+      originalTitle: action.originalTitle,
+      originalDescription: action.originalDescription,
+      originalTipsAndTricks: action.originalTipsAndTricks,
+      rejectionReason: action.rejectionReason,
+      reviewComment: action.reviewComment,
+      reviewedById: action.reviewedById,
+      reviewedAt: dateFromString(action.reviewedAt),
+      activatedAt: dateFromString(action.activatedAt),
     } });
   }
 }
@@ -444,29 +541,57 @@ async function upsertContactMoment(tx: Transaction, item: ContactMoment) {
   await tx.intervention.upsert({
     where: { id: item.id },
     create: data,
-    update: interventionUpdateData(data),
+    update: {
+      ...interventionUpdateData(data),
+      outlookSyncStatus: "NOT_SYNCED",
+      syncError: null,
+    },
   });
   await tx.contactMomentDetail.upsert({
     where: { interventionId: item.id },
     create: {
       interventionId: item.id,
       reason: item.reason,
+      subject: item.subject,
+      contactType: item.contactType,
+      location: item.location,
+      internalNotes: item.internalNotes,
       reportedProblems: item.reportedProblems,
       leaderThemes: JSON.stringify(item.leaderThemes),
       representativeKpis: JSON.stringify(item.representativeKpis),
       representativeThemes: JSON.stringify(item.representativeThemes),
       discussedThemes: JSON.stringify(item.discussedThemes),
       conclusion: item.conclusion,
+      reportHtml: sanitizeRichText(item.reportHtml ?? item.conclusion ?? ""),
+      finalSnapshot: item.finalSnapshot,
+      sharedAt: dateFromString(item.sharedAt),
+      sharedById: item.sharedById,
+      closedReason: item.closedReason,
+      closedAt: dateFromString(item.closedAt),
+      closedById: item.closedById,
+      previousStatus: item.previousStatus ? toInterventionStatus(item.previousStatus) : undefined,
       sourceHelpRequestId: item.sourceHelpRequestId,
     },
     update: {
       reason: item.reason,
+      subject: item.subject,
+      contactType: item.contactType,
+      location: item.location,
+      internalNotes: item.internalNotes,
       reportedProblems: item.reportedProblems,
       leaderThemes: JSON.stringify(item.leaderThemes),
       representativeKpis: JSON.stringify(item.representativeKpis),
       representativeThemes: JSON.stringify(item.representativeThemes),
       discussedThemes: JSON.stringify(item.discussedThemes),
       conclusion: item.conclusion,
+      reportHtml: sanitizeRichText(item.reportHtml ?? item.conclusion ?? ""),
+      finalSnapshot: item.finalSnapshot,
+      sharedAt: dateFromString(item.sharedAt),
+      sharedById: item.sharedById,
+      closedReason: item.closedReason,
+      closedAt: dateFromString(item.closedAt),
+      closedById: item.closedById,
+      previousStatus: item.previousStatus ? toInterventionStatus(item.previousStatus) : undefined,
       sourceHelpRequestId: item.sourceHelpRequestId,
     },
   });
@@ -475,33 +600,65 @@ async function upsertContactMoment(tx: Transaction, item: ContactMoment) {
 
 async function upsertHelpRequest(tx: Transaction, item: HelpRequest) {
   const representative = await findRepresentativeUser(tx, item.representativeId);
+  const responsibleUserId = item.responsibleUserId || await resolveHelpRequestResponsibleUserId(tx, representative.id, representative.teamId, representative.country as Country);
+  const descriptionHtml = sanitizeRichText(item.descriptionHtml ?? item.explanation ?? item.difficulty);
+  const descriptionText = item.descriptionText ?? richTextToPlainText(descriptionHtml);
   await tx.helpRequest.upsert({
     where: { id: item.id },
     create: {
       id: item.id,
       requesterId: item.requesterId,
       representativeId: representative.id,
+      responsibleUserId,
       subject: item.subject,
+      descriptionHtml,
+      descriptionText,
       difficulty: item.difficulty,
       desiredResult: item.desiredResult,
       explanation: item.explanation,
       urgency: toPriority(item.urgency),
       status: toHelpStatus(item.status),
+      firstHandledAt: dateFromString(item.firstHandledAt),
+      firstHandledByUserId: item.firstHandledByUserId,
+      withdrawnAt: dateFromString(item.withdrawnAt),
+      withdrawnByUserId: item.withdrawnByUserId,
       followUpType: item.followUpType ? toFollowUpType(item.followUpType) : undefined,
       linkedInterventionId: item.linkedInterventionId,
     },
     update: {
       representativeId: representative.id,
+      responsibleUserId,
       subject: item.subject,
+      descriptionHtml,
+      descriptionText,
       difficulty: item.difficulty,
       desiredResult: item.desiredResult,
       explanation: item.explanation,
       urgency: toPriority(item.urgency),
       status: toHelpStatus(item.status),
+      firstHandledAt: dateFromString(item.firstHandledAt),
+      firstHandledByUserId: item.firstHandledByUserId,
+      withdrawnAt: dateFromString(item.withdrawnAt),
+      withdrawnByUserId: item.withdrawnByUserId,
       followUpType: item.followUpType ? toFollowUpType(item.followUpType) : undefined,
       linkedInterventionId: item.linkedInterventionId,
     },
   });
+  for (const answer of item.answers ?? []) {
+    await tx.helpRequestAnswer.upsert({
+      where: { id: answer.id },
+      create: {
+        id: answer.id,
+        helpRequestId: item.id,
+        authorId: answer.authorId,
+        bodyHtml: sanitizeRichText(answer.bodyHtml),
+        bodyText: answer.bodyText || richTextToPlainText(answer.bodyHtml),
+        closesRequest: answer.closesRequest,
+        createdAt: dateFromString(answer.createdAt),
+      },
+      update: {},
+    });
+  }
 }
 
 async function upsertRetraining(tx: Transaction, item: Retraining) {
@@ -832,6 +989,29 @@ function interventionData(
     startTime: "startTime" in item ? item.startTime : undefined,
     endTime: "endTime" in item ? item.endTime : undefined,
     notifyRepresentative: "notifyRepresentative" in item ? item.notifyRepresentative ?? false : false,
+    notifyCoachedRepresentative: "notifyCoachedRepresentative" in item ? item.notifyCoachedRepresentative ?? false : false,
+    notifyCoachedTeamLeaders: "notifyCoachedTeamLeaders" in item ? item.notifyCoachedTeamLeaders ?? false : false,
+    notifyExecutorTeamLeaders: "notifyExecutorTeamLeaders" in item ? item.notifyExecutorTeamLeaders ?? false : false,
+    notifyCoachedLeaderIntent: "notifyCoachedTeamLeaders" in item ? item.notifyCoachedTeamLeaders ?? false : false,
+    notifyExecutorLeaderIntent: "notifyExecutorTeamLeaders" in item ? item.notifyExecutorTeamLeaders ?? false : false,
+    peerCoach: "peerCoach" in item ? item.peerCoach ?? false : false,
+    teamDeviation: "teamDeviation" in item ? item.teamDeviation ?? false : false,
+    countryDeviation: "countryDeviation" in item ? item.countryDeviation ?? false : false,
+    deviationReason: "deviationReason" in item ? item.deviationReason || undefined : undefined,
+    deviationRecordedById: "deviationRecordedById" in item ? item.deviationRecordedById : undefined,
+    deviationRecordedAt: "deviationRecordedAt" in item ? dateFromString(item.deviationRecordedAt) : undefined,
+    actualStartedAt: "actualStartedAt" in item ? dateFromString(item.actualStartedAt) : undefined,
+    executionDeadlineAt: "executionDeadlineAt" in item ? dateFromString(item.executionDeadlineAt) : undefined,
+    approvalDeadlineAt: "approvalDeadlineAt" in item ? dateFromString(item.approvalDeadlineAt) : undefined,
+    finalApprovalDeadlineAt: "finalApprovalDeadlineAt" in item ? dateFromString(item.finalApprovalDeadlineAt) : undefined,
+    performerAccessExpiresAt: "performerAccessExpiresAt" in item ? dateFromString(item.performerAccessExpiresAt) : undefined,
+    lateCompletion: "lateCompletion" in item ? item.lateCompletion ?? false : false,
+    lateCompletionReason: "lateCompletionReason" in item ? item.lateCompletionReason || undefined : undefined,
+    administrativelyClosedAt: "administrativelyClosedAt" in item ? dateFromString(item.administrativelyClosedAt) : undefined,
+    administrativelyClosedById: "administrativelyClosedById" in item ? item.administrativelyClosedById : undefined,
+    administrativeCloseReason: "administrativeCloseReason" in item ? item.administrativeCloseReason || undefined : undefined,
+    copiedFromInterventionId: "copiedFromInterventionId" in item ? item.copiedFromInterventionId : undefined,
+    historicAccessSettings: "historicAccessSettings" in item ? item.historicAccessSettings : undefined,
     completedAt: "completedAt" in item ? dateFromString(item.completedAt) : undefined,
     finalizedAt: "finalizedAt" in item ? dateFromString(item.finalizedAt) : undefined,
     sentForApprovalAt: "sentForApprovalAt" in item ? dateFromString(item.sentForApprovalAt) : undefined,
@@ -861,6 +1041,37 @@ async function findRepresentativeUser(tx: Transaction, representativeId?: string
   });
   if (!user) throw new Error("Vertegenwoordiger niet gevonden.");
   return user;
+}
+
+async function resolveHelpRequestResponsibleUserId(
+  tx: Transaction,
+  representativeUserId: string,
+  teamId: string | null,
+  country: Country
+) {
+  if (teamId) {
+    const team = await tx.team.findUnique({
+      where: { id: teamId },
+      select: { primaryLeaderId: true },
+    });
+    if (team?.primaryLeaderId) return team.primaryLeaderId;
+    const linkedLeader = await tx.teamLeader.findFirst({
+      where: { teamId, type: "PRIMARY", user: { active: true } },
+      select: { userId: true },
+    });
+    if (linkedLeader?.userId) return linkedLeader.userId;
+  }
+  const fallback = await tx.user.findFirst({
+    where: {
+      active: true,
+      country,
+      role: { in: ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "GROUP_MANAGER", "SUPER_ADMIN"] },
+      id: { not: representativeUserId },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return fallback?.id;
 }
 
 function publicRepresentativeId(user: { id: string; representativeId: string | null }) {
@@ -928,7 +1139,9 @@ function parseChangeLogValue(value: string | null) {
 function toCoachingWorkflowAction(item: {
   id: string; actionDefinitionId: string | null; title: string; description: string; tipsAndTricks: string;
   targetValue: { toString(): string } | null; achievedScore: { toString(): string } | null;
-  priority: DbPriority; isNew: boolean;
+  priority: DbPriority; isNew: boolean; reviewStatus: string; originalTitle: string | null;
+  originalDescription: string | null; originalTipsAndTricks: string | null; rejectionReason: string | null;
+  reviewComment: string | null; reviewedById: string | null; reviewedAt: Date | null; activatedAt: Date | null;
 }): WorkflowActionPoint {
   return {
     id: item.id, definitionId: item.actionDefinitionId ?? undefined, title: item.title,
@@ -936,6 +1149,15 @@ function toCoachingWorkflowAction(item: {
     targetValue: item.targetValue === null ? undefined : Number(item.targetValue),
     achievedScore: item.achievedScore === null ? undefined : Number(item.achievedScore),
     type: "vaardigheid", due: "", status: "open", priority: fromPriority(item.priority), isNew: item.isNew,
+    reviewStatus: fromCoachingActionReviewStatus(item.reviewStatus),
+    originalTitle: item.originalTitle ?? undefined,
+    originalDescription: item.originalDescription ?? undefined,
+    originalTipsAndTricks: item.originalTipsAndTricks ?? undefined,
+    rejectionReason: item.rejectionReason ?? undefined,
+    reviewComment: item.reviewComment ?? undefined,
+    reviewedById: item.reviewedById ?? undefined,
+    reviewedAt: item.reviewedAt?.toISOString(),
+    activatedAt: item.activatedAt?.toISOString(),
   };
 }
 
@@ -984,6 +1206,19 @@ function toSimpleScore(item: {
   };
 }
 
+function snapshotsToSimpleScores(
+  snapshots: CriterionSnapshotRow[],
+  criterionType: "GENERAL_EVALUATION" | "PERSONALITY"
+): CoachingSimpleScore[] {
+  return sortApplicableCriteria(
+    snapshots.filter((snapshot) => snapshot.criterionType === criterionType)
+  ).map((snapshot) => ({
+    criterion: snapshot.title,
+    score: "nvt" as const,
+    comment: "",
+  }));
+}
+
 function toSimpleScoreValue(value: number | null, notApplicable: boolean): CoachingSimpleScore["score"] {
   if (notApplicable || value === null) return "nvt";
   if ([0, 1, 2, 3, 4, 5].includes(value)) return value as CoachingSimpleScore["score"];
@@ -1018,10 +1253,22 @@ function fromTrainingStatus(status: string) {
 }
 
 function toHelpStatus(status: HelpRequest["status"]) {
+  if (status === "open") return "OPEN" as DbHelpRequestStatus;
+  if (status === "begeleiding") return "BEGELEIDING" as DbHelpRequestStatus;
+  if (status === "contactmoment") return "CONTACTMOMENT" as DbHelpRequestStatus;
+  if (status === "retraining") return "RETRAINING" as DbHelpRequestStatus;
+  if (status === "salestraining") return "SALESTRAINING" as DbHelpRequestStatus;
+  if (status === "gesloten") return "GESLOTEN" as DbHelpRequestStatus;
+  if (status === "ingetrokken") return "INGETROKKEN" as DbHelpRequestStatus;
   return status.toUpperCase() as DbHelpRequestStatus;
 }
 
 function fromHelpStatus(status: string) {
+  if (status === "NIEUW") return "open";
+  if (status === "VERVOLGACTIE_GEPLAND") return "in_behandeling";
+  if (status === "AFGESLOTEN") return "gesloten";
+  if (status === "GEANNULEERD") return "ingetrokken";
+  if (status === "SALESTRAINING") return "salestraining";
   return status.toLowerCase() as HelpRequest["status"];
 }
 
@@ -1059,6 +1306,20 @@ function toActionStatus(status: WorkflowActionPoint["status"]) {
 
 function fromActionStatus(status: string) {
   return status.toLowerCase() as WorkflowActionPoint["status"];
+}
+
+function fromCoachingActionReviewStatus(status: string): NonNullable<WorkflowActionPoint["reviewStatus"]> {
+  if (status === "APPROVED") return "approved";
+  if (status === "REJECTED") return "rejected";
+  if (status === "ACTIVE") return "active";
+  return "proposed";
+}
+
+function toCoachingActionReviewStatus(status?: WorkflowActionPoint["reviewStatus"]) {
+  if (status === "approved") return "APPROVED";
+  if (status === "rejected") return "REJECTED";
+  if (status === "active") return "ACTIVE";
+  return "PROPOSED";
 }
 
 function toPriority(priority: string) {

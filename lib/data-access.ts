@@ -6,6 +6,7 @@ import type {
 } from "@/lib/types";
 import {
   dedupeWorkflowState,
+  visibleContactMoments,
   visibleCoachings,
 } from "@/lib/coaching/visibility";
 
@@ -124,6 +125,10 @@ export function getVisibleWorkflowState(
   const uniqueState = dedupeWorkflowState(state);
   const scope = getVisibleUserScope(currentUser, representatives);
   const interventions = visibleCoachings(currentUser, uniqueState.interventions);
+  const contactMoments = visibleContactMoments(currentUser, uniqueState.contactMoments).filter((item) =>
+    scope.representativeIds.has(item.representativeId)
+  );
+  const visibleContactIds = new Set(contactMoments.map((item) => item.id));
   const visibleInterventionIds = new Set(
     interventions.map((item) => item.id)
   );
@@ -139,12 +144,20 @@ export function getVisibleWorkflowState(
         scope.representativeIds.has(item.representativeId) &&
         visibleInterventionIds.has(item.interventionId)
     ),
-    contactMoments: uniqueState.contactMoments.filter((item) =>
-      scope.representativeIds.has(item.representativeId)
-    ),
-    helpRequests: uniqueState.helpRequests.filter((item) =>
-      scope.representativeIds.has(item.representativeId)
-    ),
+    contactMoments,
+    helpRequests: uniqueState.helpRequests
+      .filter((item) => scope.representativeIds.has(item.representativeId))
+      .map((item) => {
+        if (
+          currentUser.role === "REPRESENTATIVE" &&
+          item.followUpType === "contactmoment" &&
+          item.linkedInterventionId &&
+          !visibleContactIds.has(item.linkedInterventionId)
+        ) {
+          return { ...item, status: "in_behandeling", followUpType: undefined, linkedInterventionId: undefined };
+        }
+        return item;
+      }),
     linkedInterventions: uniqueState.linkedInterventions.filter((item) =>
       scope.representativeIds.has(item.representativeId)
     ),

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/session-provider";
 import {
   emptyPerformanceDataset,
@@ -22,7 +22,7 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadPerformance() {
+  const loadPerformance = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -45,7 +45,7 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
     } finally {
       setLoading(false);
     }
-  }
+  }, [user.id]);
 
   useEffect(() => {
     if (sessionLoading || !user.id) {
@@ -63,7 +63,7 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
     return () => {
       active = false;
     };
-  }, [sessionLoading, user.id]);
+  }, [loadPerformance, sessionLoading, user.id]);
 
   const value = useMemo(
     () => ({
@@ -72,7 +72,7 @@ export function PerformanceProvider({ children }: { children: React.ReactNode })
       error,
       refresh: loadPerformance,
     }),
-    [dataset, error, loading]
+    [dataset, error, loadPerformance, loading]
   );
 
   return (

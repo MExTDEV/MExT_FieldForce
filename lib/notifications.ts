@@ -5,10 +5,29 @@ export const notificationRefreshEventName = "fieldforce:notifications-refresh";
 
 export type AppNotificationType =
   | "COACHING_APPROVAL_REQUEST"
+  | "HELP_REQUEST_CREATED"
+  | "HELP_REQUEST_ANSWERED"
+  | "HELP_REQUEST_CLOSED"
+  | "HELP_REQUEST_FOLLOW_UP"
+  | "CONTACT_MOMENT_PLANNED"
+  | "CONTACT_MOMENT_UPDATED"
+  | "CONTACT_MOMENT_SHARED"
+  | "CONTACT_MOMENT_CANCELLED"
+  | "CONTACT_MOMENT_NOT_EXECUTED"
+  | "PEER_COACHING_ASSIGNED"
+  | "PEER_COACHING_LATE"
+  | "PEER_COACHING_ACTION_REVIEW"
+  | "PEER_COACHING_FINAL_APPROVED"
+  | "PEER_COACHING_FINAL_REJECTED"
   | "TODO_ASSIGNED"
   | "MESSAGE_RECEIVED";
 
-export type AppNotificationEntityType = "coaching" | "todo" | "message";
+export type AppNotificationEntityType =
+  | "coaching"
+  | "helpRequest"
+  | "contactMoment"
+  | "todo"
+  | "message";
 
 export type AppNotification = {
   id: string;

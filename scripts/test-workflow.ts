@@ -130,7 +130,7 @@ const help = createHelpRequest(contactClosed.state, {
   urgency: "hoog",
   explanation: "Voor de volgende klantafspraak.",
 }, representatives);
-assert.equal(help.helpRequest.status, "nieuw");
+assert.equal(help.helpRequest.status, "open");
 
 const helpPlanned = planHelpRequestFollowUp(
   help.state,
@@ -139,7 +139,7 @@ const helpPlanned = planHelpRequestFollowUp(
   "contactmoment",
   representatives
 );
-assert.equal(helpPlanned.helpRequests[0].status, "vervolgactie_gepland");
+assert.equal(helpPlanned.helpRequests[0].status, "contactmoment");
 assert.equal(helpPlanned.contactMoments.length, 2);
 assert.equal(helpPlanned.contactMoments[1].sourceHelpRequestId, help.helpRequest.id);
 

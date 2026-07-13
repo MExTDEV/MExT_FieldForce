@@ -47,6 +47,7 @@ import { PerformanceEvolution } from "@/components/performance-evolution";
 import { UsersManagementPage } from "@/components/user-management";
 import { PlanningCalendar } from "@/components/planning-calendar";
 import { ConfigurationManagement } from "@/components/configuration-management";
+import { SettingsManagement } from "@/components/settings-management";
 import { SessionFailure } from "@/components/session-state";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { branding } from "@/config/branding";
@@ -121,6 +122,12 @@ import {
 } from "@/lib/coaching/visibility";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
+  hasHtmlMarkup,
+  isBlankRichText,
+  richTextToPlainText,
+  sanitizeRichText,
+} from "@/lib/rich-text";
+import {
   actionPointScopeLabel,
   canAccessActionPointsOverview,
   canCreateActionPointDefinition,
@@ -134,6 +141,20 @@ import {
   type ActionPointScopeGroup,
   type ActionPointUserGroup,
 } from "@/lib/action-points/visibility";
+
+const newHelpRequestStatuses = new Set(["open", "nieuw"]);
+const untreatedHelpRequestStatuses = new Set(["open", "nieuw", "in_behandeling"]);
+const handledHelpRequestStatuses = new Set([
+  "begeleiding",
+  "contactmoment",
+  "retraining",
+  "salestraining",
+  "gesloten",
+  "ingetrokken",
+  "afgesloten",
+  "geannuleerd",
+  "vervolgactie_gepland",
+]);
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user, loading: sessionLoading, error: sessionError } = useSession();
@@ -367,8 +388,8 @@ function Dashboard() {
     actionPointsEnabled && { label: "Open actiepunten", value: openActionCount, icon: Target, tone: "bg-amber-50 text-amber-700", href: "/actiepunten" },
     contactsEnabled && { label: "Open contactmomenten", value: scopedContacts.filter((item) => item.status !== "afgesloten").length, icon: Phone, tone: "bg-sky-50 text-sky-700", href: "/contactmomenten" },
     contactsEnabled && { label: "Wachtend op VT-input", value: scopedContacts.filter((item) => item.status === "wacht_op_vt_input").length, icon: Contact, tone: "bg-violet-50 text-violet-700", href: "/contactmomenten" },
-    helpEnabled && { label: "Nieuwe hulpaanvragen", value: scopedHelpRequests.filter((item) => item.status === "nieuw").length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/hulpaanvragen" },
-    helpEnabled && { label: "Zonder vervolgactie", value: scopedHelpRequests.filter((item) => !item.followUpType && !["afgesloten", "geannuleerd"].includes(item.status)).length, icon: Clock3, tone: "bg-amber-50 text-amber-700", href: "/hulpaanvragen" },
+    helpEnabled && { label: "Nieuwe hulpaanvragen", value: scopedHelpRequests.filter((item) => newHelpRequestStatuses.has(item.status)).length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/hulpaanvragen" },
+    helpEnabled && { label: "Zonder vervolgactie", value: scopedHelpRequests.filter((item) => !item.followUpType && untreatedHelpRequestStatuses.has(item.status) && !handledHelpRequestStatuses.has(item.status)).length, icon: Clock3, tone: "bg-amber-50 text-amber-700", href: "/hulpaanvragen" },
     coachingEnabled && { label: "Verslagen wachtend op akkoord", value: approvalCount, icon: ClipboardCheck, tone: "bg-fuchsia-50 text-fuchsia-700", href: user.role === "REPRESENTATIVE" && actionPointsEnabled ? "/mijn-verslagen" : "/begeleidingen" },
     retrainingEnabled && { label: "Geplande retrainingen", value: scopedRetrainings.filter((item) => item.status === "gepland").length, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700", href: "/retrainingen" },
     salesTrainingEnabled && { label: "Geplande sales trainingen", value: scopedSalesTrainings.filter((item) => item.status === "gepland").length, icon: Sparkles, tone: "bg-cyan-50 text-cyan-700", href: "/sales-trainingen" },
@@ -1897,10 +1918,10 @@ function CompletedCoachingSummary({
   const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
   const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
   const generalRemarks = [
-    ...dossier.groupAttentionPoints.filter((item) => item.trim()).map((text, index) => ({ label: `Groepsaandachtspunt ${index + 1}`, text })),
-    ...(dossier.individualAttentionPoint.trim() ? [{ label: "Individueel aandachtspunt / conclusie", text: dossier.individualAttentionPoint }] : []),
-    ...mainScoreRows.filter((item) => item.comment.trim()).map((item) => ({ label: item.criterion, text: item.comment })),
-    ...workflowScoreRows.filter((item) => item.description?.trim()).map((item) => ({ label: `${item.focus} · ${item.criterion}`, text: item.description! })),
+    ...dossier.groupAttentionPoints.filter((item) => !isBlankRichText(item)).map((text, index) => ({ label: `Groepsaandachtspunt ${index + 1}`, text })),
+    ...(!isBlankRichText(dossier.individualAttentionPoint) ? [{ label: "Individueel aandachtspunt / conclusie", text: dossier.individualAttentionPoint }] : []),
+    ...mainScoreRows.filter((item) => !isBlankRichText(item.comment)).map((item) => ({ label: item.criterion, text: item.comment })),
+    ...workflowScoreRows.filter((item) => !isBlankRichText(item.description)).map((item) => ({ label: `${item.focus} · ${item.criterion}`, text: item.description! })),
   ];
   const latestAudit = [...(intervention.auditTrail ?? [])]
     .sort((left, right) => right.at.localeCompare(left.at))[0];
@@ -1985,9 +2006,8 @@ function CompletedCoachingSummary({
       <section id="opmerkingen" className="card scroll-mt-24 p-5">
         <h2 className="text-lg font-bold text-slate-950">Samenvatting en conclusie</h2>
         <div className="mt-4 space-y-3">
-          {generalRemarks.map((remark) => <div key={`${remark.label}:${remark.text}`} className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{remark.label}</p><p className="mt-1 text-sm leading-6 text-slate-700">{remark.text}</p></div>)}
-          {generalRemarks.length === 0 && <p className="text-sm text-slate-500">Geen opmerkingen ingevuld.</p>}
-          {!isRepresentative && intervention.internalNotes?.trim() && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Interne opmerking</p><p className="mt-1 text-sm leading-6 text-amber-900">{intervention.internalNotes}</p></div>}
+          {generalRemarks.map((remark) => <div key={`${remark.label}:${remark.text}`} className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{remark.label}</p><OptionalCoachingRemark value={remark.text} className="mt-1 text-sm leading-6 text-slate-700" /></div>)}
+          {!isRepresentative && !isBlankRichText(intervention.internalNotes) && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Interne opmerking</p><OptionalCoachingRemark value={intervention.internalNotes} className="mt-1 text-sm leading-6 text-amber-900" /></div>}
         </div>
       </section>
 
@@ -2066,13 +2086,22 @@ function AppointmentReadOnlyReport({ appointment }: { appointment: CoachingAppoi
       </dl>
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Resultaat / activiteit</p><p className="mt-2 text-sm leading-6 text-slate-700">{appointment.activity?.trim() || "Geen resultaat ingevuld."}</p></div>
-        <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Notities / opmerkingen</p><p className="mt-2 text-sm leading-6 text-slate-700">{appointment.remarks?.trim() || "Geen opmerkingen ingevuld."}</p></div>
+        <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Notities / opmerkingen</p><OptionalCoachingRemark value={appointment.remarks} className="mt-2 min-h-6 text-sm leading-6 text-slate-700" /></div>
       </div>
       <h4 className="mt-5 font-bold text-slate-900">Gedetailleerde scores</h4>
       <ReadOnlySimpleScoreTable scores={scores} splitCriterion />
       <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">Geen afzonderlijk aan deze afspraak gekoppelde actiepunten geregistreerd.</div>
     </div>
   );
+}
+
+function OptionalCoachingRemark({ value, className }: { value?: string | null; className: string }) {
+  if (isBlankRichText(value)) return <div className={className} aria-hidden="true" />;
+  const text = value ?? "";
+  if (hasHtmlMarkup(text)) {
+    return <div className={className} dangerouslySetInnerHTML={{ __html: sanitizeRichText(text) }} />;
+  }
+  return <p className={className}>{richTextToPlainText(text)}</p>;
 }
 
 function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: CoachingSimpleScore[]; splitCriterion?: boolean }) {
@@ -2085,7 +2114,7 @@ function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: 
         return <div key={score.criterion} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_90px_minmax(180px,1.2fr)] sm:items-center">
           <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{splitCriterion ? criterion.group : "Criterium"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{splitCriterion ? criterion.detail : score.criterion}</p></div>
           <div><p className="text-sm font-bold text-slate-950">{score.score === "nvt" ? "N.v.t." : `${score.score} / 5`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}</p>}</div>
-          <p className="text-sm leading-5 text-slate-600">{score.comment?.trim() || "Geen opmerking ingevuld."}</p>
+          <OptionalCoachingRemark value={score.comment} className="min-h-5 text-sm leading-5 text-slate-600" />
         </div>;
       })}
     </div>
@@ -2102,7 +2131,7 @@ function ReadOnlyWorkflowScoreTable({ scores }: { scores: WorkflowScore[] }) {
         return <div key={`${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_105px_minmax(180px,1.2fr)] sm:items-center">
           <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{score.focus || "Algemeen"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{score.criterion}</p></div>
           <div><p className="text-sm font-bold text-slate-950">{current === undefined ? "N.v.t." : `${current}%`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}%</p>}</div>
-          <p className="text-sm leading-5 text-slate-600">{score.description?.trim() || "Geen opmerking ingevuld."}</p>
+          <OptionalCoachingRemark value={score.description} className="min-h-5 text-sm leading-5 text-slate-600" />
         </div>;
       })}
     </div>
@@ -3642,6 +3671,8 @@ function priorityLabel(priority: ScopedActionDefinition["priority"]) {
   return "Normaal";
 }
 
+// Legacy action-point screen retained until the final action-point lifecycle is defined.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function LegacyActionPoints() {
   const { user } = useSession();
   const { visibleInterventions, visibleContactMoments, visibleRetrainings, visibleSalesTrainings } = useWorkflow();
@@ -3909,10 +3940,11 @@ function Management({ section }: { section?: string }) {
   if (resolvedSection === "gebruikers") return <UsersManagementPage />;
   if (resolvedSection === "modules") return <ModuleManagement />;
   if (resolvedSection === "log") return <ManagementLog />;
+  if (resolvedSection === "instellingen") return <SettingsManagement />;
   if (["teams", "rollen", "kpis", "kapstok"].includes(resolvedSection)) {
     return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok"} />;
   }
-  return <EmptyState title="Instellingen" description="Deze instellingen worden in een volgende beheeriteratie toegevoegd." />;
+  return <ManagementRedirect />;
 }
 
 function ManagementLog() {
@@ -3940,10 +3972,14 @@ function ManagementRedirect() {
   return null;
 }
 
+// Legacy management prototype retained while Beheer sections are consolidated.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SimpleManagementList({ items, icon: Icon }: { items: string[]; icon: typeof Users }) {
   return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((item, index) => <div key={item} className="card flex items-center gap-4 p-5"><div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div><div className="flex-1"><p className="font-semibold">{item}</p><p className="mt-1 text-xs text-slate-500">Actief · volgorde {index + 1}</p></div><button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><MoreHorizontal className="h-5 w-5" /></button></div>)}</div>;
 }
 
+// Legacy management prototype retained while Kapstok beheer lives in ConfigurationManagement.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function FrameworkManagement({ coachingFramework }: { coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"] }) {
   return <div className="space-y-4">{coachingFramework.map((focus) => <div key={focus.name} className="card overflow-hidden"><div className="flex items-center gap-3 p-5"><div className={`h-10 w-2 rounded-full ${focus.color}`} /><div className="flex-1"><p className="font-bold">{focus.name}</p><p className="text-sm text-slate-500">{focus.criteria.length} criteria</p></div><button className="btn-secondary">Bewerken</button></div><div className="grid gap-2 border-t border-slate-100 bg-slate-50 p-4 sm:grid-cols-2">{focus.criteria.map((criterion, index) => <div key={criterion} className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700"><span className="mr-2 font-bold text-slate-400">{index + 1}.</span>{criterion}</div>)}</div></div>)}</div>;
 }

@@ -11,6 +11,7 @@ import {
 } from "../lib/navigation-access";
 import { appModuleRegistry } from "../lib/modules";
 import { fieldForcePermissionGroups, roleTemplates } from "../lib/user-management";
+import { applyPermissionOverrides, listPermissionOverrides, resolveRolePermissions } from "../lib/role-permissions";
 import type {
   AppModuleConfig,
   FieldForcePermissionKey,
@@ -156,4 +157,20 @@ expect(
   "Een inactieve module mag geen directe link tonen."
 );
 
-console.log("Menu-rechten gecontroleerd voor role defaults, user overrides, Beheer > Log en module-permissies.");
+const storedDefaults = resolveRolePermissions("SALES_MANAGER", [
+  { role: "SALES_MANAGER", enabled: true, permission: { key: "reportingAll" } },
+]);
+expect(
+  storedDefaults.reportingAll,
+  "Opgeslagen rolrechten moeten de statische template overschrijven."
+);
+const effectivePermissions = applyPermissionOverrides(
+  storedDefaults,
+  [{ enabled: false, permission: { key: "reportingAll" } }]
+);
+expect(!effectivePermissions.reportingAll, "Een expliciete user override moet het rolrecht overschrijven.");
+const sparseOverrides = listPermissionOverrides(effectivePermissions, storedDefaults);
+expect(sparseOverrides.length === 1, "Alleen afwijkingen van de rol mogen als user override bewaard worden.");
+expect(sparseOverrides[0]?.key === "reportingAll", "De juiste afwijking moet bewaard worden.");
+
+console.log("Menu-rechten gecontroleerd voor opgeslagen rolrechten, user overrides, Beheer > Log en module-permissies.");

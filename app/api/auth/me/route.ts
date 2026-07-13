@@ -18,6 +18,7 @@ export async function GET() {
       teamId: actor.teamId ?? "",
       teamName: "",
       role: actor.role,
+      representativeLevel: "STARTER",
       teamSupervisor: actor.role === "SALES_LEADER",
       branchNumber: "",
       active: true,

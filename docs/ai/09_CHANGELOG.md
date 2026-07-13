@@ -17,6 +17,101 @@ Use this file to document decisions that affect:
 
 ---
 
+# 2026-07-10 - Configureerbare criteria met cumulatieve scopes
+
+## Scope foundation and snapshots
+
+Decision:
+
+- Add a generic criterion scope layer instead of building separate scope implementations for KPI's, Kapstok, general evaluation and personality questions.
+- Keep existing source tables as source of truth: `KpiDefinition`, `CoachingCriterion` and the new `ConfigurableCriterion`.
+- Store concrete scope links in `CriterionScopeLink` with independent sort order per link.
+- Resolve applicable criteria from the coached user's current country, team and user id.
+- Deduplicate by stable criterion key and display under the most specific applicable scope.
+- Create immutable `CoachingCriterionSnapshot` rows for new coachings; do not recalculate existing coachings after later configuration changes.
+
+Impact:
+
+- Migration `0025_configurable_criterion_scopes` adds the new tables and backfills existing KPI, Kapstok, general evaluation and personality criteria.
+- Existing historical coachings and scores are preserved.
+- Backend selection and snapshot tests are covered by `npm run test:criterion-scopes`.
+- Full management UI for editing multiple scope links remains open work.
+
+---
+
+# 2026-07-10 - Rollenbeheer opslagcorrectie
+
+## Permission basis records
+
+Decision:
+
+- Role management must be able to save every configurable permission shown in `/beheer/rollen`.
+- The `Permission` basis table is kept aligned with the role-management permission keys.
+- Missing action point, KPI and Coaching menu permission rows are added through migration `0024_seed_missing_permission_basis_records`.
+- Runtime management reads may create newly missing permission rows defensively, but must not overwrite saved role rights.
+- Saving a role writes only the changed permissions and relevant user override cleanup, not the complete permission matrix.
+
+Impact:
+
+- Fixes the generic save error when a Super Admin adds an extra permission tick to a role such as Sales Manager.
+- Reduces remote database transaction work during role save.
+
+---
+
+# 2026-07-10 - Vertegenwoordigersniveaus en Professional/Expert-uitvoering
+
+## Peer coaching foundation
+
+Decision:
+
+- Add representative levels Starter, Sales Executive, Professional and Expert as
+  a separate user attribute, not as application roles.
+- Allow only active Professional and Expert representatives to be assigned as
+  executor for a normal coaching of another representative.
+- Keep Professional/Expert representatives unable to create, plan, reschedule,
+  cancel or change coaching date/time themselves.
+- Require a deviation reason for cross-team or cross-country execution.
+- Store peer-coaching metadata on the existing `Intervention`; no second
+  coaching module or type is introduced.
+- Add safe MAIL TEST foundation with default enabled and central delivery
+  logging/deduplication metadata.
+- Add the permission-protected MAIL TEST control under `Beheer -> Instellingen`,
+  including the current test recipient, server-side persistence, audit logging
+  and an explicit `PRODUCTIE` confirmation before production mail is enabled.
+
+Database impact:
+
+- Migration `0023_representative_levels_peer_coaching` adds
+  `User.representativeLevel`, `RepresentativeLevelHistory`, peer-coaching fields
+  on `Intervention`, `CoachingAction.reviewStatus`, `Holiday`, `AppSetting` and
+  `NotificationDelivery`.
+- Existing representatives are backfilled to Sales Executive; new
+  representatives default to Starter.
+- Later scheduler jobs and complete transition UI still need to be wired on top
+  of this foundation.
+
+---
+
+# 2026-07-10 - UTF-8 Text Integrity
+
+## Encoding Chain
+
+Decision:
+
+- Treat names and business text as UTF-8 end to end across imports, Prisma, MariaDB and rendering.
+- Keep MariaDB database, table and text-column defaults on `utf8mb4`; migration `0022_utf8_database_default_and_aurelie_repair` updates the database default to `utf8mb4_unicode_ci`.
+- Reject invalid UTF-8 CSV uploads and CSV content that already contains replacement characters or common mojibake patterns.
+- Add `npm run utf8:diagnose` for a repeatable database check covering connection character sets, table and column collations, suspicious stored values and the Aurélie/Milet record.
+- Repair only the unambiguous `aurelie.milet@mext.be` record from `Aur�lie Milet` to `Aurélie Milet`.
+
+Database impact:
+
+- No new tables or columns were introduced.
+- Existing text columns remain the source of truth.
+- Stored data repair is intentionally limited to one identified user record.
+
+---
+
 # 2026-07-08 - Super Admin Management Import/Export
 
 ## Beheer CSV Import/Export

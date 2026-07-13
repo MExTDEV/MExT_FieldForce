@@ -9,6 +9,15 @@ export type ParsedCsv = {
   errors: { row: number; message: string }[];
 };
 
+const suspiciousEncodingPatterns = [
+  /\uFFFD/,
+  /ï¿½/,
+  /Ã[\u0080-\u00BF]/,
+  /Ãƒ[\u0080-\u00BF]?/,
+  /Â[\u0080-\u00BF]/,
+  /â(?:€™|€œ|€�|€˜|€“|€”|€¦|†’|„¢)/,
+] as const;
+
 export function parseCsv(input: string): ParsedCsv {
   const records = parseCsvRecords(input.replace(/^\uFEFF/, ""));
   const nonEmptyRecords = records.filter((record) =>
@@ -20,6 +29,7 @@ export function parseCsv(input: string): ParsedCsv {
 
   const headers = nonEmptyRecords[0].map((header) => header.trim());
   const errors: ParsedCsv["errors"] = [];
+  errors.push(...findCsvEncodingIssues(nonEmptyRecords));
   const seenHeaders = new Set<string>();
   for (const header of headers) {
     if (!header) errors.push({ row: 1, message: "CSV bevat een lege kolomnaam." });
@@ -45,6 +55,23 @@ export function parseCsv(input: string): ParsedCsv {
   });
 
   return { headers, rows, errors };
+}
+
+export function findCsvEncodingIssues(records: string[][]): ParsedCsv["errors"] {
+  const errors: ParsedCsv["errors"] = [];
+  for (const [rowIndex, record] of records.entries()) {
+    for (const cell of record) {
+      if (suspiciousEncodingPatterns.some((pattern) => pattern.test(cell))) {
+        errors.push({
+          row: rowIndex + 1,
+          message:
+            "CSV bevat verdachte tekstcodering. Gebruik UTF-8 of UTF-8 met BOM en herstel beschadigde tekens voor import.",
+        });
+        break;
+      }
+    }
+  }
+  return errors;
 }
 
 export function toCsv(headers: string[], rows: Record<string, unknown>[]) {
