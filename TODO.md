@@ -276,6 +276,13 @@ Update 2026-07-13 WYSIWYG Actiepunten:
 - Acceptatiecriteria: Testmail gaat naar testontvanger; productie-uitzetten van MAIL TEST vereist bevestiging; delivery log toont status zonder body/secrets.
 - Aanbevolen tests: `npm run test:mail-test-settings`, `npm run test:mail-service`, gecontroleerde stagingtest.
 
+Update 2026-07-14 MAIL TEST hardening:
+
+- Lokale hardening uitgevoerd: `lib/server/mail-service.ts` bouwt nu een expliciete SMTP-envelope uit de centraal gerouteerde ontvangers, wist `replyTo` tijdens MAIL TEST en blokkeert vlak voor `sendMail` iedere non-test recipient.
+- `lib/server/mail-test.ts` gebruikt geen hardcoded fallback meer voor daadwerkelijke verzending wanneer MAIL TEST actief is zonder geldig opgeslagen testadres; de mail wordt dan als fout gelogd en niet verzonden.
+- Root cause gedocumenteerd in `docs/technical/mail-settings.md`: de router verving al `to/cc/bcc`, maar de provider-message had nog geen finale envelope/recipient-guard en accepteerde een default testadres bij ontbrekende configuratie.
+- Externe SMTP-/MAIL TEST-validatie in staging/productie blijft open.
+
 Update 2026-07-13 akkoord-terugmelding:
 
 - De aanvraagmail naar de begeleide gebruiker blijft bestaan.

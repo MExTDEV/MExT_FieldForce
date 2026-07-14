@@ -30,6 +30,7 @@ const context = {
 
 const routed = routeMailThroughMailTest({
   mailTestActive: true,
+  mailTestRecipient,
   envelope: original,
   context,
 });
@@ -46,6 +47,18 @@ assert.deepEqual(routed.original, {
 });
 assert.match(routed.testWarning ?? "", /MAIL TEST is actief/);
 assert.match(routed.testWarning ?? "", /original\.one@mext\.be/);
+
+const blockedWithoutConfiguredRecipient = routeMailThroughMailTest({
+  mailTestActive: true,
+  envelope: original,
+  context,
+});
+assert.deepEqual(blockedWithoutConfiguredRecipient.envelope, {
+  to: [],
+  cc: [],
+  bcc: [],
+});
+assert.match(blockedWithoutConfiguredRecipient.routingError ?? "", /zonder geldig testadres/);
 
 const routedToConfiguredRecipient = routeMailThroughMailTest({
   mailTestActive: true,
@@ -117,9 +130,11 @@ const disabledStoredValues = new Map([["MAIL_TEST", "false"]]);
 const forcedSettings = mailSettingsFromValues(disabledStoredValues, "production", "staging");
 assert.equal(forcedSettings.mailTest.active, true);
 assert.equal(forcedSettings.mailTest.locked, true);
+assert.equal(forcedSettings.mailTest.recipient, "");
 const productionSettings = mailSettingsFromValues(disabledStoredValues, "production", "production");
 assert.equal(productionSettings.mailTest.active, false);
 assert.equal(productionSettings.mailTest.locked, false);
+assert.equal(productionSettings.mailTest.recipient, "");
 assert.equal(settings.smtp.enabled, true);
 assert.equal(settings.smtp.host, "smtp.mext.be");
 assert.equal(settings.smtp.port, 587);

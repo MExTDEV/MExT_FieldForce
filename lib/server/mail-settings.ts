@@ -3,7 +3,6 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { prisma } from "@/lib/server/db";
 import {
   assertMailTestCanBeDisabled,
-  defaultMailTestRecipient,
   effectiveMailTestActive,
   isMailTestForced,
   mailTestProductionConfirmation,
@@ -250,7 +249,7 @@ export function mailSettingsFromValues(
         deploymentEnvironment
       ),
       locked: isMailTestForced(runtimeEnvironment, deploymentEnvironment),
-      recipient: normalizeMailTestRecipient(values.get(mailTestRecipientSettingKey)) ?? defaultMailTestRecipient,
+      recipient: normalizeMailTestRecipient(values.get(mailTestRecipientSettingKey)) ?? "",
     },
     smtp,
     ready: smtp.enabled && missing.length === 0,

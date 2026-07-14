@@ -439,7 +439,10 @@
   "settings.mailTest.emailSubject": "E-mail test MExT FieldForce",
   "settings.mailTest.emailBody": "Cet e-mail test confirme que MExT FieldForce peut envoyer des messages avec les paramètres SMTP enregistrés.",
   "settings.mailTest.emailRecipientLabel": "Destinataire de test",
-  "settings.mailTest.emailActorLabel": "Envoyé par"
+  "settings.mailTest.emailActorLabel": "Envoyé par",
+  "settings.mailTest.activeWarning": "MAIL TEST est actif. Tous les e-mails generes par FieldForce sont envoyes uniquement a",
+  "settings.mailTest.activeWarningNoUsers": "Les utilisateurs ne recoivent aucun e-mail.",
+  "settings.mailTest.missingRecipientWarning": "MAIL TEST est actif sans adresse de test valide. FieldForce bloque les e-mails sortants jusqu'a ce qu'une adresse valide soit enregistree."
 ,
   "settings.microsoftPhoto.title": "Compte Microsoft",
   "settings.microsoftPhoto.description": "Synchronisez les photos de profil Microsoft cote serveur et affichez les images locales de FieldForce.",

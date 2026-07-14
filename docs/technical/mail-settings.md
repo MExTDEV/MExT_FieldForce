@@ -1,6 +1,6 @@
 # Mail settings
 
-Date: 2026-07-13
+Date: 2026-07-14
 
 ## Purpose
 
@@ -12,8 +12,10 @@ MAIL TEST can be disabled only when both `NODE_ENV` and `DEPLOYMENT_ENV` are
 `production`. Development, test and staging therefore remain forced active, including
 staging deployments that use a production build. The guard cannot be disabled through
 the UI, API or stored setting. Every
-outbound message is routed exclusively to `MAIL_TEST_RECIPIENT`; original to, cc
-and bcc recipients never receive the message.
+outbound message is routed exclusively to the configured `MAIL_TEST_RECIPIENT`;
+original to, cc, bcc and SMTP envelope recipients never receive the message.
+When MAIL TEST is active and no valid test recipient is stored, delivery is
+blocked. The service never falls back to original recipients.
 
 Only a production runtime may disable MAIL TEST, and doing so still requires the
 explicit confirmation word `PRODUCTIE`.
@@ -21,7 +23,7 @@ explicit confirmation word `PRODUCTIE`.
 ## AppSetting keys
 
 - `MAIL_TEST`: `true` or `false`; defaults to active when absent and is overridden to active unless both runtime and deployment environment are production.
-- `MAIL_TEST_RECIPIENT`: test recipient; defaults to `helpdesk@mext.be`.
+- `MAIL_TEST_RECIPIENT`: required test recipient while MAIL TEST is active.
 - `MAIL_SMTP_ENABLED`: whether configured SMTP mail may be used.
 - `MAIL_SMTP_HOST`: SMTP server hostname.
 - `MAIL_SMTP_PORT`: SMTP port, 1-65535; default UI value is 587.
@@ -40,13 +42,28 @@ explicit confirmation word `PRODUCTIE`.
 - Audit logs redact username and never include a password value.
 - SMTP password storage requires `MAIL_SETTINGS_SECRET` or `AUTH_SECRET` with at least 16 characters.
 - Development, test and staging force `MAIL TEST` active regardless of the stored value or build mode.
-- The central router replaces every real to/cc/bcc recipient with the configured test recipient.
+- The central router replaces every real to/cc/bcc recipient and the SMTP envelope with the configured test recipient.
+- When MAIL TEST is active, the final provider message omits `replyTo` and the last guard blocks delivery if any provider recipient differs from the configured test recipient.
+- When MAIL TEST is active without a valid configured test recipient, the mail is logged as an error and not sent.
 - The settings API rejects attempts to disable MAIL TEST unless both runtime and deployment environment are production.
 - The settings UI exposes the forced state as active and locked.
 - The settings test action reads the SMTP configuration and test recipient again on the server; unsaved browser values are never used for delivery.
 - The test action requires management access and refuses delivery while the stored SMTP configuration is incomplete.
 - The original route is retained only as delivery metadata and in the MAIL TEST warning; it is used as the SMTP envelope only when both runtime and deployment environment are production and MAIL TEST was explicitly disabled.
 - Workflow messages always use the configured FieldForce sender. When a triggering user exists, that user's stored e-mail address overrides the global reply-to address so replies return to the original sender.
+
+## Incident root cause
+
+The central MAIL TEST router already replaced the application-level `to`, `cc`
+and `bcc` fields. The remaining risk was immediately before the provider call:
+the generated Nodemailer message did not set an explicit SMTP `envelope`, kept a
+workflow `replyTo` value when MAIL TEST was active, and accepted the hardcoded
+default recipient when no valid test recipient was stored. This meant the final
+provider payload was not guarded against future direct recipient fields or
+invalid test-recipient configuration. The service now constructs the effective
+provider envelope from the routed recipients, clears `replyTo` in MAIL TEST mode,
+blocks missing or invalid test-recipient configuration, and asserts immediately
+before `sendMail` that no non-test recipient is present.
 
 ## Current implementation status
 
@@ -64,7 +81,8 @@ Implemented:
 - Workflow e-mail for Hulpaanvragen, visible/shared Contactmomenten and Begeleiding approval requests, sent best-effort after the workflow or in-app notification transaction succeeds.
 - Begeleiding approval mail goes to the coached person and replies to the user who submitted the Begeleiding for approval.
 - SMTP delivery was confirmed by the user on 2026-07-13.
-- MAIL TEST routing is applied by the central service: real to/cc/bcc recipients are replaced by the configured test recipient while the original route is logged as metadata.
+- MAIL TEST routing is applied by the central service: real to/cc/bcc/envelope recipients are replaced by the configured test recipient while the original route is logged as metadata and as a testmail warning.
+- MAIL TEST delivery is fail-safe: missing or invalid test-recipient configuration blocks sending instead of using the original recipients or a hardcoded fallback.
 - Delivery logging is limited to event key, recipient user, route metadata, status and error text; the mail body is not written to the delivery log.
 - Regression test: `npm run test:mail-test-settings`.
 - Regression test: `npm run test:mail-service`.

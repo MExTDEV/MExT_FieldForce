@@ -57,6 +57,7 @@ export type RoutedMail = {
   envelope: Required<MailEnvelope>;
   original: Required<MailEnvelope>;
   testWarning?: string;
+  routingError?: string;
 };
 
 export async function isMailTestActive() {
@@ -72,7 +73,7 @@ export async function getMailTestRecipient() {
     where: { key: mailTestRecipientSettingKey },
     select: { value: true },
   });
-  return normalizeMailTestRecipient(setting?.value) ?? defaultMailTestRecipient;
+  return normalizeMailTestRecipient(setting?.value);
 }
 
 export async function setMailTestSettings(input: {
@@ -152,6 +153,9 @@ export async function setMailTestActive(active: boolean, actorId: string, confir
     throw new Error(`Typ exact ${mailTestProductionConfirmation} om MAIL TEST uit te schakelen.`);
   }
   const recipient = await getMailTestRecipient();
+  if (!recipient) {
+    throw new Error("Geef een geldig e-mailadres voor de MAIL TEST-ontvanger in.");
+  }
   await setMailTestSettings({ active, actorId, confirmation, recipient });
   return active;
 }
@@ -177,7 +181,16 @@ export function routeMailThroughMailTest(input: {
       original,
     };
   }
-  const recipient = normalizeMailTestRecipient(input.mailTestRecipient) ?? defaultMailTestRecipient;
+  const recipient = normalizeMailTestRecipient(input.mailTestRecipient);
+  if (!recipient) {
+    return {
+      mailTestActive: true,
+      envelope: { to: [], cc: [], bcc: [] },
+      original,
+      routingError: "MAIL TEST is actief zonder geldig testadres. Mail geblokkeerd.",
+      testWarning: buildMailTestWarning(original, input.context),
+    };
+  }
   return {
     mailTestActive: true,
     envelope: { to: [recipient], cc: [], bcc: [] },
@@ -194,6 +207,20 @@ export async function logMailDelivery(input: {
   context: MailRoutingContext;
   error?: string;
 }) {
+  if (input.routed.mailTestActive) {
+    console.info("Original recipients overridden because MAIL TEST is enabled.", {
+      eventKey: input.eventKey,
+      sourceModule: input.context.sourceModule,
+      entityType: input.context.entityType,
+      entityId: input.context.entityId,
+      originalTo: input.routed.original.to,
+      originalCc: input.routed.original.cc,
+      originalBcc: input.routed.original.bcc,
+      actualTo: input.routed.envelope.to,
+      status: input.status,
+      error: input.error,
+    });
+  }
   await prisma.notificationDelivery.upsert({
     where: {
       eventKey_recipientUserId_channel: {

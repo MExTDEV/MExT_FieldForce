@@ -130,6 +130,7 @@ export function SettingsManagement() {
     mailDraft,
     recipientDraft
   );
+  const configuredMailTestRecipient = setting?.recipient.trim() ?? "";
 
   const applyPayload = useCallback((payload: MailSettingsResponse) => {
     if (payload.mailSettings) {
@@ -532,6 +533,13 @@ export function SettingsManagement() {
                       {setting.locked ? (
                         <p className="mt-2 text-xs font-semibold leading-5 text-sky-800">
                           {translate(language, "settings.mailTest.environmentLocked")}
+                        </p>
+                      ) : null}
+                      {setting.active ? (
+                        <p className={`mt-3 rounded-lg border px-3 py-2 text-xs font-semibold leading-5 ${configuredMailTestRecipient ? "border-sky-200 bg-sky-50 text-sky-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
+                          {configuredMailTestRecipient
+                            ? `${translate(language, "settings.mailTest.activeWarning")} ${configuredMailTestRecipient}. ${translate(language, "settings.mailTest.activeWarningNoUsers")}`
+                            : translate(language, "settings.mailTest.missingRecipientWarning")}
                         </p>
                       ) : null}
                     </div>

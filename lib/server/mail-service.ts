@@ -153,7 +153,7 @@ export async function sendFieldForceMailWithTransport({
 }: {
   input: OutboundMail;
   mailTestActive: boolean;
-  mailTestRecipient: string;
+  mailTestRecipient?: string;
   settings: MailRuntimeSettings;
   transport: MailTransport;
   logDelivery: typeof logMailDelivery;
@@ -167,8 +167,12 @@ export async function sendFieldForceMailWithTransport({
     envelope: input.envelope,
     context: input.context,
   });
-  const message = buildMailMessage(input, routed, settings);
   try {
+    if (routed.routingError) {
+      throw new Error(routed.routingError);
+    }
+    const message = buildMailMessage(input, routed, settings);
+    assertMailProviderRecipientsAreSafe(message, routed);
     const info = await transport.sendMail(message);
     await logDelivery({
       eventKey: input.context.eventKey,
@@ -213,18 +217,71 @@ export function buildMailMessage(
 ): SendMailOptions {
   const fromEmail = input.fromEmail || settings.smtp.defaultFromEmail;
   const fromName = input.fromName || settings.smtp.defaultFromName;
-  const replyToEmail = input.replyToEmail || settings.smtp.defaultReplyToEmail || undefined;
+  const replyToEmail = routed.mailTestActive
+    ? undefined
+    : input.replyToEmail || settings.smtp.defaultReplyToEmail || undefined;
   const warning = routed.testWarning;
+  const effectiveRecipients = [
+    ...routed.envelope.to,
+    ...routed.envelope.cc,
+    ...routed.envelope.bcc,
+  ];
   return {
     from: fromName ? { name: fromName, address: fromEmail } : fromEmail,
     replyTo: replyToEmail,
     to: routed.envelope.to,
     cc: routed.envelope.cc.length ? routed.envelope.cc : undefined,
     bcc: routed.envelope.bcc.length ? routed.envelope.bcc : undefined,
+    envelope: {
+      from: fromEmail,
+      to: effectiveRecipients,
+    },
     subject: mailTestSubject(input.subject, routed.mailTestActive),
     text: warning ? `${warning}\n\n${input.text ?? ""}` : input.text,
     html: warning ? `${htmlMailTestWarning(warning)}${input.html ?? ""}` : input.html,
   };
+}
+
+export function assertMailProviderRecipientsAreSafe(
+  message: SendMailOptions,
+  routed: RoutedMail
+) {
+  if (!routed.mailTestActive) return;
+  const testRecipient = routed.envelope.to[0]?.toLowerCase();
+  if (!testRecipient) {
+    throw new Error("Mail blocked: MAIL TEST is enabled without a valid test recipient.");
+  }
+  const providerRecipients = collectProviderRecipients(message).map((recipient) => recipient.toLowerCase());
+  const hasNonTestRecipient = providerRecipients.some((recipient) => recipient !== testRecipient);
+  const hasTestRecipient = providerRecipients.some((recipient) => recipient === testRecipient);
+  if (!hasTestRecipient || hasNonTestRecipient) {
+    throw new Error("Mail blocked: non-test recipient detected while MAIL TEST is enabled.");
+  }
+}
+
+function collectProviderRecipients(message: SendMailOptions) {
+  return [
+    ...extractAddressValues(message.to),
+    ...extractAddressValues(message.cc),
+    ...extractAddressValues(message.bcc),
+    ...extractAddressValues(message.envelope && typeof message.envelope === "object" ? message.envelope.to : undefined),
+  ];
+}
+
+function extractAddressValues(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flatMap(extractAddressValues);
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "object" && "address" in value) {
+    const address = (value as { address?: unknown }).address;
+    return typeof address === "string" && address.trim() ? [address.trim()] : [];
+  }
+  return [];
 }
 
 function mailTestSubject(subject: string, mailTestActive: boolean) {
