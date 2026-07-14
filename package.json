@@ -70,6 +70,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:resolve:0034": "prisma migrate resolve --rolled-back 0034_starter_evaluations",
     "db:migrate:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:config": "tsx prisma/seed.ts",
