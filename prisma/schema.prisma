@@ -195,6 +195,52 @@ enum ProfilePhotoSyncTrigger {
   MANUAL
 }
 
+enum StarterEvaluationMoment {
+  MONTH_1_5
+  MONTH_3
+  MONTH_5
+}
+
+enum StarterEvaluationStatus {
+  DUE
+  PREPARATION
+  READY_FOR_CONVERSATION
+  IN_PROGRESS
+  WAITING_FOR_APPROVAL
+  NOT_AGREED
+  APPROVED
+  CANCELLED
+}
+
+enum StarterEvaluationAnswerType {
+  SHORT_TEXT
+  RICH_TEXT
+  BOOLEAN
+  NUMBER
+  PERCENTAGE
+  CURRENCY
+  SCORE
+  CHOICE
+  DATE
+  SYSTEM
+  LINKED_CRITERION
+  ACTION_POINTS
+}
+
+enum StarterEvaluationAssignee {
+  REPRESENTATIVE
+  EVALUATOR
+  BOTH_SEPARATE
+  SYSTEM
+  SHARED_EVALUATOR
+}
+
+enum StarterEvaluationAnswerRole {
+  REPRESENTATIVE
+  EVALUATOR
+  SYSTEM
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -219,6 +265,7 @@ model User {
   language                 Language                    @default(nl)
   active                   Boolean                     @default(true)
   representativeLevel      RepresentativeLevel         @default(STARTER)
+  starterStartDate         DateTime?                   @db.Date
   teamSupervisor           Boolean                     @default(false)
   teamId                   String?
   levelId                  String?
@@ -266,6 +313,15 @@ model User {
   coachingActions           CoachingAction[]
   coachingChangeLogs        CoachingChangeLog[]
   representativeLevelHistory RepresentativeLevelHistory[]
+  starterEvaluations        StarterEvaluation[]       @relation("StarterEvaluationRepresentative")
+  starterEvaluationLeader   StarterEvaluation[]       @relation("StarterEvaluationLeader")
+  starterEvaluationCountryManager StarterEvaluation[] @relation("StarterEvaluationCountryManager")
+  starterEvaluationCancelled StarterEvaluation[]      @relation("StarterEvaluationCancelledBy")
+  starterEvaluationSentForApproval StarterEvaluation[] @relation("StarterEvaluationSentForApprovalBy")
+  starterEvaluationApproved StarterEvaluation[]       @relation("StarterEvaluationApprovedBy")
+  starterEvaluationAnswers  StarterEvaluationAnswer[] @relation("StarterEvaluationAnswerUpdatedBy")
+  starterEvaluationActions  StarterEvaluationDraftActionPoint[] @relation("StarterEvaluationDraftActionOwner")
+  starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionUser")
   countryAccess             UserCountryAccess[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
@@ -394,6 +450,7 @@ model Team {
   actionDefinitions ActionDefinition[]
   actionTargetOverrides ActionTargetOverride[]
   criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkTeam")
+  starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionTeam")
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -487,6 +544,7 @@ model KpiDefinition {
   weight              Decimal?               @db.Decimal(8, 2)
   countsForReporting  Boolean                @default(true) @map("counts_for_reporting")
   countsForPerformanceCircle Boolean         @default(true) @map("counts_for_performance_circle")
+  includeInStarterEvaluations Boolean        @default(false) @map("include_in_starter_evaluations")
   sortOrder           Int                    @default(0) @map("sort_order")
   validFrom           DateTime               @default(now()) @map("valid_from")
   validUntil          DateTime?              @map("valid_until")
@@ -1061,6 +1119,7 @@ model ActionPoint {
   closedBy         User?                   @relation("ClosedActionPoints", fields: [closedByUserId], references: [id], onDelete: SetNull)
   kpiDefinition    KpiDefinition?          @relation(fields: [kpiDefinitionId], references: [id])
   assignments      ActionPointAssignment[]
+  starterEvaluationDrafts StarterEvaluationDraftActionPoint[]
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
@@ -1089,6 +1148,203 @@ model ActionPointAssignment {
   @@index([representativeId])
   @@index([status, closedAt])
   @@index([closedByUserId])
+}
+
+model StarterEvaluationSection {
+  id            String                    @id @default(cuid())
+  code          String                    @unique
+  titleNl       String
+  titleFr       String?
+  titleDe       String?
+  descriptionNl String?                   @db.Text
+  descriptionFr String?                   @db.Text
+  descriptionDe String?                   @db.Text
+  sortOrder     Int                       @default(0)
+  active        Boolean                   @default(true)
+  momentsJson   String                    @db.VarChar(255)
+  questions     StarterEvaluationQuestion[]
+  snapshots     StarterEvaluationSectionSnapshot[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+model StarterEvaluationQuestion {
+  id             String                         @id @default(cuid())
+  key            String                         @unique
+  sectionId      String
+  textNl         String                         @db.Text
+  textFr         String?                        @db.Text
+  textDe         String?                        @db.Text
+  helpNl         String?                        @db.Text
+  helpFr         String?                        @db.Text
+  helpDe         String?                        @db.Text
+  sortOrder      Int                            @default(0)
+  required       Boolean                        @default(false)
+  active         Boolean                        @default(true)
+  answerType     StarterEvaluationAnswerType
+  assignee       StarterEvaluationAssignee
+  momentsJson    String                         @db.VarChar(255)
+  scopeType      CriterionScopeType             @default(GLOBAL)
+  scopeKey       String                         @default("GLOBAL")
+  country        Country?
+  teamId         String?
+  userId         String?
+  linkedCriterionType CriterionType?
+  linkedCriterionId   String?
+  section        StarterEvaluationSection       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  team           Team?                          @relation("StarterEvaluationQuestionTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  user           User?                          @relation("StarterEvaluationQuestionUser", fields: [userId], references: [id], onDelete: SetNull)
+  snapshots      StarterEvaluationQuestionSnapshot[]
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+
+  @@index([sectionId, active, sortOrder])
+  @@index([scopeType, scopeKey])
+  @@index([linkedCriterionType, linkedCriterionId])
+}
+
+model StarterEvaluation {
+  id                         String                    @id @default(cuid())
+  representativeId           String
+  moment                     StarterEvaluationMoment
+  status                     StarterEvaluationStatus   @default(DUE)
+  milestoneDate              DateTime                  @db.Date
+  starterStartDateSnapshot   DateTime                  @db.Date
+  plannedConversationDate    DateTime?                 @db.Date
+  plannedStartTime           String?                   @db.VarChar(5)
+  plannedEndTime             String?                   @db.VarChar(5)
+  plannedLocation            String?
+  planningNote               String?                   @db.Text
+  leaderId                   String?
+  countryManagerId           String?
+  evaluatorAnswersRevealedAt DateTime?
+  preparationOpenedAt        DateTime?
+  milestoneNotifiedAt        DateTime?
+  sentForApprovalAt          DateTime?
+  sentForApprovalById        String?
+  approvalComment            String?                   @db.Text
+  approvedAt                 DateTime?
+  approvedById               String?
+  notAgreedAt                DateTime?
+  notAgreedReason            String?                   @db.Text
+  cancelledAt                DateTime?
+  cancelledById              String?
+  cancellationReason         String?                   @db.Text
+  finalDocumentStorageKey    String?
+  finalDocumentHash          String?
+  kpiSnapshotJson            String?                   @db.LongText
+  autoDataSnapshotJson       String?                   @db.LongText
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+
+  representative             User                      @relation("StarterEvaluationRepresentative", fields: [representativeId], references: [id], onDelete: Cascade)
+  leader                     User?                     @relation("StarterEvaluationLeader", fields: [leaderId], references: [id], onDelete: SetNull)
+  countryManager             User?                     @relation("StarterEvaluationCountryManager", fields: [countryManagerId], references: [id], onDelete: SetNull)
+  sentForApprovalBy          User?                     @relation("StarterEvaluationSentForApprovalBy", fields: [sentForApprovalById], references: [id], onDelete: SetNull)
+  approvedBy                 User?                     @relation("StarterEvaluationApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  cancelledBy                User?                     @relation("StarterEvaluationCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  sectionSnapshots           StarterEvaluationSectionSnapshot[]
+  questionSnapshots          StarterEvaluationQuestionSnapshot[]
+  answers                    StarterEvaluationAnswer[]
+  draftActionPoints          StarterEvaluationDraftActionPoint[]
+
+  @@unique([representativeId, moment])
+  @@index([status, milestoneDate])
+  @@index([leaderId, status])
+  @@index([countryManagerId, status])
+}
+
+model StarterEvaluationSectionSnapshot {
+  id              String                    @id @default(cuid())
+  evaluationId    String
+  sourceSectionId String?
+  code            String
+  titleNl         String
+  titleFr         String?
+  titleDe         String?
+  descriptionNl   String?                   @db.Text
+  descriptionFr   String?                   @db.Text
+  descriptionDe   String?                   @db.Text
+  sortOrder       Int
+  momentsJson     String                    @db.VarChar(255)
+  evaluation      StarterEvaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  sourceSection   StarterEvaluationSection? @relation(fields: [sourceSectionId], references: [id], onDelete: SetNull)
+  questions       StarterEvaluationQuestionSnapshot[]
+
+  @@unique([evaluationId, code])
+  @@index([evaluationId, sortOrder])
+}
+
+model StarterEvaluationQuestionSnapshot {
+  id                 String                         @id @default(cuid())
+  evaluationId       String
+  sectionSnapshotId  String
+  sourceQuestionId   String?
+  key                String
+  textNl             String                         @db.Text
+  textFr             String?                        @db.Text
+  textDe             String?                        @db.Text
+  helpNl             String?                        @db.Text
+  helpFr             String?                        @db.Text
+  helpDe             String?                        @db.Text
+  sortOrder          Int
+  required           Boolean
+  answerType         StarterEvaluationAnswerType
+  assignee           StarterEvaluationAssignee
+  momentsJson        String                         @db.VarChar(255)
+  appliedScopeType   CriterionScopeType
+  appliedScopeKey    String
+  linkedCriterionType CriterionType?
+  linkedCriterionId   String?
+  evaluation         StarterEvaluation              @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  sectionSnapshot    StarterEvaluationSectionSnapshot @relation(fields: [sectionSnapshotId], references: [id], onDelete: Cascade)
+  sourceQuestion     StarterEvaluationQuestion?     @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
+  answers            StarterEvaluationAnswer[]
+
+  @@unique([evaluationId, key])
+  @@index([sectionSnapshotId, sortOrder])
+  @@index([appliedScopeType, appliedScopeKey])
+}
+
+model StarterEvaluationAnswer {
+  id                 String                    @id @default(cuid())
+  evaluationId       String
+  questionSnapshotId String
+  role               StarterEvaluationAnswerRole
+  valueJson          String?                   @db.LongText
+  updatedById        String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  evaluation         StarterEvaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  questionSnapshot   StarterEvaluationQuestionSnapshot @relation(fields: [questionSnapshotId], references: [id], onDelete: Cascade)
+  updatedBy          User?                     @relation("StarterEvaluationAnswerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([questionSnapshotId, role])
+  @@index([evaluationId, role])
+}
+
+model StarterEvaluationDraftActionPoint {
+  id                   String              @id @default(cuid())
+  evaluationId         String
+  title                String
+  descriptionHtml      String?             @db.LongText
+  type                 ActionPointType     @default(VAARDIGHEID)
+  targetValue          Decimal?            @db.Decimal(14, 2)
+  startDate            DateTime?           @db.Date
+  dueDate              DateTime?           @db.Date
+  ownerId              String?
+  createdActionPointId String?
+  sortOrder            Int                 @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  evaluation           StarterEvaluation   @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  owner                User?               @relation("StarterEvaluationDraftActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdActionPoint   ActionPoint?        @relation(fields: [createdActionPointId], references: [id], onDelete: SetNull)
+
+  @@index([evaluationId, sortOrder])
+  @@index([createdActionPointId])
 }
 
 model ActionDefinition {

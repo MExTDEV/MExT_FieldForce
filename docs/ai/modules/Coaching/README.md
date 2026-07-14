@@ -23,6 +23,7 @@ The domain must reduce administration, improve follow-up and create one reliable
 | Actiepunten | PARTIALLY_DEFINED |
 | Contactmomenten | DEFINED |
 | Hulpaanvragen | DEFINED |
+| Tussentijdse evaluaties | PARTIALLY_DEFINED |
 | Retrainingen | UNDEFINED |
 | Salestrainingen | UNDEFINED |
 | Rapportage | UNDEFINED |
@@ -55,6 +56,7 @@ The domain must reduce administration, improve follow-up and create one reliable
 - Begeleiding;
 - Contactmoment;
 - Hulpaanvraag;
+- Tussentijdse evaluatie;
 - Action Point;
 - Approval;
 - Representative or coached person;
@@ -97,6 +99,7 @@ Do not duplicate an existing business object because another page opens it.
 
 - `Contactmomenten.md`
 - `Hulpaanvragen.md`
+- `TussentijdseEvaluaties.md`
 
 ## Undefined areas
 

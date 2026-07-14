@@ -7,6 +7,7 @@ assert.deepEqual([...enabled].sort(), ["BEGELEIDINGEN", "PLANNING"]);
 assert.equal(moduleForRoute("planning")?.code, "PLANNING");
 assert.equal(moduleForRoute("begeleidingen")?.code, "BEGELEIDINGEN");
 assert.equal(moduleForRoute("contactmomenten")?.code, "CONTACTMOMENTEN");
+assert.equal(moduleForRoute("tussentijdse-evaluaties")?.code, "TUSSENTIJDSE_EVALUATIES");
 assert.equal(moduleForRoute("rapportering")?.code, "RAPPORTERING");
 assert.equal(appModuleRegistry.length, defaultAppModules.length);
 

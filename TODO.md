@@ -381,6 +381,19 @@ Update 2026-07-13 refresh Begeleidingen na inplannen:
 - Acceptatiecriteria: Scopekoppelingen kunnen veilig worden beheerd, geïmporteerd en geaudit.
 - Aanbevolen tests: `npm run test:criterion-scopes`, `npm run test:management-import-export`.
 
+### FF-P2-010 - Tussentijdse evaluaties verder functioneel afronden
+
+- Categorie: Coaching, starterontwikkeling, workflow
+- Status: Fundament lokaal geimplementeerd; volledige module-UI en workflow nog open
+- Probleem: De module Tussentijdse evaluaties heeft nu datamodel, moduletoggle, startdatum, milestoneberekening, formulierseed, snapshots en generation job, maar nog geen volledig invulscherm, akkoordflow, PDF, Outlook-sync of beheer-UI voor vragen.
+- Huidige werking: `TUSSENTIJDSE_EVALUATIES` bestaat als module; `User.starterStartDate` is beheerbaar; `npm run starter-evaluations:generate` maakt idempotent verschuldigde startersevaluaties aan en snapshott de formulierstructuur.
+- Gewenste werking: Verkoopleider, vertegenwoordiger en bij 5 maanden Country Manager kunnen het gezamenlijke formulier volledig invullen, volgens server-side zichtbaarheidsregels, met akkoord/niet-akkoord, definitieve PDF en actiepuntactivatie.
+- Bewijs: `prisma/migrations/0034_starter_evaluations`, `lib/starter-evaluations.ts`, `lib/server/starter-evaluations.ts`, `docs/ai/modules/Coaching/TussentijdseEvaluaties.md`.
+- Relevante bestanden: `components/workspace-pages.tsx`, `components/user-management.tsx`, `components/configuration-management.tsx`, `prisma/schema.prisma`.
+- Impact: Hoog voor starteropvolging; laag risico voor bestaande workflows zolang de module inactief blijft.
+- Risico: Zonder scheduled task worden evaluaties niet automatisch aangemaakt; zonder startdatum worden starters terecht overgeslagen.
+- Aanbevolen tests: `npm run test:starter-evaluations`, `npm run test:modules`, `npm run test:menu-rights`, `npm run typecheck`.
+
 ### FF-P2-006 - KPI-beheer productieacceptatie afronden
 
 - Categorie: KPI, beheer, rapportage

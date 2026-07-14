@@ -59,6 +59,14 @@ export const appModuleRegistry: ModuleRegistryItem[] = [
     routePrefixes: ["hulpaanvragen"],
   },
   {
+    code: "TUSSENTIJDSE_EVALUATIES",
+    name: "Tussentijdse evaluaties",
+    href: "/tussentijdse-evaluaties",
+    navKey: "nav.starterEvaluations",
+    icon: "ClipboardCheck",
+    routePrefixes: ["tussentijdse-evaluaties"],
+  },
+  {
     code: "ACTIEPUNTEN",
     name: "Actiepunten",
     href: "/actiepunten",

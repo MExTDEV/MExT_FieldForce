@@ -79,6 +79,7 @@ export type FieldForcePermissionKey =
   | "menu.coaching.retrainings"
   | "menu.coaching.trainings"
   | "menu.coaching.help"
+  | "menu.coaching.starterEvaluations"
   | "menu.coaching.myTeam"
   | "menu.coaching.actionPoints"
   | "menu.coaching.reporting"
@@ -115,6 +116,7 @@ export type AppModuleCode =
   | "RETRAININGEN"
   | "SALESTRAININGEN"
   | "HULPAANVRAGEN"
+  | "TUSSENTIJDSE_EVALUATIES"
   | "ACTIEPUNTEN"
   | "RAPPORTERING";
 
@@ -169,6 +171,7 @@ export type ManagementKpi = {
   weight: number | null;
   countsForReporting: boolean;
   countsForPerformanceCircle: boolean;
+  includeInStarterEvaluations: boolean;
   sortOrder: number;
   validFrom: string;
   validUntil: string | null;
@@ -285,6 +288,7 @@ export type ManagedUser = {
   teamName: string;
   role: Role;
   representativeLevel: RepresentativeLevel;
+  starterStartDate?: string;
   teamSupervisor: boolean;
   branchNumber: string;
   active: boolean;

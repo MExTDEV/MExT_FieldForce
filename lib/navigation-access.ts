@@ -38,6 +38,10 @@ export const coachingModuleNavigationRules: Record<
     menuPermission: "menu.coaching.help",
     modulePermission: "modulePreparation",
   },
+  TUSSENTIJDSE_EVALUATIES: {
+    menuPermission: "menu.coaching.starterEvaluations",
+    modulePermission: "modulePreparation",
+  },
   ACTIEPUNTEN: {
     menuPermission: "menu.coaching.actionPoints",
     modulePermission: "modulePreparation",

@@ -532,6 +532,7 @@ async function importKpis(
         weight: existing?.weight === null || existing?.weight === undefined ? null : Number(existing.weight),
         countsForReporting: existing?.countsForReporting ?? true,
         countsForPerformanceCircle: existing?.countsForPerformanceCircle ?? true,
+        includeInStarterEvaluations: existing?.includeInStarterEvaluations ?? false,
         sortOrder: existing?.sortOrder ?? kpis.length + operations.length + 1,
         validFrom: existing?.validFrom ?? todayDate(),
         validUntil: existing?.validUntil ?? null,

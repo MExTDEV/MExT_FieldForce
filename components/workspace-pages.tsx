@@ -214,6 +214,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "mijn-verslagen") return <MyReportsPage id={segments[1]} />;
   if (segments[0] === "contactmomenten") return <ContactMomentsPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
   if (segments[0] === "hulpaanvragen") return <HelpRequestsWorkflowPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
+  if (segments[0] === "tussentijdse-evaluaties") return <StarterEvaluationsPage />;
   if (segments[0] === "retrainingen") return <TrainingWorkflowPage kind="retraining" id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
   if (segments[0] === "sales-trainingen") return <TrainingWorkflowPage kind="sales_training" id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
   if (segments[0] === "rapportering") return <ReportingDashboard section={segments[1]} />;
@@ -240,6 +241,46 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   }
 
   return <EmptyState title="Pagina in voorbereiding" description="Deze route is technisch beschikbaar en wordt in een volgende functionele iteratie verder ingevuld." />;
+}
+
+function StarterEvaluationsPage() {
+  const milestones = [
+    ["1,5 maand", "Verkoopleider plant en bereidt samen met de starter voor."],
+    ["3 maanden", "Vervolg op vorige evaluatie, actiepunten en KPI-evolutie."],
+    ["5 maanden", "Verkoopleider en Country Manager evalueren samen."],
+  ];
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Tussentijdse evaluaties"
+        description="Startersevaluaties na 1,5 maand, 3 maanden en 5 maanden."
+      />
+      <div className="grid gap-4 lg:grid-cols-3">
+        {milestones.map(([title, description]) => (
+          <div key={title} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-50 text-brand-700">
+                <ClipboardCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-950">{title}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-base font-bold text-slate-950">Automatische aanmaak</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          De serverjob maakt ontbrekende evaluaties idempotent aan voor actieve Starters met een ingevulde startdatum verkoopfunctie. De formulierstructuur wordt per evaluatie gesnapshot zodat latere beheerwijzigingen historische evaluaties niet aanpassen.
+        </p>
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+          Vul in gebruikersbeheer de startdatum verkoopfunctie in bij elke Starter. Zonder die datum worden geen evaluaties gegenereerd.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function Dashboard() {

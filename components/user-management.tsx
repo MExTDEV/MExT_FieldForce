@@ -1111,27 +1111,43 @@ function UserForm({
                 )}
               </Field>
               {draft.role === "REPRESENTATIVE" && (
-                <Field label="Vertegenwoordigersniveau">
-                  <select
-                    className="field font-semibold disabled:bg-slate-100 disabled:text-slate-500"
-                    value={draft.representativeLevel}
-                    disabled={!capabilities.canEditRepresentativeLevel}
-                    onChange={(event) =>
-                      update("representativeLevel", event.target.value as ManagedUser["representativeLevel"])
-                    }
-                  >
-                    {representativeLevels.map((level) => (
-                      <option key={level} value={level}>
-                        {representativeLevelLabels[level]}
-                      </option>
-                    ))}
-                  </select>
-                  {!capabilities.canEditRepresentativeLevel && (
-                    <span className="mt-1.5 block text-xs text-slate-500">
-                      Je kunt dit niveau alleen wijzigen met de juiste beheerscope.
-                    </span>
-                  )}
-                </Field>
+                <>
+                  <Field label="Vertegenwoordigersniveau">
+                    <select
+                      className="field font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+                      value={draft.representativeLevel}
+                      disabled={!capabilities.canEditRepresentativeLevel}
+                      onChange={(event) =>
+                        update("representativeLevel", event.target.value as ManagedUser["representativeLevel"])
+                      }
+                    >
+                      {representativeLevels.map((level) => (
+                        <option key={level} value={level}>
+                          {representativeLevelLabels[level]}
+                        </option>
+                      ))}
+                    </select>
+                    {!capabilities.canEditRepresentativeLevel && (
+                      <span className="mt-1.5 block text-xs text-slate-500">
+                        Je kunt dit niveau alleen wijzigen met de juiste beheerscope.
+                      </span>
+                    )}
+                  </Field>
+                  <Field label="Startdatum verkoopfunctie">
+                    <input
+                      type="date"
+                      className="field font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+                      value={draft.starterStartDate ?? ""}
+                      disabled={!capabilities.canEditScope}
+                      onChange={(event) => update("starterStartDate", event.target.value)}
+                    />
+                    {draft.representativeLevel === "STARTER" && !draft.starterStartDate && (
+                      <span className="mt-1.5 block text-xs font-semibold text-amber-700">
+                        Vul deze datum in om tussentijdse evaluaties automatisch te kunnen aanmaken.
+                      </span>
+                    )}
+                  </Field>
+                </>
               )}
               {draft.role === "SALES_MANAGER" && (
                 <div className="sm:col-span-2">

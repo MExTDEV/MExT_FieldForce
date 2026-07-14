@@ -26,6 +26,7 @@ const modules: AppModuleConfig[] = [
   "RETRAININGEN",
   "SALESTRAININGEN",
   "HULPAANVRAGEN",
+  "TUSSENTIJDSE_EVALUATIES",
   "ACTIEPUNTEN",
   "RAPPORTERING",
 ].map((code) => ({

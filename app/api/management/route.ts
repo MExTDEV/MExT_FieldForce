@@ -161,6 +161,7 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
               weight: parseOptionalKpiNumber(payload.weight, "Gewicht"),
               countsForReporting: payload.countsForReporting !== false,
               countsForPerformanceCircle: payload.countsForPerformanceCircle !== false,
+              includeInStarterEvaluations: payload.includeInStarterEvaluations === true,
               sortOrder: Number(payload.sortOrder ?? 0),
               validFrom: parseRequiredDate(payload.validFrom, "Begindatum"),
               validUntil: parseOptionalDate(payload.validUntil, "Einddatum"),

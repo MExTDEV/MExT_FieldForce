@@ -31,6 +31,7 @@ Opening the same business object from different pages must reuse:
 - Retrainingen
 - Salestrainingen
 - Hulpaanvragen
+- Tussentijdse evaluaties
 - Rapportage
 - Beheer
 
@@ -47,6 +48,7 @@ Dashboard may open:
 - open Action Point;
 - planned Contactmoment;
 - Hulpaanvraag requiring attention;
+- due Tussentijdse evaluatie;
 - other defined workflow items.
 
 Dashboard links route to the owning object.

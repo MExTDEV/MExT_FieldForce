@@ -84,6 +84,7 @@ type RawKpiRow = {
   weight: unknown | null;
   countsForReporting: boolean | number;
   countsForPerformanceCircle: boolean | number;
+  includeInStarterEvaluations?: boolean | number;
   sortOrder: number | bigint;
   validFrom: Date;
   validUntil: Date | null;
@@ -353,6 +354,7 @@ export async function listManagementKpis(actor: MockUser) {
       weight: kpi.weight === null ? null : Number(kpi.weight),
       countsForReporting: Boolean(kpi.countsForReporting),
       countsForPerformanceCircle: Boolean(kpi.countsForPerformanceCircle),
+      includeInStarterEvaluations: Boolean(kpi.includeInStarterEvaluations),
       sortOrder: Number(kpi.sortOrder),
       validFrom: dateOnly(kpi.validFrom),
       validUntil: kpi.validUntil ? dateOnly(kpi.validUntil) : null,
@@ -415,6 +417,7 @@ async function listManagementKpiRows(actor: MockUser) {
     "weight",
     "counts_for_reporting",
     "counts_for_performance_circle",
+    "include_in_starter_evaluations",
     "sort_order",
     "valid_from",
     "valid_until",
@@ -442,6 +445,7 @@ async function listManagementKpiRows(actor: MockUser) {
         weight,
         counts_for_reporting AS countsForReporting,
         counts_for_performance_circle AS countsForPerformanceCircle,
+        include_in_starter_evaluations AS includeInStarterEvaluations,
         sort_order AS sortOrder,
         valid_from AS validFrom,
         valid_until AS validUntil,
@@ -866,6 +870,7 @@ export async function saveKpi(
     weight: number | null;
     countsForReporting: boolean;
     countsForPerformanceCircle: boolean;
+    includeInStarterEvaluations: boolean;
     sortOrder: number;
     validFrom: Date;
     validUntil: Date | null;
@@ -921,6 +926,7 @@ export async function saveKpi(
     weight: input.weight,
     countsForReporting: input.countsForReporting,
     countsForPerformanceCircle: input.countsForPerformanceCircle,
+    includeInStarterEvaluations: input.includeInStarterEvaluations,
     sortOrder: input.sortOrder,
     validFrom: input.validFrom,
     validUntil: input.validUntil,

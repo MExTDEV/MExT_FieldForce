@@ -138,6 +138,7 @@ const representativeMenuPermissions: FieldForcePermissionKey[] = [
   "menu.coaching.dashboard",
   "menu.coaching.planning",
   "menu.coaching.coachings",
+  "menu.coaching.starterEvaluations",
   "menu.coaching.actionPoints",
 ];
 
@@ -154,6 +155,7 @@ const internalMenuPermissions: FieldForcePermissionKey[] = [
   "menu.coaching.dashboard",
   "menu.coaching.planning",
   "menu.coaching.coachings",
+  "menu.coaching.starterEvaluations",
   "menu.coaching.myTeam",
   "menu.coaching.actionPoints",
   "menu.coaching.reporting",
@@ -366,6 +368,7 @@ export function createEmptyManagedUser(actor: MockUser): ManagedUser {
     teamName: "",
     role,
     representativeLevel: defaultRepresentativeLevelForNewUser(role),
+    starterStartDate: "",
     teamSupervisor: false,
     branchNumber: "",
     active: true,
@@ -395,6 +398,7 @@ export function normalizeManagedUser(user: ManagedUser): ManagedUser {
       user.representativeLevel,
       defaultRepresentativeLevelForNewUser(user.role)
     ),
+    starterStartDate: user.starterStartDate ?? "",
     teamSupervisor: Boolean(user.teamSupervisor),
     branchNumber: user.branchNumber ?? "",
     active: user.active !== false,
@@ -564,6 +568,7 @@ const scopeFields = [
   "teamName",
   "teamSupervisor",
   "branchNumber",
+  "starterStartDate",
 ] as const;
 
 export function prepareManagedUserSave(
@@ -649,5 +654,15 @@ export function prepareManagedUserSave(
     email: next.email.trim().toLowerCase(),
     mobile: next.mobile.trim(),
     branchNumber: next.branchNumber.trim(),
+    starterStartDate: normalizeDateInput(next.starterStartDate),
   });
+}
+
+function normalizeDateInput(value?: string) {
+  const trimmed = value?.trim();
+  if (!trimmed) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new Error("Gebruik een geldige datum in formaat jjjj-mm-dd.");
+  }
+  return trimmed;
 }

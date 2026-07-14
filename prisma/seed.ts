@@ -23,6 +23,7 @@ import {
   kpiTypeSeed,
 } from "../lib/kpi-settings";
 import { listPermissionOverrides } from "../lib/role-permissions";
+import { ensureStarterEvaluationConfiguration } from "../lib/server/starter-evaluations";
 let developmentManagedUsers: typeof import("../lib/development-seed").developmentManagedUsers;
 let developmentTeamOptions: typeof import("../lib/development-seed").developmentTeamOptions;
 let developmentRepresentatives: typeof import("../lib/mock-data").representatives;
@@ -40,6 +41,7 @@ const appModules = [
   { code: "RETRAININGEN", naam: "Retrainingen", actief: false },
   { code: "SALESTRAININGEN", naam: "Salestrainingen", actief: false },
   { code: "HULPAANVRAGEN", naam: "Hulpaanvragen", actief: false },
+  { code: "TUSSENTIJDSE_EVALUATIES", naam: "Tussentijdse evaluaties", actief: false },
   { code: "ACTIEPUNTEN", naam: "Actiepunten", actief: false },
   { code: "RAPPORTERING", naam: "Rapportering", actief: false },
 ] as const;
@@ -417,6 +419,7 @@ async function seedConfiguration() {
   await seedPermissions();
   await seedActionPointTargetTypes();
   await seedKpiReferenceData();
+  await ensureStarterEvaluationConfiguration(prisma);
 
   const levels = [
     ["Starter", "Nieuwe vertegenwoordiger in onboarding", "#F59E0B"],

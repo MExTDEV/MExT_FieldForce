@@ -77,6 +77,7 @@ type EditorState =
       weight: string;
       countsForReporting: boolean;
       countsForPerformanceCircle: boolean;
+      includeInStarterEvaluations: boolean;
       sortOrder: number;
       validFrom: string;
       validUntil: string;
@@ -1665,6 +1666,7 @@ function newEditor(
       weight: "",
       countsForReporting: true,
       countsForPerformanceCircle: true,
+      includeInStarterEvaluations: false,
       sortOrder: data.kpis.length + 1,
       validFrom: todayInputValue(),
       validUntil: "",
@@ -1727,6 +1729,7 @@ function kpiCardDetail(
   const flags = [
     kpi.countsForReporting ? "Rapportage" : undefined,
     kpi.countsForPerformanceCircle ? "Prestatiecirkel" : undefined,
+    kpi.includeInStarterEvaluations ? "Tussentijdse evaluaties" : undefined,
   ].filter(Boolean).join(" + ") || "Niet meetellend";
   return `${kpi.code} | ${category} | ${type} | Doel ${formatKpiSetting(kpi.targetValue, kpi.unit)} | ${kpiScopeDescription(data, kpi)} | ${flags} | ${kpi.targets.length} doelwaarden${conflicts ? `, ${conflicts} conflict` : ""}`;
 }
@@ -1764,6 +1767,7 @@ function kpiEditorFromItem(item: ManagementConfiguration["kpis"][number]): Extra
     weight: item.weight === null ? "" : String(item.weight),
     countsForReporting: item.countsForReporting,
     countsForPerformanceCircle: item.countsForPerformanceCircle,
+    includeInStarterEvaluations: item.includeInStarterEvaluations,
     sortOrder: item.sortOrder,
     validFrom: item.validFrom,
     validUntil: item.validUntil ?? "",
@@ -2222,6 +2226,11 @@ function ManagementEditor({
                 label="Telt mee in prestatiecirkel"
                 checked={editor.countsForPerformanceCircle}
                 onChange={(countsForPerformanceCircle) => onChange({ ...editor, countsForPerformanceCircle })}
+              />
+              <CheckboxField
+                label="Opnemen in Tussentijdse evaluaties"
+                checked={editor.includeInStarterEvaluations}
+                onChange={(includeInStarterEvaluations) => onChange({ ...editor, includeInStarterEvaluations })}
               />
             </div>
             <Field label="Beoordeling">

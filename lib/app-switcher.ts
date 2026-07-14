@@ -180,6 +180,18 @@ export const appSwitcherDomains: DomainDefinition[] = [
           canAccessCoachingModuleNavigation(user, "HULPAANVRAGEN"),
       },
       {
+        key: "starterEvaluations",
+        label: "Tussentijdse evaluaties",
+        description: "Startersevaluaties opvolgen",
+        href: "/tussentijdse-evaluaties",
+        icon: ClipboardCheck,
+        permission: "menu.coaching.starterEvaluations",
+        tone: coachingLinkTone,
+        isAvailable: (user, modules) =>
+          moduleEnabled(modules, "TUSSENTIJDSE_EVALUATIES") &&
+          canAccessCoachingModuleNavigation(user, "TUSSENTIJDSE_EVALUATIES"),
+      },
+      {
         key: "myTeam",
         label: "Mijn Team",
         description: "Vertegenwoordigers in scope",

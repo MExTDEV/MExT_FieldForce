@@ -121,6 +121,7 @@ Rules:
 - Effective period target priority is User, Team, Country, Role, Global/default.
 - Active period targets may not overlap for the same KPI and scope.
 - Reporting and Performance Circle inclusion are controlled separately by `counts_for_reporting` and `counts_for_performance_circle`.
+- Starter evaluation inclusion is controlled by `include_in_starter_evaluations`; it does not create a second KPI register.
 - Seed/config mode upserts KPI categories, types and target types and must not delete business data.
 
 ### Operational verification 2026-07-12
@@ -259,6 +260,19 @@ Rules:
 - Sales Manager is an explicit `Role` enum value.
 - A Sales Manager may have one or more `UserCountryAccess` records.
 - A Sales Manager without country access records must not be treated as global.
+
+## Tussentijdse evaluaties
+
+Migration `0034_starter_evaluations` adds the foundation for starter evaluations:
+
+- `User.starterStartDate` stores the official start date in the sales role.
+- `StarterEvaluation` stores one record per representative and fixed moment with a unique `representativeId + moment` constraint.
+- `StarterEvaluationSection` and `StarterEvaluationQuestion` store configurable rubrics and questions.
+- `StarterEvaluationSectionSnapshot` and `StarterEvaluationQuestionSnapshot` freeze the effective form at creation time.
+- `StarterEvaluationAnswer` stores separate representative, evaluator and system answers.
+- `StarterEvaluationDraftActionPoint` stores draft action points until a future approval workflow activates real `ActionPoint` rows.
+
+The generation job is `npm run starter-evaluations:generate`.
 
 ## Role configuration
 
