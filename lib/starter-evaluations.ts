@@ -1,7 +1,9 @@
 import type {
   Country,
   CriterionScopeType,
+  MockUser,
   RepresentativeLevel,
+  Role,
 } from "@/lib/types";
 
 export type StarterEvaluationMoment = "MONTH_1_5" | "MONTH_3" | "MONTH_5";
@@ -68,6 +70,14 @@ export type StarterEvaluationQuestionSeed = {
 };
 
 const allMoments = starterEvaluationMoments;
+const manualStarterEvaluationRoles = new Set<Role>([
+  "SALES_LEADER",
+  "COUNTRY_MANAGER",
+  "SALES_MANAGER",
+  "GROUP_MANAGER",
+  "ADMIN",
+  "SUPER_ADMIN",
+]);
 
 export const starterEvaluationSectionSeeds: StarterEvaluationSectionSeed[] = [
   { code: "job_expectations", titleNl: "Verwachtingen over de nieuwe job", sortOrder: 10, moments: allMoments },
@@ -126,10 +136,102 @@ export const starterEvaluationQuestionSeeds: StarterEvaluationQuestionSeed[] = [
     assignee: "BOTH_SEPARATE" as const,
     moments: allMoments,
   })),
+  ...[
+    "Stiptheid",
+    "Persoonlijk voorkomen",
+    "Correcte communicatie",
+    "Netheid bestelwagen en rijgedrag",
+    "Correct voorraadbeheer",
+    "Demo-koffer net en volledig",
+    "Correcte en tijdige administratie",
+    "Agenda respecteren",
+  ].map((textNl, index) => ({
+    key: `golden_mext_rules_${index + 1}`,
+    sectionCode: "golden_mext_rules",
+    textNl,
+    sortOrder: (index + 1) * 10,
+    answerType: "RICH_TEXT" as const,
+    assignee: "BOTH_SEPARATE" as const,
+    moments: allMoments,
+  })),
+  ...[
+    "Voorbereiding",
+    "Introductie",
+    "Belangstelling",
+    "Demonstratie",
+    "Afsluiten",
+  ].map((textNl, index) => ({
+    key: `coat_rack_evolution_${index + 1}`,
+    sectionCode: "coat_rack_evolution",
+    textNl,
+    sortOrder: (index + 1) * 10,
+    answerType: "RICH_TEXT" as const,
+    assignee: "BOTH_SEPARATE" as const,
+    moments: allMoments,
+  })),
+  ...[
+    "Gemiddelde omzet per dag",
+    "70% KV",
+    "40% PV",
+    "Aantal verkopen per dag",
+    "Aantal FM regels per verkoop",
+    "Q verkoop 80%",
+    "Factuurbedrag per verkoop",
+    "% KT/factuur",
+  ].map((textNl, index) => ({
+    key: `performance_kpis_${index + 1}`,
+    sectionCode: "performance_kpis",
+    textNl,
+    sortOrder: (index + 1) * 10,
+    answerType: "LINKED_CRITERION" as const,
+    assignee: "SYSTEM" as const,
+    moments: allMoments,
+  })),
+  {
+    key: "coaching_count_total",
+    sectionCode: "coaching_count",
+    textNl: "Aantal begeleidingen",
+    sortOrder: 10,
+    answerType: "NUMBER",
+    assignee: "SYSTEM",
+    moments: allMoments,
+  },
+  {
+    key: "coaching_conclusions_summary",
+    sectionCode: "coaching_conclusions",
+    textNl: "Conclusies uit begeleidingen",
+    sortOrder: 10,
+    answerType: "RICH_TEXT",
+    assignee: "EVALUATOR",
+    moments: allMoments,
+  },
+  ...[
+    "Actiepunt 1: Kleurencodes 8,5 pntn",
+    "Actiepunt 2: Vergeten producten 8,5 pntn",
+    "Actiepunt 3: Misbeh en retours",
+    "Actiepunt 4: PV/PGJ 60% en EUR300",
+  ].map((textNl, index) => ({
+    key: `action_point_evolution_${index + 1}`,
+    sectionCode: "action_point_evolution",
+    textNl,
+    sortOrder: (index + 1) * 10,
+    answerType: "RICH_TEXT" as const,
+    assignee: "EVALUATOR" as const,
+    moments: allMoments,
+  })),
+  {
+    key: "previous_todo_realisation",
+    sectionCode: "previous_todo_realisation",
+    textNl: "Zijn de voorgaande werkpunten verbeterd?",
+    sortOrder: 10,
+    answerType: "RICH_TEXT",
+    assignee: "BOTH_SEPARATE",
+    moments: ["MONTH_3", "MONTH_5"],
+  },
   {
     key: "next_period_action_points",
     sectionCode: "next_period_todo",
-    textNl: "Welke actiepunten worden voorbereid voor de volgende periode?",
+    textNl: "Waar dient er aandacht aan besteed worden?",
     sortOrder: 10,
     answerType: "ACTION_POINTS",
     assignee: "EVALUATOR",
@@ -172,6 +274,49 @@ export function dueStarterEvaluationMoments(startDate: Date, referenceDate = new
   const milestones = calculateStarterEvaluationMilestones(startDate);
   const reference = dateOnlyUtc(referenceDate);
   return starterEvaluationMoments.filter((moment) => milestones[moment] <= reference);
+}
+
+export function canStartStarterEvaluation(actor: MockUser) {
+  return manualStarterEvaluationRoles.has(actor.role) &&
+    actor.permissions?.["menu.coaching.starterEvaluations"] !== false &&
+    actor.permissions?.modulePreparation !== false;
+}
+
+export function canStartStarterEvaluationForRepresentative(
+  actor: MockUser,
+  representative: { id: string; representativeId?: string | null; role: Role | string; country: Country | string; teamId?: string | null }
+) {
+  if (!canStartStarterEvaluation(actor)) return false;
+  if (representative.role !== "REPRESENTATIVE") return false;
+  if (actor.role === "SALES_LEADER") {
+    return Boolean(actor.teamId && representative.teamId === actor.teamId);
+  }
+  if (actor.role === "COUNTRY_MANAGER") return representative.country === actor.country;
+  if (actor.role === "SALES_MANAGER") return (actor.countryAccess ?? []).includes(representative.country as Country);
+  if (actor.role === "ADMIN") {
+    const countries = actor.countryAccess?.length ? actor.countryAccess : [actor.country];
+    return countries.includes(representative.country as Country);
+  }
+  return ["GROUP_MANAGER", "SUPER_ADMIN"].includes(actor.role);
+}
+
+export function parseStarterEvaluationDateInput(value: unknown, label = "Evaluatiedatum") {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) throw new Error(`${label} is verplicht.`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new Error(`${label} is ongeldig.`);
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== raw) {
+    throw new Error(`${label} is ongeldig.`);
+  }
+  return dateOnlyUtc(date);
+}
+
+export function formatStarterEvaluationDateInput(value = new Date()) {
+  return dateOnlyUtc(value).toISOString().slice(0, 10);
+}
+
+export function starterEvaluationHref(id: string) {
+  return `/tussentijdse-evaluaties/${encodeURIComponent(id)}`;
 }
 
 export function dateOnlyUtc(value: Date) {

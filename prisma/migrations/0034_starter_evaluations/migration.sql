@@ -27,6 +27,7 @@ FROM (
   UNION SELECT 'SALES_LEADER'
   UNION SELECT 'SALES_MANAGER'
   UNION SELECT 'COUNTRY_MANAGER'
+  UNION SELECT 'GROUP_MANAGER'
   UNION SELECT 'ADMIN'
   UNION SELECT 'SUPER_ADMIN'
 ) AS role_seed
@@ -74,6 +75,8 @@ CREATE TABLE `StarterEvaluationQuestion` (
   `country` ENUM('BE','NL','DE') NULL,
   `teamId` VARCHAR(191) NULL,
   `userId` VARCHAR(191) NULL,
+  `createdById` VARCHAR(191) NULL,
+  `updatedById` VARCHAR(191) NULL,
   `linkedCriterionType` ENUM('KPI','COAT_RACK','GENERAL_EVALUATION','PERSONALITY','GENERAL_COACHING_SCORE') NULL,
   `linkedCriterionId` VARCHAR(191) NULL,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -85,16 +88,45 @@ CREATE TABLE `StarterEvaluationQuestion` (
   INDEX `SEQ_linkedCriterion_idx` (`linkedCriterionType`, `linkedCriterionId`),
   CONSTRAINT `StarterEvaluationQuestion_sectionId_fkey` FOREIGN KEY (`sectionId`) REFERENCES `StarterEvaluationSection`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluationQuestion_teamId_fkey` FOREIGN KEY (`teamId`) REFERENCES `Team`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `StarterEvaluationQuestion_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `StarterEvaluationQuestion_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `StarterEvaluationQuestion_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `StarterEvaluationQuestion_updatedById_fkey` FOREIGN KEY (`updatedById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE `StarterEvaluationQuestionScopeLink` (
+  `id` VARCHAR(191) NOT NULL,
+  `questionId` VARCHAR(191) NOT NULL,
+  `scopeType` ENUM('GLOBAL','COUNTRY','TEAM','USER') NOT NULL,
+  `scopeKey` VARCHAR(191) NOT NULL,
+  `country` ENUM('BE','NL','DE') NULL,
+  `teamId` VARCHAR(191) NULL,
+  `userId` VARCHAR(191) NULL,
+  `sortOrder` INTEGER NOT NULL DEFAULT 0,
+  `createdById` VARCHAR(191) NULL,
+  `updatedById` VARCHAR(191) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `StarterEvaluationQuestionScopeLink_questionId_scopeType_scopeKey_key` (`questionId`, `scopeType`, `scopeKey`),
+  INDEX `StarterEvaluationQuestionScopeLink_scopeType_scopeKey_idx` (`scopeType`, `scopeKey`),
+  INDEX `StarterEvaluationQuestionScopeLink_questionId_sortOrder_idx` (`questionId`, `sortOrder`),
+  INDEX `StarterEvaluationQuestionScopeLink_country_idx` (`country`),
+  INDEX `StarterEvaluationQuestionScopeLink_teamId_idx` (`teamId`),
+  INDEX `StarterEvaluationQuestionScopeLink_userId_idx` (`userId`),
+  CONSTRAINT `StarterEvaluationQuestionScopeLink_questionId_fkey` FOREIGN KEY (`questionId`) REFERENCES `StarterEvaluationQuestion`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `StarterEvaluationQuestionScopeLink_teamId_fkey` FOREIGN KEY (`teamId`) REFERENCES `Team`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `StarterEvaluationQuestionScopeLink_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE `StarterEvaluation` (
   `id` VARCHAR(191) NOT NULL,
   `representativeId` VARCHAR(191) NOT NULL,
-  `moment` ENUM('MONTH_1_5','MONTH_3','MONTH_5') NOT NULL,
+  `moment` ENUM('MONTH_1_5','MONTH_3','MONTH_5') NULL,
   `status` ENUM('DUE','PREPARATION','READY_FOR_CONVERSATION','IN_PROGRESS','WAITING_FOR_APPROVAL','NOT_AGREED','APPROVED','CANCELLED') NOT NULL DEFAULT 'DUE',
   `milestoneDate` DATE NOT NULL,
   `starterStartDateSnapshot` DATE NOT NULL,
+  `manualStartedById` VARCHAR(191) NULL,
+  `manualStartedAt` DATETIME(3) NULL,
   `plannedConversationDate` DATE NULL,
   `plannedStartTime` VARCHAR(5) NULL,
   `plannedEndTime` VARCHAR(5) NULL,
@@ -123,6 +155,8 @@ CREATE TABLE `StarterEvaluation` (
   `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `StarterEvaluation_representativeId_moment_key` (`representativeId`, `moment`),
+  INDEX `StarterEvaluation_representativeId_milestoneDate_status_idx` (`representativeId`, `milestoneDate`, `status`),
+  INDEX `StarterEvaluation_manualStartedById_manualStartedAt_idx` (`manualStartedById`, `manualStartedAt`),
   INDEX `StarterEvaluation_status_milestoneDate_idx` (`status`, `milestoneDate`),
   INDEX `StarterEvaluation_leaderId_status_idx` (`leaderId`, `status`),
   INDEX `StarterEvaluation_countryManagerId_status_idx` (`countryManagerId`, `status`),
@@ -131,7 +165,8 @@ CREATE TABLE `StarterEvaluation` (
   CONSTRAINT `StarterEvaluation_countryManagerId_fkey` FOREIGN KEY (`countryManagerId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluation_sentForApprovalById_fkey` FOREIGN KEY (`sentForApprovalById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluation_approvedById_fkey` FOREIGN KEY (`approvedById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `StarterEvaluation_cancelledById_fkey` FOREIGN KEY (`cancelledById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `StarterEvaluation_cancelledById_fkey` FOREIGN KEY (`cancelledById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `StarterEvaluation_manualStartedById_fkey` FOREIGN KEY (`manualStartedById`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE `StarterEvaluationSectionSnapshot` (

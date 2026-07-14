@@ -248,6 +248,33 @@ export type ManagementCriterion = {
   scopeLinks: ManagementCriterionScopeLink[];
 };
 
+export type ManagementStarterEvaluationQuestionScopeLink = {
+  id: string;
+  scopeType: CriterionScopeType;
+  scopeKey: string;
+  country: Country | null;
+  teamId: string | null;
+  teamName: string | null;
+  userId: string | null;
+  userName: string | null;
+  sortOrder: number;
+};
+
+export type ManagementStarterEvaluationQuestion = {
+  id: string;
+  key: string;
+  sectionId: string;
+  sectionTitle: string;
+  textNl: string;
+  helpNl: string;
+  answerType: string;
+  assignee: string;
+  required: boolean;
+  active: boolean;
+  sortOrder: number;
+  scopeLinks: ManagementStarterEvaluationQuestionScopeLink[];
+};
+
 export type ManagementFocus = {
   id: string;
   code: string;
@@ -272,6 +299,7 @@ export type ManagementConfiguration = {
   kpiTypes: ManagementKpiType[];
   kpiTargetTypes: ManagementKpiTargetType[];
   focuses: ManagementFocus[];
+  starterEvaluationQuestions: ManagementStarterEvaluationQuestion[];
   roles: ManagementRole[];
 };
 

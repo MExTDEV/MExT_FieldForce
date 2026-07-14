@@ -8,6 +8,7 @@ import {
   deactivateTeam,
   getManagementConfiguration,
   listManagementKpis,
+  listStarterEvaluationQuestions,
   listManagementTeams,
   type ManagementSection,
   saveCriterion,
@@ -16,7 +17,9 @@ import {
   saveKpi,
   saveKpiTarget,
   saveRolePermissions,
+  saveStarterEvaluationQuestion,
   saveTeam,
+  deactivateStarterEvaluationQuestion,
 } from "@/lib/server/management";
 import {
   permanentlyDeleteCriterion,
@@ -48,6 +51,7 @@ const managementSections = new Set<ManagementSection>([
   "rollen",
   "kpis",
   "kapstok",
+  "starterEvaluations",
 ]);
 
 export async function GET(request: Request) {
@@ -61,10 +65,12 @@ export async function GET(request: Request) {
     if (!["ADMIN", "SUPER_ADMIN"].includes(actor.role)) {
       const canViewTeams = canAccessManagementSection(actor, "teams");
       const canViewKpis = canAccessManagementSection(actor, "kpis");
+      const canViewStarterEvaluations = canAccessManagementSection(actor, "starterEvaluations");
       const canReadPartialConfiguration =
-        (!section && (canViewTeams || canViewKpis)) ||
+        (!section && (canViewTeams || canViewKpis || canViewStarterEvaluations)) ||
         (section === "teams" && canViewTeams) ||
-        (section === "kpis" && canViewKpis);
+        (section === "kpis" && canViewKpis) ||
+        (section === "starterEvaluations" && canViewStarterEvaluations);
       if (canReadPartialConfiguration) {
         const includeKpis = section ? section === "kpis" : canViewKpis;
         const includeTeams = section
@@ -77,6 +83,9 @@ export async function GET(request: Request) {
           teams: includeTeams ? await listManagementTeams(actor) : [],
           ...kpiConfiguration,
           focuses: [],
+          starterEvaluationQuestions: section === "starterEvaluations" && canViewStarterEvaluations
+            ? await listStarterEvaluationQuestions()
+            : [],
           roles: [],
         };
       }
@@ -112,6 +121,10 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
     } else if (entity === "kpi" || entity === "kpiTarget") {
       if (!canAccessManagementSection(actor, "kpis")) {
         badRequest("Je hebt geen toegang tot KPI-beheer.");
+      }
+    } else if (entity === "starterEvaluationQuestion") {
+      if (!canAccessManagementSection(actor, "starterEvaluations")) {
+        badRequest("Je hebt geen toegang tot evaluatievraagbeheer.");
       }
     } else {
       requireRole(actor, ["ADMIN", "SUPER_ADMIN"]);
@@ -215,6 +228,31 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
               teamId: typeof payload.teamId === "string" ? payload.teamId : null,
               userId: typeof payload.userId === "string" ? payload.userId : null,
               sortOrder: Number(payload.sortOrder ?? 0),
+            });
+      } else if (entity === "starterEvaluationQuestion") {
+        result = operation === "delete"
+          ? await deactivateStarterEvaluationQuestion(actor, String(payload.id))
+          : await saveStarterEvaluationQuestion(actor, {
+              id: operation === "update" ? String(payload.id) : undefined,
+              textNl: String(payload.textNl ?? ""),
+              helpNl: typeof payload.helpNl === "string" ? payload.helpNl : "",
+              answerType: String(payload.answerType ?? "RICH_TEXT") as never,
+              assignee: String(payload.assignee ?? "BOTH_SEPARATE") as never,
+              required: payload.required === true,
+              active: payload.active !== false,
+              sortOrder: Number(payload.sortOrder ?? 0),
+              scopeLinks: Array.isArray(payload.scopeLinks)
+                ? payload.scopeLinks.map((item) => {
+                    const link = item as Record<string, unknown>;
+                    return {
+                      scopeType: String(link.scopeType ?? "GLOBAL") as never,
+                      country: typeof link.country === "string" ? link.country as Country : null,
+                      teamId: typeof link.teamId === "string" ? link.teamId : null,
+                      userId: typeof link.userId === "string" ? link.userId : null,
+                      sortOrder: Number(link.sortOrder ?? 0),
+                    };
+                  })
+                : [],
             });
       } else if (entity === "role" && operation === "update") {
         result = await saveRolePermissions(
@@ -342,6 +380,18 @@ function isSafeManagementMessage(message: string) {
       "Het gekozen kapstokcriterium bestaat niet meer.",
       "De gekozen kapstokkoppeling bestaat niet meer.",
       "Globale kapstokkoppelingen kunnen alleen door een Super Admin worden gewijzigd.",
+      "Je hebt geen toegang tot evaluatievraagbeheer.",
+      "Alleen Super Admin en Group Manager mogen evaluatievragen beheren.",
+      "Vraagtekst is verplicht.",
+      "Selecteer een geldig antwoordtype.",
+      "Selecteer een geldige invuller.",
+      "Koppel minstens een scope aan deze vraag.",
+      "Er is geen actieve evaluatierubriek gevonden.",
+      "Globale evaluatievragen kunnen alleen door groepsbeheer worden gewijzigd.",
+      "Selecteer een land voor deze evaluatievraag.",
+      "Selecteer een team voor deze evaluatievraag.",
+      "Selecteer een gebruiker voor deze evaluatievraag.",
+      "Het gekozen team bestaat niet meer.",
       "Super Admin vereist.",
       "Rollen en globale rechten kunnen alleen door een Super Admin worden gewijzigd.",
       "Onbekende rol.",

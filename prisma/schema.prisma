@@ -319,9 +319,13 @@ model User {
   starterEvaluationCancelled StarterEvaluation[]      @relation("StarterEvaluationCancelledBy")
   starterEvaluationSentForApproval StarterEvaluation[] @relation("StarterEvaluationSentForApprovalBy")
   starterEvaluationApproved StarterEvaluation[]       @relation("StarterEvaluationApprovedBy")
+  starterEvaluationManualStarted StarterEvaluation[]  @relation("StarterEvaluationManualStartedBy")
   starterEvaluationAnswers  StarterEvaluationAnswer[] @relation("StarterEvaluationAnswerUpdatedBy")
   starterEvaluationActions  StarterEvaluationDraftActionPoint[] @relation("StarterEvaluationDraftActionOwner")
   starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionUser")
+  starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[] @relation("StarterEvaluationQuestionScopeLinkUser")
+  starterEvaluationQuestionsCreated StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionCreatedBy")
+  starterEvaluationQuestionsUpdated StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionUpdatedBy")
   countryAccess             UserCountryAccess[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
@@ -451,6 +455,7 @@ model Team {
   actionTargetOverrides ActionTargetOverride[]
   criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkTeam")
   starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionTeam")
+  starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[] @relation("StarterEvaluationQuestionScopeLinkTeam")
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -1191,11 +1196,16 @@ model StarterEvaluationQuestion {
   country        Country?
   teamId         String?
   userId         String?
+  createdById    String?
+  updatedById    String?
   linkedCriterionType CriterionType?
   linkedCriterionId   String?
   section        StarterEvaluationSection       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   team           Team?                          @relation("StarterEvaluationQuestionTeam", fields: [teamId], references: [id], onDelete: SetNull)
   user           User?                          @relation("StarterEvaluationQuestionUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy      User?                          @relation("StarterEvaluationQuestionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?                          @relation("StarterEvaluationQuestionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  scopeLinks     StarterEvaluationQuestionScopeLink[]
   snapshots      StarterEvaluationQuestionSnapshot[]
   createdAt      DateTime                       @default(now())
   updatedAt      DateTime                       @updatedAt
@@ -1205,13 +1215,40 @@ model StarterEvaluationQuestion {
   @@index([linkedCriterionType, linkedCriterionId], map: "SEQ_linkedCriterion_idx")
 }
 
+model StarterEvaluationQuestionScopeLink {
+  id          String                    @id @default(cuid())
+  questionId  String
+  scopeType   CriterionScopeType
+  scopeKey    String
+  country     Country?
+  teamId      String?
+  userId      String?
+  sortOrder   Int                       @default(0)
+  createdById String?
+  updatedById String?
+  question    StarterEvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  team        Team?                     @relation("StarterEvaluationQuestionScopeLinkTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  user        User?                     @relation("StarterEvaluationQuestionScopeLinkUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@unique([questionId, scopeType, scopeKey])
+  @@index([scopeType, scopeKey])
+  @@index([questionId, sortOrder])
+  @@index([country])
+  @@index([teamId])
+  @@index([userId])
+}
+
 model StarterEvaluation {
   id                         String                    @id @default(cuid())
   representativeId           String
-  moment                     StarterEvaluationMoment
+  moment                     StarterEvaluationMoment?
   status                     StarterEvaluationStatus   @default(DUE)
   milestoneDate              DateTime                  @db.Date
   starterStartDateSnapshot   DateTime                  @db.Date
+  manualStartedById          String?
+  manualStartedAt            DateTime?
   plannedConversationDate    DateTime?                 @db.Date
   plannedStartTime           String?                   @db.VarChar(5)
   plannedEndTime             String?                   @db.VarChar(5)
@@ -1245,12 +1282,15 @@ model StarterEvaluation {
   sentForApprovalBy          User?                     @relation("StarterEvaluationSentForApprovalBy", fields: [sentForApprovalById], references: [id], onDelete: SetNull)
   approvedBy                 User?                     @relation("StarterEvaluationApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   cancelledBy                User?                     @relation("StarterEvaluationCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  manualStartedBy            User?                     @relation("StarterEvaluationManualStartedBy", fields: [manualStartedById], references: [id], onDelete: SetNull)
   sectionSnapshots           StarterEvaluationSectionSnapshot[]
   questionSnapshots          StarterEvaluationQuestionSnapshot[]
   answers                    StarterEvaluationAnswer[]
   draftActionPoints          StarterEvaluationDraftActionPoint[]
 
   @@unique([representativeId, moment])
+  @@index([representativeId, milestoneDate, status])
+  @@index([manualStartedById, manualStartedAt])
   @@index([status, milestoneDate])
   @@index([leaderId, status])
   @@index([countryManagerId, status])

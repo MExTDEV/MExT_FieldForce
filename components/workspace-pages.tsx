@@ -81,6 +81,10 @@ import {
 } from "@/lib/data-access";
 import { moduleForRoute } from "@/lib/modules";
 import {
+  canStartStarterEvaluation,
+  formatStarterEvaluationDateInput,
+} from "@/lib/starter-evaluations";
+import {
   getFicheTimelineItemTypes,
   getVisibleFicheSections,
   getVisibleFicheTabs,
@@ -214,7 +218,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "mijn-verslagen") return <MyReportsPage id={segments[1]} />;
   if (segments[0] === "contactmomenten") return <ContactMomentsPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
   if (segments[0] === "hulpaanvragen") return <HelpRequestsWorkflowPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
-  if (segments[0] === "tussentijdse-evaluaties") return <StarterEvaluationsPage />;
+  if (segments[0] === "tussentijdse-evaluaties") return <StarterEvaluationsPage evaluationId={segments[1]} />;
   if (segments[0] === "retrainingen") return <TrainingWorkflowPage kind="retraining" id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
   if (segments[0] === "sales-trainingen") return <TrainingWorkflowPage kind="sales_training" id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
   if (segments[0] === "rapportering") return <ReportingDashboard section={segments[1]} />;
@@ -243,17 +247,230 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   return <EmptyState title="Pagina in voorbereiding" description="Deze route is technisch beschikbaar en wordt in een volgende functionele iteratie verder ingevuld." />;
 }
 
-function StarterEvaluationsPage() {
+type StarterEvaluationCandidate = {
+  id: string;
+  name: string;
+  country: string;
+  teamName: string;
+  starterStartDate: string;
+};
+
+type StarterEvaluationDetail = {
+  id: string;
+  status: string;
+  evaluationDate: string;
+  representativeName: string;
+  teamName: string;
+  country: string;
+  leaderName: string;
+  manualStartedByName: string;
+  sections: {
+    id: string;
+    title: string;
+    questions: {
+      id: string;
+      text: string;
+      answerType: string;
+      assignee: string;
+    }[];
+  }[];
+};
+
+function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
+  const router = useRouter();
+  const { user } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+  const canStart = canStartStarterEvaluation(user);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [candidates, setCandidates] = useState<StarterEvaluationCandidate[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [selectedRepresentativeId, setSelectedRepresentativeId] = useState("");
+  const [evaluationDate, setEvaluationDate] = useState(() => formatStarterEvaluationDateInput());
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+  const [duplicateHref, setDuplicateHref] = useState("");
+  const [detail, setDetail] = useState<StarterEvaluationDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
   const milestones = [
-    ["1,5 maand", "Verkoopleider plant en bereidt samen met de starter voor."],
-    ["3 maanden", "Vervolg op vorige evaluatie, actiepunten en KPI-evolutie."],
-    ["5 maanden", "Verkoopleider en Country Manager evalueren samen."],
+    [t("starterEvaluations.milestone.month1_5"), t("starterEvaluations.milestone.month1_5.description")],
+    [t("starterEvaluations.milestone.month3"), t("starterEvaluations.milestone.month3.description")],
+    [t("starterEvaluations.milestone.month5"), t("starterEvaluations.milestone.month5.description")],
   ];
+  const filteredCandidates = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return candidates;
+    return candidates.filter((candidate) =>
+      [candidate.name, candidate.teamName, candidate.country].join(" ").toLowerCase().includes(needle)
+    );
+  }, [candidates, query]);
+
+  useEffect(() => {
+    if (!dialogOpen || !canStart) return;
+    let cancelled = false;
+    setLoadingCandidates(true);
+    setError("");
+    fetch(`/api/starter-evaluations?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { candidates?: StarterEvaluationCandidate[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? t("starterEvaluations.manualStart.loadError"));
+        if (cancelled) return;
+        const next = payload.candidates ?? [];
+        setCandidates(next);
+        setSelectedRepresentativeId((current) => current || next[0]?.id || "");
+      })
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : t("starterEvaluations.manualStart.loadError"));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCandidates(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canStart, dialogOpen, t, user.id]);
+
+  useEffect(() => {
+    if (!evaluationId) return;
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError("");
+    fetch(`/api/starter-evaluations/${encodeURIComponent(evaluationId)}?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { evaluation?: StarterEvaluationDetail; error?: string };
+        if (!response.ok || !payload.evaluation) throw new Error(payload.error ?? t("starterEvaluations.detail.loadError"));
+        if (!cancelled) setDetail(payload.evaluation);
+      })
+      .catch((cause) => {
+        if (!cancelled) setDetailError(cause instanceof Error ? cause.message : t("starterEvaluations.detail.loadError"));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [evaluationId, t, user.id]);
+
+  async function submitManualStart() {
+    if (!selectedRepresentativeId) {
+      setError(t("starterEvaluations.manualStart.representativeRequired"));
+      return;
+    }
+    if (!evaluationDate) {
+      setError(t("starterEvaluations.manualStart.dateRequired"));
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setDuplicateHref("");
+    try {
+      const response = await fetch("/api/starter-evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: user.id,
+          representativeId: selectedRepresentativeId,
+          evaluationDate,
+        }),
+      });
+      const payload = await response.json() as {
+        evaluation?: { id: string; href: string };
+        duplicate?: boolean;
+        href?: string;
+        error?: string;
+      };
+      if (response.status === 409 && payload.href) {
+        setDuplicateHref(payload.href);
+        setError(payload.error ?? t("starterEvaluations.manualStart.duplicate"));
+        return;
+      }
+      if (!response.ok || !payload.evaluation) {
+        throw new Error(payload.error ?? t("starterEvaluations.manualStart.error"));
+      }
+      setDialogOpen(false);
+      router.push(payload.evaluation.href);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("starterEvaluations.manualStart.error"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (evaluationId) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title={t("starterEvaluations.detail.title")}
+          description={detail ? `${detail.representativeName} - ${detail.evaluationDate}` : t("starterEvaluations.detail.description")}
+          actions={
+            <Link href="/tussentijdse-evaluaties" className="btn-secondary">
+              {t("starterEvaluations.detail.back")}
+            </Link>
+          }
+        />
+        {detailLoading && (
+          <div className="rounded-lg border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-600 shadow-sm">
+            {t("starterEvaluations.detail.loading")}
+          </div>
+        )}
+        {detailError && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+            {detailError}
+          </div>
+        )}
+        {detail && (
+          <>
+            <div className="grid gap-3 md:grid-cols-4">
+              {[
+                [t("starterEvaluations.detail.representative"), detail.representativeName],
+                [t("starterEvaluations.detail.team"), detail.teamName || "-"],
+                [t("starterEvaluations.detail.country"), detail.country],
+                [t("starterEvaluations.detail.evaluator"), detail.leaderName || "-"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-4">
+              {detail.sections.map((section) => (
+                <section key={section.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                  <h2 className="text-base font-bold text-slate-950">{section.title}</h2>
+                  <div className="mt-4 space-y-4">
+                    {section.questions.map((question) => (
+                      <label key={question.id} className="block">
+                        <span className="text-sm font-semibold text-slate-700">{question.text}</span>
+                        <textarea
+                          className="input mt-2 min-h-24"
+                          placeholder={t("starterEvaluations.detail.answerPlaceholder")}
+                          readOnly
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Tussentijdse evaluaties"
-        description="Startersevaluaties na 1,5 maand, 3 maanden en 5 maanden."
+        title={t("starterEvaluations.title")}
+        description={t("starterEvaluations.description")}
+        actions={canStart && (
+          <button type="button" className="btn-primary" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {t("starterEvaluations.manualStart.button")}
+          </button>
+        )}
       />
       <div className="grid gap-4 lg:grid-cols-3">
         {milestones.map(([title, description]) => (
@@ -271,14 +488,88 @@ function StarterEvaluationsPage() {
         ))}
       </div>
       <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-bold text-slate-950">Automatische aanmaak</h2>
+        <h2 className="text-base font-bold text-slate-950">{t("starterEvaluations.automatic.title")}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          De serverjob maakt ontbrekende evaluaties idempotent aan voor actieve Starters met een ingevulde startdatum verkoopfunctie. De formulierstructuur wordt per evaluatie gesnapshot zodat latere beheerwijzigingen historische evaluaties niet aanpassen.
+          {t("starterEvaluations.automatic.description")}
         </p>
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
-          Vul in gebruikersbeheer de startdatum verkoopfunctie in bij elke Starter. Zonder die datum worden geen evaluaties gegenereerd.
+          {t("starterEvaluations.automatic.warning")}
         </p>
       </div>
+      {dialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">{t("starterEvaluations.manualStart.title")}</h2>
+                <p className="mt-1 text-sm text-slate-600">{t("starterEvaluations.manualStart.description")}</p>
+              </div>
+              <button type="button" className="btn-ghost h-9 w-9 p-0" onClick={() => setDialogOpen(false)} aria-label={t("starterEvaluations.manualStart.cancel")}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-semibold text-slate-700">
+                {t("starterEvaluations.manualStart.representative")}
+                <div className="relative mt-2">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    className="input pl-9"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t("starterEvaluations.manualStart.searchPlaceholder")}
+                    disabled={loadingCandidates || saving}
+                  />
+                </div>
+              </label>
+              <select
+                className="input"
+                value={selectedRepresentativeId}
+                onChange={(event) => setSelectedRepresentativeId(event.target.value)}
+                disabled={loadingCandidates || saving}
+              >
+                {loadingCandidates && <option>{t("starterEvaluations.manualStart.loading")}</option>}
+                {!loadingCandidates && filteredCandidates.length === 0 && <option value="">{t("starterEvaluations.manualStart.noCandidates")}</option>}
+                {!loadingCandidates && filteredCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name} - {candidate.teamName || t("starterEvaluations.manualStart.noTeam")} - {candidate.country}
+                  </option>
+                ))}
+              </select>
+              <label className="block text-sm font-semibold text-slate-700">
+                {t("starterEvaluations.manualStart.date")}
+                <input
+                  type="date"
+                  className="input mt-2"
+                  value={evaluationDate}
+                  onChange={(event) => setEvaluationDate(event.target.value)}
+                  disabled={saving}
+                />
+              </label>
+              {error && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                  {error}
+                  {duplicateHref && (
+                    <Link href={duplicateHref} className="ml-2 underline" onClick={() => setDialogOpen(false)}>
+                      {t("starterEvaluations.manualStart.openExisting")}
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setDialogOpen(false)} disabled={saving}>
+                {t("starterEvaluations.manualStart.cancel")}
+              </button>
+              <button type="button" className="btn-primary" onClick={submitManualStart} disabled={saving || loadingCandidates || !selectedRepresentativeId}>
+                {saving && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                {!saving && <ClipboardCheck className="h-4 w-4" />}
+                {saving ? t("starterEvaluations.manualStart.saving") : t("starterEvaluations.manualStart.submit")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4429,8 +4720,8 @@ function Management({ section }: { section?: string }) {
   if (resolvedSection === "modules") return <ModuleManagement />;
   if (resolvedSection === "log") return <ManagementLog />;
   if (resolvedSection === "instellingen") return <SettingsManagement />;
-  if (["teams", "rollen", "kpis", "kapstok"].includes(resolvedSection)) {
-    return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok"} />;
+  if (["teams", "rollen", "kpis", "kapstok", "starterEvaluations"].includes(resolvedSection)) {
+    return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok" | "starterEvaluations"} />;
   }
   return <ManagementRedirect />;
 }

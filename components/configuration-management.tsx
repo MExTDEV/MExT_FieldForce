@@ -32,12 +32,21 @@ import type {
   KpiTargetScope,
   KpiUnit,
   ManagementConfiguration,
+  ManagementStarterEvaluationQuestion,
+  ManagedUser,
   Role,
 } from "@/lib/types";
 
-type Section = "teams" | "rollen" | "kpis" | "kapstok";
+type Section = "teams" | "rollen" | "kpis" | "kapstok" | "starterEvaluations";
 type ManagementTeam = ManagementConfiguration["teams"][number];
 type ManagementKpi = ManagementConfiguration["kpis"][number];
+type StarterEvaluationQuestionScopeDraft = {
+  scopeType: CriterionScopeType;
+  country: Country | null;
+  teamId: string;
+  userId: string;
+  sortOrder: number;
+};
 type CountryTeamGroup = {
   country: string;
   teams: ManagementTeam[];
@@ -112,6 +121,18 @@ type EditorState =
       teamId: string;
       userId: string;
       sortOrder: number;
+    }
+  | {
+      kind: "starterEvaluationQuestion";
+      id?: string;
+      textNl: string;
+      helpNl: string;
+      answerType: string;
+      assignee: string;
+      required: boolean;
+      active: boolean;
+      sortOrder: number;
+      scopeLinks: StarterEvaluationQuestionScopeDraft[];
     }
   | { kind: "deactivate"; entity: string; id: string; name: string }
   | { kind: "purge"; entity: string; id: string; name: string };
@@ -204,11 +225,15 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     teams: "Teams",
     rollen: "Rollen en rechten",
     kpis: "KPI-definities",
+    starterEvaluations: "Vragen tussentijdse evaluatie",
     kapstok: "Kapstok beheer",
   };
   const canCreateKpis = hasPermission(user, "kpisCreate");
+  const canManageStarterEvaluationQuestions = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role);
   const filteredKpis = filterKpis(data, kpiFilters);
-  const showAddButton = section !== "rollen" && (section !== "kpis" || canCreateKpis);
+  const showAddButton = section !== "rollen" &&
+    (section !== "kpis" || canCreateKpis) &&
+    (section !== "starterEvaluations" || canManageStarterEvaluationQuestions);
   const importExportTopic = importExportTopicForSection(section);
   const activeTeams = data.teams.filter((item) => item.active);
   const inactiveTeams = data.teams.filter((item) => !item.active);
@@ -283,6 +308,22 @@ export function ConfigurationManagement({ section }: { section: Section }) {
             onPermanentDelete={(item) => setEditor(purgeEditorFromItem("kpi", item))}
           />
         </>
+      )}
+
+      {section === "starterEvaluations" && (
+        <StarterEvaluationQuestionManagement
+          questions={data.starterEvaluationQuestions}
+          teams={data.teams}
+          users={managedUsers}
+          canManage={canManageStarterEvaluationQuestions}
+          onEdit={(item) => setEditor(starterEvaluationQuestionEditorFromItem(item))}
+          onDeactivate={(item) => setEditor({
+            kind: "deactivate",
+            entity: "starterEvaluationQuestion",
+            id: item.id,
+            name: item.textNl,
+          })}
+        />
       )}
 
       {section === "kapstok" && (
@@ -535,6 +576,79 @@ function purgeEditorFromItem(
     id: item.id,
     name: item.name,
   };
+}
+
+function StarterEvaluationQuestionManagement({
+  questions,
+  teams,
+  users,
+  canManage,
+  onEdit,
+  onDeactivate,
+}: {
+  questions: ManagementStarterEvaluationQuestion[];
+  teams: ManagementTeam[];
+  users: ManagedUser[];
+  canManage: boolean;
+  onEdit: (item: ManagementStarterEvaluationQuestion) => void;
+  onDeactivate: (item: ManagementStarterEvaluationQuestion) => void;
+}) {
+  const groups: { scope: CriterionScopeType; title: string; questions: ManagementStarterEvaluationQuestion[] }[] = criterionScopeOrder.map((scope) => ({
+    scope,
+    title: criterionScopeLabels[scope],
+    questions: questions.filter((question) => question.scopeLinks.some((link) => link.scopeType === scope)),
+  }));
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-900">Vragen per scope</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Nieuwe evaluaties nemen cumulatief alle actieve globale, land-, team- en gebruikersvragen over.
+        </p>
+      </div>
+      {groups.map((group) => (
+        <div key={group.scope} className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-950">{group.title}</h3>
+              <p className="text-xs text-slate-500">{group.questions.length} vragen</p>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {group.questions.length ? group.questions.map((question) => (
+              <div key={`${group.scope}-${question.id}`} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${question.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                      {question.active ? "Actief" : "Inactief"}
+                    </span>
+                    <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">{question.answerType}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{question.assignee}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-slate-950">{question.textNl}</p>
+                  {question.helpNl && <p className="mt-1 text-sm text-slate-600">{question.helpNl}</p>}
+                  <p className="mt-2 text-xs text-slate-500">
+                    {question.scopeLinks
+                      .filter((link) => link.scopeType === group.scope)
+                      .map((link) => starterQuestionScopeDescription(link, teams, users))
+                      .join(" | ")}
+                  </p>
+                </div>
+                {canManage && (
+                  <div className="flex shrink-0 gap-2">
+                    <button type="button" className="btn-secondary" onClick={() => onEdit(question)}>Bewerken</button>
+                    {question.active && <button type="button" className="btn-ghost text-rose-700" onClick={() => onDeactivate(question)}>Inactiveren</button>}
+                  </div>
+                )}
+              </div>
+            )) : (
+              <p className="p-4 text-sm text-slate-500">Geen vragen in deze scope.</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function KpiScopeSections({
@@ -987,6 +1101,17 @@ function criterionScopeDescription(
   if (scopeLink.scopeType === "COUNTRY") return scopeLink.country ? countryLabel(scopeLink.country) : "Land";
   if (scopeLink.scopeType === "TEAM") return scopeLink.teamName ?? "Team";
   return scopeLink.userName ?? "Gebruiker";
+}
+
+function starterQuestionScopeDescription(
+  scopeLink: ManagementStarterEvaluationQuestion["scopeLinks"][number],
+  teams: ManagementTeam[],
+  users: ManagedUser[]
+) {
+  if (scopeLink.scopeType === "GLOBAL") return "Iedereen";
+  if (scopeLink.scopeType === "COUNTRY") return scopeLink.country ? countryLabel(scopeLink.country) : "Land";
+  if (scopeLink.scopeType === "TEAM") return scopeLink.teamName ?? teams.find((team) => team.id === scopeLink.teamId)?.name ?? "Team";
+  return scopeLink.userName ?? users.find((user) => user.id === scopeLink.userId)?.firstName ?? "Gebruiker";
 }
 
 function RolePermissions({
@@ -1635,6 +1760,107 @@ function CriterionScopeEditor({
   );
 }
 
+function StarterEvaluationQuestionEditor({
+  editor,
+  data,
+  users,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  editor: Extract<EditorState, { kind: "starterEvaluationQuestion" }>;
+  data: ManagementConfiguration;
+  users: ManagedUser[];
+  onChange: (editor: EditorState) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const answerTypes = ["SHORT_TEXT", "RICH_TEXT", "BOOLEAN", "NUMBER", "SCORE", "LINKED_CRITERION", "ACTION_POINTS"];
+  const assignees = ["REPRESENTATIVE", "EVALUATOR", "BOTH_SEPARATE", "SYSTEM"];
+  const valid = Boolean(editor.textNl.trim() && editor.scopeLinks.length);
+  const updateLink = (index: number, patch: Partial<StarterEvaluationQuestionScopeDraft>) => {
+    onChange({
+      ...editor,
+      scopeLinks: editor.scopeLinks.map((link, linkIndex) => linkIndex === index ? { ...link, ...patch } : link),
+    });
+  };
+  return (
+    <Modal title={`${editor.id ? "Bewerken" : "Toevoegen"} evaluatievraag`} onCancel={onCancel}>
+      <div className="space-y-4">
+        <Field label="Vraagtekst">
+          <textarea className="field min-h-24" value={editor.textNl} onChange={(event) => onChange({ ...editor, textNl: event.target.value })} />
+        </Field>
+        <Field label="Hulpetekst">
+          <textarea className="field min-h-20" value={editor.helpNl} onChange={(event) => onChange({ ...editor, helpNl: event.target.value })} />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Antwoordtype">
+            <select className="field" value={editor.answerType} onChange={(event) => onChange({ ...editor, answerType: event.target.value })}>
+              {answerTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </Field>
+          <Field label="Invuller">
+            <select className="field" value={editor.assignee} onChange={(event) => onChange({ ...editor, assignee: event.target.value })}>
+              {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
+            </select>
+          </Field>
+          <Field label="Volgorde">
+            <input type="number" min="0" className="field" value={editor.sortOrder} onChange={(event) => onChange({ ...editor, sortOrder: Number(event.target.value) })} />
+          </Field>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={editor.required} onChange={(event) => onChange({ ...editor, required: event.target.checked })} />
+            Verplicht
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={editor.active} onChange={(event) => onChange({ ...editor, active: event.target.checked })} />
+            Actief
+          </label>
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-950">Scopekoppelingen</h3>
+            <button type="button" className="btn-secondary" onClick={() => onChange({ ...editor, scopeLinks: [...editor.scopeLinks, { scopeType: "GLOBAL", country: null, teamId: "", userId: "", sortOrder: editor.scopeLinks.length }] })}>
+              <Plus className="h-4 w-4" /> Scope
+            </button>
+          </div>
+          {editor.scopeLinks.map((link, index) => (
+            <div key={index} className="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-4">
+              <select className="field" value={link.scopeType} onChange={(event) => updateLink(index, { scopeType: event.target.value as CriterionScopeType, country: null, teamId: "", userId: "" })}>
+                {criterionScopeOrder.map((scopeType) => <option key={scopeType} value={scopeType}>{criterionScopeLabels[scopeType]}</option>)}
+              </select>
+              {link.scopeType === "COUNTRY" && (
+                <select className="field sm:col-span-2" value={link.country ?? ""} onChange={(event) => updateLink(index, { country: event.target.value as Country })}>
+                  <option value="">Land kiezen</option>
+                  {(["BE", "NL", "DE"] as Country[]).map((country) => <option key={country} value={country}>{countryLabel(country)}</option>)}
+                </select>
+              )}
+              {link.scopeType === "TEAM" && (
+                <select className="field sm:col-span-2" value={link.teamId} onChange={(event) => updateLink(index, { teamId: event.target.value })}>
+                  <option value="">Team kiezen</option>
+                  {data.teams.filter((team) => team.active).map((team) => <option key={team.id} value={team.id}>{team.name} ({team.country})</option>)}
+                </select>
+              )}
+              {link.scopeType === "USER" && (
+                <select className="field sm:col-span-2" value={link.userId} onChange={(event) => updateLink(index, { userId: event.target.value })}>
+                  <option value="">Gebruiker kiezen</option>
+                  {users.filter((item) => item.active && item.role === "REPRESENTATIVE").map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName} ({item.country})</option>)}
+                </select>
+              )}
+              <button type="button" className="btn-ghost text-rose-700" onClick={() => onChange({ ...editor, scopeLinks: editor.scopeLinks.filter((_, linkIndex) => linkIndex !== index) })}>
+                <Trash2 className="h-4 w-4" /> Weg
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs leading-5 text-slate-500">
+          Nieuwe evaluaties gebruiken de cumulatieve set van alle toepasselijke scopekoppelingen. Bestaande snapshots wijzigen niet.
+        </p>
+      </div>
+      <ModalActions onCancel={onCancel} onSave={onSave} disabled={!valid} />
+    </Modal>
+  );
+}
+
 function newEditor(
   section: Section,
   country: Country,
@@ -1682,7 +1908,43 @@ function newEditor(
       sortOrder: data.focuses.length + 1,
     };
   }
+  if (section === "starterEvaluations") {
+    return {
+      kind: "starterEvaluationQuestion",
+      textNl: "",
+      helpNl: "",
+      answerType: "RICH_TEXT",
+      assignee: "BOTH_SEPARATE",
+      required: false,
+      active: true,
+      sortOrder: data.starterEvaluationQuestions.length + 1,
+      scopeLinks: [{ scopeType: "GLOBAL", country: null, teamId: "", userId: "", sortOrder: 0 }],
+    };
+  }
   return undefined;
+}
+
+function starterEvaluationQuestionEditorFromItem(
+  item: ManagementStarterEvaluationQuestion
+): Extract<EditorState, { kind: "starterEvaluationQuestion" }> {
+  return {
+    kind: "starterEvaluationQuestion",
+    id: item.id,
+    textNl: item.textNl,
+    helpNl: item.helpNl,
+    answerType: item.answerType,
+    assignee: item.assignee,
+    required: item.required,
+    active: item.active,
+    sortOrder: item.sortOrder,
+    scopeLinks: item.scopeLinks.map((link) => ({
+      scopeType: link.scopeType,
+      country: link.country,
+      teamId: link.teamId ?? "",
+      userId: link.userId ?? "",
+      sortOrder: link.sortOrder,
+    })),
+  };
 }
 
 function importExportTopicForSection(
@@ -1969,6 +2231,18 @@ function ManagementEditor({
         data={data}
         users={users}
         canChooseCountry={canChooseCountry}
+        onChange={onChange}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+  if (editor.kind === "starterEvaluationQuestion") {
+    return (
+      <StarterEvaluationQuestionEditor
+        editor={editor}
+        data={data}
+        users={users}
         onChange={onChange}
         onCancel={onCancel}
         onSave={onSave}

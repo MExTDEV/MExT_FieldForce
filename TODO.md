@@ -384,9 +384,9 @@ Update 2026-07-13 refresh Begeleidingen na inplannen:
 ### FF-P2-010 - Tussentijdse evaluaties verder functioneel afronden
 
 - Categorie: Coaching, starterontwikkeling, workflow
-- Status: Fundament lokaal geimplementeerd; volledige module-UI en workflow nog open
-- Probleem: De module Tussentijdse evaluaties heeft nu datamodel, moduletoggle, startdatum, milestoneberekening, formulierseed, snapshots en generation job, maar nog geen volledig invulscherm, akkoordflow, PDF, Outlook-sync of beheer-UI voor vragen.
-- Huidige werking: `TUSSENTIJDSE_EVALUATIES` bestaat als module; `User.starterStartDate` is beheerbaar; `npm run starter-evaluations:generate` maakt idempotent verschuldigde startersevaluaties aan en snapshott de formulierstructuur.
+- Status: Fundament en manuele start lokaal geimplementeerd; volledige detailflow nog open
+- Probleem: De module Tussentijdse evaluaties heeft nu datamodel, moduletoggle, startdatum, milestoneberekening, beheerbare formulierseed op basis van de oude ODS-formulieren, cumulatieve scopekoppelingen, snapshots, generation job en manuele startflow, maar nog geen volledig invulscherm, akkoordflow, PDF of Outlook-sync.
+- Huidige werking: `TUSSENTIJDSE_EVALUATIES` bestaat als module; `User.starterStartDate` is beheerbaar; `npm run starter-evaluations:generate` maakt idempotent verschuldigde startersevaluaties aan; leidinggevende/administratieve rollen kunnen via de overzichtspagina manueel een evaluatie starten binnen hun scope; Super Admin en Group Manager kunnen vragen beheren via Beheer > Vragen tussentijdse evaluatie; beide routes snapshotten de formulierstructuur.
 - Gewenste werking: Verkoopleider, vertegenwoordiger en bij 5 maanden Country Manager kunnen het gezamenlijke formulier volledig invullen, volgens server-side zichtbaarheidsregels, met akkoord/niet-akkoord, definitieve PDF en actiepuntactivatie.
 - Bewijs: `prisma/migrations/0034_starter_evaluations`, `lib/starter-evaluations.ts`, `lib/server/starter-evaluations.ts`, `docs/ai/modules/Coaching/TussentijdseEvaluaties.md`.
 - Relevante bestanden: `components/workspace-pages.tsx`, `components/user-management.tsx`, `components/configuration-management.tsx`, `prisma/schema.prisma`.

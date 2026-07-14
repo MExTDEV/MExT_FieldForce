@@ -266,8 +266,10 @@ Rules:
 Migration `0034_starter_evaluations` adds the foundation for starter evaluations:
 
 - `User.starterStartDate` stores the official start date in the sales role.
-- `StarterEvaluation` stores one record per representative and fixed moment with a unique `representativeId + moment` constraint.
+- `StarterEvaluation` stores automatic records per representative and fixed moment with a unique `representativeId + moment` constraint. Manual records may have `moment = NULL` and use `milestoneDate` as the chosen evaluation date.
+- `StarterEvaluation.manualStartedById` and `manualStartedAt` record manual creation; the audit log stores action `starterEvaluation.manualStart`.
 - `StarterEvaluationSection` and `StarterEvaluationQuestion` store configurable rubrics and questions.
+- `StarterEvaluationQuestionScopeLink` stores one or more global, country, team or user links per question. New evaluation snapshots apply links cumulatively for the evaluated representative and deduplicate the same question when multiple links match.
 - `StarterEvaluationSectionSnapshot` and `StarterEvaluationQuestionSnapshot` freeze the effective form at creation time.
 - `StarterEvaluationAnswer` stores separate representative, evaluator and system answers.
 - `StarterEvaluationDraftActionPoint` stores draft action points until a future approval workflow activates real `ActionPoint` rows.

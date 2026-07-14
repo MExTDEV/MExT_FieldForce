@@ -1,19 +1,25 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
+import { badRequest, forbidden } from "@/lib/server/api";
 import { isAppModuleEnabled } from "@/lib/server/modules";
 import {
+  canStartStarterEvaluation,
+  canStartStarterEvaluationForRepresentative,
   calculateStarterEvaluationMilestones,
   dateOnlyUtc,
   dueStarterEvaluationMoments,
+  parseStarterEvaluationDateInput,
   momentsJson,
   parseMomentsJson,
   scopeApplies,
   scopePriority,
   starterEvaluationModuleCode,
+  starterEvaluationHref,
   starterEvaluationQuestionSeeds,
   starterEvaluationSectionSeeds,
   type StarterEvaluationMoment,
 } from "@/lib/starter-evaluations";
+import type { Country, MockUser } from "@/lib/types";
 
 export type StarterEvaluationGenerationResult = {
   checkedUsers: number;
@@ -33,6 +39,18 @@ type StarterEvaluationUser = {
   active: boolean;
   team: { primaryLeaderId: string | null } | null;
 };
+
+export class StarterEvaluationDuplicateError extends Error {
+  existingEvaluationId: string;
+  href: string;
+
+  constructor(existingEvaluationId: string) {
+    super("Er bestaat al een actieve tussentijdse evaluatie voor deze vertegenwoordiger op deze evaluatiedatum.");
+    this.name = "StarterEvaluationDuplicateError";
+    this.existingEvaluationId = existingEvaluationId;
+    this.href = starterEvaluationHref(existingEvaluationId);
+  }
+}
 
 export async function ensureStarterEvaluationConfiguration(tx: Prisma.TransactionClient = prisma) {
   const sectionByCode = new Map<string, string>();
@@ -58,7 +76,7 @@ export async function ensureStarterEvaluationConfiguration(tx: Prisma.Transactio
   for (const question of starterEvaluationQuestionSeeds) {
     const sectionId = sectionByCode.get(question.sectionCode);
     if (!sectionId) continue;
-    await tx.starterEvaluationQuestion.upsert({
+    const storedQuestion = await tx.starterEvaluationQuestion.upsert({
       where: { key: question.key },
       create: {
         key: question.key,
@@ -81,6 +99,15 @@ export async function ensureStarterEvaluationConfiguration(tx: Prisma.Transactio
         momentsJson: momentsJson(question.moments),
       },
     });
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO \`StarterEvaluationQuestionScopeLink\`
+        (\`id\`, \`questionId\`, \`scopeType\`, \`scopeKey\`, \`country\`, \`teamId\`, \`userId\`, \`sortOrder\`, \`createdAt\`, \`updatedAt\`)
+      VALUES
+        (${createStarterEvaluationId("seqs")}, ${storedQuestion.id}, ${question.scopeType ?? "GLOBAL"}, ${question.scopeKey ?? "GLOBAL"}, ${question.scopeType === "COUNTRY" ? parseCountryScope(question.scopeKey) : null}, ${question.scopeType === "TEAM" ? parseEntityScope(question.scopeKey, "TEAM") : null}, ${question.scopeType === "USER" ? parseEntityScope(question.scopeKey, "USER") : null}, ${question.sortOrder}, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+      ON DUPLICATE KEY UPDATE
+        \`sortOrder\` = VALUES(\`sortOrder\`),
+        \`updatedAt\` = CURRENT_TIMESTAMP(3)
+    `);
   }
 }
 
@@ -134,6 +161,131 @@ export async function generateDueStarterEvaluations(referenceDate = new Date()):
     }
   }
   return result;
+}
+
+export async function listManualStarterEvaluationCandidates(actor: MockUser) {
+  if (!canStartStarterEvaluation(actor)) return [];
+  const representatives = await prisma.user.findMany({
+    where: {
+      active: true,
+      role: "REPRESENTATIVE",
+      representativeLevel: "STARTER",
+    },
+    select: {
+      id: true,
+      representativeId: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      country: true,
+      teamId: true,
+      starterStartDate: true,
+      representativeLevel: true,
+      team: { select: { name: true, primaryLeaderId: true } },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+  return representatives
+    .filter((representative) => canStartStarterEvaluationForRepresentative(actor, representative))
+    .map((representative) => ({
+      id: representative.id,
+      name: `${representative.firstName} ${representative.lastName}`.trim(),
+      country: representative.country,
+      teamId: representative.teamId,
+      teamName: representative.team?.name ?? "",
+      starterStartDate: representative.starterStartDate?.toISOString().slice(0, 10) ?? "",
+    }));
+}
+
+export async function createManualStarterEvaluation(input: {
+  actor: MockUser;
+  representativeId: string;
+  evaluationDate: string;
+}) {
+  const moduleEnabled = await isAppModuleEnabled(starterEvaluationModuleCode);
+  if (!moduleEnabled) badRequest("De module Tussentijdse evaluaties is niet actief.");
+  if (!canStartStarterEvaluation(input.actor)) forbidden("Je mag geen tussentijdse evaluatie starten.");
+  const evaluationDate = parseStarterEvaluationDateInput(input.evaluationDate);
+  const representative = await prisma.user.findFirst({
+    where: {
+      id: input.representativeId,
+      active: true,
+      role: "REPRESENTATIVE",
+      representativeLevel: "STARTER",
+    },
+    select: {
+      id: true,
+      representativeId: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      country: true,
+      teamId: true,
+      starterStartDate: true,
+      representativeLevel: true,
+      team: { select: { name: true, primaryLeaderId: true } },
+    },
+  });
+  if (!representative) badRequest("Selecteer een geldige starter.");
+  if (!canStartStarterEvaluationForRepresentative(input.actor, representative)) {
+    forbidden("Deze vertegenwoordiger valt buiten je toegestane scope.");
+  }
+
+  await ensureStarterEvaluationConfiguration();
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.starterEvaluation.findFirst({
+      where: {
+        representativeId: representative.id,
+        milestoneDate: evaluationDate,
+        status: { not: "CANCELLED" },
+      },
+      select: { id: true },
+    });
+    if (existing) throw new StarterEvaluationDuplicateError(existing.id);
+
+    const moment = inferMomentFromEvaluationDate(representative.starterStartDate, evaluationDate);
+    const countryManager = await tx.user.findFirst({
+      where: { active: true, role: "COUNTRY_MANAGER", country: representative.country },
+      select: { id: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
+    const kpiSnapshot = await snapshotApplicableStarterEvaluationKpis(tx, {
+      country: representative.country,
+      teamId: representative.teamId,
+      userId: representative.id,
+      evaluationDate,
+    });
+    const evaluationData = {
+      representativeId: representative.id,
+      moment,
+      status: "PREPARATION",
+      milestoneDate: evaluationDate,
+      starterStartDateSnapshot: dateOnlyUtc(representative.starterStartDate ?? evaluationDate),
+      leaderId: representative.team?.primaryLeaderId ?? (input.actor.role === "SALES_LEADER" ? input.actor.id : null),
+      countryManagerId: moment === "MONTH_5" ? countryManager?.id ?? null : null,
+      manualStartedById: input.actor.id,
+      manualStartedAt: new Date(),
+      preparationOpenedAt: new Date(),
+      kpiSnapshotJson: JSON.stringify(kpiSnapshot),
+    };
+    const evaluation = await tx.starterEvaluation.create({
+      data: evaluationData as unknown as Prisma.StarterEvaluationUncheckedCreateInput,
+    });
+    await snapshotEvaluationForm(tx, evaluation.id, {
+      country: representative.country,
+      teamId: representative.teamId,
+      userId: representative.id,
+    }, moment);
+    return {
+      evaluation: {
+        id: evaluation.id,
+        href: starterEvaluationHref(evaluation.id),
+        representativeName: `${representative.firstName} ${representative.lastName}`.trim(),
+        evaluationDate: evaluation.milestoneDate.toISOString().slice(0, 10),
+      },
+      duplicate: false as const,
+    };
+  });
 }
 
 export async function ensureDueEvaluationsForStarter(
@@ -226,16 +378,37 @@ async function snapshotEvaluationForm(
   tx: Prisma.TransactionClient,
   evaluationId: string,
   context: { country: "BE" | "NL" | "DE"; teamId: string | null; userId: string },
-  moment: StarterEvaluationMoment
+  moment: StarterEvaluationMoment | null
 ) {
   const sections = await tx.starterEvaluationSection.findMany({
     where: { active: true },
-    include: { questions: { where: { active: true }, orderBy: { sortOrder: "asc" } } },
+    include: {
+      questions: {
+        where: { active: true },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
     orderBy: { sortOrder: "asc" },
   });
+  const questionIds = sections.flatMap((section) => section.questions.map((question) => question.id));
+  const scopeLinks = questionIds.length
+    ? await tx.$queryRaw<{ questionId: string; scopeType: "GLOBAL" | "COUNTRY" | "TEAM" | "USER"; scopeKey: string; sortOrder: number }[]>(Prisma.sql`
+        SELECT \`questionId\`, \`scopeType\`, \`scopeKey\`, \`sortOrder\`
+        FROM \`StarterEvaluationQuestionScopeLink\`
+        WHERE \`questionId\` IN (${Prisma.join(questionIds)})
+      `)
+    : [];
+  const linksByQuestion = new Map<string, typeof scopeLinks>();
+  for (const link of scopeLinks) {
+    linksByQuestion.set(link.questionId, [...(linksByQuestion.get(link.questionId) ?? []), link]);
+  }
   for (const section of sections) {
-    if (!parseMomentsJson(section.momentsJson).includes(moment)) continue;
-    const applicableQuestions = dedupeApplicableQuestions(section.questions, context, moment);
+    if (moment && !parseMomentsJson(section.momentsJson).includes(moment)) continue;
+    const applicableQuestions = dedupeApplicableQuestions(
+      section.questions.map((question) => ({ ...question, scopeLinks: linksByQuestion.get(question.id) ?? [] })),
+      context,
+      moment
+    );
     if (!applicableQuestions.length) continue;
     const sectionSnapshot = await tx.starterEvaluationSectionSnapshot.create({
       data: {
@@ -282,24 +455,122 @@ async function snapshotEvaluationForm(
 
 function dedupeApplicableQuestions<
   T extends {
+    id: string;
     key: string;
+    textNl: string;
+    textFr: string | null;
+    textDe: string | null;
+    helpNl: string | null;
+    helpFr: string | null;
+    helpDe: string | null;
+    sortOrder: number;
+    required: boolean;
+    answerType: string;
+    assignee: string;
+    linkedCriterionType: string | null;
+    linkedCriterionId: string | null;
     scopeType: "GLOBAL" | "COUNTRY" | "TEAM" | "USER";
     scopeKey: string;
     momentsJson: string;
+    scopeLinks?: { scopeType: "GLOBAL" | "COUNTRY" | "TEAM" | "USER"; scopeKey: string; sortOrder: number }[];
   }
 >(
   questions: T[],
   context: { country: "BE" | "NL" | "DE"; teamId: string | null; userId: string },
-  moment: StarterEvaluationMoment
+  moment: StarterEvaluationMoment | null
 ) {
   const byKey = new Map<string, T>();
   for (const question of questions) {
-    if (!parseMomentsJson(question.momentsJson).includes(moment)) continue;
-    if (!scopeApplies(question, context)) continue;
+    if (moment && !parseMomentsJson(question.momentsJson).includes(moment)) continue;
+    const matchingLinks = (question.scopeLinks?.length ? question.scopeLinks : [question])
+      .filter((link) => scopeApplies(link, context));
+    if (!matchingLinks.length) continue;
     const current = byKey.get(question.key);
-    if (!current || scopePriority(question.scopeType) > scopePriority(current.scopeType)) {
-      byKey.set(question.key, question);
+    if (!current) {
+      const bestLink = matchingLinks.sort((a, b) =>
+        scopePriority(b.scopeType) - scopePriority(a.scopeType) ||
+        Number("sortOrder" in a ? a.sortOrder : question.sortOrder) - Number("sortOrder" in b ? b.sortOrder : question.sortOrder)
+      )[0];
+      byKey.set(question.key, {
+        ...question,
+        scopeType: bestLink.scopeType,
+        scopeKey: bestLink.scopeKey,
+      });
     }
   }
   return [...byKey.values()].sort((a, b) => ("sortOrder" in a && "sortOrder" in b ? Number(a.sortOrder) - Number(b.sortOrder) : 0));
+}
+
+function parseCountryScope(scopeKey: string | undefined) {
+  const value = parseEntityScope(scopeKey, "COUNTRY");
+  return value === "BE" || value === "NL" || value === "DE" ? value : null;
+}
+
+function parseEntityScope(scopeKey: string | undefined, prefix: string) {
+  const raw = scopeKey ?? "";
+  return raw.startsWith(`${prefix}:`) ? raw.slice(prefix.length + 1) : null;
+}
+
+function createStarterEvaluationId(prefix: string) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function snapshotApplicableStarterEvaluationKpis(
+  tx: Prisma.TransactionClient,
+  context: { country: Country; teamId: string | null; userId: string; evaluationDate: Date }
+) {
+  const kpis = await tx.kpiDefinition.findMany({
+    where: {
+      active: true,
+      includeInStarterEvaluations: true,
+      validFrom: { lte: context.evaluationDate },
+      OR: [{ validUntil: null }, { validUntil: { gte: context.evaluationDate } }],
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      country: true,
+      teamId: true,
+      userId: true,
+      targetRole: true,
+      unit: true,
+      targetValue: true,
+      minValue: true,
+      maxValue: true,
+      weight: true,
+      sortOrder: true,
+      evaluationDirection: true,
+      validFrom: true,
+      validUntil: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  return kpis
+    .filter((kpi) => {
+      if (kpi.userId) return kpi.userId === context.userId;
+      if (kpi.teamId) return kpi.teamId === context.teamId;
+      if (kpi.country) return kpi.country === context.country;
+      if (kpi.targetRole) return kpi.targetRole === "REPRESENTATIVE";
+      return true;
+    })
+    .map((kpi) => ({
+      ...kpi,
+      targetValue: kpi.targetValue.toString(),
+      minValue: kpi.minValue?.toString() ?? null,
+      maxValue: kpi.maxValue?.toString() ?? null,
+      weight: kpi.weight?.toString() ?? null,
+      validFrom: kpi.validFrom.toISOString().slice(0, 10),
+      validUntil: kpi.validUntil?.toISOString().slice(0, 10) ?? null,
+    }));
+}
+
+function inferMomentFromEvaluationDate(startDate: Date | null, evaluationDate: Date): StarterEvaluationMoment | null {
+  if (!startDate) return null;
+  const milestones = calculateStarterEvaluationMilestones(startDate);
+  const iso = evaluationDate.toISOString().slice(0, 10);
+  const match = (Object.entries(milestones) as [StarterEvaluationMoment, Date][])
+    .find(([, date]) => date.toISOString().slice(0, 10) === iso);
+  return match?.[0] ?? null;
 }

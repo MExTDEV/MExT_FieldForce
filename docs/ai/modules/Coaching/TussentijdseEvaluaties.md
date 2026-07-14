@@ -24,11 +24,16 @@ Geimplementeerd:
 - menu-permission `menu.coaching.starterEvaluations`;
 - beheerbare startdatum verkoopfunctie in gebruikersbeheer;
 - Prisma-tabellen voor evaluaties, vragen, rubrieken, snapshots, antwoorden en draftactiepunten;
-- unieke databasebeperking op `representativeId + moment`;
+- dynamisch beheerbare evaluatievragen via `Beheer > Vragen tussentijdse evaluatie`;
+- multi-scope koppelingen per vraag via `StarterEvaluationQuestionScopeLink`;
+- unieke databasebeperking op `representativeId + moment` voor automatische evaluaties;
+- manuele startflow via de overzichtspagina voor leidinggevende en administratieve rollen;
+- duplicate guard op actieve evaluaties met dezelfde vertegenwoordiger en evaluatiedatum;
+- auditlogactie `starterEvaluation.manualStart`;
 - KPI-vlag `includeInStarterEvaluations`;
 - centrale milestoneberekening in `lib/starter-evaluations.ts`;
 - idempotente servergeneratie in `lib/server/starter-evaluations.ts`;
-- initiele idempotente seed voor rubrieken en vragen zonder historische spreadsheetdata;
+- initiele idempotente seed voor rubrieken en vragen gebaseerd op de oude ODS-evaluatieformulieren;
 - Plesk-geschikt commando:
 
 ```powershell
@@ -41,14 +46,16 @@ Aanbevolen schema: dagelijks voor de werkdag, Europe/Brussels.
 
 De module gebruikt bestaande module- en menuactivatie. Evaluaties worden alleen gegenereerd wanneer de module actief is.
 
-De vraagconfiguratie ondersteunt scope:
+Manuele aanmaak is toegestaan voor `SALES_LEADER`, `COUNTRY_MANAGER`, `SALES_MANAGER`, `GROUP_MANAGER`, `ADMIN` en `SUPER_ADMIN`, binnen hun bestaande team- of landenscope. `REPRESENTATIVE` mag nooit zelf een tussentijdse evaluatie starten. De frontend verbergt de knop, maar de API valideert dezelfde scope opnieuw server-side.
+
+De vraagconfiguratie ondersteunt cumulatieve scope:
 
 - Global;
 - Country;
 - Team;
 - User.
 
-Bij meerdere toepasselijke scopes wint de meest specifieke vraagconfiguratie. Bij aanmaak wordt de effectieve formulierstructuur gesnapshot.
+Een nieuwe evaluatie bevat alle actieve vragen die via globale, land-, team- en gebruikerskoppelingen op de geëvalueerde vertegenwoordiger van toepassing zijn. Wanneer dezelfde vraag via meerdere koppelingen matcht, wordt ze slechts één keer gesnapshot. Bij aanmaak wordt de effectieve formulierstructuur gesnapshot.
 
 ## Workflow Contract
 
@@ -67,7 +74,7 @@ Statusovergangen, invulscherm, akkoordflow, PDF, Outlook-sync en actiepuntactiva
 
 ## Open Items
 
-- volledige invul- en detail-UI;
+- volledige invul- en detail-UI op `/tussentijdse-evaluaties/[id]`;
 - server-side antwoordzichtbaarheid per rol en gespreksdatum;
 - uitnodigen van vertegenwoordiger voor voorbereiding;
 - e-mailflows via centrale mailservice;

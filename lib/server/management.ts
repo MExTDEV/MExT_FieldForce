@@ -50,9 +50,10 @@ import type {
   KpiEvaluationDirection,
   KpiUnit,
 } from "@/lib/types";
+import type { StarterEvaluationAnswerType, StarterEvaluationAssignee } from "@/lib/starter-evaluations";
 
 const roles = applicationRoles;
-export type ManagementSection = "teams" | "rollen" | "kpis" | "kapstok";
+export type ManagementSection = "teams" | "rollen" | "kpis" | "kapstok" | "starterEvaluations";
 
 type ManagementTeamRow = {
   id: string;
@@ -184,17 +185,19 @@ export async function getManagementConfiguration(
   actor: MockUser,
   section?: ManagementSection
 ): Promise<ManagementConfiguration> {
-  const needsTeams = !section || section === "teams" || section === "kpis" || section === "kapstok";
+  const needsTeams = !section || section === "teams" || section === "kpis" || section === "kapstok" || section === "starterEvaluations";
   const needsKpis = !section || section === "kpis";
   const needsFocuses = !section || section === "kapstok";
+  const needsStarterEvaluationQuestions = !section || section === "starterEvaluations";
   const needsRoles = !section || section === "rollen";
 
-  const [teams, kpiConfiguration, focuses, managementRoles] = await Promise.all([
+  const [teams, kpiConfiguration, focuses, starterEvaluationQuestions, managementRoles] = await Promise.all([
     needsTeams ? listManagementTeams(actor) : Promise.resolve([]),
     needsKpis
       ? listManagementKpis(actor)
       : Promise.resolve(emptyKpiConfiguration()),
     needsFocuses ? listManagementFocuses() : Promise.resolve([]),
+    needsStarterEvaluationQuestions ? listStarterEvaluationQuestions() : Promise.resolve([]),
     needsRoles ? listManagementRoles() : Promise.resolve([]),
   ]);
 
@@ -202,6 +205,7 @@ export async function getManagementConfiguration(
     teams,
     ...kpiConfiguration,
     focuses,
+    starterEvaluationQuestions,
     roles: managementRoles,
   };
 }
@@ -257,6 +261,73 @@ async function listManagementFocuses() {
           : null,
         sortOrder: Number(scopeLink.sortOrder),
       })),
+    })),
+  }));
+}
+
+export async function listStarterEvaluationQuestions() {
+  const questions = await prisma.starterEvaluationQuestion.findMany({
+    include: {
+      section: { select: { titleNl: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { key: "asc" }],
+  });
+  const scopeLinks = await prisma.$queryRaw<{
+    id: string;
+    questionId: string;
+    scopeType: CriterionScopeType;
+    scopeKey: string;
+    country: Country | null;
+    teamId: string | null;
+    teamName: string | null;
+    userId: string | null;
+    userFirstName: string | null;
+    userLastName: string | null;
+    sortOrder: number;
+  }[]>(Prisma.sql`
+    SELECT
+      link.id,
+      link.questionId,
+      link.scopeType,
+      link.scopeKey,
+      link.country,
+      link.teamId,
+      team.name AS teamName,
+      link.userId,
+      user.firstName AS userFirstName,
+      user.lastName AS userLastName,
+      link.sortOrder
+    FROM \`StarterEvaluationQuestionScopeLink\` link
+    LEFT JOIN \`Team\` team ON team.id = link.teamId
+    LEFT JOIN \`User\` user ON user.id = link.userId
+    ORDER BY link.scopeType ASC, link.sortOrder ASC, link.scopeKey ASC
+  `);
+  const linksByQuestion = new Map<string, typeof scopeLinks>();
+  for (const link of scopeLinks) {
+    linksByQuestion.set(link.questionId, [...(linksByQuestion.get(link.questionId) ?? []), link]);
+  }
+  return questions.map((question) => ({
+    id: question.id,
+    key: question.key,
+    sectionId: question.sectionId,
+    sectionTitle: question.section.titleNl,
+    textNl: question.textNl,
+    helpNl: question.helpNl ?? "",
+    answerType: question.answerType,
+    assignee: question.assignee,
+    required: question.required,
+    active: question.active,
+    sortOrder: question.sortOrder,
+    scopeLinks: (linksByQuestion.get(question.id) ?? []).map((scopeLink) => ({
+      id: scopeLink.id,
+      scopeType: scopeLink.scopeType as CriterionScopeType,
+      scopeKey: scopeLink.scopeKey,
+      country: scopeLink.country as Country | null,
+      teamId: scopeLink.teamId,
+      teamName: scopeLink.teamName,
+      userId: scopeLink.userId,
+      userName: scopeLink.userFirstName || scopeLink.userLastName ? `${scopeLink.userFirstName ?? ""} ${scopeLink.userLastName ?? ""}`.trim() : null,
+      sortOrder: scopeLink.sortOrder,
     })),
   }));
 }
@@ -1353,6 +1424,160 @@ export async function saveCriterionScopeLink(
   return input.id
     ? prisma.criterionScopeLink.update({ where: { id: input.id }, data })
     : prisma.criterionScopeLink.create({ data: { ...data, createdById: actor.id } });
+}
+
+export async function saveStarterEvaluationQuestion(
+  actor: MockUser,
+  input: {
+    id?: string;
+    textNl: string;
+    helpNl?: string;
+    answerType: StarterEvaluationAnswerType;
+    assignee: StarterEvaluationAssignee;
+    required: boolean;
+    active: boolean;
+    sortOrder: number;
+    scopeLinks: {
+      scopeType: CriterionScopeType;
+      country?: Country | null;
+      teamId?: string | null;
+      userId?: string | null;
+      sortOrder?: number;
+    }[];
+  }
+) {
+  requireStarterEvaluationQuestionManagement(actor);
+  const textNl = input.textNl.trim();
+  if (!textNl) throw new Error("Vraagtekst is verplicht.");
+  if (!isStarterEvaluationAnswerType(input.answerType)) throw new Error("Selecteer een geldig antwoordtype.");
+  if (!isStarterEvaluationAssignee(input.assignee)) throw new Error("Selecteer een geldige invuller.");
+  if (!input.scopeLinks.length) throw new Error("Koppel minstens een scope aan deze vraag.");
+  const defaultSection = await prisma.starterEvaluationSection.findFirst({
+    where: { active: true },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true },
+  });
+  if (!defaultSection) throw new Error("Er is geen actieve evaluatierubriek gevonden.");
+  const normalizedLinks = await normalizeStarterEvaluationQuestionScopeLinks(actor, input.scopeLinks);
+  return prisma.$transaction(async (tx) => {
+    const question = input.id
+      ? await tx.starterEvaluationQuestion.update({
+          where: { id: input.id },
+          data: {
+            textNl,
+            helpNl: input.helpNl?.trim() || null,
+            answerType: input.answerType,
+            assignee: input.assignee,
+            required: input.required,
+            active: input.active,
+            sortOrder: input.sortOrder,
+            updatedById: actor.id,
+          } as unknown as Prisma.StarterEvaluationQuestionUncheckedUpdateInput,
+        })
+      : await tx.starterEvaluationQuestion.create({
+          data: {
+            key: `managed_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            sectionId: defaultSection.id,
+            textNl,
+            helpNl: input.helpNl?.trim() || null,
+            answerType: input.answerType,
+            assignee: input.assignee,
+            required: input.required,
+            active: input.active,
+            sortOrder: input.sortOrder,
+            momentsJson: JSON.stringify(["MONTH_1_5", "MONTH_3", "MONTH_5"]),
+            scopeType: "GLOBAL",
+            scopeKey: "GLOBAL",
+            createdById: actor.id,
+            updatedById: actor.id,
+          } as unknown as Prisma.StarterEvaluationQuestionUncheckedCreateInput,
+        });
+    await tx.$executeRaw(Prisma.sql`DELETE FROM \`StarterEvaluationQuestionScopeLink\` WHERE \`questionId\` = ${question.id}`);
+    for (const [index, link] of normalizedLinks.entries()) {
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO \`StarterEvaluationQuestionScopeLink\`
+          (\`id\`, \`questionId\`, \`scopeType\`, \`scopeKey\`, \`country\`, \`teamId\`, \`userId\`, \`sortOrder\`, \`createdById\`, \`updatedById\`, \`createdAt\`, \`updatedAt\`)
+        VALUES
+          (${createManagementId("seqs")}, ${question.id}, ${link.scopeType}, ${link.scopeKey}, ${link.country}, ${link.teamId}, ${link.userId}, ${link.sortOrder ?? index}, ${actor.id}, ${actor.id}, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+      `);
+    }
+    return tx.starterEvaluationQuestion.findUniqueOrThrow({ where: { id: question.id } });
+  });
+}
+
+export async function deactivateStarterEvaluationQuestion(actor: MockUser, id: string) {
+  requireStarterEvaluationQuestionManagement(actor);
+  return prisma.starterEvaluationQuestion.update({
+    where: { id },
+    data: { active: false, updatedById: actor.id } as unknown as Prisma.StarterEvaluationQuestionUncheckedUpdateInput,
+  });
+}
+
+function requireStarterEvaluationQuestionManagement(actor: MockUser) {
+  if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
+    throw new Error("Alleen Super Admin en Group Manager mogen evaluatievragen beheren.");
+  }
+}
+
+async function normalizeStarterEvaluationQuestionScopeLinks(
+  actor: MockUser,
+  links: {
+    scopeType: CriterionScopeType;
+    country?: Country | null;
+    teamId?: string | null;
+    userId?: string | null;
+    sortOrder?: number;
+  }[]
+) {
+  const normalized = [];
+  const seen = new Set<string>();
+  for (const link of links) {
+    if (link.scopeType === "GLOBAL") {
+      if (actor.role !== "SUPER_ADMIN" && actor.role !== "GROUP_MANAGER") {
+        throw new Error("Globale evaluatievragen kunnen alleen door groepsbeheer worden gewijzigd.");
+      }
+      normalized.push({ scopeType: "GLOBAL" as const, scopeKey: "GLOBAL", country: null, teamId: null, userId: null, sortOrder: link.sortOrder ?? 0 });
+      seen.add("GLOBAL:GLOBAL");
+      continue;
+    }
+    if (link.scopeType === "COUNTRY") {
+      if (!link.country) throw new Error("Selecteer een land voor deze evaluatievraag.");
+      const key = `COUNTRY:${link.country}`;
+      if (!seen.has(key)) normalized.push({ scopeType: "COUNTRY" as const, scopeKey: key, country: link.country, teamId: null, userId: null, sortOrder: link.sortOrder ?? 0 });
+      seen.add(key);
+      continue;
+    }
+    if (link.scopeType === "TEAM") {
+      if (!link.teamId) throw new Error("Selecteer een team voor deze evaluatievraag.");
+      const team = await prisma.team.findUnique({ where: { id: link.teamId }, select: { id: true, country: true } });
+      if (!team) throw new Error("Het gekozen team bestaat niet meer.");
+      const key = `TEAM:${team.id}`;
+      if (!seen.has(key)) normalized.push({ scopeType: "TEAM" as const, scopeKey: key, country: null, teamId: team.id, userId: null, sortOrder: link.sortOrder ?? 0 });
+      seen.add(key);
+      continue;
+    }
+    if (link.scopeType === "USER") {
+      if (!link.userId) throw new Error("Selecteer een gebruiker voor deze evaluatievraag.");
+      const user = await prisma.user.findUnique({ where: { id: link.userId }, select: { id: true, role: true } });
+      if (!user || user.role !== "REPRESENTATIVE") throw new Error("De gekozen gebruiker bestaat niet meer.");
+      const key = `USER:${user.id}`;
+      if (!seen.has(key)) normalized.push({ scopeType: "USER" as const, scopeKey: key, country: null, teamId: null, userId: user.id, sortOrder: link.sortOrder ?? 0 });
+      seen.add(key);
+    }
+  }
+  return normalized;
+}
+
+function isStarterEvaluationAnswerType(value: string): value is StarterEvaluationAnswerType {
+  return ["SHORT_TEXT", "RICH_TEXT", "BOOLEAN", "NUMBER", "PERCENTAGE", "CURRENCY", "SCORE", "CHOICE", "DATE", "SYSTEM", "LINKED_CRITERION", "ACTION_POINTS"].includes(value);
+}
+
+function isStarterEvaluationAssignee(value: string): value is StarterEvaluationAssignee {
+  return ["REPRESENTATIVE", "EVALUATOR", "BOTH_SEPARATE", "SYSTEM", "SHARED_EVALUATOR"].includes(value);
+}
+
+function createManagementId(prefix: string) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export async function deactivateCriterionScopeLink(actor: MockUser, id: string) {

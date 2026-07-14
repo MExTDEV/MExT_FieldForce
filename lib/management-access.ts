@@ -6,6 +6,7 @@ export type ManagementSection =
   | "teams"
   | "rollen"
   | "kpis"
+  | "starterEvaluations"
   | "kapstok"
   | "modules"
   | "instellingen"
@@ -43,6 +44,13 @@ export const managementSections: ManagementSectionDefinition[] = [
     section: "kpis",
     href: "/beheer/kpis",
     navKey: "nav.kpis",
+    permission: "menu.coaching.kpis",
+    requiredPermissions: ["kpisView"],
+  },
+  {
+    section: "starterEvaluations",
+    href: "/beheer/starterEvaluations",
+    navKey: "nav.starterEvaluationQuestions",
     permission: "menu.coaching.kpis",
     requiredPermissions: ["kpisView"],
   },
