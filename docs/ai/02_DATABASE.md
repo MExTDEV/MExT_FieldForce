@@ -128,6 +128,11 @@ Expected shared entities include:
 - Role module permissions
 - Login/session metadata
 
+`User.avatarUrl` stores either an external avatar URL or the authenticated
+application avatar route for an uploaded user photo. Uploaded user photos are
+stored below `FIELD_FORCE_UPLOAD_ROOT/user-avatars/`; Microsoft Entra profile
+photos may initialise `avatarUrl` after login when the field is still empty.
+
 Representative users also have a separate `representativeLevel` value. This is
 stored on `User`, not as a separate role. Changes are auditable through
 `RepresentativeLevelHistory`.

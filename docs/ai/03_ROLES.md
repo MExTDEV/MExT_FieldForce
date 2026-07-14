@@ -68,6 +68,10 @@ Role configuration defines defaults.
 
 A user-level override may explicitly enable or disable a permission for one user.
 
+Managing a user's profile photo is treated as editing personal user data. The
+upload API must enforce the same `canEditPersonal` scope as other personal user
+fields, and stored avatar reads must remain scoped to effective user visibility.
+
 New menu items and management actions must support:
 
 - role default configuration;

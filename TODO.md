@@ -124,6 +124,15 @@ Update 2026-07-13 na unlock:
 - Acceptatiecriteria: Aanmelden/afmelden werkt per rol; inactieve gebruikers worden geweigerd; sessielogging klopt; Entra mismatch wordt correct geweigerd.
 - Aanbevolen tests: `npm run env:check:production`, `npm run test:auth-session`, `npm run test:login-history`, handmatige staging-login.
 
+Update 2026-07-14:
+
+- Automatische lokale validatie gestart voor productieauthenticatie en sessies.
+- `npm run env:check` is geslaagd voor de lokale basisomgeving.
+- `npm run test:auth-session` is geslaagd: de Auth.js sessiepayload blijft compact en bevat geen Microsoft access/refresh/id tokens of grote permissionpayload.
+- `npm run test:login-history` is geslaagd: succesvolle credentials-loginregistratie, filters, activiteit, logout en cleanup werken tegen de beschikbare database.
+- `npm run env:check:production` is nog niet geslaagd omdat de lokale omgeving geen productie/staging deploymentvariabelen bevat: `DEPLOYMENT_ENV`, `APP_URL` en `AUTH_URL` ontbreken. Dit is een configuratie-/acceptatieblokker, geen bewezen codefout.
+- Echte staging/productie-login met credentials per rol en Microsoft Entra ID is nog niet handmatig uitgevoerd; Entra alias-/mismatchgedrag blijft daarom verificatie nodig houden.
+
 ### FF-P1-004 - Productiestatus van migraties 0021-0029 bevestigen
 
 - Categorie: Database, release, migratiebeheer

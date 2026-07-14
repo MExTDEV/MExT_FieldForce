@@ -124,9 +124,9 @@ builds against a stale Prisma Client.
 
 ## Persistent uploaded files
 
-Contactmoment photos are not stored in the database. The database stores only
-metadata in `ContactMomentDetail.photosJson`; the original image files are
-stored below:
+Contactmoment photos and uploaded user avatars are not stored in the database.
+The database stores metadata or an authenticated avatar route; the original
+image files are stored below:
 
 ```env
 FIELD_FORCE_UPLOAD_ROOT="storage/uploads"
@@ -145,7 +145,9 @@ Required operational rules:
 - test a restore on a non-production environment before relying on the backup;
 - do not delete uploaded files during deploy cleanup;
 - apply migration `0029_contact_moment_private_photos` before enabling
-  Contactmoment photo uploads in an environment.
+  Contactmoment photo uploads in an environment;
+- include `user-avatars/` in the same backup and restore procedure as
+  `contact-moments/`.
 
 In Plesk, click **Enable Node.js** or **Restart App** after
 `deploy:prepare` succeeds. Plesk starts `server.mjs`.

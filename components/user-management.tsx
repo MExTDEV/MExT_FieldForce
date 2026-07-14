@@ -40,6 +40,7 @@ import {
   representativeLevels,
 } from "@/lib/representative-levels";
 import { optionalTeamLeaderLabel } from "@/lib/team-management";
+import { userAvatarAccept } from "@/lib/user-avatar";
 import type {
   Country,
   FieldForcePermissionKey,
@@ -308,6 +309,10 @@ export function UsersManagementPage() {
               team,
             ])
           }
+          onAvatarUploaded={(updated) => {
+            setDraft({ ...updated, permissions: { ...updated.permissions } });
+            retry();
+          }}
           onCancel={() => returnToList()}
           onSave={save}
           onDelete={selectedUser && user.role === "SUPER_ADMIN" && selectedUser.id !== user.id
@@ -565,6 +570,8 @@ function UsersTable({
                   initials={`${profile.firstName[0] ?? ""}${
                     profile.lastName[0] ?? ""
                   }`}
+                  src={profile.avatarUrl}
+                  alt={`${profile.firstName} ${profile.lastName}`}
                 />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-900">
@@ -633,6 +640,7 @@ function UserForm({
   managedUsers,
   onChange,
   onTeamCreated,
+  onAvatarUploaded,
   onCancel,
   onSave,
   onDelete,
@@ -651,12 +659,17 @@ function UserForm({
   managedUsers: ManagedUser[];
   onChange: (draft: ManagedUser) => void;
   onTeamCreated: (team: ManagementTeam) => void;
+  onAvatarUploaded: (user: ManagedUser) => void;
   onCancel: () => void;
   onSave: () => void;
   onDelete?: () => void;
 }) {
   const { modules } = useModules();
   const [showTeamCreator, setShowTeamCreator] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarNotice, setAvatarNotice] = useState<
+    { type: "success" | "error"; message: string } | undefined
+  >();
   const capabilities = userManagementCapabilities(actor, original);
   const canSave =
     capabilities.canEditPersonal ||
@@ -699,7 +712,48 @@ function UserForm({
     field: K,
     value: ManagedUser[K]
   ) {
+    if (field === "avatarUrl") setAvatarNotice(undefined);
     onChange({ ...draft, [field]: value });
+  }
+
+  async function uploadAvatar(file?: File | null) {
+    if (!file || avatarUploading) return;
+    if (mode === "create" || !draft.id) {
+      setAvatarNotice({
+        type: "error",
+        message: "Sla de gebruiker eerst op voordat je een foto oplaadt.",
+      });
+      return;
+    }
+    try {
+      setAvatarUploading(true);
+      setAvatarNotice(undefined);
+      const formData = new FormData();
+      formData.append("actorId", actor.id);
+      formData.append("file", file);
+      const response = await fetch(`/api/users/${encodeURIComponent(draft.id)}/avatar`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json() as { user?: ManagedUser; error?: string };
+      if (!response.ok || !payload.user) {
+        throw new Error(payload.error ?? "De foto kon niet worden opgeladen.");
+      }
+      const updated = {
+        ...payload.user,
+        permissions: { ...payload.user.permissions },
+      };
+      onChange(updated);
+      onAvatarUploaded(updated);
+      setAvatarNotice({ type: "success", message: "De gebruikersfoto is opgeladen." });
+    } catch (error) {
+      setAvatarNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "De foto kon niet worden opgeladen.",
+      });
+    } finally {
+      setAvatarUploading(false);
+    }
   }
 
   function applyRole(role: Role) {
@@ -876,14 +930,40 @@ function UserForm({
                   <option value="de">Duits</option>
                 </select>
               </Field>
-              <Field label="Foto / avatar URL">
-                <input
-                  className="field disabled:bg-slate-100 disabled:text-slate-500"
-                  value={draft.avatarUrl}
-                  disabled={!capabilities.canEditPersonal}
-                  placeholder="https://..."
-                  onChange={(event) => update("avatarUrl", event.target.value)}
-                />
+              <Field label="Foto">
+                <div className="space-y-2">
+                  <input
+                    className="field disabled:bg-slate-100 disabled:text-slate-500"
+                    value={draft.avatarUrl}
+                    disabled={!capabilities.canEditPersonal}
+                    placeholder="https://... of /api/users/.../avatar"
+                    onChange={(event) => update("avatarUrl", event.target.value)}
+                  />
+                  {capabilities.canEditPersonal && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className={`btn-secondary cursor-pointer py-2 text-xs ${avatarUploading ? "pointer-events-none opacity-60" : ""}`}>
+                        <Plus className="h-4 w-4" />
+                        {avatarUploading ? "Opladen..." : "Foto opladen"}
+                        <input
+                          type="file"
+                          accept={userAvatarAccept}
+                          className="sr-only"
+                          disabled={avatarUploading}
+                          onChange={(event) => {
+                            void uploadAvatar(event.target.files?.[0]);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                      <span className="text-xs text-slate-500">JPG, PNG of WebP tot 2 MB.</span>
+                    </div>
+                  )}
+                  {avatarNotice && (
+                    <p className={`text-xs font-semibold ${avatarNotice.type === "success" ? "text-emerald-700" : "text-rose-700"}`}>
+                      {avatarNotice.message}
+                    </p>
+                  )}
+                </div>
               </Field>
             </div>
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">

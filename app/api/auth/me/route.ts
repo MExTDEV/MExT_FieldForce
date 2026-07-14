@@ -1,10 +1,13 @@
 import { handleApi } from "@/lib/server/api";
 import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
+import { listManagedUsers } from "@/lib/server/users";
 import { normalizeManagedUser, roleTemplates } from "@/lib/user-management";
 
 export async function GET() {
   return handleApi("api/auth/me:get", async () => {
     const actor = await requireAuthenticatedUser();
+    const managedUser = (await listManagedUsers()).find((user) => user.id === actor.id);
+    if (managedUser) return { user: managedUser };
     const [firstName, ...lastNameParts] = actor.name.split(" ");
     const user = normalizeManagedUser({
       id: actor.id,

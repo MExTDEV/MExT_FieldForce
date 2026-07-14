@@ -104,6 +104,9 @@ export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamM
     representativeIds.size
       ? loadPerformanceDatasetFromDatabase({
           coachingWhere: buildCoachingVisibilityFilter(actor),
+          includeContactMoments: false,
+          includeActionPoints: false,
+          includeKpiSnapshots: false,
         })
       : undefined,
     canShowPlannedCoachingIndicator(actor, modules)

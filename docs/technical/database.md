@@ -374,15 +374,23 @@ The binary files are stored on the application filesystem below
 `FIELD_FORCE_UPLOAD_ROOT` is absent, the application falls back to
 `storage/uploads` under the application working directory.
 
-Deployment requirements for Contactmoment photos:
+User profile photos reuse the existing nullable `User.avatarUrl` column. A
+manually entered external URL may still be stored there. When a photo is
+uploaded through user management, the binary file is stored below
+`FIELD_FORCE_UPLOAD_ROOT/user-avatars/<userId>/` and `User.avatarUrl` points to
+the authenticated `/api/users/<userId>/avatar` route. The application also uses
+the Microsoft account photo as the initial avatar source after a successful
+Microsoft Entra login, but only when `User.avatarUrl` is still empty.
+
+Deployment requirements for Contactmoment and user profile photos:
 
 - run `npm run db:migrate:deploy` before starting code that exposes the photo
   API;
 - configure `FIELD_FORCE_UPLOAD_ROOT` to a persistent directory outside
   transient build output;
 - include the upload root in server backups and restore drills;
-- keep the upload root private and serve files only through the authenticated
-  Contactmoment photo API;
+- keep the upload root private and serve files only through authenticated photo
+  APIs;
 - do not manually edit `photosJson`; use the API so metadata and files remain
   consistent.
 

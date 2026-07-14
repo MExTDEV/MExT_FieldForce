@@ -75,13 +75,21 @@ type MonthlyKpiSnapshotManagedRow = Prisma.KpiSnapshotGetPayload<{
 type MonthlyKpiSnapshotRow = MonthlyKpiSnapshotBaseRow | MonthlyKpiSnapshotManagedRow;
 
 export async function loadPerformanceDatasetFromDatabase(
-  options: { coachingWhere?: Prisma.InterventionWhereInput } = {}
+  options: {
+    coachingWhere?: Prisma.InterventionWhereInput;
+    includeContactMoments?: boolean;
+    includeActionPoints?: boolean;
+    includeKpiSnapshots?: boolean;
+  } = {}
 ): Promise<PerformanceDataset> {
+  const includeContactMoments = options.includeContactMoments ?? true;
+  const includeActionPoints = options.includeActionPoints ?? true;
+  const includeKpiSnapshots = options.includeKpiSnapshots ?? true;
   const [coachings, contactMoments, actionPoints, kpiSnapshots] = await Promise.all([
     loadHistoricalCoachings(options.coachingWhere),
-    loadHistoricalContactMoments(),
-    loadHistoricalActionPoints(),
-    loadMonthlyKpiSnapshots(),
+    includeContactMoments ? loadHistoricalContactMoments() : Promise.resolve([]),
+    includeActionPoints ? loadHistoricalActionPoints() : Promise.resolve([]),
+    includeKpiSnapshots ? loadMonthlyKpiSnapshots() : Promise.resolve([]),
   ]);
 
   return {

@@ -6,6 +6,7 @@ import MicrosoftEntraID, {
 import { prisma } from "@/lib/server/db";
 import { authPayloadDiagnostics, compactSessionToken } from "@/lib/server/auth-session";
 import { storeMicrosoftTokens } from "@/lib/server/microsoft-token-store";
+import { syncUserAvatarFromMicrosoft } from "@/lib/server/user-avatar";
 import {
   closeLoginSession,
   getLoginRequestSessionId,
@@ -186,6 +187,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             expiresAt: account.expires_at,
             scope: account.scope,
           });
+          if (account.access_token) {
+            await syncUserAvatarFromMicrosoft(databaseUser.id, account.access_token).catch((error) => {
+              console.warn("[auth:microsoft-avatar]", error instanceof Error ? error.message : error);
+            });
+          }
         }
       }
       let loginSessionId = token.loginSessionId;

@@ -90,10 +90,25 @@ export function StatusBadge({ status, label }: { status: string; label?: string 
   );
 }
 
-export function Avatar({ initials, className = "" }: { initials: string; className?: string }) {
+export function Avatar({
+  initials,
+  className = "",
+  src,
+  alt = "",
+}: {
+  initials: string;
+  className?: string;
+  src?: string;
+  alt?: string;
+}) {
   return (
-    <div className={`grid shrink-0 place-items-center rounded-xl bg-brand-100 font-bold text-brand-700 ${className || "h-11 w-11 text-sm"}`}>
-      {initials}
+    <div className={`grid shrink-0 place-items-center overflow-hidden rounded-xl bg-brand-100 font-bold text-brand-700 ${className || "h-11 w-11 text-sm"}`}>
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- Private API-backed avatars are not compatible with Next image optimization.
+        <img src={src} alt={alt} className="h-full w-full object-cover" />
+      ) : (
+        initials
+      )}
     </div>
   );
 }
