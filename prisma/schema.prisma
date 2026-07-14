@@ -1202,7 +1202,7 @@ model StarterEvaluationQuestion {
 
   @@index([sectionId, active, sortOrder])
   @@index([scopeType, scopeKey])
-  @@index([linkedCriterionType, linkedCriterionId])
+  @@index([linkedCriterionType, linkedCriterionId], map: "SEQ_linkedCriterion_idx")
 }
 
 model StarterEvaluation {
@@ -1304,8 +1304,8 @@ model StarterEvaluationQuestionSnapshot {
   answers            StarterEvaluationAnswer[]
 
   @@unique([evaluationId, key])
-  @@index([sectionSnapshotId, sortOrder])
-  @@index([appliedScopeType, appliedScopeKey])
+  @@index([sectionSnapshotId, sortOrder], map: "SEQS_section_sort_idx")
+  @@index([appliedScopeType, appliedScopeKey], map: "SEQS_scope_idx")
 }
 
 model StarterEvaluationAnswer {

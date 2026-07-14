@@ -1,8 +1,8 @@
 ALTER TABLE `User`
-  ADD COLUMN `starterStartDate` DATE NULL;
+  ADD COLUMN IF NOT EXISTS `starterStartDate` DATE NULL;
 
 ALTER TABLE `KpiDefinition`
-  ADD COLUMN `include_in_starter_evaluations` BOOLEAN NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS `include_in_starter_evaluations` BOOLEAN NOT NULL DEFAULT false;
 
 INSERT INTO `Permission` (`id`, `key`, `label`, `group`, `description`, `createdAt`, `updatedAt`)
 VALUES (
@@ -34,7 +34,7 @@ JOIN `Permission` AS permission_record
   ON permission_record.`key` = 'menu.coaching.starterEvaluations'
 ON DUPLICATE KEY UPDATE `enabled` = `RolePermission`.`enabled`;
 
-CREATE TABLE `StarterEvaluationSection` (
+CREATE TABLE IF NOT EXISTS `StarterEvaluationSection` (
   `id` VARCHAR(191) NOT NULL,
   `code` VARCHAR(191) NOT NULL,
   `titleNl` VARCHAR(191) NOT NULL,
@@ -82,7 +82,7 @@ CREATE TABLE `StarterEvaluationQuestion` (
   UNIQUE INDEX `StarterEvaluationQuestion_key_key` (`key`),
   INDEX `StarterEvaluationQuestion_sectionId_active_sortOrder_idx` (`sectionId`, `active`, `sortOrder`),
   INDEX `StarterEvaluationQuestion_scopeType_scopeKey_idx` (`scopeType`, `scopeKey`),
-  INDEX `StarterEvaluationQuestion_linkedCriterionType_linkedCriterionId_idx` (`linkedCriterionType`, `linkedCriterionId`),
+  INDEX `SEQ_linkedCriterion_idx` (`linkedCriterionType`, `linkedCriterionId`),
   CONSTRAINT `StarterEvaluationQuestion_sectionId_fkey` FOREIGN KEY (`sectionId`) REFERENCES `StarterEvaluationSection`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluationQuestion_teamId_fkey` FOREIGN KEY (`teamId`) REFERENCES `Team`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluationQuestion_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
@@ -177,8 +177,8 @@ CREATE TABLE `StarterEvaluationQuestionSnapshot` (
   `linkedCriterionId` VARCHAR(191) NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `StarterEvaluationQuestionSnapshot_evaluationId_key_key` (`evaluationId`, `key`),
-  INDEX `StarterEvaluationQuestionSnapshot_sectionSnapshotId_sortOrder_idx` (`sectionSnapshotId`, `sortOrder`),
-  INDEX `StarterEvaluationQuestionSnapshot_appliedScopeType_appliedScopeKey_idx` (`appliedScopeType`, `appliedScopeKey`),
+  INDEX `SEQS_section_sort_idx` (`sectionSnapshotId`, `sortOrder`),
+  INDEX `SEQS_scope_idx` (`appliedScopeType`, `appliedScopeKey`),
   CONSTRAINT `StarterEvaluationQuestionSnapshot_evaluationId_fkey` FOREIGN KEY (`evaluationId`) REFERENCES `StarterEvaluation`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluationQuestionSnapshot_sectionSnapshotId_fkey` FOREIGN KEY (`sectionSnapshotId`) REFERENCES `StarterEvaluationSectionSnapshot`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `StarterEvaluationQuestionSnapshot_sourceQuestionId_fkey` FOREIGN KEY (`sourceQuestionId`) REFERENCES `StarterEvaluationQuestion`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
