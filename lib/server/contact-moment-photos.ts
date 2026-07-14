@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 
 import {
   extensionForPhotoMimeType,
+  hasValidContactMomentPhotoSignature,
   isAllowedContactMomentPhotoType,
   maxContactMomentPhotos,
   maxContactMomentPhotoSize,
@@ -72,6 +73,15 @@ export async function uploadContactMomentPhoto(
   file: File,
   actorId?: string | null
 ) {
+  const result = await uploadContactMomentPhotos(contactMomentId, [file], actorId);
+  return { photo: result.photos[result.photos.length - 1], photos: result.photos };
+}
+
+export async function uploadContactMomentPhotos(
+  contactMomentId: string,
+  files: File[],
+  actorId?: string | null
+) {
   if (!await contactMomentPhotosColumnExists()) {
     badRequest("De database ondersteunt contactmomentfoto's nog niet. Voer eerst de migratie uit.");
   }
@@ -79,33 +89,42 @@ export async function uploadContactMomentPhoto(
   const contact = await loadStoredContactMoment(contactMomentId);
   if (!contact) notFound("Contactmoment niet gevonden.");
   assertCanManageMutableContactMoment(actor, contact);
-  if (!isAllowedContactMomentPhotoType(file.type)) {
-    badRequest("Alleen JPG-, PNG- en WebP-foto's zijn toegestaan.");
+  if (!files.length) {
+    badRequest("Selecteer minstens één afbeelding om te uploaden.");
   }
-  if (file.size <= 0 || file.size > maxContactMomentPhotoSize) {
-    badRequest("Een foto mag maximaal 8 MB groot zijn.");
-  }
-  const photos = parseContactMomentPhotos(contact.contactMoment?.photosJson);
-  if (photos.length >= maxContactMomentPhotos) {
+  let photos = parseContactMomentPhotos(contact.contactMoment?.photosJson);
+  if (photos.length + files.length > maxContactMomentPhotos) {
     badRequest("Er kunnen maximaal 20 foto's aan een contactmoment gekoppeld worden.");
   }
-  const id = randomUUID();
-  const storedName = `${id}${extensionForPhotoMimeType(file.type)}`;
-  const photo: ContactMomentPhoto = {
-    id,
-    originalName: sanitizeOriginalPhotoName(file.name),
-    storedName,
-    mimeType: file.type,
-    size: file.size,
-    uploadedById: actor.id,
-    uploadedAt: new Date().toISOString(),
-  };
-  const bytes = Buffer.from(await file.arrayBuffer());
   await mkdir(photoDirectory(contactMomentId), { recursive: true });
-  await writeFile(photoPath(contactMomentId, storedName), bytes, { flag: "wx" });
-  const nextPhotos = [...photos, photo];
-  await storePhotosJson(contactMomentId, nextPhotos);
-  return { photo, photos: nextPhotos };
+  for (const file of files) {
+    if (!isAllowedContactMomentPhotoType(file.type)) {
+      badRequest("Alleen JPG-, PNG- en WebP-foto's zijn toegestaan.");
+    }
+    if (file.size <= 0 || file.size > maxContactMomentPhotoSize) {
+      badRequest("Een foto mag maximaal 8 MB groot zijn.");
+    }
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (!hasValidContactMomentPhotoSignature(bytes, file.type)) {
+      badRequest("Het bestand is geen geldige afbeelding.");
+    }
+    const id = randomUUID();
+    const storedName = `${id}${extensionForPhotoMimeType(file.type)}`;
+    const photo: ContactMomentPhoto = {
+      id,
+      originalName: sanitizeOriginalPhotoName(file.name),
+      storedName,
+      mimeType: file.type,
+      size: file.size,
+      uploadedById: actor.id,
+      uploadedAt: new Date().toISOString(),
+      sortOrder: photos.length,
+    };
+    await writeFile(photoPath(contactMomentId, storedName), bytes, { flag: "wx" });
+    photos = [...photos, photo];
+    await storePhotosJson(contactMomentId, photos);
+  }
+  return { photos };
 }
 
 export async function deleteContactMomentPhoto(

@@ -129,9 +129,13 @@ Expected shared entities include:
 - Login/session metadata
 
 `User.avatarUrl` stores either an external avatar URL or the authenticated
-application avatar route for an uploaded user photo. Uploaded user photos are
-stored below `FIELD_FORCE_UPLOAD_ROOT/user-avatars/`; Microsoft Entra profile
-photos may initialise `avatarUrl` after login when the field is still empty.
+application avatar route for a locally stored user photo. User photos are stored
+below `FIELD_FORCE_UPLOAD_ROOT/user-avatars/`. Microsoft Entra profile photos
+are synchronised server-side through the shared avatar route; metadata is stored
+on `User` with `profilePhotoStorageKey`, `profilePhotoMimeType`,
+`profilePhotoHash`, `profilePhotoSyncedAt`, `profilePhotoSyncStatus` and
+`profilePhotoSyncError`. Synchronisation runs are tracked in
+`ProfilePhotoSyncRun`.
 
 Representative users also have a separate `representativeLevel` value. This is
 stored on `User`, not as a separate role. Changes are auditable through
@@ -177,6 +181,15 @@ Important Coaching-related business entities include:
 - peer-coaching planning metadata for Professional/Expert representatives
 - notification and e-mail delivery deduplication metadata
 - central holiday calendar for country-specific working-day deadlines
+
+The coached person's mandatory reflection before approval is stored on the
+existing `Approval` record. The current architecture has one `Approval` source
+of truth per Begeleiding (`interventionId` is unique), so no separate approval
+round entity is introduced until the business defines versioned approval
+rounds. The stored fields are sanitized WYSIWYG HTML answers plus completion
+metadata (`reflectionCompletedAt`, `reflectionCompletedByUserId`). Existing
+completed Begeleidingen remain backwards compatible because the fields are
+nullable and only pending approval actions require them.
 
 The exact technical model must be verified in `docs/technical/database.md` and the Prisma schema.
 

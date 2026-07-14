@@ -204,6 +204,7 @@ Consequences:
 - the coached person receives a best-effort FieldForce e-mail after the workflow transaction succeeds;
 - the e-mail uses the FieldForce sender and replies to the user who submitted the Begeleiding for approval;
 - an approval notification is created using the existing Approval source of truth;
+- the coached person must complete the three required WYSIWYG reflection questions before the report content and approval actions are unlocked;
 - the record becomes read-only;
 - no normal edits are allowed;
 - the record appears in the relevant approval and attention views.
@@ -233,12 +234,28 @@ The approval workflow must not check only for Representative role.
 
 The coached person may:
 
-- read the report;
+- complete or update the required reflection answers while no final approval choice has been submitted;
+- read the report only after all required reflection answers are validly stored;
 - review scores;
 - review Action Points;
 - approve according to the current approval flow.
 
 The coached person does not edit the Coaching form.
+
+Reflection answers are stored on the existing `Approval` record because the
+current data model has one approval source of truth per Begeleiding. The three
+answers are WYSIWYG HTML fields, sanitized server-side and considered complete
+only when all three contain meaningful plain text after HTML normalization.
+Until completion, `/api/workflows` masks the report details for the coached
+representative and the approval APIs reject akkoord and niet-akkoord submission.
+Managers with normal Begeleiding visibility can see a read-only reflection
+section; when answers are missing, the section explicitly states that the
+representative has not completed the questions yet.
+
+The existing automatic approval timing remains tied to the approval request.
+Automatic approval must not create synthetic reflection answers; if automation
+is later executed without representative input, audit history must show that no
+representative reflection was supplied.
 
 After approval is confirmed, the responsible coach/leader receives a
 server-side generated in-app notification and a best-effort FieldForce e-mail.
@@ -262,6 +279,8 @@ Completed characteristics:
 - available to Performance Circle or score history according to configuration;
 - available as report or PDF.
 
+When representative approval was requested, the stored representative reflection answers are part of the report/PDF output once they exist on the linked approval record.
+
 A future administrative correction flow must be separately defined.
 
 Do not silently unlock Completed records.
@@ -275,6 +294,7 @@ Do not silently unlock Completed records.
 When prior notification was enabled:
 
 - the coached Representative may see the planned item before execution;
+- the coached Representative receives a server-side generated in-app notification and best-effort FieldForce e-mail for the planned Begeleiding;
 - the item may appear in relevant future or today views.
 
 ## Surprise Begeleiding
@@ -307,8 +327,9 @@ Every entry point opens the same record and shared logic.
 
 Implemented:
 
-- approval-request notification after submission;
-- approval-request e-mail to the coached person, with Reply-To set to the submitting user's stored e-mail address;
+- planning notification and e-mail for planned Begeleidingen when prior notification is enabled;
+- approval-request notification after submission, explaining that the three reflection questions must be completed first;
+- approval-request e-mail to the coached person, with Reply-To set to the submitting user's stored e-mail address and the same reflection-first instruction;
 - unread/read handling using the existing Approval record;
 - approval-confirmed notification and e-mail to the responsible coach/leader after successful signing;
 - visual notification;

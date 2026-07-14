@@ -129,6 +129,7 @@ import {
   dedupeById,
   localDateKey,
 } from "@/lib/coaching/visibility";
+import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
   hasHtmlMarkup,
@@ -1552,6 +1553,7 @@ function CoachingDossierDetail({
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [historicalError, setHistoricalError] = useState<string>();
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+  const approval = workflowApi.state.approvals.find((item) => item.interventionId === local.id);
   const updateActionTips = useCallback((actionId: string, tipsAndTricks: string) => {
     setLocal((current) => ({
       ...current,
@@ -1649,6 +1651,7 @@ function CoachingDossierDetail({
       const result = await exportProfessionalCoachingReport({
         intervention: local,
         previousIntervention,
+        approval,
         representative,
         leaderName: reportingUserName(local.ownerId, managedUsers),
         language: user.language,
@@ -1781,6 +1784,7 @@ function CoachingDossierDetail({
     return (
       <CompletedCoachingSummary
         intervention={local}
+        approval={approval}
         representative={representative}
         leaderName={reportingUserName(local.ownerId, managedUsers)}
         totalScore={totalCoachingScore}
@@ -1961,6 +1965,7 @@ function CoachingDossierDetail({
 
 function CompletedCoachingSummary({
   intervention,
+  approval,
   representative,
   leaderName,
   totalScore,
@@ -1975,6 +1980,7 @@ function CompletedCoachingSummary({
   canDownload,
 }: {
   intervention: CoachingWorkflowItem;
+  approval?: WorkflowApi["state"]["approvals"][number];
   representative: Representative;
   leaderName: string;
   totalScore?: number;
@@ -1988,6 +1994,8 @@ function CompletedCoachingSummary({
   onDownload: () => void;
   canDownload: boolean;
 }) {
+  const { user } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const [confirmation, setConfirmation] = useState<"send" | "approve">();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openAppointmentIds, setOpenAppointmentIds] = useState<Set<string>>(() => new Set());
@@ -2051,6 +2059,10 @@ function CompletedCoachingSummary({
         <p className="text-sm text-slate-500">
           Laatst aangepast op {formatDateTime(latestAudit.at)} door {latestAudit.userName ?? "een gebruiker"}.
         </p>
+      )}
+
+      {!isRepresentative && intervention.sentForApprovalAt && (
+        <ApprovalReflectionReadOnly approval={approval} sentForApprovalAt={intervention.sentForApprovalAt} t={t} />
       )}
 
       <section className="grid gap-4 lg:grid-cols-[1fr_220px]">
@@ -2180,6 +2192,51 @@ function OptionalCoachingRemark({ value, className }: { value?: string | null; c
     return <RichTextRenderer value={text} className={className} />;
   }
   return <p className={className}>{richTextToPlainText(text)}</p>;
+}
+
+function ApprovalReflectionReadOnly({
+  approval,
+  sentForApprovalAt,
+  t,
+}: {
+  approval?: WorkflowApi["state"]["approvals"][number];
+  sentForApprovalAt: string;
+  t: (key: TranslationKey) => string;
+}) {
+  const complete = approvalHasCompletedReflection(approval);
+  const rows = [
+    { label: t("approvalReflection.question.kpi"), value: approval?.reflectionKpiHtml },
+    { label: t("approvalReflection.question.learning"), value: approval?.reflectionLearningHtml },
+    { label: t("approvalReflection.question.goal"), value: approval?.reflectionGoalHtml },
+  ];
+
+  return (
+    <section className="card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-950">{t("approvalReflection.sectionTitle")}</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {complete
+              ? t("approvalReflection.completedManager")
+              : `${t("approvalReflection.pendingManager")} ${t("approvalReflection.sentForApprovalAt")}: ${formatDateTime(sentForApprovalAt)}.`}
+          </p>
+        </div>
+        <StatusBadge status={complete ? "ingediend" : "wacht_op_akkoord"} />
+      </div>
+      <div className="mt-5 space-y-4">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded-xl bg-slate-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{row.label}</p>
+            {isBlankRichText(row.value) ? (
+              <p className="mt-2 text-sm font-semibold text-slate-500">{t("approvalReflection.notFilled")}</p>
+            ) : (
+              <RichTextRenderer value={row.value} className="mt-2 text-sm leading-6 text-slate-700" />
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: CoachingSimpleScore[]; splitCriterion?: boolean }) {

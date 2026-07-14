@@ -48,6 +48,10 @@ Authorised user:
 - opens the existing planning or preparation flow;
 - may edit date, time, target and focus information only within scope and lifecycle.
 
+When prior notification is enabled, the coached person receives an in-app
+notification and a best-effort FieldForce e-mail for the planned Begeleiding.
+The recipient is resolved server-side from the selected target user.
+
 ## Incomplete
 
 Authorised user:
@@ -60,7 +64,20 @@ Coached person:
 
 - receives the approval task and a best-effort FieldForce e-mail;
 - replies to that e-mail reach the user who submitted the Begeleiding for approval;
-- opens approval/read mode.
+- first opens the required reflection-question step;
+- can only open approval/read mode after all three WYSIWYG answers are validly saved.
+
+The three approval reflection answers are stored on the existing Approval
+record. The coached person may edit them until akkoord or niet-akkoord is
+submitted. After final submission they are read-only. The report content,
+scores and approval actions remain blocked for the coached person while the
+required answers are incomplete; this is enforced both in the UI and
+server-side.
+
+Managers and other authorised viewers see a read-only section "Reflectie van de
+vertegenwoordiger" in the Begeleiding report. If the answers are missing or
+partially present, the section shows the available answers and clearly marks
+missing answers as not filled in.
 
 When the coached person confirms approval, the responsible coach/leader is
 notified through the existing in-app notification channel and receives a
@@ -180,6 +197,8 @@ Access to historical comparison data is enforced server-side through the same au
 Completed records may be opened as a report and exported using the existing PDF flow.
 
 The report must use the same underlying record and current criteria data.
+
+When the Begeleiding was sent for representative approval, the professional PDF includes the representative's stored reflection answers when an approval record with answers is available.
 
 ---
 

@@ -33,6 +33,11 @@ import {
   type ContactMomentOverviewFilter,
 } from "@/lib/contact-moment-filters";
 import { translate, type TranslationKey } from "@/lib/i18n";
+import {
+  contactMomentPhotoAccept,
+  maxContactMomentPhotos,
+  maxContactMomentPhotoSize,
+} from "@/lib/contact-moment-photo-metadata";
 import { isBlankRichText, sanitizeRichText } from "@/lib/rich-text";
 import { exportContactMomentPdf, type ContactMomentPdfPhoto } from "@/lib/contact-moment-pdf";
 import type {
@@ -283,12 +288,93 @@ function ContactMomentSection({
   );
 }
 
+type PendingContactPhoto = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
+function PendingPhotoPicker({
+  photos,
+  busy,
+  onAdd,
+  onRemove,
+  t,
+}: {
+  photos: PendingContactPhoto[];
+  busy: boolean;
+  onAdd: (files?: FileList | null) => void;
+  onRemove: (id: string) => void;
+  t: (key: TranslationKey) => string;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-bold text-slate-950">{t("contactHelp.contact.photosTitle")}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t("contactHelp.contact.photosPlanningDescription")}</p>
+        </div>
+        <label className={`btn-secondary cursor-pointer ${busy ? "pointer-events-none opacity-60" : ""}`}>
+          <Plus className="h-4 w-4" />
+          {busy ? t("contactHelp.contact.uploading") : t("contactHelp.contact.addPhotos")}
+          <input
+            type="file"
+            accept={contactMomentPhotoAccept}
+            multiple
+            className="sr-only"
+            disabled={busy}
+            onChange={(event) => {
+              onAdd(event.currentTarget.files);
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-500">
+        {t("contactHelp.contact.photoLimits")
+          .replace("{count}", String(maxContactMomentPhotos))
+          .replace("{size}", formatBytes(maxContactMomentPhotoSize))}
+      </p>
+      {photos.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center text-sm text-slate-500">
+          {t("contactHelp.contact.noPhotos")}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {photos.map((photo) => (
+            <figure key={photo.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Local pre-save object URLs are not compatible with Next image optimization. */}
+              <img src={photo.previewUrl} alt={photo.file.name} className="aspect-[4/3] w-full object-cover" />
+              <figcaption className="flex items-center justify-between gap-3 p-3">
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-semibold text-slate-700">{photo.file.name}</span>
+                  <span className="text-[11px] text-slate-400">{formatBytes(photo.file.size)}</span>
+                </span>
+                <button
+                  type="button"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-700"
+                  disabled={busy}
+                  onClick={() => onRemove(photo.id)}
+                  aria-label={t("contactHelp.contact.deletePhoto")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NewContactMoment() {
   const { user, language } = useSession();
   const t = makeT(language);
-  const { saveContactMoment } = useWorkflow();
+  const { saveContactMomentAsync } = useWorkflow();
   const { representatives } = useRepresentatives();
   const [savedId, setSavedId] = useState<string>();
+  const [createdWarning, setCreatedWarning] = useState<string>();
   const available = representatives.filter((item) => canAccessRepresentative(user, item));
   const firstAvailableRepresentativeId = available[0]?.id;
   const [form, setForm] = useState({
@@ -305,6 +391,8 @@ function NewContactMoment() {
     reportedProblems: "",
     leaderThemes: [] as string[],
   });
+  const [pendingPhotos, setPendingPhotos] = useState<PendingContactPhoto[]>([]);
+  const pendingPhotosRef = useRef<PendingContactPhoto[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -318,14 +406,57 @@ function NewContactMoment() {
     });
   }, [firstAvailableRepresentativeId]);
 
+  useEffect(() => {
+    pendingPhotosRef.current = pendingPhotos;
+  }, [pendingPhotos]);
+
+  useEffect(() => () => {
+    pendingPhotosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+  }, []);
+
   if (!canCreateIntervention(user)) {
     return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("contactHelp.contact.noCreateRights")} />;
   }
   if (savedId) {
-    return <SuccessCard title={t("contactHelp.contact.createdTitle")} description={t("contactHelp.contact.createdDescription")} href={`/contactmomenten/${savedId}`} linkLabel={t("contactHelp.contact.openContact")} />;
+    return <SuccessCard title={t("contactHelp.contact.createdTitle")} description={createdWarning ?? t("contactHelp.contact.createdDescription")} href={`/contactmomenten/${savedId}`} linkLabel={t("contactHelp.contact.openContact")} />;
   }
   const valid = form.representativeId && form.plannedDate && form.startTime && form.endTime && form.endTime > form.startTime;
-  const save = () => {
+  const addPendingPhotos = (files?: FileList | null) => {
+    if (!files?.length) return;
+    setError(undefined);
+    const nextFiles = Array.from(files);
+    const availableSlots = maxContactMomentPhotos - pendingPhotos.length;
+    if (nextFiles.length > availableSlots) {
+      setError(t("contactHelp.contact.photoLimitExceeded"));
+      return;
+    }
+    const invalid = nextFiles.find((file) => !contactMomentPhotoAccept.split(",").includes(file.type));
+    if (invalid) {
+      setError(t("contactHelp.contact.photoUnsupportedType"));
+      return;
+    }
+    const tooLarge = nextFiles.find((file) => file.size > maxContactMomentPhotoSize);
+    if (tooLarge) {
+      setError(t("contactHelp.contact.photoTooLarge"));
+      return;
+    }
+    setPendingPhotos((current) => [
+      ...current,
+      ...nextFiles.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ]);
+  };
+  const removePendingPhoto = (id: string) => {
+    setPendingPhotos((current) => {
+      const photo = current.find((item) => item.id === id);
+      if (photo) URL.revokeObjectURL(photo.previewUrl);
+      return current.filter((item) => item.id !== id);
+    });
+  };
+  const save = async () => {
     if (saving) return;
     if (!valid) {
       setError(t("contactHelp.contact.validationPlanning"));
@@ -334,11 +465,24 @@ function NewContactMoment() {
     setSaving(true);
     setError(undefined);
     try {
-      const contact = saveContactMoment({
+      const contact = await saveContactMomentAsync({
         ...form,
         reason: form.subject.trim() || form.contactType.trim() || t("contactHelp.contact.defaultReason"),
         initiatorId: user.id,
       }, "gepland");
+      if (pendingPhotos.length) {
+        const formData = new FormData();
+        pendingPhotos.forEach((photo) => formData.append("file", photo.file));
+        const response = await fetch(
+          `/api/workflows/contact-moments/${encodeURIComponent(contact.id)}/photos?actorId=${encodeURIComponent(user.id)}`,
+          { method: "POST", body: formData }
+        );
+        const payload = await response.json() as { photos?: ContactMomentPhoto[]; error?: string };
+        if (!response.ok) {
+          setCreatedWarning(payload.error ?? t("contactHelp.contact.photoUploadPartialAfterCreate"));
+        }
+      }
+      pendingPhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
       setSavedId(contact.id);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t("contactHelp.contact.saveError"));
@@ -369,9 +513,16 @@ function NewContactMoment() {
         <TextArea label={t("contactHelp.field.internalNotes")} value={form.internalNotes} onChange={(internalNotes) => setForm((current) => ({ ...current, internalNotes }))} optional />
         <TextArea label={t("contactHelp.field.reportedProblems")} value={form.reportedProblems} onChange={(reportedProblems) => setForm((current) => ({ ...current, reportedProblems }))} optional />
         <TagPicker label={t("contactHelp.field.leaderThemes")} options={translatedThemeOptions(t)} value={form.leaderThemes} onChange={(leaderThemes) => setForm((current) => ({ ...current, leaderThemes }))} />
+        <PendingPhotoPicker
+          photos={pendingPhotos}
+          busy={saving}
+          onAdd={addPendingPhotos}
+          onRemove={removePendingPhoto}
+          t={t}
+        />
         {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button type="button" disabled={!valid || saving} onClick={save} className="btn-primary"><Save className="h-4 w-4" /> {saving ? t("contactHelp.common.saving") : t("contactHelp.contact.save")}</button>
+          <button type="button" disabled={!valid || saving} onClick={() => void save()} className="btn-primary"><Save className="h-4 w-4" /> {saving ? t("contactHelp.common.saving") : t("contactHelp.contact.save")}</button>
         </div>
       </div>
     </div>
@@ -392,6 +543,8 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
   );
   const [photos, setPhotos] = useState<ContactMomentPhoto[]>(contact.photos ?? []);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string>();
+  const [failedPhotoIds, setFailedPhotoIds] = useState<string[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [closedReason, setClosedReason] = useState("");
@@ -438,13 +591,13 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
   const readOnly = isFinalContactMoment(contact) || !canManage;
   const photoBaseUrl = `/api/workflows/contact-moments/${encodeURIComponent(contact.id)}/photos`;
   const actorQuery = `actorId=${encodeURIComponent(user.id)}`;
-  const uploadPhoto = async (file?: File) => {
-    if (!file || photoBusy) return;
+  const uploadPhotos = async (files?: FileList | null) => {
+    if (!files?.length || photoBusy) return;
     setPhotoBusy(true);
     setError(undefined);
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      Array.from(files).forEach((file) => formData.append("file", file));
       const response = await fetch(`${photoBaseUrl}?${actorQuery}`, {
         method: "POST",
         body: formData,
@@ -459,6 +612,7 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+  const selectedPhoto = photos.find((photo) => photo.id === selectedPhotoId);
   const deletePhoto = async (photoId: string) => {
     if (photoBusy) return;
     setPhotoBusy(true);
@@ -591,14 +745,15 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
             {canManage && (
               <label className={`btn-secondary cursor-pointer ${photoBusy ? "pointer-events-none opacity-60" : ""}`}>
                 <Plus className="h-4 w-4" />
-                {photoBusy ? t("contactHelp.common.busy") : t("contactHelp.contact.addPhoto")}
+                {photoBusy ? t("contactHelp.contact.uploading") : t("contactHelp.contact.addPhotos")}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept={contactMomentPhotoAccept}
+                  multiple
                   className="sr-only"
                   disabled={photoBusy}
-                  onChange={(event) => void uploadPhoto(event.target.files?.[0])}
+                  onChange={(event) => void uploadPhotos(event.target.files)}
                 />
               </label>
             )}
@@ -611,15 +766,27 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {photos.map((photo) => (
                 <figure key={photo.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- Private API-backed photos are not compatible with Next image optimization. */}
-                  <img
-                    src={`${photoBaseUrl}/${encodeURIComponent(photo.id)}?${actorQuery}`}
-                    alt={photo.originalName}
-                    className="aspect-[4/3] w-full object-cover"
-                    loading="lazy"
-                  />
+                  {failedPhotoIds.includes(photo.id) ? (
+                    <div className="grid aspect-[4/3] place-items-center bg-slate-50 px-4 text-center text-sm font-semibold text-slate-500">
+                      {t("contactHelp.contact.photoUnavailable")}
+                    </div>
+                  ) : (
+                    <button type="button" className="block w-full" onClick={() => setSelectedPhotoId(photo.id)}>
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Private API-backed photos are not compatible with Next image optimization. */}
+                      <img
+                        src={`${photoBaseUrl}/${encodeURIComponent(photo.id)}?${actorQuery}`}
+                        alt={photo.originalName}
+                        className="aspect-[4/3] w-full object-cover"
+                        loading="lazy"
+                        onError={() => setFailedPhotoIds((current) => current.includes(photo.id) ? current : [...current, photo.id])}
+                      />
+                    </button>
+                  )}
                   <figcaption className="flex items-center justify-between gap-3 p-3">
-                    <span className="truncate text-xs font-semibold text-slate-600">{photo.originalName}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-semibold text-slate-600">{photo.originalName}</span>
+                      <span className="text-[11px] text-slate-400">{formatBytes(photo.size)}</span>
+                    </span>
                     {canManage && (
                       <button
                         type="button"
@@ -636,8 +803,35 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
               ))}
             </div>
           )}
+          {readOnly && photos.length > 0 && (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              {t("contactHelp.contact.photosReadOnly")}
+            </p>
+          )}
           {error && <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
         </section>
+      )}
+
+      {selectedPhoto && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/70 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <p className="truncate text-sm font-bold text-slate-900">{selectedPhoto.originalName}</p>
+              <button type="button" className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100" onClick={() => setSelectedPhotoId(undefined)} aria-label={t("contactHelp.common.close")}>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="bg-slate-950 p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Private API-backed photos are not compatible with Next image optimization. */}
+              <img
+                src={`${photoBaseUrl}/${encodeURIComponent(selectedPhoto.id)}?${actorQuery}`}
+                alt={selectedPhoto.originalName}
+                className="max-h-[78vh] w-full object-contain"
+                onError={() => setFailedPhotoIds((current) => current.includes(selectedPhoto.id) ? current : [...current, selectedPhoto.id])}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {canManage && !isFinalContactMoment(contact) && (
@@ -1033,6 +1227,12 @@ function blobToDataUrl(blob: Blob) {
     reader.onerror = () => reject(reader.error ?? new Error("Blob kon niet worden gelezen."));
     reader.readAsDataURL(blob);
   });
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function SuccessCard({ title, description, href, linkLabel }: { title: string; description: string; href: string; linkLabel: string }) {

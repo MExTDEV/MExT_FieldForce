@@ -133,6 +133,18 @@ Update 2026-07-14:
 - `npm run env:check:production` is nog niet geslaagd omdat de lokale omgeving geen productie/staging deploymentvariabelen bevat: `DEPLOYMENT_ENV`, `APP_URL` en `AUTH_URL` ontbreken. Dit is een configuratie-/acceptatieblokker, geen bewezen codefout.
 - Echte staging/productie-login met credentials per rol en Microsoft Entra ID is nog niet handmatig uitgevoerd; Entra alias-/mismatchgedrag blijft daarom verificatie nodig houden.
 
+### FF-P1-003b - Microsoft-profielfoto's extern valideren
+
+- Categorie: Authenticatie, Microsoft Graph, beheer, opslag
+- Status: Code en documentatie toegevoegd; externe validatie nodig
+- Huidige werking: Microsoft-profielfoto's worden server-side via application Graph-authenticatie opgehaald, lokaal onder `FIELD_FORCE_UPLOAD_ROOT/user-avatars/` opgeslagen, via `/api/users/<id>/avatar` geserveerd en via `ProfilePhotoSyncRun` gelogd.
+- Gewenste werking: Entra admin consent voor `ProfilePhoto.Read.All`, Plesk Scheduled Task om 01:00 Europe/Brussels en een staging/productierun met echte Microsoft-gebruikers zijn bevestigd.
+- Bewijs: `lib/server/profile-photo-sync.ts`, `app/api/management/settings/profile-photos/route.ts`, `scripts/sync-profile-photos.ts`, `docs/technical/profile-photo-sync.md`, `prisma/migrations/0033_user_profile_photo_sync/`.
+- Relevante bestanden: `components/settings-management.tsx`, `lib/server/user-avatar.ts`, `components/ui.tsx`, `.env.example`.
+- Impact: Hoog, omdat gebruikerslijsten geen kapotte Microsoft-afbeeldingen meer mogen tonen en verwijderde Microsoft-foto's lokaal moeten verdwijnen.
+- Risico: Ontbrekende admin consent of Plesk-planning verhindert automatische synchronisatie; echte Graph-throttling moet in staging/productie worden bevestigd.
+- Aanbevolen tests: `npm run test:profile-photo-sync`, `npm run typecheck`, `npm run lint`, stagingrun `npm run profile-photos:sync` na admin consent.
+
 ### FF-P1-004 - Productiestatus van migraties 0021-0029 bevestigen
 
 - Categorie: Database, release, migratiebeheer
@@ -190,6 +202,15 @@ Update 2026-07-13:
 - Detailpagina laadt private foto's via de bestaande API en voegt beschikbare foto's toe aan de PDF.
 - `FIELD_FORCE_UPLOAD_ROOT` toegevoegd aan `.env.example`; `docs/technical/database.md` en `docs/technical/vps-deployment.md` documenteren nu opslag, backups en restorevoorwaarden.
 - Lokaal gevalideerd met `npm run test:contact-moments`, `npm run test:contact-moment-filters`, `npm run test:contact-moment-pdf`, `npm run test:outlook-sync` en `npm run typecheck`.
+
+Update 2026-07-14:
+
+- Contactmomenten kunnen tijdens het inplannen meerdere afbeeldingen selecteren, vooraf als thumbnails tonen en vóór definitief opslaan verwijderen.
+- Na opslaan worden de geselecteerde afbeeldingen via de bestaande private foto-API aan hetzelfde Contactmoment gekoppeld.
+- De bestaande galerij ondersteunt meerdere uploads in één actie, grotere preview, nette foutweergave bij ontbrekende/beschadigde bestanden en read-only melding na afronding.
+- Server-side upload valideert nu MIME-type, bestandsgrootte en JPEG/PNG/WebP-bestandssignatuur; metadata bewaart ook `sortOrder`.
+- PDF-export schaalt afbeeldingen proportioneel zodat de beeldverhouding behouden blijft.
+- Lokaal gevalideerd met `npm run test:contact-moment-photos`, `npm run test:contact-moments`, `npm run test:contact-moment-pdf`, `npm run test:contact-help-i18n`, `npm run typecheck` en `npm run lint`.
 
 ### FF-P1-006 - Hulpaanvragen en vervolgacties beveiligen tegen undefined workflows
 

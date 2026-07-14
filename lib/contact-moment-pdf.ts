@@ -56,7 +56,7 @@ export async function exportContactMomentPdf(
   }
 
   if (photos.length) {
-    drawPhotoPages(pdf, photos, input.language);
+    await drawPhotoPages(pdf, photos, input.language);
   }
 
   drawFooters(pdf);
@@ -149,10 +149,10 @@ function drawListSection(pdf: Pdf, title: string, items: string[], y: number) {
   return y + 4;
 }
 
-function drawPhotoPages(pdf: Pdf, photos: ContactMomentPdfPhoto[], language: Language) {
+async function drawPhotoPages(pdf: Pdf, photos: ContactMomentPdfPhoto[], language: Language) {
   const title = translate(language, "contactHelp.contact.pdfPhotos");
   const fallback = translate(language, "contactHelp.contact.pdfPhotoUnavailable");
-  photos.forEach((photo, index) => {
+  for (const [index, photo] of photos.entries()) {
     pdf.addPage();
     drawHeader(pdf, title, `${index + 1}/${photos.length} - ${photo.originalName}`);
     pdf.setFont("helvetica", "normal");
@@ -161,14 +161,24 @@ function drawPhotoPages(pdf: Pdf, photos: ContactMomentPdfPhoto[], language: Lan
     pdf.text(`${photo.originalName} - ${formatBytes(photo.size)} - ${formatDateTime(photo.uploadedAt, language)}`, margin, 42);
     if (!photo.dataUrl) {
       drawPhotoFallback(pdf, fallback);
-      return;
+      continue;
     }
     try {
-      pdf.addImage(photo.dataUrl, imageFormat(photo.mimeType), margin, 50, contentWidth, 135, undefined, "FAST");
+      const box = fitImage(await imageDimensions(photo.dataUrl), contentWidth, 190);
+      pdf.addImage(
+        photo.dataUrl,
+        imageFormat(photo.mimeType),
+        margin + (contentWidth - box.width) / 2,
+        50,
+        box.width,
+        box.height,
+        undefined,
+        "FAST"
+      );
     } catch {
       drawPhotoFallback(pdf, fallback);
     }
-  });
+  }
 }
 
 function drawPhotoFallback(pdf: Pdf, label: string) {
@@ -232,6 +242,27 @@ function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function imageDimensions(dataUrl: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
+    image.onerror = () => reject(new Error("Afbeelding kon niet worden gelezen."));
+    image.src = dataUrl;
+  });
+}
+
+function fitImage(
+  dimensions: { width: number; height: number },
+  maxWidth: number,
+  maxHeight: number
+) {
+  const ratio = Math.min(maxWidth / dimensions.width, maxHeight / dimensions.height);
+  return {
+    width: dimensions.width * ratio,
+    height: dimensions.height * ratio,
+  };
 }
 
 function truncate(value: string, max: number) {

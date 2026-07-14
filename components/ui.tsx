@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 export function PageHeader({
@@ -101,11 +101,16 @@ export function Avatar({
   src?: string;
   alt?: string;
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+  const showImage = Boolean(src && !imageFailed);
   return (
     <div className={`grid shrink-0 place-items-center overflow-hidden rounded-xl bg-brand-100 font-bold text-brand-700 ${className || "h-11 w-11 text-sm"}`}>
-      {src ? (
+      {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- Private API-backed avatars are not compatible with Next image optimization.
-        <img src={src} alt={alt} className="h-full w-full object-cover" />
+        <img src={src} alt={alt} className="h-full w-full object-cover" onError={() => setImageFailed(true)} />
       ) : (
         initials
       )}

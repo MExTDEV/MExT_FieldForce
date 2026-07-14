@@ -37,6 +37,7 @@ import {
   coachingApprovalConfirmedNotificationType,
   resolveCoachingApprovalConfirmedRecipients,
 } from "@/lib/coaching/approval-notifications";
+import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -75,12 +76,15 @@ export async function persistWorkflowPatch(
     if (routeName === "help-requests") {
       await requireHelpRequestCoachingFollowUps(actor, selectedPatch);
     }
+    if (routeName === "approvals") {
+      await requireApprovalReflectionComplete(actor, selectedPatch);
+    }
     const coachingBefore = hasCoachings
       ? await loadCoachingSnapshots(selectedPatch.interventions?.map((item) => item.id) ?? [])
       : new Map<string, Record<string, unknown>>();
     const patch = await applyAuthenticatedActor(selectedPatch, actor.id);
     await saveWorkflowPatchToDatabase(patch);
-    await createWorkflowInAppNotifications(routeName, patch, actor.id);
+    await createWorkflowInAppNotifications(routeName, patch, actor.id, coachingBefore);
     if (patch.interventions?.length) {
       await writeCoachingChangeLogs(actor.id, patch.interventions ?? [], coachingBefore);
     }
@@ -113,9 +117,11 @@ export async function persistWorkflowPatch(
 async function createWorkflowInAppNotifications(
   routeName: string,
   patch: WorkflowPersistencePatch,
-  actorId: string
+  actorId: string,
+  coachingBefore: Map<string, Record<string, unknown>>
 ) {
   await createCoachingApprovalConfirmedNotifications(patch, actorId);
+  await createCoachingPlannedNotifications(patch, actorId, coachingBefore);
 
   for (const request of patch.helpRequests ?? []) {
     if (
@@ -255,6 +261,92 @@ async function createWorkflowInAppNotifications(
       },
     });
   }
+}
+
+async function createCoachingPlannedNotifications(
+  patch: WorkflowPersistencePatch,
+  actorId: string,
+  coachingBefore: Map<string, Record<string, unknown>>
+) {
+  const plannedCoachings = (patch.interventions ?? []).filter((coaching) =>
+    coaching.status === "gepland" &&
+    coaching.notifyRepresentative &&
+    !coaching.deletedAt &&
+    shouldNotifyCoachingPlanning(coaching, coachingBefore.get(coaching.id))
+  );
+  if (!plannedCoachings.length) return;
+
+  const targetKeys = [...new Set(plannedCoachings.map((coaching) => coaching.representativeId).filter(Boolean))];
+  const targetUsers = await prisma.user.findMany({
+    where: {
+      active: true,
+      OR: [
+        { id: { in: targetKeys } },
+        { representativeId: { in: targetKeys } },
+      ],
+    },
+    select: { id: true, representativeId: true },
+  });
+  const usersById = new Map(targetUsers.map((user) => [user.id, user]));
+  const usersByRepresentativeId = new Map(
+    targetUsers.flatMap((user) => user.representativeId ? [[user.representativeId, user] as const] : [])
+  );
+
+  for (const coaching of plannedCoachings) {
+    const targetUser = usersById.get(coaching.representativeId)
+      ?? usersByRepresentativeId.get(coaching.representativeId);
+    if (!targetUser || targetUser.id === actorId) continue;
+
+    const eventKey = [
+      "COACHING_PLANNED",
+      "coaching",
+      coaching.id,
+      coaching.representativeId,
+      coaching.plannedDate ?? "",
+      coaching.startTime ?? "",
+      coaching.endTime ?? "",
+    ].join(":");
+    await createInAppNotification(prisma, {
+      type: "COACHING_PLANNED",
+      recipientUserId: targetUser.id,
+      entityId: coaching.id,
+      eventKey,
+      triggeredByUserId: actorId,
+      sourceModule: "BEGELEIDINGEN",
+    });
+    await sendWorkflowMailSafely({
+      type: "COACHING_PLANNED",
+      recipientUserId: targetUser.id,
+      triggeredByUserId: actorId,
+      entityTitle: coaching.title,
+      linkUrl: `/begeleidingen/${coaching.id}`,
+      context: {
+        sourceModule: "BEGELEIDINGEN",
+        entityType: "Intervention",
+        entityId: coaching.id,
+        eventKey,
+        reason: "Begeleiding gepland",
+        sentAt: new Date(coaching.updatedAt ?? coaching.createdAt),
+      },
+    });
+  }
+}
+
+function shouldNotifyCoachingPlanning(
+  coaching: NonNullable<WorkflowPersistencePatch["interventions"]>[number],
+  previous?: Record<string, unknown>
+) {
+  if (!previous) return true;
+  const previousStatus = typeof previous.status === "string" ? previous.status.toLowerCase() : undefined;
+  const previousPlannedDate = typeof previous.plannedAt === "string" ? previous.plannedAt.slice(0, 10) : undefined;
+  return (
+    previousStatus !== "gepland" ||
+    previous.representativeId !== coaching.representativeId ||
+    previousPlannedDate !== coaching.plannedDate ||
+    previous.startTime !== coaching.startTime ||
+    previous.endTime !== coaching.endTime ||
+    Boolean(previous.notifyRepresentative) !== Boolean(coaching.notifyRepresentative)
+  );
 }
 
 async function createCoachingApprovalConfirmedNotifications(
@@ -903,6 +995,47 @@ async function requireHelpRequestCoachingFollowUps(
     }
     if (!coaching.focusNames.length) {
       forbidden("Selecteer minstens een focusfase voor de begeleiding.");
+    }
+  }
+}
+
+async function requireApprovalReflectionComplete(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  patch: WorkflowPersistencePatch
+) {
+  const approvals = patch.approvals ?? [];
+  if (!approvals.length) return;
+
+  const storedApprovals = await prisma.approval.findMany({
+    where: { id: { in: approvals.map((approval) => approval.id) } },
+    include: {
+      intervention: { select: { id: true, status: true, type: true, representativeId: true } },
+    },
+  });
+  const storedById = new Map(storedApprovals.map((approval) => [approval.id, approval]));
+  const actorIds = [actor.id, actor.representativeId].filter(Boolean);
+
+  for (const approval of approvals) {
+    const stored = storedById.get(approval.id);
+    if (!stored || stored.intervention.type !== "BEGELEIDING") forbidden("Akkoordtaak niet gevonden.");
+    if (stored.status || stored.confirmedAt) forbidden("Deze akkoordtaak is al definitief ingediend.");
+    if (!actorIds.includes(stored.representativeId) || !actorIds.includes(stored.intervention.representativeId)) {
+      forbidden("Alleen de betrokken begeleide gebruiker kan akkoord of niet-akkoord indienen.");
+    }
+    if (!["VERZONDEN_TER_AKKOORD", "WACHT_OP_AKKOORD"].includes(stored.intervention.status)) {
+      forbidden("Deze begeleiding staat niet klaar voor akkoord.");
+    }
+    if (approval.status === "gelezen_niet_akkoord" && approval.comment.trim().length < 3) {
+      forbidden("Commentaar is verplicht bij niet akkoord.");
+    }
+    const reflectionSource = {
+      reflectionKpiHtml: approval.reflectionKpiHtml ?? stored.reflectionKpiHtml,
+      reflectionLearningHtml: approval.reflectionLearningHtml ?? stored.reflectionLearningHtml,
+      reflectionGoalHtml: approval.reflectionGoalHtml ?? stored.reflectionGoalHtml,
+      reflectionCompletedAt: approval.reflectionCompletedAt ?? stored.reflectionCompletedAt?.toISOString(),
+    };
+    if (approval.status && !approvalHasCompletedReflection(reflectionSource)) {
+      forbidden("Vul eerst de drie verplichte reflectievragen in voordat je akkoord of niet-akkoord indient.");
     }
   }
 }

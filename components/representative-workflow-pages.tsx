@@ -13,8 +13,13 @@ import {
 import { useSession } from "@/components/session-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useWorkflow } from "@/components/workflow-provider";
+import { RichTextEditor } from "@/components/rich-text-editor";
+import { RichTextRenderer } from "@/components/rich-text-renderer";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui";
-import type { ApprovalStatus } from "@/lib/types";
+import { translate, type TranslationKey } from "@/lib/i18n";
+import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
+import { isBlankRichText } from "@/lib/rich-text";
+import type { ApprovalStatus, WorkflowApproval } from "@/lib/types";
 
 export function MyReflectionsPage({ id }: { id?: string }) {
   const { user } = useSession();
@@ -176,9 +181,10 @@ function ReflectionQuestion({
 }
 
 export function MyReportsPage({ id }: { id?: string }) {
-  const { user } = useSession();
-  const { state, pendingApprovals, confirmApproval } = useWorkflow();
+  const { user, language } = useSession();
+  const { state, pendingApprovals, confirmApproval, saveApprovalReflection } = useWorkflow();
   const [confirmed, setConfirmed] = useState(false);
+  const t = (key: TranslationKey) => translate(language, key);
 
   if (user.role !== "REPRESENTATIVE") {
     return <EmptyState title="Alleen voor vertegenwoordigers" description="Schakel via de gebruikerswisselaar naar een vertegenwoordiger om eigen verslagen te bekijken." />;
@@ -219,12 +225,9 @@ export function MyReportsPage({ id }: { id?: string }) {
   const intervention = approval
     ? state.interventions.find((item) => item.id === approval.interventionId)
     : undefined;
-  const reflection = intervention
-    ? state.reflections.find((item) => item.interventionId === intervention.id)
-    : undefined;
-  const ownsApproval = approval?.representativeId === user.representativeId;
+  const ownsApproval = approval ? [user.id, user.representativeId].includes(approval.representativeId) : false;
 
-  if (!approval || !intervention || !reflection || !ownsApproval) {
+  if (!approval || !intervention || !ownsApproval) {
     return <EmptyState title="Verslag niet beschikbaar" description="Dit verslag bestaat niet of hoort niet bij de ingelogde vertegenwoordiger." />;
   }
 
@@ -243,10 +246,21 @@ export function MyReportsPage({ id }: { id?: string }) {
     );
   }
 
+  if (!approvalHasCompletedReflection(approval)) {
+    return (
+      <ApprovalReflectionGate
+        approval={approval}
+        title={intervention.title}
+        onSave={saveApprovalReflection}
+        t={t}
+      />
+    );
+  }
+
   return (
     <ReportDetail
       intervention={intervention}
-      reflection={reflection}
+      approval={approval}
       onConfirm={(status, comment) => {
         confirmApproval(approval.id, status, comment);
         setConfirmed(true);
@@ -255,15 +269,124 @@ export function MyReportsPage({ id }: { id?: string }) {
   );
 }
 
+function ApprovalReflectionGate({
+  approval,
+  title,
+  onSave,
+  t,
+}: {
+  approval: WorkflowApproval;
+  title: string;
+  onSave: (
+    approvalId: string,
+    answers: Pick<WorkflowApproval, "reflectionKpiHtml" | "reflectionLearningHtml" | "reflectionGoalHtml">
+  ) => Promise<WorkflowApproval>;
+  t: (key: TranslationKey) => string;
+}) {
+  const [answers, setAnswers] = useState({
+    reflectionKpiHtml: approval.reflectionKpiHtml ?? "",
+    reflectionLearningHtml: approval.reflectionLearningHtml ?? "",
+    reflectionGoalHtml: approval.reflectionGoalHtml ?? "",
+  });
+  const [errors, setErrors] = useState<Record<keyof typeof answers, boolean>>({
+    reflectionKpiHtml: false,
+    reflectionLearningHtml: false,
+    reflectionGoalHtml: false,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string>();
+  const toolbarLabels = {
+    bold: t("contactHelp.editor.bold"),
+    italic: t("contactHelp.editor.italic"),
+    bulletList: t("contactHelp.editor.bulletList"),
+    numberedList: t("contactHelp.editor.numberedList"),
+  };
+
+  const validate = () => {
+    const nextErrors = {
+      reflectionKpiHtml: isBlankRichText(answers.reflectionKpiHtml),
+      reflectionLearningHtml: isBlankRichText(answers.reflectionLearningHtml),
+      reflectionGoalHtml: isBlankRichText(answers.reflectionGoalHtml),
+    };
+    setErrors(nextErrors);
+    return !Object.values(nextErrors).some(Boolean);
+  };
+
+  async function handleSave() {
+    setSaveError(undefined);
+    if (!validate()) return;
+    try {
+      setSaving(true);
+      await onSave(approval.id, answers);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : t("approvalReflection.saveError"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <Link href="/mijn-verslagen" className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700">
+        <ArrowLeft className="h-4 w-4" /> {t("action.previous")}
+      </Link>
+      <PageHeader
+        eyebrow={t("approvalReflection.eyebrow")}
+        title={title}
+        description={t("approvalReflection.introduction")}
+      />
+      <section className="card space-y-6 p-5 sm:p-7">
+        <RichTextEditor
+          label={t("approvalReflection.question.kpi")}
+          value={answers.reflectionKpiHtml}
+          onChange={(value) => setAnswers((current) => ({ ...current, reflectionKpiHtml: value }))}
+          placeholder={t("approvalReflection.placeholder")}
+          helpText={errors.reflectionKpiHtml ? t("approvalReflection.required") : t("contactHelp.form.richTextHelp")}
+          required
+          disabled={saving}
+          toolbarLabels={toolbarLabels}
+        />
+        <RichTextEditor
+          label={t("approvalReflection.question.learning")}
+          value={answers.reflectionLearningHtml}
+          onChange={(value) => setAnswers((current) => ({ ...current, reflectionLearningHtml: value }))}
+          placeholder={t("approvalReflection.placeholder")}
+          helpText={errors.reflectionLearningHtml ? t("approvalReflection.required") : t("contactHelp.form.richTextHelp")}
+          required
+          disabled={saving}
+          toolbarLabels={toolbarLabels}
+        />
+        <RichTextEditor
+          label={t("approvalReflection.question.goal")}
+          value={answers.reflectionGoalHtml}
+          onChange={(value) => setAnswers((current) => ({ ...current, reflectionGoalHtml: value }))}
+          placeholder={t("approvalReflection.placeholder")}
+          helpText={errors.reflectionGoalHtml ? t("approvalReflection.required") : t("contactHelp.form.richTextHelp")}
+          required
+          disabled={saving}
+          toolbarLabels={toolbarLabels}
+        />
+        {saveError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{saveError}</div>}
+        <button type="button" disabled={saving} onClick={() => void handleSave()} className="btn-primary w-full sm:w-auto">
+          <Send className="h-4 w-4" />
+          {saving ? t("approvalReflection.saving") : t("approvalReflection.saveAndView")}
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function ReportDetail({
   intervention,
-  reflection,
+  approval,
   onConfirm,
 }: {
   intervention: ReturnType<typeof useWorkflow>["state"]["interventions"][number];
-  reflection: ReturnType<typeof useWorkflow>["state"]["reflections"][number];
+  approval: WorkflowApproval;
   onConfirm: (status: ApprovalStatus, comment: string) => void;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const [choice, setChoice] = useState<ApprovalStatus>("gelezen_akkoord");
   const [comment, setComment] = useState("");
   const { representatives } = useRepresentatives();
@@ -314,13 +437,13 @@ function ReportDetail({
         <section className="card p-5 sm:p-7">
           <div className="flex items-center gap-3">
             <MessageSquareText className="h-5 w-5 text-brand-700" />
-            <h2 className="font-bold text-slate-950">Jouw reflectie</h2>
+            <h2 className="font-bold text-slate-950">{t("approvalReflection.sectionTitle")}</h2>
           </div>
-          <dl className="mt-5 space-y-4 text-sm">
-            <ReflectionAnswer label="Geleerd" value={reflection.learnedText} />
-            <ReflectionAnswer label="Werken aan" value={reflection.workOnText} />
-            <ReflectionAnswer label="Concreet doel" value={reflection.concreteGoalText} />
-          </dl>
+          <div className="mt-5 space-y-5 text-sm">
+            <ReflectionAnswer label={t("approvalReflection.question.kpi")} value={approval.reflectionKpiHtml} />
+            <ReflectionAnswer label={t("approvalReflection.question.learning")} value={approval.reflectionLearningHtml} />
+            <ReflectionAnswer label={t("approvalReflection.question.goal")} value={approval.reflectionGoalHtml} />
+          </div>
         </section>
       </div>
 
@@ -372,11 +495,11 @@ function ChoiceButton({ active, label, onClick }: { active: boolean; label: stri
   );
 }
 
-function ReflectionAnswer({ label, value }: { label: string; value: string }) {
+function ReflectionAnswer({ label, value }: { label: string; value?: string }) {
   return (
     <div>
-      <dt className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</dt>
-      <dd className="mt-1 leading-6 text-slate-700">{value}</dd>
+      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p>
+      <RichTextRenderer value={value} className="mt-2 rounded-xl bg-slate-50 p-3 leading-6 text-slate-700" />
     </div>
   );
 }

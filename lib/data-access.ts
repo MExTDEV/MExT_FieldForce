@@ -9,6 +9,7 @@ import {
   visibleContactMoments,
   visibleCoachings,
 } from "@/lib/coaching/visibility";
+import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 
 export type VisibleUserScope = {
   representativeIds: Set<string>;
@@ -124,7 +125,10 @@ export function getVisibleWorkflowState(
 ): WorkflowState {
   const uniqueState = dedupeWorkflowState(state);
   const scope = getVisibleUserScope(currentUser, representatives);
-  const interventions = visibleCoachings(currentUser, uniqueState.interventions);
+  const approvalsByInterventionId = new Map(uniqueState.approvals.map((approval) => [approval.interventionId, approval]));
+  const interventions = visibleCoachings(currentUser, uniqueState.interventions).map((intervention) =>
+    maskPendingApprovalReport(currentUser, intervention, approvalsByInterventionId.get(intervention.id))
+  );
   const contactMoments = visibleContactMoments(currentUser, uniqueState.contactMoments).filter((item) =>
     scope.representativeIds.has(item.representativeId)
   );
@@ -168,5 +172,29 @@ export function getVisibleWorkflowState(
       const scoped = scopeSalesTraining(currentUser, item, representatives);
       return scoped ? [scoped] : [];
     }),
+  };
+}
+
+function maskPendingApprovalReport(
+  currentUser: MockUser,
+  intervention: WorkflowState["interventions"][number],
+  approval: WorkflowState["approvals"][number] | undefined
+) {
+  if (
+    currentUser.role !== "REPRESENTATIVE" ||
+    !["verzonden_ter_akkoord", "wacht_op_akkoord"].includes(intervention.status) ||
+    approvalHasCompletedReflection(approval)
+  ) {
+    return intervention;
+  }
+
+  return {
+    ...intervention,
+    scores: [],
+    actionPoints: [],
+    dossier: undefined,
+    appointments: [],
+    internalNotes: undefined,
+    auditTrail: [],
   };
 }

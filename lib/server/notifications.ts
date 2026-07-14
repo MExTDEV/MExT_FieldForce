@@ -59,6 +59,12 @@ const notificationMetadata: Record<
     link: (entityId: string) => string;
   }
 > = {
+  COACHING_PLANNED: {
+    entityType: "coaching",
+    titleKey: "notifications.coaching.planned.title",
+    bodyKey: "notifications.coaching.planned.body",
+    link: (entityId) => `/begeleidingen/${entityId}`,
+  },
   COACHING_APPROVAL_CONFIRMED: {
     entityType: "coaching",
     titleKey: "notifications.coachingApproval.confirmed.title",

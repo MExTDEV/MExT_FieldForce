@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 
 import { ApiRequestError, badRequest } from "@/lib/server/api";
 import { requireAuthenticatedRead } from "@/lib/server/authenticated-user";
@@ -20,7 +21,9 @@ export async function GET(
       headers: {
         "Content-Type": mimeType,
         "Content-Length": String(bytes.length),
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, max-age=86400",
+        "ETag": `"${createHash("sha256").update(bytes).digest("hex")}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

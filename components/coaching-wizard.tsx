@@ -29,6 +29,7 @@ import { coachingsForRepresentative, latestHistoricalCoaching } from "@/lib/perf
 import { getPerformanceWheelData, type PerformanceWheelCriterion } from "@/lib/performance/performance-wheel";
 import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
 import { canCreateCoachingIntervention } from "@/lib/permissions";
+import { translate } from "@/lib/i18n";
 import {
   isPeerCoachingRepresentativeLevel,
   representativeLevelBadgeClass,
@@ -682,6 +683,7 @@ function participantAsRepresentative(person: CoachingParticipant): Representativ
 }
 
 function PreparationStep({ representative }: { representative: Representative }) {
+  const { language } = useSession();
   const { dataset: performanceDataset } = usePerformance();
   const previousActions = performanceDataset.historicalActionPoints.filter((item) => item.representativeId === representative.id);
   const coachings = useMemo(() => coachingsForRepresentative(performanceDataset, representative.id), [performanceDataset, representative.id]);
@@ -724,7 +726,11 @@ function PreparationStep({ representative }: { representative: Representative })
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <StepHeading icon={ClipboardCheck} title="Voorbereiding vertegenwoordiger" description={`Recente resultaten en afspraken geven richting aan de begeleiding van ${representative.firstName}.`} />
+        <StepHeading
+          icon={ClipboardCheck}
+          title="Voorbereiding vertegenwoordiger"
+          description={translate(language, "coaching.preparation.previousScoresDescription").replace("{name}", representative.firstName)}
+        />
         <button type="button" onClick={handlePreparationExport} disabled={isExporting} className="btn-secondary whitespace-nowrap">
           <Save className="h-4 w-4" />
           {isExporting ? "PDF wordt aangemaakt..." : "Voorbereiding exporteren"}

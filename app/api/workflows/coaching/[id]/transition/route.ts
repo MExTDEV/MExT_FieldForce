@@ -18,6 +18,7 @@ import {
   coachingApprovalConfirmedNotificationType,
   resolveCoachingApprovalConfirmedRecipients,
 } from "@/lib/coaching/approval-notifications";
+import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 
 type CoachingTransition = "reopen" | "send_for_approval" | "approve";
 
@@ -44,6 +45,14 @@ export async function POST(
         title: true,
         status: true,
         representativeId: true,
+        approval: {
+          select: {
+            reflectionKpiHtml: true,
+            reflectionLearningHtml: true,
+            reflectionGoalHtml: true,
+            reflectionCompletedAt: true,
+          },
+        },
         initiatorId: true,
         ownerId: true,
         teamId: true,
@@ -103,6 +112,9 @@ export async function POST(
       }
       if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
         badRequest("Deze begeleiding staat niet klaar voor akkoord.");
+      }
+      if (!approvalHasCompletedReflection(coaching.approval)) {
+        badRequest("Vul eerst de drie verplichte reflectievragen in voordat je akkoord geeft.");
       }
       let handledApprovalId: string | undefined;
       await prisma.$transaction(async (tx) => {

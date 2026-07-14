@@ -5,6 +5,7 @@ export const notificationRefreshEventName = "fieldforce:notifications-refresh";
 
 export type AppNotificationType =
   | "COACHING_APPROVAL_REQUEST"
+  | "COACHING_PLANNED"
   | "COACHING_APPROVAL_CONFIRMED"
   | "HELP_REQUEST_CREATED"
   | "HELP_REQUEST_ANSWERED"

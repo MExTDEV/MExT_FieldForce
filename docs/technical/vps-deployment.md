@@ -63,6 +63,11 @@ NEXT_PUBLIC_AUTH_MODE="credentials"
 
 The three `AUTH_MICROSOFT_ENTRA_ID_*` variables are optional. Configure either
 all three or none.
+For Microsoft profile photo synchronisation, grant the Entra application
+permission `ProfilePhoto.Read.All` with admin consent and keep these same
+client-credentials variables configured server-side. `AUTH_MICROSOFT_ENTRA_TENANT_ID`
+may be set explicitly; otherwise the tenant is derived from
+`AUTH_MICROSOFT_ENTRA_ID_ISSUER`.
 
 Keep all secrets in Plesk environment variables or the approved secret store,
 never in the repository.
@@ -125,8 +130,8 @@ builds against a stale Prisma Client.
 ## Persistent uploaded files
 
 Contactmoment photos and uploaded user avatars are not stored in the database.
-The database stores metadata or an authenticated avatar route; the original
-image files are stored below:
+The database stores metadata or an authenticated avatar route; uploaded and
+Microsoft-synchronised original image files are stored below:
 
 ```env
 FIELD_FORCE_UPLOAD_ROOT="storage/uploads"
@@ -148,6 +153,22 @@ Required operational rules:
   Contactmoment photo uploads in an environment;
 - include `user-avatars/` in the same backup and restore procedure as
   `contact-moments/`.
+
+## Scheduled Microsoft profile photos
+
+Configure a Plesk Scheduled Task when Microsoft profile photos should be kept
+current:
+
+```text
+Command: npm run profile-photos:sync
+Schedule: 0 1 * * *
+Timezone: Europe/Brussels
+Working directory: FieldForce application root
+```
+
+The command uses application Graph authentication, processes users with bounded
+concurrency and refuses duplicate active runs. See
+`docs/technical/profile-photo-sync.md`.
 
 In Plesk, click **Enable Node.js** or **Restart App** after
 `deploy:prepare` succeeds. Plesk starts `server.mjs`.

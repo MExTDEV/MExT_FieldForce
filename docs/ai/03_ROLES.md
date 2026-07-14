@@ -111,12 +111,14 @@ Main Coaching behaviour:
 - sees own visible coachings;
 - sees own action points;
 - may approve own coaching when the lifecycle requests approval;
+- must complete the required approval reflection questions for own coaching before viewing the submitted report and before akkoord or niet-akkoord can be submitted;
 - may create a Hulpaanvraag;
 - may view shared Contactmoment reports related to own user.
 
 Restrictions:
 
 - does not create or edit Coaching forms;
+- does not edit another user's approval reflection answers;
 - does not see surprise coachings before the defined lifecycle point;
 - does not see `Mijn Team`;
 - does not see data belonging to other users.
@@ -134,6 +136,7 @@ Primary scope:
 Main behaviour:
 
 - plans and executes Begeleidingen for permitted team members;
+- views representative approval reflection answers read-only for visible Begeleidingen;
 - creates and follows team or user action points when allowed;
 - closes concrete Action Points for permitted representatives when `actionPointsClose` is active;
 - processes Hulpaanvragen from the own team;

@@ -49,6 +49,30 @@ type MailSettingsResponse = {
   recipient?: string;
 };
 
+type ProfilePhotoSyncRun = {
+  id: string;
+  trigger: "NIGHTLY" | "MANUAL";
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "PARTIAL_ERROR" | "ERROR" | "SKIPPED";
+  startedByUserId?: string | null;
+  startedAt?: string;
+  finishedAt?: string;
+  checkedUsers: number;
+  updatedPhotos: number;
+  unchangedPhotos: number;
+  noPhotoUsers: number;
+  skippedUsers: number;
+  errorUsers: number;
+  errorMessage?: string | null;
+};
+
+type ProfilePhotoSyncResponse = {
+  run?: ProfilePhotoSyncRun;
+  started?: boolean;
+  error?: string;
+  details?: string;
+  requestId?: string;
+};
+
 type MailDraft = {
   smtpEnabled: boolean;
   smtpHost: string;
@@ -91,11 +115,16 @@ export function SettingsManagement() {
   const [saveError, setSaveError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [recipientDraft, setRecipientDraft] = useState("");
+  const [photoRun, setPhotoRun] = useState<ProfilePhotoSyncRun>();
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoStarting, setPhotoStarting] = useState(false);
+  const [photoError, setPhotoError] = useState<string>();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const loadRequestId = useRef(0);
   const mutationInFlight = useRef(false);
   const busy = saving || sendingTest;
+  const photoBusy = photoStarting || photoRun?.status === "QUEUED" || photoRun?.status === "RUNNING";
   const hasUnsavedMailChanges = hasUnsavedMailSettings(
     mailSettings,
     mailDraft,
@@ -155,9 +184,38 @@ export function SettingsManagement() {
     }
   }, [applyPayload, language, user.id]);
 
+  const loadPhotoSync = useCallback(async () => {
+    if (!user.id) return;
+    setPhotoLoading(true);
+    setPhotoError(undefined);
+    try {
+      const response = await fetch(
+        `/api/management/settings/profile-photos?actorId=${encodeURIComponent(user.id)}`,
+        { cache: "no-store" }
+      );
+      const payload = await readProfilePhotoSyncResponse(response);
+      if (!response.ok) throw new Error(apiErrorMessage(payload, translate(language, "settings.microsoftPhoto.loadError")));
+      setPhotoRun(payload.run);
+    } catch (cause) {
+      setPhotoError(cause instanceof Error ? cause.message : translate(language, "settings.microsoftPhoto.loadError"));
+    } finally {
+      setPhotoLoading(false);
+    }
+  }, [language, user.id]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadPhotoSync();
+  }, [loadPhotoSync]);
+
+  useEffect(() => {
+    if (!photoBusy) return;
+    const handle = window.setInterval(() => void loadPhotoSync(), 3000);
+    return () => window.clearInterval(handle);
+  }, [loadPhotoSync, photoBusy]);
 
   async function updateMailTest(active: boolean, productionWord?: string, recipientOverride?: string) {
     if (!setting || mutationInFlight.current) return;
@@ -294,6 +352,32 @@ export function SettingsManagement() {
     } finally {
       mutationInFlight.current = false;
       setSendingTest(false);
+    }
+  }
+
+  async function startPhotoSync() {
+    if (!user.id || photoBusy) return;
+    setPhotoStarting(true);
+    setPhotoError(undefined);
+    setNotice(undefined);
+    try {
+      const response = await fetch("/api/management/settings/profile-photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: user.id }),
+      });
+      const payload = await readProfilePhotoSyncResponse(response);
+      if (!response.ok || !payload.run) {
+        throw new Error(apiErrorMessage(payload, translate(language, "settings.microsoftPhoto.startError")));
+      }
+      setPhotoRun(payload.run);
+      if (!payload.started) {
+        setPhotoError(translate(language, "settings.microsoftPhoto.alreadyRunning"));
+      }
+    } catch (cause) {
+      setPhotoError(cause instanceof Error ? cause.message : translate(language, "settings.microsoftPhoto.startError"));
+    } finally {
+      setPhotoStarting(false);
     }
   }
 
@@ -537,6 +621,63 @@ export function SettingsManagement() {
         </section>
       ) : null}
 
+      <section className="card overflow-hidden">
+        <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 sm:px-6">
+          <div className="flex items-start gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">{translate(language, "settings.microsoftPhoto.title")}</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{translate(language, "settings.microsoftPhoto.description")}</p>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_220px] sm:p-6">
+          <div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <Metric label={translate(language, "settings.microsoftPhoto.lastStarted")} value={formatDateTime(photoRun?.startedAt, language)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.lastFinished")} value={formatDateTime(photoRun?.finishedAt, language)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.status")} value={photoRun ? translate(language, `settings.microsoftPhoto.status.${photoRun.status}`) : "-"} />
+              <Metric label={translate(language, "settings.microsoftPhoto.checked")} value={String(photoRun?.checkedUsers ?? 0)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.updated")} value={String(photoRun?.updatedPhotos ?? 0)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.unchanged")} value={String(photoRun?.unchangedPhotos ?? 0)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.noPhoto")} value={String(photoRun?.noPhotoUsers ?? 0)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.skipped")} value={String(photoRun?.skippedUsers ?? 0)} />
+              <Metric label={translate(language, "settings.microsoftPhoto.errors")} value={String(photoRun?.errorUsers ?? 0)} />
+            </div>
+            {photoError && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{photoError}</p>}
+            {photoRun?.status === "COMPLETED" && (
+              <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                {translate(language, "settings.microsoftPhoto.completed")
+                  .replace("{checked}", String(photoRun.checkedUsers))
+                  .replace("{updated}", String(photoRun.updatedPhotos))
+                  .replace("{noPhoto}", String(photoRun.noPhotoUsers))
+                  .replace("{errors}", String(photoRun.errorUsers))}
+              </p>
+            )}
+            {photoRun?.status === "PARTIAL_ERROR" && (
+              <p role="status" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                {translate(language, "settings.microsoftPhoto.partial")
+                  .replace("{checked}", String(photoRun.checkedUsers))
+                  .replace("{updated}", String(photoRun.updatedPhotos))
+                  .replace("{noPhoto}", String(photoRun.noPhotoUsers))
+                  .replace("{errors}", String(photoRun.errorUsers))}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm leading-6 text-slate-600">
+              {photoBusy ? translate(language, "settings.microsoftPhoto.running") : translate(language, "settings.microsoftPhoto.ready")}
+            </p>
+            <button type="button" className="btn-primary justify-center" disabled={photoBusy || photoLoading} onClick={() => void startPhotoSync()}>
+              {photoBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {translate(language, photoBusy ? "settings.microsoftPhoto.runningButton" : "settings.microsoftPhoto.syncButton")}
+            </button>
+          </div>
+        </div>
+      </section>
+
       {confirmOpen && !setting?.locked && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/45 p-4">
           <section role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
@@ -569,6 +710,15 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value || "-"}</p>
+    </div>
+  );
+}
+
 function hasUnsavedMailSettings(
   settings: MailSettings | undefined,
   draft: MailDraft,
@@ -595,14 +745,30 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function apiErrorMessage(payload: MailSettingsResponse, fallback: string) {
+function apiErrorMessage(payload: { details?: string; error?: string; requestId?: string }, fallback: string) {
   const requestLabel = payload.requestId ? ` (${payload.requestId})` : "";
   return `${payload.details ?? payload.error ?? fallback}${requestLabel}`;
+}
+
+function formatDateTime(value: string | undefined, language: string) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(language, {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 async function readMailSettingsResponse(response: Response): Promise<MailSettingsResponse> {
   try {
     return (await response.json()) as MailSettingsResponse;
+  } catch {
+    return {};
+  }
+}
+
+async function readProfilePhotoSyncResponse(response: Response): Promise<ProfilePhotoSyncResponse> {
+  try {
+    return (await response.json()) as ProfilePhotoSyncResponse;
   } catch {
     return {};
   }

@@ -61,6 +61,7 @@ const contact: ContactMoment = {
     size: 1024,
     uploadedById: "leader-1",
     uploadedAt: "2026-08-10T08:30:00.000Z",
+    sortOrder: 0,
   }],
   sharedAt: "2026-08-10T10:15:00.000Z",
   sharedById: "leader-1",

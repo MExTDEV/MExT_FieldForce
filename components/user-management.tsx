@@ -839,18 +839,11 @@ function UserForm({
 
       <section className="card overflow-hidden">
         <div className="flex flex-col gap-5 border-b border-slate-100 bg-slate-50/70 p-5 sm:flex-row sm:items-center">
-          <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-brand-100 text-xl font-bold text-brand-800">
-            {draft.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={draft.avatarUrl}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              `${draft.firstName[0] ?? ""}${draft.lastName[0] ?? ""}` || "NU"
-            )}
-          </div>
+          <Avatar
+            initials={`${draft.firstName[0] ?? ""}${draft.lastName[0] ?? ""}` || "NU"}
+            src={draft.avatarUrl}
+            className="h-16 w-16 rounded-2xl text-xl"
+          />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Rol

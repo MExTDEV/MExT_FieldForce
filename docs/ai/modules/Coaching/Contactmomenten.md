@@ -80,9 +80,21 @@ Photo files are stored below `FIELD_FORCE_UPLOAD_ROOT/contact-moments/`.
 When the variable is not set, the application falls back to `storage/uploads`.
 The upload root must be private, persistent and included in backups.
 
+During planning, an authorised planner may select multiple images before saving
+the Contactmoment. The UI shows local thumbnails and allows removal before the
+record is created. After the Contactmoment is persisted, the same private photo
+API stores the selected images on the Contactmoment.
+
 Before sharing:
 
 - authorised users may add or remove photos.
+- multiple photos may be added in one upload action;
+- supported types are JPEG, PNG and WebP;
+- each file is limited to 8 MB;
+- a Contactmoment is limited to 20 photos;
+- MIME type and image file signature are validated before storage;
+- photo metadata includes ID, original filename, stored filename, MIME type,
+  file size, uploader, upload timestamp and sort order.
 
 After sharing:
 
@@ -92,7 +104,11 @@ After sharing:
 
 The report view displays photos as a gallery.
 
-PDF export includes all linked photos.
+The gallery opens photos in a larger read-only viewer. Missing or damaged image
+files show a controlled unavailable state instead of a broken browser image.
+
+PDF export includes all linked photos in stored order. Images are scaled
+proportionally so the aspect ratio is preserved.
 
 Photo access must go through the authenticated private API. Public/static file
 serving is not allowed for Contactmoment photos.

@@ -289,6 +289,9 @@ export type ManagedUser = {
   branchNumber: string;
   active: boolean;
   avatarUrl: string;
+  profilePhotoSyncStatus?: "SYNCED" | "NO_PHOTO" | "SKIPPED" | "ERROR";
+  profilePhotoSyncedAt?: string;
+  profilePhotoSyncError?: string;
   permissions: Record<FieldForcePermissionKey, boolean>;
   representativeId?: string;
   microsoftLinked?: boolean;
@@ -628,6 +631,11 @@ export type WorkflowApproval = {
   representativeId: string;
   status?: ApprovalStatus;
   comment: string;
+  reflectionKpiHtml?: string;
+  reflectionLearningHtml?: string;
+  reflectionGoalHtml?: string;
+  reflectionCompletedAt?: string;
+  reflectionCompletedByUserId?: string;
   createdAt: string;
   confirmedAt?: string;
 };
@@ -683,6 +691,7 @@ export type ContactMomentPhoto = {
   size: number;
   uploadedById: string;
   uploadedAt: string;
+  sortOrder: number;
 };
 
 export type Retraining = {

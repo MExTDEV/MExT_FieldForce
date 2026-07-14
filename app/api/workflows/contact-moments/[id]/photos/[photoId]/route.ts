@@ -22,6 +22,7 @@ export async function GET(
         "Content-Length": String(photo.size),
         "Content-Disposition": `inline; filename="${encodeURIComponent(photo.originalName)}"`,
         "Cache-Control": "private, max-age=300",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

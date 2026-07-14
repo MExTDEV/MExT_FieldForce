@@ -37,7 +37,7 @@ assert.equal(unreadNotification.triggeredByUserId, "leader-1");
 assert.equal(unreadNotification.title, "Nieuwe begeleiding ter akkoord");
 assert.equal(
   unreadNotification.body,
-  "Er staat een begeleiding klaar om te controleren en voor akkoord te bevestigen."
+  "Er staat een begeleiding klaar voor jouw beoordeling. Vul eerst de drie verplichte reflectievragen in. Daarna kun je het begeleidingsverslag bekijken en je akkoord doorgeven."
 );
 
 const readAt = new Date("2026-07-09T12:20:00.000Z");
@@ -133,6 +133,25 @@ assert.equal(
   "De begeleide gebruiker heeft de begeleiding voor akkoord bevestigd."
 );
 
+const coachingPlannedNotification = buildInAppNotification({
+  id: "delivery-4",
+  eventKey: "COACHING_PLANNED:coaching:coaching-4:2026-07-12T08:30:00.000Z",
+  recipientUserId: "rep-user-1",
+  status: "unread",
+  sourceModule: "BEGELEIDINGEN",
+  entityType: "coaching",
+  entityId: "coaching-4",
+  originalTo: "leader-1",
+  createdAt: genericCreatedAt,
+  updatedAt: genericUpdatedAt,
+}, "nl");
+
+assert.ok(coachingPlannedNotification);
+assert.equal(coachingPlannedNotification.type, "COACHING_PLANNED");
+assert.equal(coachingPlannedNotification.linkUrl, "/begeleidingen/coaching-4");
+assert.equal(coachingPlannedNotification.title, "Begeleiding gepland");
+assert.equal(coachingPlannedNotification.body, "Er staat een begeleiding voor jou gepland.");
+
 const approvalConfirmedRecipients = resolveCoachingApprovalConfirmedRecipients({
   id: "coaching-3",
   title: "Begeleiding Yoni",
@@ -169,7 +188,7 @@ assert.equal(
 );
 
 const unknownNotification = buildInAppNotification({
-  id: "delivery-4",
+  id: "delivery-5",
   eventKey: "UNKNOWN_EVENT:helpRequest:help-1",
   recipientUserId: "leader-1",
   status: "unread",

@@ -17,7 +17,9 @@ optional second login method. Database authentication remains active.
    immediately in the approved password manager.
 
 No extra Microsoft Graph application permissions are required for basic login.
-The standard OpenID Connect scopes provide the identity claims.
+The standard OpenID Connect scopes provide the identity claims. Server-side
+Microsoft profile photo synchronisation is separate from login and requires the
+application permission `ProfilePhoto.Read.All` with admin consent when enabled.
 
 ## 2. Configure redirect URLs
 
@@ -43,6 +45,7 @@ AUTH_SECRET="at-least-32-random-characters"
 AUTH_MICROSOFT_ENTRA_ID_ID="application-client-id"
 AUTH_MICROSOFT_ENTRA_ID_SECRET="application-client-secret"
 AUTH_MICROSOFT_ENTRA_ID_ISSUER="https://login.microsoftonline.com/tenant-id/v2.0"
+AUTH_MICROSOFT_ENTRA_TENANT_ID="tenant-id"
 ```
 
 Use the same names in Plesk. Never commit real values. Generate `AUTH_SECRET`
@@ -92,6 +95,14 @@ payloadgroottes loggen. Tokenwaarden en andere secrets worden nooit gelogd.
 When Microsoft returns a different verified sign-in address than the business
 mailbox, register that exact address in `UserLoginAlias`. Aliases are explicit
 database records; FieldForce never matches users by partial address or domain.
+
+## Server-side profile photos
+
+Microsoft profile photos are downloaded by the server through
+`GET /users/{entraObjectId-or-userPrincipalName}/photo/$value`, stored under the
+private upload root and served through `/api/users/<userId>/avatar`. See
+`docs/technical/profile-photo-sync.md` for permissions, retry behaviour,
+metadata, manual sync and the nightly Plesk command.
 
 ## 5. Local development
 

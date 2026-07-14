@@ -373,14 +373,21 @@ The binary files are stored on the application filesystem below
 `FIELD_FORCE_UPLOAD_ROOT/contact-moments/<contactMomentId>/`. If
 `FIELD_FORCE_UPLOAD_ROOT` is absent, the application falls back to
 `storage/uploads` under the application working directory.
+Photo metadata contains a generated ID, original filename, stored filename,
+MIME type, size, uploader, upload timestamp and sort order. The upload API
+accepts multiple images in one request, validates MIME type, maximum size and
+JPEG/PNG/WebP file signatures before writing to disk, and keeps the files
+private behind the authenticated photo route.
 
 User profile photos reuse the existing nullable `User.avatarUrl` column. A
-manually entered external URL may still be stored there. When a photo is
-uploaded through user management, the binary file is stored below
-`FIELD_FORCE_UPLOAD_ROOT/user-avatars/<userId>/` and `User.avatarUrl` points to
-the authenticated `/api/users/<userId>/avatar` route. The application also uses
-the Microsoft account photo as the initial avatar source after a successful
-Microsoft Entra login, but only when `User.avatarUrl` is still empty.
+manually entered external URL may still be stored there, but Microsoft Graph
+photos are never loaded directly by the browser. When a photo is uploaded
+through user management or synchronised from Microsoft, the binary file is
+stored below `FIELD_FORCE_UPLOAD_ROOT/user-avatars/<userId>/` and
+`User.avatarUrl` points to the authenticated `/api/users/<userId>/avatar` route.
+Migration `0033_user_profile_photo_sync` adds local photo metadata to `User`
+and stores run history and duplicate-run locking in `ProfilePhotoSyncRun`.
+See `docs/technical/profile-photo-sync.md`.
 
 Deployment requirements for Contactmoment and user profile photos:
 
@@ -391,6 +398,9 @@ Deployment requirements for Contactmoment and user profile photos:
 - include the upload root in server backups and restore drills;
 - keep the upload root private and serve files only through authenticated photo
   APIs;
+- configure Microsoft profile photo sync with `ProfilePhoto.Read.All` admin
+  consent and `npm run profile-photos:sync` when Entra photos should be kept
+  current;
 - do not manually edit `photosJson`; use the API so metadata and files remain
   consistent.
 

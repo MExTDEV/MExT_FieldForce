@@ -5,6 +5,7 @@ import type {
   CoachingSimpleScore,
   Language,
   Representative,
+  WorkflowApproval,
 } from "@/lib/types";
 import {
   criterionScoresFromRows,
@@ -16,6 +17,7 @@ import { isBlankRichText, richTextToPlainText, richTextToStructuredPlainText } f
 export type ProfessionalCoachingReportInput = {
   intervention: CoachingIntervention;
   previousIntervention?: CoachingIntervention;
+  approval?: WorkflowApproval;
   representative: Representative;
   leaderName: string;
   language: Language;
@@ -124,6 +126,11 @@ const translations = {
     coachingPriorities: "Coachingsprioriteiten",
     openActions: "Open actiepunten",
     approval: "Digitale goedkeuring",
+    approvalReflection: "Reflectie vertegenwoordiger",
+    reflectionKpi: "Welke KPI's of observaties herken je?",
+    reflectionLearning: "Wat neem je mee uit deze begeleiding?",
+    reflectionGoal: "Waar ga je concreet mee aan de slag?",
+    reflectionCompletedAt: "Ingevuld op",
   },
   fr: {
     report: "Rapport d'accompagnement",
@@ -193,6 +200,11 @@ const translations = {
     coachingPriorities: "Priorités de coaching",
     openActions: "Actions ouvertes",
     approval: "Approbation numérique",
+    approvalReflection: "Réflexion du représentant",
+    reflectionKpi: "Quels KPI ou observations reconnais-tu ?",
+    reflectionLearning: "Que retiens-tu de cet accompagnement ?",
+    reflectionGoal: "Sur quoi vas-tu travailler concrètement ?",
+    reflectionCompletedAt: "Complété le",
   },
   de: {
     report: "Begleitungsbericht",
@@ -262,6 +274,11 @@ const translations = {
     coachingPriorities: "Coaching-Prioritäten",
     openActions: "Offene Maßnahmen",
     approval: "Digitale Freigabe",
+    approvalReflection: "Reflexion des Vertreters",
+    reflectionKpi: "Welche KPI oder Beobachtungen erkennst du wieder?",
+    reflectionLearning: "Was nimmst du aus dieser Begleitung mit?",
+    reflectionGoal: "Woran wirst du konkret arbeiten?",
+    reflectionCompletedAt: "Ausgefüllt am",
   },
 } as const;
 
@@ -302,6 +319,11 @@ export async function exportProfessionalCoachingReport(
 
   startSection(pdf);
   drawConclusion(pdf, input, comparedRows);
+
+  if (hasApprovalReflection(input.approval)) {
+    startSection(pdf);
+    drawApprovalReflection(pdf, input);
+  }
 
   drawHeadersAndFooters(pdf, input, logo);
 
@@ -586,6 +608,60 @@ function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: 
     ...(input.intervention.approvedByRepAt ? [[t.representative, `${fullName(input.representative)} - ${formatDateTime(input.intervention.approvedByRepAt, input.language)}`]] : []),
   ];
   drawCompactKeyValueList(pdf, t.approval, approvalValues, MARGIN, 243, CONTENT_WIDTH, 31, approvalValues.length);
+}
+
+function drawApprovalReflection(pdf: Pdf, input: ProfessionalCoachingReportInput) {
+  const approval = input.approval;
+  if (!approval) return;
+  const t = translations[input.language];
+  drawSectionHeading(pdf, t.approvalReflection, fullName(input.representative));
+  let y = 49;
+  if (approval.reflectionCompletedAt) {
+    y = drawCompactKeyValueList(
+      pdf,
+      t.approval,
+      [[t.reflectionCompletedAt, formatDateTime(approval.reflectionCompletedAt, input.language)]],
+      MARGIN,
+      y,
+      CONTENT_WIDTH,
+      24
+    ) + 8;
+  }
+  const rows = [
+    [t.reflectionKpi, approval.reflectionKpiHtml],
+    [t.reflectionLearning, approval.reflectionLearningHtml],
+    [t.reflectionGoal, approval.reflectionGoalHtml],
+  ] as const;
+  for (const [label, value] of rows) {
+    const text = !isBlankRichText(value) ? richTextToPlainText(value) : "-";
+    const lines = pdf.splitTextToSize(text, CONTENT_WIDTH - 18) as string[];
+    const height = Math.max(31, 17 + lines.length * 3.8);
+    if (y + height > CONTENT_BOTTOM) {
+      addWhitePage(pdf);
+      drawSectionHeading(pdf, `${t.approvalReflection} - ${t.continued}`, fullName(input.representative));
+      y = 49;
+    }
+    drawRoundedCard(pdf, MARGIN, y, CONTENT_WIDTH, height, "#F8FAFC");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.setTextColor(BLUE);
+    pdf.text(label.toUpperCase(), MARGIN + 5, y + 8, { maxWidth: CONTENT_WIDTH - 10 });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(SLATE_700);
+    pdf.text(lines, MARGIN + 5, y + 16, { maxWidth: CONTENT_WIDTH - 10 });
+    y += height + 6;
+  }
+}
+
+function hasApprovalReflection(approval?: WorkflowApproval) {
+  if (!approval) return false;
+  return Boolean(
+    approval.reflectionCompletedAt ||
+    !isBlankRichText(approval.reflectionKpiHtml) ||
+    !isBlankRichText(approval.reflectionLearningHtml) ||
+    !isBlankRichText(approval.reflectionGoalHtml)
+  );
 }
 
 function collectScoreRows(intervention?: CoachingIntervention): ScoreRow[] {

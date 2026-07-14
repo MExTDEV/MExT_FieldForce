@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { forbidden, notFound, badRequest } from "@/lib/server/api";
@@ -17,6 +18,7 @@ import type { ManagedUser, MockUser } from "@/lib/types";
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const avatarExtensions = [".jpg", ".png", ".webp"] as const;
+const avatarStorageFolder = "user-avatars";
 
 type AvatarTarget = {
   id: string;
@@ -25,6 +27,8 @@ type AvatarTarget = {
   teamId: string | null;
   representativeId: string | null;
   avatarUrl: string | null;
+  profilePhotoMimeType: string | null;
+  profilePhotoHash: string | null;
 };
 
 export async function getUserAvatarForRequest(userId: string, actor?: MockUser) {
@@ -37,11 +41,16 @@ export async function getUserAvatarForRequest(userId: string, actor?: MockUser) 
       teamId: true,
       representativeId: true,
       avatarUrl: true,
+      profilePhotoMimeType: true,
+      profilePhotoHash: true,
     },
   });
   if (!target?.active || !canViewUserAvatar(actor, target)) notFound("Gebruikersfoto niet gevonden.");
   if (!target.avatarUrl?.startsWith(userAvatarRoute(target.id))) notFound("Gebruikersfoto niet gevonden.");
-  const stored = await readStoredAvatar(target.id);
+  const stored = await readStoredAvatar(target.id, {
+    mimeType: target.profilePhotoMimeType,
+    hash: target.profilePhotoHash,
+  });
   if (!stored) notFound("Gebruikersfoto niet gevonden.");
   return stored;
 }
@@ -59,14 +68,14 @@ export async function uploadManagedUserAvatar(
     forbidden("Je mag de foto van deze gebruiker niet wijzigen.");
   }
   assertValidAvatar(file.type, file.size);
-  const avatarUrl = await storeUserAvatarBytes(
+  const stored = await storeUserAvatarBytes(
     userId,
     Buffer.from(await file.arrayBuffer()),
     file.type
   );
   return {
     ...target,
-    avatarUrl,
+    avatarUrl: stored.avatarUrl,
   };
 }
 
@@ -101,10 +110,11 @@ async function downloadMicrosoftProfilePhoto(accessToken: string) {
   return { bytes, mimeType };
 }
 
-async function storeUserAvatarBytes(
+export async function storeUserAvatarBytes(
   userId: string,
   bytes: Buffer,
-  mimeType: UserAvatarMimeType | string
+  mimeType: UserAvatarMimeType | string,
+  options: { updateSyncMetadata?: boolean } = {}
 ) {
   if (!isAllowedUserAvatarType(mimeType)) {
     badRequest("Alleen JPG-, PNG- en WebP-foto's zijn toegestaan.");
@@ -112,30 +122,55 @@ async function storeUserAvatarBytes(
   if (bytes.length <= 0 || bytes.length > maxUserAvatarSize) {
     badRequest("Een gebruikersfoto mag maximaal 2 MB groot zijn.");
   }
+  const hash = sha256Hex(bytes);
+  const extension = extensionForUserAvatarMimeType(mimeType);
+  const storedName = `avatar${extension}`;
+  const tempName = `.avatar-${randomUUID()}${extension}`;
   await mkdir(avatarDirectory(userId), { recursive: true });
+  await writeFile(avatarPath(userId, tempName), bytes, { flag: "wx" });
+  await rename(avatarPath(userId, tempName), avatarPath(userId, storedName));
+  await Promise.all(avatarExtensions
+    .filter((candidate) => candidate !== extension)
+    .map((candidate) => rm(avatarPath(userId, `avatar${candidate}`), { force: true }))
+  );
+  const avatarUrl = `${userAvatarRoute(userId)}?v=${hash}`;
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      avatarUrl,
+      profilePhotoStorageKey: storageKey(userId, storedName),
+      profilePhotoMimeType: mimeType,
+      profilePhotoHash: hash,
+      ...(options.updateSyncMetadata
+        ? {
+            profilePhotoSyncedAt: new Date(),
+            profilePhotoSyncStatus: "SYNCED",
+            profilePhotoSyncError: null,
+          }
+        : {}),
+    },
+  });
+  return { avatarUrl, hash, storageKey: storageKey(userId, storedName) };
+}
+
+export async function deleteStoredUserAvatar(userId: string) {
   await Promise.all(avatarExtensions.map((extension) =>
     rm(avatarPath(userId, `avatar${extension}`), { force: true })
   ));
-  await writeFile(
-    avatarPath(userId, `avatar${extensionForUserAvatarMimeType(mimeType)}`),
-    bytes,
-    { flag: "wx" }
-  );
-  const avatarUrl = `${userAvatarRoute(userId)}?v=${Date.now()}`;
-  await prisma.user.update({
-    where: { id: userId },
-    data: { avatarUrl },
-  });
-  return avatarUrl;
 }
 
-async function readStoredAvatar(userId: string) {
-  for (const extension of avatarExtensions) {
+async function readStoredAvatar(userId: string, metadata?: { mimeType?: string | null; hash?: string | null }) {
+  const extensions = metadata?.mimeType
+    ? [extensionForUserAvatarMimeType(metadata.mimeType as UserAvatarMimeType), ...avatarExtensions]
+    : avatarExtensions;
+  for (const extension of [...new Set(extensions)]) {
     const mimeType = userAvatarMimeTypeForExtension(extension);
-    if (!mimeType) continue;
+    if (!mimeType || (metadata?.mimeType && mimeType !== metadata.mimeType && extension !== extensions[0])) continue;
     try {
+      const bytes = await readFile(avatarPath(userId, `avatar${extension}`));
+      if (metadata?.hash && sha256Hex(bytes) !== metadata.hash) continue;
       return {
-        bytes: await readFile(avatarPath(userId, `avatar${extension}`)),
+        bytes,
         mimeType,
       };
     } catch {
@@ -176,7 +211,7 @@ function uploadRoot() {
 }
 
 function avatarDirectory(userId: string) {
-  return resolve(uploadRoot(), "user-avatars", safePathSegment(userId));
+  return resolve(uploadRoot(), avatarStorageFolder, safePathSegment(userId));
 }
 
 function avatarPath(userId: string, storedName: string) {
@@ -184,6 +219,14 @@ function avatarPath(userId: string, storedName: string) {
   const root = uploadRoot();
   if (!fullPath.startsWith(root)) forbidden("Ongeldig bestandspad.");
   return fullPath;
+}
+
+function storageKey(userId: string, storedName: string) {
+  return `${avatarStorageFolder}/${safePathSegment(userId)}/${safePathSegment(storedName)}`;
+}
+
+function sha256Hex(bytes: Buffer) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function safePathSegment(value: string) {

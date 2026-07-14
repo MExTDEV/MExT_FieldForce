@@ -57,6 +57,32 @@ Remaining technical debt:
 
 # High Priority
 
+## Approval reflection before report access
+
+Status: `Implemented locally, validation blocked by Prisma Client lock`
+
+Implemented:
+
+- existing `Approval` record extended with three mandatory WYSIWYG reflection
+  answers and completion metadata;
+- server-side WYSIWYG sanitization and meaningful-text validation;
+- representative report details masked through `/api/workflows` until all
+  three answers are complete;
+- approval and non-approval API paths reject submission until the reflection is
+  complete;
+- `Mijn verslagen` shows the three-question WYSIWYG step before the report;
+- managers see a read-only reflection section or a clear not-yet-filled notice;
+- approval request notification/mail text now tells the representative to fill
+  the reflection questions first;
+- unit script `npm run test:approval-reflection`.
+
+Open verification:
+
+- rerun `npm run db:generate` after the local Prisma query-engine DLL is no
+  longer locked by a running process;
+- then rerun typecheck, lint, migration deploy/status and the approval-related
+  regression scripts.
+
 ## Contactmomenten afronden
 
 Status: `Partially implemented`

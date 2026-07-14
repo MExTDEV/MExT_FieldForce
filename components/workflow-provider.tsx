@@ -23,6 +23,7 @@ import type {
   SalesTraining,
   Status,
   TrainingStatus,
+  WorkflowApproval,
   WorkflowReflection,
   WorkflowState,
 } from "@/lib/types";
@@ -71,6 +72,10 @@ type WorkflowContextValue = {
   finalizeCoaching: (input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
   saveCoachingStatus: (input: CoachingWorkflowInput, status: Status) => Promise<CoachingIntervention>;
   transitionCoaching: (id: string, action: "reopen" | "send_for_approval" | "approve") => Promise<CoachingIntervention>;
+  saveApprovalReflection: (
+    approvalId: string,
+    answers: Pick<WorkflowApproval, "reflectionKpiHtml" | "reflectionLearningHtml" | "reflectionGoalHtml">
+  ) => Promise<WorkflowApproval>;
   submitReflection: (
     reflectionId: string,
     answers: Pick<WorkflowReflection, "learnedText" | "workOnText" | "concreteGoalText">
@@ -80,6 +85,7 @@ type WorkflowContextValue = {
   openReflections: (user: MockUser) => WorkflowReflection[];
   pendingApprovals: (user: MockUser) => WorkflowState["approvals"];
   saveContactMoment: (input: ContactMomentInput, status: ContactMomentStatus) => ContactMoment;
+  saveContactMomentAsync: (input: ContactMomentInput, status: ContactMomentStatus) => Promise<ContactMoment>;
   submitContactInput: (id: string, representativeId: string, kpis: string[], themes: string[]) => void;
   createHelpRequest: (input: HelpRequestInput) => HelpRequest;
   updateHelpRequest: (input: HelpRequestUpdateInput) => HelpRequest;
@@ -280,6 +286,42 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     );
   }, [updateState]);
 
+  const saveApprovalReflection = useCallback(async (
+    approvalId: string,
+    answers: Pick<WorkflowApproval, "reflectionKpiHtml" | "reflectionLearningHtml" | "reflectionGoalHtml">
+  ) => {
+    const response = await fetch(
+      `/api/workflows/approvals/${encodeURIComponent(approvalId)}/reflection?actorId=${encodeURIComponent(user.id)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(answers),
+      }
+    );
+    const payload = await response.json() as {
+      approval?: WorkflowApproval;
+      intervention?: CoachingIntervention;
+      error?: string;
+    };
+    if (!response.ok || !payload.approval) {
+      throw new Error(payload.error ?? "De reflectievragen konden niet worden opgeslagen.");
+    }
+    setState((current) => dedupeWorkflowState({
+      ...current,
+      approvals: [
+        ...current.approvals.filter((item) => item.id !== payload.approval!.id),
+        payload.approval!,
+      ],
+      interventions: payload.intervention
+        ? [
+            ...current.interventions.filter((item) => item.id !== payload.intervention!.id),
+            payload.intervention,
+          ]
+        : current.interventions,
+    }));
+    return payload.approval;
+  }, [user.id]);
+
   const confirmApproval = useCallback((approvalId: string, status: ApprovalStatus, comment: string) => {
     updateState(
       (current) => confirmWorkflowApproval(current, approvalId, status, comment),
@@ -310,9 +352,9 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     state.approvals.filter((approval) => {
       const intervention = state.interventions.find((item) => item.id === approval.interventionId);
       return user.role === "REPRESENTATIVE" &&
-        approval.representativeId === user.representativeId &&
+        [user.id, user.representativeId].includes(approval.representativeId) &&
         !approval.status &&
-        intervention?.status === "wacht_op_akkoord";
+        ["wacht_op_akkoord", "verzonden_ter_akkoord"].includes(intervention?.status ?? "");
     }), [state.approvals, state.interventions]);
 
   const visibleContactMoments = useCallback(
@@ -335,6 +377,15 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     [representatives, state]
   );
 
+  const saveContactMomentAsync = useCallback(async (input: ContactMomentInput, status: ContactMomentStatus) => {
+    const result = saveContactMoment(state, input, status, representatives);
+    const patch: WorkflowPatch = { contactMoments: [result.contactMoment] };
+    const persistedPatch = await persistOrThrow("/api/workflows/contact-moments", patch);
+    const saved = persistedPatch.contactMoments?.find((item) => item.id === result.contactMoment.id) ?? result.contactMoment;
+    setState((current) => mergeWorkflowStatePatch(current, persistedPatch));
+    return saved;
+  }, [persistOrThrow, representatives, state]);
+
   const value = useMemo<WorkflowContextValue>(() => ({
     hydrated,
     saveError,
@@ -345,6 +396,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     finalizeCoaching: (input) => upsertIntervention(input, "voltooid"),
     saveCoachingStatus: upsertIntervention,
     transitionCoaching,
+    saveApprovalReflection,
     submitReflection,
     confirmApproval,
     visibleInterventions,
@@ -356,6 +408,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
       void persist("/api/workflows/contact-moments", { contactMoments: [result.contactMoment] });
       return result.contactMoment;
     },
+    saveContactMomentAsync,
     submitContactInput: (id, representativeId, kpis, themes) => {
       updateState(
         (current) => submitContactMomentInput(current, id, representativeId, kpis, themes),
@@ -446,6 +499,8 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     pendingApprovals,
     retrySave,
     representatives,
+    saveApprovalReflection,
+    saveContactMomentAsync,
     persist,
     persistOrThrow,
     saveError,
