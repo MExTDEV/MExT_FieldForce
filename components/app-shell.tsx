@@ -9,6 +9,7 @@ import {
   BellRing,
   BookOpenCheck,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   ClipboardCheck,
@@ -82,10 +83,32 @@ const manageNav = [
   { section: "teams", icon: UsersRound },
   { section: "rollen", icon: ShieldCheck },
   { section: "kpis", icon: BarChart3 },
+  { section: "starterEvaluations", icon: ClipboardCheck },
   { section: "kapstok", icon: MessageSquareText },
   { section: "modules", icon: Settings },
   { section: "instellingen", icon: Settings },
   { section: "log", icon: ListChecks },
+] as const;
+
+const managementGroupDefinitions = [
+  {
+    id: "users",
+    navKey: "nav.users",
+    icon: UserCog,
+    sections: ["gebruikers", "teams"],
+  },
+  {
+    id: "parameters",
+    navKey: "nav.parameters",
+    icon: BarChart3,
+    sections: ["kpis", "kapstok", "starterEvaluations"],
+  },
+  {
+    id: "settings",
+    navKey: "nav.settings",
+    icon: Settings,
+    sections: ["instellingen", "rollen", "modules"],
+  },
 ] as const;
 
 const representativeNav = [
@@ -104,21 +127,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [openManagementGroups, setOpenManagementGroups] = useState<Record<string, boolean>>({});
   const visibleManagementSections = getVisibleManagementSections(user);
   const visibleManagementNav = visibleManagementSections.flatMap((section) => {
     const item = manageNav.find((candidate) => candidate.section === section.section);
     return item ? [{ ...section, icon: item.icon }] : [];
   });
-  const settingsChildManagementNav = visibleManagementNav.filter((item) =>
-    item.section === "rollen" || item.section === "modules"
-  );
-  const topLevelManagementNav = visibleManagementNav.filter((item) =>
-    item.section !== "rollen" && item.section !== "modules"
-  );
-  const groupedManagementNav = buildGroupedManagementNav(
-    topLevelManagementNav,
-    settingsChildManagementNav
-  );
+  const groupedManagementNav = buildGroupedManagementNav(visibleManagementNav);
   const activeModuleNav = appModuleRegistry
     .filter((module) => isModuleEnabled(module.code) && canSeeModuleNav(user, module.code))
     .map((module) => ({
@@ -205,10 +220,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <>
             {!collapsed && <p className="px-3 pb-1 pt-5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Beheer</p>}
             {groupedManagementNav.map((item) => {
-              const isSettingsParent = item.section === "instellingen";
-              const settingsChildActive = settingsChildManagementNav.some((child) =>
-                pathname === child.href || pathname.startsWith(`${child.href}/`)
-              );
+              if ("children" in item) {
+                const active = item.children.some((child) =>
+                  pathname === child.href || pathname.startsWith(`${child.href}/`)
+                );
+                const open = Boolean(openManagementGroups[item.id]);
+                return (
+                  <div key={item.id}>
+                    <NavGroupButton
+                      icon={item.icon}
+                      label={translate(language, item.navKey as TranslationKey)}
+                      active={active}
+                      open={open}
+                      collapsed={collapsed}
+                      onClick={() =>
+                        setOpenManagementGroups((groups) => ({
+                          ...groups,
+                          [item.id]: !groups[item.id],
+                        }))
+                      }
+                    />
+                    {open && !collapsed && (
+                      <div className="mt-1 space-y-1 pl-6">
+                        {item.children.map((child) => (
+                          <SubNavItem
+                            key={child.href}
+                            href={child.href}
+                            icon={child.icon}
+                            label={translate(language, child.navKey as TranslationKey)}
+                            active={pathname === child.href || pathname.startsWith(`${child.href}/`)}
+                            onClick={() => setMobileOpen(false)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               return (
                 <div key={item.href}>
                   <NavItem
@@ -217,26 +265,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     label={translate(language, item.navKey as TranslationKey)}
                     active={
                       pathname === item.href ||
-                      pathname.startsWith(`${item.href}/`) ||
-                      (isSettingsParent && settingsChildActive)
+                      pathname.startsWith(`${item.href}/`)
                     }
                     collapsed={collapsed}
                     onClick={() => setMobileOpen(false)}
                   />
-                  {isSettingsParent && settingsChildManagementNav.length > 0 && !collapsed && (
-                    <div className="mt-1 space-y-1 pl-6">
-                      {settingsChildManagementNav.map((child) => (
-                        <SubNavItem
-                          key={child.href}
-                          href={child.href}
-                          icon={child.icon}
-                          label={translate(language, child.navKey as TranslationKey)}
-                          active={pathname === child.href || pathname.startsWith(`${child.href}/`)}
-                          onClick={() => setMobileOpen(false)}
-                        />
-                      ))}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -701,6 +734,42 @@ function formatNotificationDate(value: string, language: MockUser["language"]) {
   });
 }
 
+function NavGroupButton({
+  label,
+  icon: Icon,
+  active,
+  open,
+  collapsed,
+  onClick,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+  open: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={collapsed ? label : undefined}
+      aria-expanded={open}
+      className={`flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition ${
+        active ? "bg-white text-brand-800 shadow-sm" : "text-blue-100 hover:bg-white/10 hover:text-white"
+      } ${collapsed ? "justify-center" : ""}`}
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      {!collapsed && (
+        <>
+          <span className="min-w-0 flex-1 text-left">{label}</span>
+          <ChevronDown className={`h-4 w-4 shrink-0 transition ${open ? "rotate-180" : ""}`} />
+        </>
+      )}
+    </button>
+  );
+}
+
 function NavItem({
   href,
   label,
@@ -765,25 +834,18 @@ function buildGroupedManagementNav<
     navKey: string;
     icon: React.ComponentType<{ className?: string }>;
   },
->(topLevel: T[], settingsChildren: T[]) {
-  if (
-    settingsChildren.length === 0 ||
-    topLevel.some((item) => item.section === "instellingen")
-  ) {
-    return topLevel;
-  }
-  const settingsParent = {
-    ...settingsChildren[0],
-    section: "instellingen",
-    href: settingsChildren[0].href,
-    navKey: "nav.settings",
-    icon: Settings,
-  } as T;
-  const logIndex = topLevel.findIndex((item) => item.section === "log");
-  if (logIndex < 0) return [...topLevel, settingsParent];
-  return [
-    ...topLevel.slice(0, logIndex),
-    settingsParent,
-    ...topLevel.slice(logIndex),
-  ];
+>(items: T[]) {
+  const ungrouped = new Set(items.map((item) => item.section));
+  const groups = managementGroupDefinitions.flatMap((definition) => {
+    const children = definition.sections.flatMap((section) => {
+      const item = items.find((candidate) => candidate.section === section);
+      if (!item) return [];
+      ungrouped.delete(section);
+      return [item];
+    });
+    return children.length > 0
+      ? [{ ...definition, children }]
+      : [];
+  });
+  return [...groups, ...items.filter((item) => ungrouped.has(item.section))];
 }

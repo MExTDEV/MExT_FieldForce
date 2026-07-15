@@ -225,7 +225,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     teams: "Teams",
     rollen: "Rollen en rechten",
     kpis: "KPI-definities",
-    starterEvaluations: "Vragen tussentijdse evaluatie",
+    starterEvaluations: "Tussentijdse Eval",
     kapstok: "Kapstok beheer",
   };
   const canCreateKpis = hasPermission(user, "kpisCreate");

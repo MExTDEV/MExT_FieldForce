@@ -119,13 +119,13 @@ Beheer subitems require explicit permission keys.
 
 Examples include:
 
-- Teams;
-- Roles;
-- KPI;
-- Coaching framework and criteria;
-- Settings;
+- Gebruikers: Users and Teams;
+- Parameters: KPI, Coaching framework and criteria, and Tussentijdse Eval;
+- Instellingen: Settings, Roles and Modules;
 - Log;
 - Import/export.
+
+Management menu items with subitems are collapsed by default and can be expanded by the user.
 
 Direct routes and APIs must enforce the same permission as the menu.
 
