@@ -27,6 +27,13 @@ type GraphPhoto =
   | { status: "PHOTO"; bytes: Buffer; mimeType: UserAvatarMimeType; hash: string }
   | { status: "NO_PHOTO" };
 
+type GraphTokenDiagnostics = {
+  audience?: string;
+  tenantId?: string;
+  appId?: string;
+  roles: string[];
+};
+
 export type ProfilePhotoSyncDiagnostic = {
   level: "info" | "warning" | "error";
   message: string;
@@ -126,6 +133,8 @@ async function runProfilePhotoSync(runId: string, diagnostics?: ProfilePhotoSync
     log({ level: "info", message: "Microsoft Graph-token wordt aangevraagd met client credentials." });
     const accessToken = await getApplicationGraphToken();
     log({ level: "info", message: "Microsoft Graph-token ontvangen. Tokeninhoud wordt niet getoond." });
+    const tokenDiagnostics = graphTokenDiagnostics(accessToken);
+    log({ level: tokenDiagnostics.roles.includes("ProfilePhoto.Read.All") ? "info" : "warning", message: graphTokenDiagnosticMessage(tokenDiagnostics) });
     const users = await prisma.user.findMany({
       where: { active: true },
       select: {
@@ -285,8 +294,11 @@ async function downloadUserPhoto(accessToken: string, graphUserId: string): Prom
       await delay(retryDelayMs(response, attempt));
       continue;
     }
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(`Microsoft Graph-toegang geweigerd (${response.status}). Controleer ProfilePhoto.Read.All admin consent.`);
+    if (response.status === 401) {
+      throw new Error("Microsoft Graph heeft het access token geweigerd (401). Controleer tenant, token-audience en client-credentialsconfiguratie.");
+    }
+    if (response.status === 403) {
+      throw new Error("Microsoft Graph-toegang geweigerd (403). Controleer of application permission ProfilePhoto.Read.All admin consent heeft.");
     }
     if (!response.ok) throw new Error(`Microsoft Graph gaf status ${response.status}.`);
     const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
@@ -452,6 +464,40 @@ function maskEmail(value: string) {
   if (!local || !domain) return value ? "onbekende gebruiker" : "";
   const visible = local.slice(0, 2);
   return `${visible}${local.length > 2 ? "***" : ""}@${domain}`;
+}
+
+function graphTokenDiagnostics(accessToken: string): GraphTokenDiagnostics {
+  try {
+    const [, payload] = accessToken.split(".");
+    if (!payload) return { roles: [] };
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const parsed = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
+      aud?: string;
+      tid?: string;
+      appid?: string;
+      azp?: string;
+      roles?: unknown;
+    };
+    return {
+      audience: parsed.aud,
+      tenantId: parsed.tid,
+      appId: parsed.appid ?? parsed.azp,
+      roles: Array.isArray(parsed.roles) ? parsed.roles.filter((role): role is string => typeof role === "string") : [],
+    };
+  } catch {
+    return { roles: [] };
+  }
+}
+
+function graphTokenDiagnosticMessage(token: GraphTokenDiagnostics) {
+  const roles = token.roles.length ? token.roles.join(", ") : "geen app-rollen in token";
+  return [
+    `Token audience: ${token.audience ?? "onbekend"}.`,
+    `Tenant: ${token.tenantId ?? "onbekend"}.`,
+    `App: ${token.appId ?? "onbekend"}.`,
+    `Rollen: ${roles}.`,
+  ].join(" ");
 }
 
 function summarizeRun(run: Awaited<ReturnType<typeof prisma.profilePhotoSyncRun.findFirst>>) {
