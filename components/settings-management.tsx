@@ -103,7 +103,7 @@ const emptyDraft: MailDraft = {
   defaultReplyToEmail: "",
 };
 
-export function SettingsManagement() {
+export function SettingsManagement({ page = "mail" }: { page?: "mail" | "profile" }) {
   const { user, language } = useSession();
   const [setting, setSetting] = useState<MailTestSetting>();
   const [mailSettings, setMailSettings] = useState<MailSettings>();
@@ -119,6 +119,7 @@ export function SettingsManagement() {
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoStarting, setPhotoStarting] = useState(false);
   const [photoError, setPhotoError] = useState<string>();
+  const [photoConfirmOpen, setPhotoConfirmOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const loadRequestId = useRef(0);
@@ -205,18 +206,22 @@ export function SettingsManagement() {
   }, [language, user.id]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (page === "mail") {
+      void load();
+      return;
+    }
+    setLoading(false);
+  }, [load, page]);
 
   useEffect(() => {
-    void loadPhotoSync();
-  }, [loadPhotoSync]);
+    if (page === "profile") void loadPhotoSync();
+  }, [loadPhotoSync, page]);
 
   useEffect(() => {
-    if (!photoBusy) return;
+    if (page !== "profile" || !photoBusy) return;
     const handle = window.setInterval(() => void loadPhotoSync(), 3000);
     return () => window.clearInterval(handle);
-  }, [loadPhotoSync, photoBusy]);
+  }, [loadPhotoSync, page, photoBusy]);
 
   async function updateMailTest(active: boolean, productionWord?: string, recipientOverride?: string) {
     if (!setting || mutationInFlight.current) return;
@@ -358,6 +363,7 @@ export function SettingsManagement() {
 
   async function startPhotoSync() {
     if (!user.id || photoBusy) return;
+    setPhotoConfirmOpen(false);
     setPhotoStarting(true);
     setPhotoError(undefined);
     setNotice(undefined);
@@ -404,11 +410,11 @@ export function SettingsManagement() {
     <div className="space-y-6">
       <PageHeader
         eyebrow={translate(language, "settings.eyebrow")}
-        title={translate(language, "settings.title")}
-        description={translate(language, "settings.description")}
+        title={translate(language, page === "profile" ? "settings.profile.title" : "settings.mail.title")}
+        description={translate(language, page === "profile" ? "settings.profile.description" : "settings.mail.description")}
       />
 
-      {loading && !setting ? (
+      {page === "mail" && (loading && !setting ? (
         <EmptyState
           title={translate(language, "settings.mailTest.loadingTitle")}
           description={translate(language, "settings.mailTest.loadingDescription")}
@@ -627,8 +633,9 @@ export function SettingsManagement() {
             </div>
           )}
         </section>
-      ) : null}
+      ) : null)}
 
+      {page === "profile" && (
       <section className="card overflow-hidden">
         <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 sm:px-6">
           <div className="flex items-start gap-3">
@@ -673,18 +680,42 @@ export function SettingsManagement() {
                   .replace("{errors}", String(photoRun.errorUsers))}
               </p>
             )}
+            {photoRun?.status === "ERROR" && (
+              <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">
+                {photoRun.errorMessage || translate(language, "settings.microsoftPhoto.startError")}
+              </p>
+            )}
           </div>
           <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm leading-6 text-slate-600">
               {photoBusy ? translate(language, "settings.microsoftPhoto.running") : translate(language, "settings.microsoftPhoto.ready")}
             </p>
-            <button type="button" className="btn-primary justify-center" disabled={photoBusy || photoLoading} onClick={() => void startPhotoSync()}>
+            <button type="button" className="btn-primary justify-center" disabled={photoBusy || photoLoading} onClick={() => setPhotoConfirmOpen(true)}>
               {photoBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               {translate(language, photoBusy ? "settings.microsoftPhoto.runningButton" : "settings.microsoftPhoto.syncButton")}
             </button>
           </div>
         </div>
       </section>
+      )}
+
+      {photoConfirmOpen && page === "profile" && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/45 p-4">
+          <section role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-950">{translate(language, "settings.microsoftPhoto.confirmTitle")}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{translate(language, "settings.microsoftPhoto.confirmDescription")}</p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" className="btn-secondary" onClick={() => setPhotoConfirmOpen(false)} disabled={photoBusy}>
+                {translate(language, "settings.mailTest.cancel")}
+              </button>
+              <button type="button" className="btn-primary" disabled={photoBusy} onClick={() => void startPhotoSync()}>
+                {photoBusy && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                {translate(language, "settings.microsoftPhoto.confirmAction")}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {confirmOpen && !setting?.locked && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/45 p-4">
@@ -755,7 +786,7 @@ function isValidEmail(value: string) {
 
 function apiErrorMessage(payload: { details?: string; error?: string; requestId?: string }, fallback: string) {
   const requestLabel = payload.requestId ? ` (${payload.requestId})` : "";
-  return `${payload.details ?? payload.error ?? fallback}${requestLabel}`;
+  return `${payload.error ?? fallback}${requestLabel}`;
 }
 
 function formatDateTime(value: string | undefined, language: string) {

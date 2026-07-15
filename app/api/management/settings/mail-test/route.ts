@@ -141,7 +141,7 @@ export async function POST(request: Request) {
 function requireSettingsAccess(
   actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>
 ) {
-  if (!canAccessManagementSection(actor, "instellingen")) {
+  if (!canAccessManagementSection(actor, "mail")) {
     forbidden("Je hebt geen toegang tot de algemene instellingen.");
   }
 }

@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       return startProfilePhotoSyncRun({
         trigger: "MANUAL",
         actorId: actor.id,
+        runInBackground: false,
       });
     },
     "Microsoft-profielfotosynchronisatie kon niet worden gestart."
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 function requireSettingsAccess(
   actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>
 ) {
-  if (!canAccessManagementSection(actor, "instellingen")) {
+  if (!canAccessManagementSection(actor, "profiel")) {
     forbidden("Je hebt geen toegang tot de algemene instellingen.");
   }
 }

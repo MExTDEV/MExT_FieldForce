@@ -9,7 +9,8 @@ export type ManagementSection =
   | "starterEvaluations"
   | "kapstok"
   | "modules"
-  | "instellingen"
+  | "mail"
+  | "profiel"
   | "log";
 
 export type ManagementSectionDefinition = {
@@ -67,9 +68,15 @@ export const managementSections: ManagementSectionDefinition[] = [
     permission: "menu.coaching.modules",
   },
   {
-    section: "instellingen",
-    href: "/beheer/instellingen",
-    navKey: "nav.settings",
+    section: "mail",
+    href: "/beheer/instellingen/mail",
+    navKey: "nav.mail",
+    permission: "menu.coaching.settings",
+  },
+  {
+    section: "profiel",
+    href: "/beheer/instellingen/profiel",
+    navKey: "nav.profile",
     permission: "menu.coaching.settings",
   },
   {

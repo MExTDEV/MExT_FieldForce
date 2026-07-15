@@ -242,7 +242,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
     return <ActionPoints />;
   }
   if (path === "planning") return <Planning />;
-  if (segments[0] === "beheer") return <Management section={segments[1]} />;
+  if (segments[0] === "beheer") return <Management section={segments[1]} settingsPage={segments[2]} />;
   if (path === "begeleidingen") {
     return <InterventionList kind={path} />;
   }
@@ -5006,11 +5006,21 @@ function PlaceholderWorkspace({ title, description }: { title: string; descripti
   );
 }
 
-function Management({ section }: { section?: string }) {
+function Management({ section, settingsPage }: { section?: string; settingsPage?: string }) {
   const { user } = useSession();
+  if (section === "instellingen" && !settingsPage) {
+    return <ManagementRedirect href="/beheer/instellingen/mail" />;
+  }
+  const normalizedSection = section === "instellingen"
+    ? settingsPage === "profiel"
+      ? "profiel"
+      : settingsPage === "mail"
+        ? "mail"
+        : undefined
+    : section;
   const resolvedSection = section
-    ? canAccessManagementSection(user, section)
-      ? section
+    ? normalizedSection && canAccessManagementSection(user, normalizedSection)
+      ? normalizedSection
       : undefined
     : getDefaultManagementSection(user);
   if (!resolvedSection) return <ManagementRedirect />;
@@ -5018,7 +5028,8 @@ function Management({ section }: { section?: string }) {
   if (resolvedSection === "gebruikers") return <UsersManagementPage />;
   if (resolvedSection === "modules") return <ModuleManagement />;
   if (resolvedSection === "log") return <ManagementLog />;
-  if (resolvedSection === "instellingen") return <SettingsManagement />;
+  if (resolvedSection === "mail") return <SettingsManagement page="mail" />;
+  if (resolvedSection === "profiel") return <SettingsManagement page="profile" />;
   if (["teams", "rollen", "kpis", "kapstok", "starterEvaluations"].includes(resolvedSection)) {
     return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok" | "starterEvaluations"} />;
   }
@@ -5040,12 +5051,12 @@ function ManagementLog() {
   );
 }
 
-function ManagementRedirect() {
+function ManagementRedirect({ href = "/dashboard" }: { href?: string }) {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/dashboard");
-  }, [router]);
+    router.replace(href);
+  }, [href, router]);
 
   return null;
 }

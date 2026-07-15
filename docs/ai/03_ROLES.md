@@ -315,6 +315,13 @@ Representatives must not see `Mijn Team`.
 
 Beheer subitems require explicit section permissions.
 
+`Beheer -> Instellingen` is split into:
+
+- `Mail` at `/beheer/instellingen/mail`;
+- `Profiel` at `/beheer/instellingen/profiel`.
+
+Both use the existing `menu.coaching.settings` permission. `Mail` owns SMTP, sender and MAIL TEST settings. `Profiel` owns Microsoft account/profile-photo synchronization. The legacy `/beheer/instellingen` route redirects to `Mail`.
+
 ---
 
 # Coaching Form Edit Rule

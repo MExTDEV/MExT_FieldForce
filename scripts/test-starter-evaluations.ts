@@ -125,6 +125,15 @@ for (const expectedSql of [
 ]) {
   assert.ok(defaultQuestionSeedMigration.includes(expectedSql), `Standaardvragenmigratie mist ${expectedSql}.`);
 }
+const manualStartRepairMigration = readFileSync("prisma/migrations/0038_starter_evaluation_manual_start_schema_repair/migration.sql", "utf8");
+for (const expectedSql of [
+  "ADD COLUMN IF NOT EXISTS `manualStartedById`",
+  "ADD COLUMN IF NOT EXISTS `manualStartedAt`",
+  "StarterEvaluation_manualStartedById_fkey",
+  "ON DELETE SET NULL",
+]) {
+  assert.ok(manualStartRepairMigration.includes(expectedSql), `Manuele-start reparatiemigratie mist ${expectedSql}.`);
+}
 
 console.log("Tussentijdse evaluaties: mijlpalen, scopes, seed, moduletoegang en manuele start gevalideerd.");
 

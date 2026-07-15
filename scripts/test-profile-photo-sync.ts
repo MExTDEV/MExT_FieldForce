@@ -22,7 +22,9 @@ assert.match(service, /ProfilePhoto\.Read\.All/);
 assert.match(service, /retry-after/i);
 assert.match(service, /maxAttempts = 3/);
 assert.match(service, /PROFILE_PHOTO_SYNC_CONCURRENCY/);
-assert.match(service, /deleteStoredUserAvatar/);
+assert.doesNotMatch(service, /deleteStoredUserAvatar/);
+assert.match(service, /where: \{ active: true \}/);
+assert.match(service, /Bestaande handmatige of externe profielfoto behoudt voorrang/);
 assert.match(service, /profilePhotoSyncStatus: "NO_PHOTO"/);
 assert.match(service, /status: "RUNNING"/);
 
@@ -37,20 +39,41 @@ assert.match(avatarComponent, /onError=\{\(\) => setImageFailed\(true\)\}/);
 assert.match(avatarComponent, /useEffect\(\(\) => \{\s*setImageFailed\(false\);/);
 
 const route = read("app/api/management/settings/profile-photos/route.ts");
-assert.match(route, /canAccessManagementSection\(actor, "instellingen"\)/);
+assert.match(route, /canAccessManagementSection\(actor, "profiel"\)/);
 assert.match(route, /startProfilePhotoSyncRun/);
+assert.match(route, /runInBackground: false/);
 
 const settings = read("components/settings-management.tsx");
+assert.match(settings, /page\?: "mail" \| "profile"/);
 assert.match(settings, /settings\.microsoftPhoto\.syncButton/);
+assert.match(settings, /settings\.microsoftPhoto\.confirmTitle/);
 assert.match(settings, /setInterval\(\(\) => void loadPhotoSync\(\), 3000\)/);
+
+const managementAccess = read("lib/management-access.ts");
+assert.match(managementAccess, /section: "mail"[\s\S]*href: "\/beheer\/instellingen\/mail"/);
+assert.match(managementAccess, /section: "profiel"[\s\S]*href: "\/beheer\/instellingen\/profiel"/);
+assert.doesNotMatch(managementAccess, /section: "instellingen"/);
+
+const appShell = read("components/app-shell.tsx");
+assert.match(appShell, /sections: \["mail", "profiel", "rollen", "modules"\]/);
+
+const workspace = read("components/workspace-pages.tsx");
+assert.match(workspace, /href="\/beheer\/instellingen\/mail"/);
+assert.match(workspace, /<SettingsManagement page="mail" \/>/);
+assert.match(workspace, /<SettingsManagement page="profile" \/>/);
 
 const packageJson = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
 assert.equal(packageJson.scripts["profile-photos:sync"], "tsx scripts/sync-profile-photos.ts");
 
 for (const locale of ["nl", "fr", "de"]) {
   const parsed = JSON.parse(read(`locales/${locale}.json`)) as Record<string, string>;
+  assert.ok(parsed["nav.mail"], `${locale} mail nav missing`);
+  assert.ok(parsed["nav.profile"], `${locale} profile nav missing`);
+  assert.notEqual(parsed["nav.settings"], parsed["nav.mail"], `${locale} settings nav must not equal mail nav`);
+  assert.ok(parsed["settings.profile.title"], `${locale} profile title missing`);
   assert.ok(parsed["settings.microsoftPhoto.title"], `${locale} title missing`);
   assert.ok(parsed["settings.microsoftPhoto.syncButton"], `${locale} button missing`);
+  assert.ok(parsed["settings.microsoftPhoto.confirmTitle"], `${locale} confirm title missing`);
 }
 
 console.log("Microsoft-profielfoto sync statisch gecontroleerd.");

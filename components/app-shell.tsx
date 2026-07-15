@@ -18,6 +18,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   ListChecks,
+  Mail,
   Menu,
   MessageSquareText,
   PanelLeftClose,
@@ -25,6 +26,7 @@ import {
   ShieldCheck,
   Target,
   UserCog,
+  UserRound,
   Users,
   UsersRound,
   X,
@@ -86,7 +88,8 @@ const manageNav = [
   { section: "starterEvaluations", icon: ClipboardCheck },
   { section: "kapstok", icon: MessageSquareText },
   { section: "modules", icon: Settings },
-  { section: "instellingen", icon: Settings },
+  { section: "mail", icon: Mail },
+  { section: "profiel", icon: UserRound },
   { section: "log", icon: ListChecks },
 ] as const;
 
@@ -107,7 +110,7 @@ const managementGroupDefinitions = [
     id: "settings",
     navKey: "nav.settings",
     icon: Settings,
-    sections: ["instellingen", "rollen", "modules"],
+    sections: ["mail", "profiel", "rollen", "modules"],
   },
 ] as const;
 

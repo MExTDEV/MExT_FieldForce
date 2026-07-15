@@ -188,6 +188,8 @@ Important integrations:
 
 Business workflows must not depend directly on one external provider when a reusable integration boundary is practical.
 
+Microsoft profile-photo synchronization belongs to the management profile boundary (`Beheer -> Instellingen -> Profiel`). It uses Microsoft Graph through the server-side profile-photo sync service and must not expose tokens, client secrets or raw Graph responses to the frontend.
+
 ---
 
 # Documentation Ownership

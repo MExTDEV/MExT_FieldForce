@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/server/db";
-import { deleteStoredUserAvatar, storeUserAvatarBytes } from "@/lib/server/user-avatar";
+import { storeUserAvatarBytes } from "@/lib/server/user-avatar";
 import { isAllowedUserAvatarType, maxUserAvatarSize, type UserAvatarMimeType } from "@/lib/user-avatar";
 
 const graphRoot = "https://graph.microsoft.com/v1.0";
@@ -32,6 +32,8 @@ type UserPhotoTarget = {
   email: string;
   entraId: string | null;
   microsoftEmail: string | null;
+  avatarUrl: string | null;
+  profilePhotoStorageKey: string | null;
   profilePhotoHash: string | null;
 };
 
@@ -97,11 +99,14 @@ async function runProfilePhotoSync(runId: string) {
   try {
     const accessToken = await getApplicationGraphToken();
     const users = await prisma.user.findMany({
+      where: { active: true },
       select: {
         id: true,
         email: true,
         entraId: true,
         microsoftEmail: true,
+        avatarUrl: true,
+        profilePhotoStorageKey: true,
         profilePhotoHash: true,
       },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -147,16 +152,23 @@ async function syncOneUser(user: UserPhotoTarget, accessToken: string) {
     return "SKIPPED" as const;
   }
 
-  const photo = await downloadUserPhoto(accessToken, graphUserId);
-  if (photo.status === "NO_PHOTO") {
-    await deleteStoredUserAvatar(user.id);
+  if (user.avatarUrl?.trim() && !user.profilePhotoStorageKey) {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        avatarUrl: null,
-        profilePhotoStorageKey: null,
-        profilePhotoMimeType: null,
-        profilePhotoHash: null,
+        profilePhotoSyncedAt: new Date(),
+        profilePhotoSyncStatus: "SKIPPED",
+        profilePhotoSyncError: "Bestaande handmatige of externe profielfoto behoudt voorrang.",
+      },
+    });
+    return "SKIPPED" as const;
+  }
+
+  const photo = await downloadUserPhoto(accessToken, graphUserId);
+  if (photo.status === "NO_PHOTO") {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
         profilePhotoSyncedAt: new Date(),
         profilePhotoSyncStatus: "NO_PHOTO",
         profilePhotoSyncError: null,
@@ -237,9 +249,9 @@ async function getApplicationGraphToken() {
     }),
     cache: "no-store",
   });
-  const payload = await response.json().catch(() => undefined) as { access_token?: string; error_description?: string } | undefined;
+  const payload = await response.json().catch(() => undefined) as { access_token?: string } | undefined;
   if (!response.ok || !payload?.access_token) {
-    throw new Error(payload?.error_description || `Microsoft-tokenaanvraag gaf status ${response.status}.`);
+    throw new Error(`Microsoft-tokenaanvraag is mislukt (${response.status}). Controleer tenant, client-ID, client secret en Graph-permissies.`);
   }
   return payload.access_token;
 }

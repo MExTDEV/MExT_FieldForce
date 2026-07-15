@@ -614,66 +614,142 @@ function StarterEvaluationQuestionManagement({
   onEdit: (item: ManagementStarterEvaluationQuestion) => void;
   onDeactivate: (item: ManagementStarterEvaluationQuestion) => void;
 }) {
-  const groups: { scope: CriterionScopeType; title: string; questions: ManagementStarterEvaluationQuestion[] }[] = criterionScopeOrder.map((scope) => ({
+  const groups: StarterEvaluationQuestionScopeGroup[] = criterionScopeOrder.map((scope) => ({
     scope,
     title: criterionScopeLabels[scope],
     questions: questions.filter((question) => question.scopeLinks.some((link) => link.scopeType === scope)),
   }));
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="space-y-3">
+      <div>
         <h2 className="text-lg font-bold text-slate-900">Vragen per scope</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Nieuwe evaluaties nemen cumulatief alle actieve globale, land-, team- en gebruikersvragen over.
+        <p className="text-sm text-slate-500">
+          {questions.length} {questions.length === 1 ? "vraag" : "vragen"}
         </p>
       </div>
-      {groups.map((group) => (
-        <div key={group.scope} className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-950">{group.title}</h3>
-              <p className="text-xs text-slate-500">{group.questions.length} vragen</p>
-            </div>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {group.questions.length ? group.questions.map((question) => (
-              <div key={`${group.scope}-${question.id}`} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${question.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                      {question.active ? "Actief" : "Inactief"}
-                    </span>
-                    <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">{question.answerType}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{question.assignee}</span>
-                  </div>
-                  <p className="mt-2 text-sm font-semibold text-slate-950">{question.textNl}</p>
-                  {question.helpNl && <p className="mt-1 text-sm text-slate-600">{question.helpNl}</p>}
-                  {question.optionsJson && (
-                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                      Opties: {optionsTextFromJson(question.optionsJson).split("\n").join(" | ")}
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs text-slate-500">
-                    {question.scopeLinks
-                      .filter((link) => link.scopeType === group.scope)
-                      .map((link) => starterQuestionScopeDescription(link, teams, users))
-                      .join(" | ")}
-                  </p>
-                </div>
-                {canManage && (
-                  <div className="flex shrink-0 gap-2">
-                    <button type="button" className="btn-secondary" onClick={() => onEdit(question)}>Bewerken</button>
-                    {question.active && <button type="button" className="btn-ghost text-rose-700" onClick={() => onDeactivate(question)}>Inactiveren</button>}
-                  </div>
-                )}
-              </div>
-            )) : (
-              <p className="p-4 text-sm text-slate-500">Geen vragen in deze scope.</p>
-            )}
-          </div>
+      <div className="space-y-3">
+        {groups.map((group) => (
+          <StarterEvaluationQuestionScopeSection
+            key={group.scope}
+            group={group}
+            teams={teams}
+            users={users}
+            canManage={canManage}
+            onEdit={onEdit}
+            onDeactivate={onDeactivate}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type StarterEvaluationQuestionScopeGroup = {
+  scope: CriterionScopeType;
+  title: string;
+  questions: ManagementStarterEvaluationQuestion[];
+};
+
+function StarterEvaluationQuestionScopeSection({
+  group,
+  teams,
+  users,
+  canManage,
+  onEdit,
+  onDeactivate,
+}: {
+  group: StarterEvaluationQuestionScopeGroup;
+  teams: ManagementTeam[];
+  users: ManagedUser[];
+  canManage: boolean;
+  onEdit: (item: ManagementStarterEvaluationQuestion) => void;
+  onDeactivate: (item: ManagementStarterEvaluationQuestion) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const questionCountLabel = `${group.questions.length} ${group.questions.length === 1 ? "vraag" : "vragen"}`;
+  const inactiveCount = group.questions.filter((question) => !question.active).length;
+  const inactiveLabel = inactiveCount > 0 ? `${inactiveCount} inactief` : undefined;
+
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:bg-brand-50/60 sm:px-5"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow">Scope</p>
+          <h3 className="truncate text-lg font-bold text-slate-950">{group.title}</h3>
         </div>
-      ))}
-    </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{questionCountLabel}</span>
+          {inactiveLabel && <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 sm:inline-flex">{inactiveLabel}</span>}
+        </div>
+      </button>
+      {expanded && (
+        group.questions.length ? (
+          <Grid>
+            {group.questions.map((question) => (
+              <StarterEvaluationQuestionCard
+                key={`${group.scope}-${question.id}`}
+                question={question}
+                scope={group.scope}
+                teams={teams}
+                users={users}
+                canManage={canManage}
+                onEdit={() => onEdit(question)}
+                onDeactivate={() => onDeactivate(question)}
+              />
+            ))}
+          </Grid>
+        ) : (
+          <div className="card px-5 py-8 text-center text-sm font-semibold text-slate-500">
+            Geen vragen in deze scope.
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+function StarterEvaluationQuestionCard({
+  question,
+  scope,
+  teams,
+  users,
+  canManage,
+  onEdit,
+  onDeactivate,
+}: {
+  question: ManagementStarterEvaluationQuestion;
+  scope: CriterionScopeType;
+  teams: ManagementTeam[];
+  users: ManagedUser[];
+  canManage: boolean;
+  onEdit: () => void;
+  onDeactivate: () => void;
+}) {
+  const detail = starterEvaluationQuestionCardDetail(question, scope, teams, users);
+
+  return (
+    <article className="card flex items-center gap-3 p-5">
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate font-bold">{question.textNl}</h2>
+        <p className="mt-1 text-sm text-slate-500">{detail}</p>
+        {question.optionsJson && (
+          <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+            Opties: {optionsTextFromJson(question.optionsJson).split("\n").join(" | ")}
+          </p>
+        )}
+        <p className={`mt-2 text-xs font-bold ${question.active ? "text-emerald-700" : "text-slate-400"}`}>
+          {question.active ? "Actief" : "Inactief"}
+        </p>
+      </div>
+      {canManage && <Action label="Bewerken" onClick={onEdit}><MoreHorizontal /></Action>}
+      {canManage && question.active && <Action label="Inactiveren" danger onClick={onDeactivate}><X /></Action>}
+    </article>
   );
 }
 
@@ -1138,6 +1214,19 @@ function starterQuestionScopeDescription(
   if (scopeLink.scopeType === "COUNTRY") return scopeLink.country ? countryLabel(scopeLink.country) : "Land";
   if (scopeLink.scopeType === "TEAM") return scopeLink.teamName ?? teams.find((team) => team.id === scopeLink.teamId)?.name ?? "Team";
   return scopeLink.userName ?? users.find((user) => user.id === scopeLink.userId)?.firstName ?? "Gebruiker";
+}
+
+function starterEvaluationQuestionCardDetail(
+  question: ManagementStarterEvaluationQuestion,
+  scope: CriterionScopeType,
+  teams: ManagementTeam[],
+  users: ManagedUser[]
+) {
+  const scopeDetails = question.scopeLinks
+    .filter((link) => link.scopeType === scope)
+    .map((link) => starterQuestionScopeDescription(link, teams, users))
+    .join(" | ");
+  return [question.answerType, question.assignee, scopeDetails].filter(Boolean).join(" · ");
 }
 
 function RolePermissions({
