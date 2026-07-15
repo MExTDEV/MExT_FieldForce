@@ -664,6 +664,18 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
     contact.location ? { label: t("contactHelp.field.location"), value: contact.location } : undefined,
     contact.notifyRepresentative ? { label: t("contactHelp.field.notifiedInAdvance"), value: t("contactHelp.common.yes") } : undefined,
   ].filter(Boolean) as { label: string; value: string }[];
+  const summaryDetails = [
+    ...details,
+    { label: t("contactHelp.field.employee"), value: representativeName(representative, t("contactHelp.common.representative")) },
+    contact.reportedProblems ? { label: t("contactHelp.field.reportedProblems"), value: contact.reportedProblems } : undefined,
+    contact.leaderThemes.length > 0 ? { label: t("contactHelp.field.preparedThemes"), value: contact.leaderThemes.join(", ") } : undefined,
+    contact.internalNotes && canManage ? { label: t("contactHelp.field.internalNote"), value: contact.internalNotes } : undefined,
+  ].filter(Boolean) as { label: string; value: string }[];
+  const statusDetails = [
+    { label: t("contactHelp.field.status"), value: statusLabel(language, contact.status) },
+    contact.sharedAt ? { label: t("contactHelp.field.sharedAt"), value: formatDateTime(contact.sharedAt, language) } : undefined,
+    contact.closedReason ? { label: t("contactHelp.field.closedReason"), value: contact.closedReason } : undefined,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -684,23 +696,20 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
           </div>
         )}
       />
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
-        <section className="card p-5 sm:p-6">
-          <h2 className="font-bold text-slate-950">{t("contactHelp.contact.basicData")}</h2>
-          {details.map((item) => <InfoBlock key={item.label} label={item.label} value={item.value} />)}
-          <InfoBlock label={t("contactHelp.field.employee")} value={representativeName(representative, t("contactHelp.common.representative"))} />
-          {contact.reportedProblems && <InfoBlock label={t("contactHelp.field.reportedProblems")} value={contact.reportedProblems} />}
-          {contact.leaderThemes.length > 0 && <InfoBlock label={t("contactHelp.field.preparedThemes")} value={contact.leaderThemes.join(", ")} />}
-          {contact.internalNotes && canManage && <InfoBlock label={t("contactHelp.field.internalNote")} value={contact.internalNotes} />}
-        </section>
-
-        <section className="card p-5 sm:p-6">
-          <h2 className="font-bold text-slate-950">{t("contactHelp.contact.statusHistory")}</h2>
-          <InfoBlock label={t("contactHelp.field.status")} value={statusLabel(language, contact.status)} />
-          {contact.sharedAt && <InfoBlock label={t("contactHelp.field.sharedAt")} value={formatDateTime(contact.sharedAt, language)} />}
-          {contact.closedReason && <InfoBlock label={t("contactHelp.field.closedReason")} value={contact.closedReason} />}
-        </section>
-      </div>
+      <section className="card space-y-3 p-4">
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("contactHelp.contact.basicData")}</h2>
+          <dl className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+            {summaryDetails.map((item) => <CompactInfoItem key={item.label} label={item.label} value={item.value} />)}
+          </dl>
+        </div>
+        <div className="border-t border-slate-100 pt-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("contactHelp.contact.statusHistory")}</h2>
+          <dl className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+            {statusDetails.map((item) => <CompactInfoItem key={item.label} label={item.label} value={item.value} />)}
+          </dl>
+        </div>
+      </section>
 
       {canManage && contact.status === "gepland" && (
         <button type="button" onClick={() => updateStatus("in_uitvoering")} className="btn-primary">
@@ -1205,6 +1214,15 @@ function TextInput({ label, value, onChange, type = "text" }: { label: string; v
 
 function InfoBlock({ label, value }: { label: string; value: string }) {
   return <div className="mt-5"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 text-sm leading-6 text-slate-700">{value}</p></div>;
+}
+
+function CompactInfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</dt>
+      <dd className="truncate text-sm font-medium text-slate-700" title={value}>{value}</dd>
+    </div>
+  );
 }
 
 function UrgencyBadge({ urgency }: { urgency: HelpRequest["urgency"] }) {

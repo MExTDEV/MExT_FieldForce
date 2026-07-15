@@ -72,10 +72,14 @@ These concrete items reuse the shared Action Point model and appear in personal 
 The overview may include:
 
 - Action Points grouped by scope;
+- an additional user subdivision inside scope/type groups;
 - users and their concrete Action Points;
 - open and closed presentation based on current available fields;
 - search;
 - type or scope badges.
+
+Scope/type groups and their nested user groups are collapsible and are shown
+expanded by default.
 
 Representatives see only own visible Action Points.
 

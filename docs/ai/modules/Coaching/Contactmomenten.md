@@ -68,6 +68,9 @@ The report records the outcome of the Contactmoment.
 
 No approval by the target person is required.
 
+The detail screen keeps planning metadata and status history compact above the
+report. The report content is the primary focus of the page.
+
 ---
 
 # Photos

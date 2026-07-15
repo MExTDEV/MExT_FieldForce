@@ -4291,7 +4291,7 @@ function ScopedActionPoints() {
           <div>
             <p className="eyebrow mb-1">Uit te voeren</p>
             <h2 className="text-xl font-bold text-slate-950">Actiepunten</h2>
-            <p className="mt-1 text-sm text-slate-500">Gesorteerd per Globaal, Land, Team en Persoonlijk.</p>
+            <p className="mt-1 text-sm text-slate-500">{translate(user.language, "actionPoints.groupedByTypeAndUser")}</p>
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{filteredActionItems.length}</span>
         </div>
@@ -4366,6 +4366,8 @@ function ScopedActionPoints() {
         {groups.map((group) => {
           const groupKey = `${keyPrefix}:${group.id}`;
           const groupOpen = !collapsedGroups.has(groupKey);
+          const userSubGroups = actionPointUserSubGroups(group);
+          const visibleItemCount = userSubGroups.reduce((total, userGroup) => total + userGroup.items.length, 0);
           return (
             <section key={groupKey} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <button
@@ -4379,17 +4381,56 @@ function ScopedActionPoints() {
                   <p className="eyebrow">Actiepunten</p>
                   <h3 className="truncate text-base font-bold text-slate-950">{group.title}</h3>
                 </div>
-                <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{group.items.length}</span>
+                <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{visibleItemCount}</span>
               </button>
               {groupOpen && (
                 <div className="divide-y divide-slate-100">
-                  {group.items.map((item) => renderActionPointCard(item))}
+                  {userSubGroups.map((userGroup) => renderNestedUserGroup(userGroup, `${groupKey}:user`))}
                 </div>
               )}
             </section>
           );
         })}
       </div>
+    );
+  }
+
+  function actionPointUserSubGroups(group: ActionPointScopeGroup): ActionPointUserGroup[] {
+    const userGroups = groupActionPointsByRepresentative(group.items, visibleActionPointRepresentatives, managedUsers);
+    if (userGroups.length > 0) return userGroups;
+    return [{
+      id: `${group.id}:general`,
+      title: translate(user.language, "actionPoints.generalGroup"),
+      subtitle: translate(user.language, "actionPoints.noSpecificUser"),
+      items: group.items,
+    }];
+  }
+
+  function renderNestedUserGroup(group: ActionPointUserGroup, keyPrefix: string) {
+    const groupKey = `${keyPrefix}:${group.id}`;
+    const groupOpen = !collapsedGroups.has(groupKey);
+    return (
+      <section key={groupKey} className="bg-white">
+        <button
+          type="button"
+          onClick={() => toggleGroup(groupKey)}
+          aria-expanded={groupOpen}
+          className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition hover:bg-slate-50 sm:px-5"
+        >
+          {groupOpen ? <ChevronDown className="h-4 w-4 text-brand-700" /> : <ChevronRight className="h-4 w-4 text-brand-700" />}
+          <Avatar initials={initialsFromName(group.title)} className="h-8 w-8 text-[11px]" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-400">{group.subtitle}</p>
+            <h4 className="truncate text-sm font-bold text-slate-950">{group.title}</h4>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{group.items.length}</span>
+        </button>
+        {groupOpen && (
+          <div className="divide-y divide-slate-100 border-t border-slate-100 pl-4 sm:pl-8">
+            {group.items.map((item) => renderActionPointCard(item))}
+          </div>
+        )}
+      </section>
     );
   }
 

@@ -13,6 +13,7 @@ import {
 import { useSession } from "@/components/session-provider";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { translate } from "@/lib/i18n";
+import type { Language } from "@/lib/types";
 
 type MailTestSetting = {
   key: "MAIL_TEST";
@@ -65,9 +66,17 @@ type ProfilePhotoSyncRun = {
   errorMessage?: string | null;
 };
 
+type ProfilePhotoSyncDiagnostic = {
+  level: "info" | "warning" | "error";
+  message: string;
+  userId?: string;
+  userLabel?: string;
+};
+
 type ProfilePhotoSyncResponse = {
   run?: ProfilePhotoSyncRun;
   started?: boolean;
+  diagnostics?: ProfilePhotoSyncDiagnostic[];
   error?: string;
   details?: string;
   requestId?: string;
@@ -119,6 +128,7 @@ export function SettingsManagement({ page = "mail" }: { page?: "mail" | "profile
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoStarting, setPhotoStarting] = useState(false);
   const [photoError, setPhotoError] = useState<string>();
+  const [photoDiagnostics, setPhotoDiagnostics] = useState<ProfilePhotoSyncDiagnostic[]>([]);
   const [photoConfirmOpen, setPhotoConfirmOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -366,14 +376,16 @@ export function SettingsManagement({ page = "mail" }: { page?: "mail" | "profile
     setPhotoConfirmOpen(false);
     setPhotoStarting(true);
     setPhotoError(undefined);
+    setPhotoDiagnostics([]);
     setNotice(undefined);
     try {
       const response = await fetch("/api/management/settings/profile-photos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId: user.id }),
+        body: JSON.stringify({ actorId: user.id, includeDiagnostics: true }),
       });
       const payload = await readProfilePhotoSyncResponse(response);
+      setPhotoDiagnostics(payload.diagnostics ?? []);
       if (!response.ok || !payload.run) {
         throw new Error(apiErrorMessage(payload, translate(language, "settings.microsoftPhoto.startError")));
       }
@@ -685,6 +697,28 @@ export function SettingsManagement({ page = "mail" }: { page?: "mail" | "profile
                 {photoRun.errorMessage || translate(language, "settings.microsoftPhoto.startError")}
               </p>
             )}
+            {photoDiagnostics.length > 0 && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{translate(language, "settings.microsoftPhoto.diagnosticsTitle")}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{translate(language, "settings.microsoftPhoto.diagnosticsDescription")}</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600">{photoDiagnostics.length}</span>
+                </div>
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {photoDiagnostics.map((entry, index) => (
+                    <div key={`${entry.level}:${entry.userId ?? "run"}:${index}`} className={`rounded-lg border px-3 py-2 text-xs leading-5 ${diagnosticTone(entry.level)}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold uppercase tracking-wider">{diagnosticLevelLabel(entry.level, language)}</span>
+                        {entry.userLabel && <span className="font-semibold text-slate-700">{entry.userLabel}</span>}
+                      </div>
+                      <p className="mt-1 text-slate-700">{entry.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm leading-6 text-slate-600">
@@ -756,6 +790,18 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value || "-"}</p>
     </div>
   );
+}
+
+function diagnosticTone(level: ProfilePhotoSyncDiagnostic["level"]) {
+  if (level === "error") return "border-rose-200 bg-rose-50";
+  if (level === "warning") return "border-amber-200 bg-amber-50";
+  return "border-slate-200 bg-white";
+}
+
+function diagnosticLevelLabel(level: ProfilePhotoSyncDiagnostic["level"], language: Language) {
+  if (level === "error") return translate(language, "settings.microsoftPhoto.diagnostics.error");
+  if (level === "warning") return translate(language, "settings.microsoftPhoto.diagnostics.warning");
+  return translate(language, "settings.microsoftPhoto.diagnostics.info");
 }
 
 function hasUnsavedMailSettings(

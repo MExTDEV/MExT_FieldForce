@@ -32,6 +32,7 @@ export async function POST(request: Request) {
         trigger: "MANUAL",
         actorId: actor.id,
         runInBackground: false,
+        includeDiagnostics: payload.includeDiagnostics,
       });
     },
     "Microsoft-profielfotosynchronisatie kon niet worden gestart."
@@ -46,11 +47,11 @@ function requireSettingsAccess(
   }
 }
 
-async function readActorPayload(request: Request): Promise<{ actorId?: string }> {
+async function readActorPayload(request: Request): Promise<{ actorId?: string; includeDiagnostics?: boolean }> {
   try {
     const payload = await request.json();
     return payload && typeof payload === "object" && !Array.isArray(payload)
-      ? payload as { actorId?: string }
+      ? payload as { actorId?: string; includeDiagnostics?: boolean }
       : {};
   } catch {
     return {};

@@ -27,9 +27,18 @@ type GraphPhoto =
   | { status: "PHOTO"; bytes: Buffer; mimeType: UserAvatarMimeType; hash: string }
   | { status: "NO_PHOTO" };
 
+export type ProfilePhotoSyncDiagnostic = {
+  level: "info" | "warning" | "error";
+  message: string;
+  userId?: string;
+  userLabel?: string;
+};
+
 type UserPhotoTarget = {
   id: string;
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
   entraId: string | null;
   microsoftEmail: string | null;
   avatarUrl: string | null;
@@ -41,9 +50,19 @@ export async function startProfilePhotoSyncRun(input: {
   trigger: SyncTrigger;
   actorId?: string | null;
   runInBackground?: boolean;
+  includeDiagnostics?: boolean;
 }) {
   const active = await findActiveRun();
-  if (active) return { run: summarizeRun(active), started: false };
+  if (active) {
+    return {
+      run: summarizeRun(active),
+      started: false,
+      diagnostics: input.includeDiagnostics ? [{
+        level: "warning" as const,
+        message: "Er loopt al een Microsoft-profielfotosynchronisatie.",
+      }] : undefined,
+    };
+  }
   const run = await prisma.profilePhotoSyncRun.create({
     data: {
       trigger: input.trigger,
@@ -51,15 +70,21 @@ export async function startProfilePhotoSyncRun(input: {
       startedByUserId: input.actorId ?? null,
     },
   });
+  const diagnostics = input.includeDiagnostics ? [] as ProfilePhotoSyncDiagnostic[] : undefined;
   const execute = () => runProfilePhotoSync(run.id).catch((error) => {
     console.error("[profile-photo-sync] run failed", safeErrorMessage(error));
   });
+  const executeWithDiagnostics = () => runProfilePhotoSync(run.id, diagnostics).catch((error) => {
+    const message = safeErrorMessage(error);
+    diagnostics?.push({ level: "error", message });
+    console.error("[profile-photo-sync] run failed", message);
+  });
   if (input.runInBackground === false) {
-    await execute();
+    await executeWithDiagnostics();
   } else {
     setTimeout(execute, 0);
   }
-  return { run: summarizeRun(await getProfilePhotoSyncRun(run.id)), started: true };
+  return { run: summarizeRun(await getProfilePhotoSyncRun(run.id)), started: true, diagnostics };
 }
 
 export async function runNightlyProfilePhotoSync() {
@@ -79,7 +104,8 @@ export async function getProfilePhotoSyncRun(id: string) {
   return run;
 }
 
-async function runProfilePhotoSync(runId: string) {
+async function runProfilePhotoSync(runId: string, diagnostics?: ProfilePhotoSyncDiagnostic[]) {
+  const log = (entry: ProfilePhotoSyncDiagnostic) => diagnostics?.push(entry);
   const claimed = await prisma.profilePhotoSyncRun.updateMany({
     where: { id: runId, status: "QUEUED" },
     data: { status: "RUNNING", startedAt: new Date() },
@@ -97,12 +123,16 @@ async function runProfilePhotoSync(runId: string) {
   const errors: Array<{ userId: string; message: string }> = [];
 
   try {
+    log({ level: "info", message: "Microsoft Graph-token wordt aangevraagd met client credentials." });
     const accessToken = await getApplicationGraphToken();
+    log({ level: "info", message: "Microsoft Graph-token ontvangen. Tokeninhoud wordt niet getoond." });
     const users = await prisma.user.findMany({
       where: { active: true },
       select: {
         id: true,
         email: true,
+        firstName: true,
+        lastName: true,
         entraId: true,
         microsoftEmail: true,
         avatarUrl: true,
@@ -111,11 +141,18 @@ async function runProfilePhotoSync(runId: string) {
       },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
+    log({ level: "info", message: `${users.length} actieve gebruikers gevonden voor Microsoft-profielfotosync.` });
     await processWithConcurrency(users, graphConcurrency(), async (user) => {
-      const result = await syncOneUser(user, accessToken).catch(async (error) => {
+      const result = await syncOneUser(user, accessToken, log).catch(async (error) => {
         counts.errorUsers += 1;
         const message = safeErrorMessage(error);
         errors.push({ userId: user.id, message });
+        log({
+          level: "error",
+          userId: user.id,
+          userLabel: userLabel(user),
+          message,
+        });
         await prisma.user.update({
           where: { id: user.id },
           data: {
@@ -133,14 +170,23 @@ async function runProfilePhotoSync(runId: string) {
       if (result === "SKIPPED") counts.skippedUsers += 1;
     });
     await finishRun(runId, counts, errors, errors.length ? "PARTIAL_ERROR" : "COMPLETED");
+    log({ level: errors.length ? "warning" : "info", message: `Run afgerond met status ${errors.length ? "PARTIAL_ERROR" : "COMPLETED"}.` });
   } catch (error) {
-    await finishRun(runId, counts, errors, "ERROR", safeErrorMessage(error));
+    const message = safeErrorMessage(error);
+    log({ level: "error", message });
+    await finishRun(runId, counts, errors, "ERROR", message);
   }
 }
 
-async function syncOneUser(user: UserPhotoTarget, accessToken: string) {
+async function syncOneUser(user: UserPhotoTarget, accessToken: string, log?: (entry: ProfilePhotoSyncDiagnostic) => void) {
   const graphUserId = user.entraId?.trim() || user.microsoftEmail?.trim() || user.email.trim();
   if (!graphUserId) {
+    log?.({
+      level: "warning",
+      userId: user.id,
+      userLabel: userLabel(user),
+      message: "Overgeslagen: geen bruikbaar Microsoft-ID of e-mailadres.",
+    });
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -153,6 +199,12 @@ async function syncOneUser(user: UserPhotoTarget, accessToken: string) {
   }
 
   if (user.avatarUrl?.trim() && !user.profilePhotoStorageKey) {
+    log?.({
+      level: "warning",
+      userId: user.id,
+      userLabel: userLabel(user),
+      message: "Overgeslagen: bestaande handmatige of externe profielfoto behoudt voorrang.",
+    });
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -164,8 +216,20 @@ async function syncOneUser(user: UserPhotoTarget, accessToken: string) {
     return "SKIPPED" as const;
   }
 
+  log?.({
+    level: "info",
+    userId: user.id,
+    userLabel: userLabel(user),
+    message: `Microsoft Graph-foto ophalen via ${graphIdentifierKind(user)}.`,
+  });
   const photo = await downloadUserPhoto(accessToken, graphUserId);
   if (photo.status === "NO_PHOTO") {
+    log?.({
+      level: "info",
+      userId: user.id,
+      userLabel: userLabel(user),
+      message: "Geen Microsoft-profielfoto gevonden.",
+    });
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -178,6 +242,12 @@ async function syncOneUser(user: UserPhotoTarget, accessToken: string) {
   }
 
   if (photo.hash === user.profilePhotoHash) {
+    log?.({
+      level: "info",
+      userId: user.id,
+      userLabel: userLabel(user),
+      message: "Microsoft-profielfoto is ongewijzigd.",
+    });
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -190,6 +260,12 @@ async function syncOneUser(user: UserPhotoTarget, accessToken: string) {
   }
 
   await storeUserAvatarBytes(user.id, photo.bytes, photo.mimeType, { updateSyncMetadata: true });
+  log?.({
+    level: "info",
+    userId: user.id,
+    userLabel: userLabel(user),
+    message: `Microsoft-profielfoto opgeslagen (${photo.mimeType}).`,
+  });
   return "UPDATED" as const;
 }
 
@@ -358,6 +434,24 @@ function safeErrorMessage(error: unknown) {
   if (error instanceof Prisma.PrismaClientKnownRequestError) return `Databasefout ${error.code}.`;
   if (error instanceof Error) return error.message.slice(0, 4000);
   return "Onbekende fout.";
+}
+
+function userLabel(user: UserPhotoTarget) {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  return name || maskEmail(user.microsoftEmail || user.email) || user.id;
+}
+
+function graphIdentifierKind(user: UserPhotoTarget) {
+  if (user.entraId?.trim()) return "Entra-ID";
+  if (user.microsoftEmail?.trim()) return "Microsoft-e-mailadres";
+  return "FieldForce-e-mailadres";
+}
+
+function maskEmail(value: string) {
+  const [local, domain] = value.split("@");
+  if (!local || !domain) return value ? "onbekende gebruiker" : "";
+  const visible = local.slice(0, 2);
+  return `${visible}${local.length > 2 ? "***" : ""}@${domain}`;
 }
 
 function summarizeRun(run: Awaited<ReturnType<typeof prisma.profilePhotoSyncRun.findFirst>>) {

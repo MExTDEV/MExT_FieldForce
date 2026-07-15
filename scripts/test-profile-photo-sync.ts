@@ -22,6 +22,8 @@ assert.match(service, /ProfilePhoto\.Read\.All/);
 assert.match(service, /retry-after/i);
 assert.match(service, /maxAttempts = 3/);
 assert.match(service, /PROFILE_PHOTO_SYNC_CONCURRENCY/);
+assert.match(service, /includeDiagnostics/);
+assert.match(service, /Tokeninhoud wordt niet getoond/);
 assert.doesNotMatch(service, /deleteStoredUserAvatar/);
 assert.match(service, /where: \{ active: true \}/);
 assert.match(service, /Bestaande handmatige of externe profielfoto behoudt voorrang/);
@@ -42,11 +44,14 @@ const route = read("app/api/management/settings/profile-photos/route.ts");
 assert.match(route, /canAccessManagementSection\(actor, "profiel"\)/);
 assert.match(route, /startProfilePhotoSyncRun/);
 assert.match(route, /runInBackground: false/);
+assert.match(route, /includeDiagnostics: payload\.includeDiagnostics/);
 
 const settings = read("components/settings-management.tsx");
 assert.match(settings, /page\?: "mail" \| "profile"/);
 assert.match(settings, /settings\.microsoftPhoto\.syncButton/);
 assert.match(settings, /settings\.microsoftPhoto\.confirmTitle/);
+assert.match(settings, /includeDiagnostics: true/);
+assert.match(settings, /photoDiagnostics/);
 assert.match(settings, /setInterval\(\(\) => void loadPhotoSync\(\), 3000\)/);
 
 const managementAccess = read("lib/management-access.ts");
@@ -74,6 +79,8 @@ for (const locale of ["nl", "fr", "de"]) {
   assert.ok(parsed["settings.microsoftPhoto.title"], `${locale} title missing`);
   assert.ok(parsed["settings.microsoftPhoto.syncButton"], `${locale} button missing`);
   assert.ok(parsed["settings.microsoftPhoto.confirmTitle"], `${locale} confirm title missing`);
+  assert.ok(parsed["settings.microsoftPhoto.diagnosticsTitle"], `${locale} diagnostics title missing`);
+  assert.ok(parsed["settings.microsoftPhoto.diagnosticsDescription"], `${locale} diagnostics description missing`);
 }
 
 console.log("Microsoft-profielfoto sync statisch gecontroleerd.");
