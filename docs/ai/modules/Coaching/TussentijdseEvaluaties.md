@@ -38,6 +38,7 @@ Geimplementeerd:
 - initiele idempotente seed voor rubrieken en vragen gebaseerd op de oude ODS-evaluatieformulieren;
 - migratie `0037_seed_starter_evaluation_default_questions` borgt dezelfde standaardvragen voor databases waar de runtime-seed nog niet was uitgevoerd;
 - migratie `0038_starter_evaluation_manual_start_schema_repair` herstelt ontbrekende manuele-start auditkolommen op bestaande databases;
+- migratie `0039_starter_evaluation_manual_moment_nullable` herstelt databases waar `StarterEvaluation.moment` foutief `NOT NULL` werd, zodat manuele evaluaties voor niet-starters zonder vast startermoment kunnen worden gestart;
 - de beheerlijst initialiseert dezelfde standaardrubrieken en -vragen idempotent voordat ze de configuratie toont;
 - Plesk-geschikt commando:
 

@@ -2215,6 +2215,14 @@ function CoachingDossierDetail({
     ? [historicalComparison.selected.history, currentHistoricalCoaching]
     : [currentHistoricalCoaching];
 
+  useEffect(() => {
+    const interventionReadOnly = !canManageCoaching(user, intervention) ||
+      ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger", "voltooid", "gefinaliseerd", "gesloten", "afgesloten", "geannuleerd"].includes(intervention.status);
+    if (interventionReadOnly) {
+      setLocal(intervention);
+    }
+  }, [intervention, user]);
+
   const loadHistoricalComparison = useCallback(async (compareId?: string) => {
     setHistoricalLoading(true);
     setHistoricalError(undefined);

@@ -79,12 +79,13 @@ vertegenwoordiger" in the Begeleiding report. If the answers are missing or
 partially present, the section shows the available answers and clearly marks
 missing answers as not filled in.
 
-When the coached person confirms approval, the responsible coach/leader is
-notified through the existing in-app notification channel and receives a
-best-effort FieldForce e-mail. The recipient is resolved server-side from the
-Begeleiding record, preferring the assigned owner/coach and falling back to the
-approval submitter or original initiator. The coached person who signs must not
-receive this confirmation notification.
+When the coached person confirms approval, the responsible coach/leader and the
+user who submitted the Begeleiding for approval are notified through the
+existing in-app notification channel and receive a best-effort FieldForce
+e-mail. The recipient is resolved server-side from the Begeleiding record,
+preferring the assigned owner/coach and the approval submitter, and falling back
+to the original initiator. The coached person who signs must not receive this
+confirmation notification.
 
 Other users:
 

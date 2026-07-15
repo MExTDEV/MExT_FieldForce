@@ -17,8 +17,9 @@ export function resolveCoachingApprovalConfirmedRecipients(
   const primaryRecipients = compactUserIds([
     ...(source.officialCoachIds ?? []),
     source.ownerId,
+    source.sentForApprovalById,
   ]);
-  const fallbackRecipients = compactUserIds([source.sentForApprovalById, source.initiatorId]);
+  const fallbackRecipients = compactUserIds([source.initiatorId]);
   const candidates = primaryRecipients.length ? primaryRecipients : fallbackRecipients;
   return uniqueUserIds(candidates).filter((recipientId) => recipientId !== signerUserId);
 }

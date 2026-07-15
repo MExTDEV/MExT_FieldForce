@@ -259,10 +259,11 @@ representative reflection was supplied.
 
 After approval is confirmed, the responsible coach/leader receives a
 server-side generated in-app notification and a best-effort FieldForce e-mail.
-Recipients are derived from the Begeleiding record, preferring the assigned
-owner/coach and falling back to the user who submitted for approval or the
-original initiator. The signer is excluded from the confirmation recipients and
-the notification event key is idempotent for the approval record.
+The user who submitted the Begeleiding for approval also receives the
+confirmation notification. Recipients are derived from the Begeleiding record,
+preferring the assigned owner/coach and approval submitter, and falling back to
+the original initiator. The signer is excluded from the confirmation recipients
+and the notification event key is idempotent for the approval record.
 
 ---
 

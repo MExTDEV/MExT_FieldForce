@@ -134,6 +134,11 @@ for (const expectedSql of [
 ]) {
   assert.ok(manualStartRepairMigration.includes(expectedSql), `Manuele-start reparatiemigratie mist ${expectedSql}.`);
 }
+const manualMomentRepairMigration = readFileSync("prisma/migrations/0039_starter_evaluation_manual_moment_nullable/migration.sql", "utf8");
+assert.ok(
+  manualMomentRepairMigration.includes("MODIFY COLUMN `moment` ENUM('MONTH_1_5','MONTH_3','MONTH_5') NULL"),
+  "Manuele evaluaties zonder startermoment moeten een nullable moment-kolom houden."
+);
 
 console.log("Tussentijdse evaluaties: mijlpalen, scopes, seed, moduletoegang en manuele start gevalideerd.");
 

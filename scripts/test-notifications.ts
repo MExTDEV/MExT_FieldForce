@@ -168,7 +168,17 @@ assert.deepEqual(
     ownerId: "",
     initiatorId: "planner-1",
     sentForApprovalById: "submitter-1",
-  }, "submitter-1"),
+  }, "rep-user-1"),
+  ["submitter-1"]
+);
+assert.deepEqual(
+  resolveCoachingApprovalConfirmedRecipients({
+    id: "coaching-5",
+    title: "Begeleiding zonder eigenaar of verzender",
+    ownerId: "",
+    initiatorId: "planner-1",
+    sentForApprovalById: undefined,
+  }, "rep-user-1"),
   ["planner-1"]
 );
 assert.equal(
