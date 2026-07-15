@@ -276,6 +276,8 @@ Migration `0034_starter_evaluations` adds the foundation for starter evaluations
 
 The generation job is `npm run starter-evaluations:generate`.
 
+Migration `0035_starter_evaluation_permissions_and_options` adds explicit permissions `starterEvaluationsExecute` and `starterEvaluationsManage`, and stores choice options on question definitions and snapshots.
+
 ## Role configuration
 
 Application roles are fixed `Role` enum values. Runtime metadata for those roles

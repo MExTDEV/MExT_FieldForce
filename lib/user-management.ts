@@ -81,6 +81,14 @@ export const fieldForceBasePermissionGroups: {
     ],
   },
   {
+    title: "Tussentijdse evaluatie",
+    description: "Uitvoeren van evaluaties en beheer van de vragenlijst.",
+    permissions: [
+      { key: "starterEvaluationsExecute", label: "Uitvoeren" },
+      { key: "starterEvaluationsManage", label: "Beheer" },
+    ],
+  },
+  {
     title: "KPI-beheer",
     description: "KPI-definities, doelwaarden en categorieën binnen de toegelaten scope.",
     permissions: [
@@ -215,6 +223,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "actionPointsCreate",
       "actionPointsManage",
       "actionPointsClose",
+      "starterEvaluationsExecute",
       "kpisView",
       ...internalMenuPermissions
     ),
@@ -238,6 +247,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "reportingExport",
       "actionPointsCreate",
       "actionPointsManage",
+      "starterEvaluationsExecute",
+      "starterEvaluationsManage",
       "kpisView",
       "kpisCreate",
       "kpisManage",
@@ -275,6 +286,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "actionPointsCreate",
       "actionPointsManage",
       "actionPointsClose",
+      "starterEvaluationsExecute",
+      "starterEvaluationsManage",
       "kpisView",
       "kpisCreate",
       "kpisManage",
@@ -301,6 +314,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "actionPointsCreate",
       "actionPointsManage",
       "actionPointsClose",
+      "starterEvaluationsExecute",
+      "starterEvaluationsManage",
       "kpisView",
       "kpisCreate",
       "kpisManage",
@@ -335,6 +350,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "actionPointsCreate",
       "actionPointsManage",
       "actionPointsClose",
+      "starterEvaluationsExecute",
+      "starterEvaluationsManage",
       "kpisView",
       "kpisCreate",
       "kpisManage",

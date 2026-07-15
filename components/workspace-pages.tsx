@@ -8,6 +8,7 @@ import {
   BookOpenCheck,
   CalendarCheck,
   CalendarDays,
+  Check,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -84,11 +85,13 @@ import {
   canStartStarterEvaluation,
   formatStarterEvaluationDateInput,
 } from "@/lib/starter-evaluations";
+import { representativeLevelBadgeClass } from "@/lib/representative-levels";
 import {
   getFicheTimelineItemTypes,
   getVisibleFicheSections,
   getVisibleFicheTabs,
   type FicheSectionId,
+  type FicheTabId,
   type FicheTimelineItemType,
 } from "@/lib/my-team-fiche-visibility";
 import {
@@ -115,7 +118,7 @@ import {
   canShowPlannedCoachingIndicator,
   type MyTeamMember,
 } from "@/lib/my-team";
-import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, PersonalCoachingCriterion, Representative, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
+import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
@@ -250,7 +253,13 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
 type StarterEvaluationCandidate = {
   id: string;
   name: string;
+  email: string;
+  initials: string;
+  avatarUrl: string;
+  representativeId: string;
+  representativeLevel: RepresentativeLevel | null;
   country: string;
+  teamId?: string | null;
   teamName: string;
   starterStartDate: string;
 };
@@ -276,6 +285,17 @@ type StarterEvaluationDetail = {
   }[];
 };
 
+type StarterEvaluationProfileItem = {
+  id: string;
+  href: string;
+  moment: "MONTH_1_5" | "MONTH_3" | "MONTH_5" | null;
+  status: string;
+  evaluationDate: string;
+  approvedAt: string;
+  leaderName: string;
+  startedByName: string;
+};
+
 function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
   const router = useRouter();
   const { user } = useSession();
@@ -288,7 +308,11 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
   const [selectedRepresentativeId, setSelectedRepresentativeId] = useState("");
   const [evaluationDate, setEvaluationDate] = useState(() => formatStarterEvaluationDateInput());
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
+  const [candidateReloadKey, setCandidateReloadKey] = useState(0);
   const [error, setError] = useState("");
+  const [candidateError, setCandidateError] = useState("");
   const [duplicateHref, setDuplicateHref] = useState("");
   const [detail, setDetail] = useState<StarterEvaluationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -298,30 +322,36 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
     [t("starterEvaluations.milestone.month3"), t("starterEvaluations.milestone.month3.description")],
     [t("starterEvaluations.milestone.month5"), t("starterEvaluations.milestone.month5.description")],
   ];
-  const filteredCandidates = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return candidates;
-    return candidates.filter((candidate) =>
-      [candidate.name, candidate.teamName, candidate.country].join(" ").toLowerCase().includes(needle)
-    );
-  }, [candidates, query]);
+  const groupedCandidates = useMemo(() => groupStarterEvaluationCandidates(candidates), [candidates]);
+  const selectedCandidate = candidates.find((candidate) => candidate.id === selectedRepresentativeId);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const handle = window.setTimeout(() => setDebouncedQuery(query), 250);
+    return () => window.clearTimeout(handle);
+  }, [dialogOpen, query]);
 
   useEffect(() => {
     if (!dialogOpen || !canStart) return;
     let cancelled = false;
     setLoadingCandidates(true);
-    setError("");
-    fetch(`/api/starter-evaluations?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
+    setCandidateError("");
+    fetch(`/api/starter-evaluations?actorId=${encodeURIComponent(user.id)}&q=${encodeURIComponent(debouncedQuery)}&limit=50`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { candidates?: StarterEvaluationCandidate[]; error?: string };
         if (!response.ok) throw new Error(payload.error ?? t("starterEvaluations.manualStart.loadError"));
         if (cancelled) return;
         const next = payload.candidates ?? [];
         setCandidates(next);
-        setSelectedRepresentativeId((current) => current || next[0]?.id || "");
+        setActiveCandidateIndex(0);
+        setSelectedRepresentativeId((current) =>
+          current && next.some((candidate) => candidate.id === current)
+            ? current
+            : ""
+        );
       })
       .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : t("starterEvaluations.manualStart.loadError"));
+        if (!cancelled) setCandidateError(cause instanceof Error ? cause.message : t("starterEvaluations.manualStart.loadError"));
       })
       .finally(() => {
         if (!cancelled) setLoadingCandidates(false);
@@ -329,7 +359,7 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [canStart, dialogOpen, t, user.id]);
+  }, [canStart, candidateReloadKey, debouncedQuery, dialogOpen, t, user.id]);
 
   useEffect(() => {
     if (!evaluationId) return;
@@ -498,49 +528,134 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
       </div>
       {dialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="px-5 pt-5">
                 <h2 className="text-lg font-bold text-slate-950">{t("starterEvaluations.manualStart.title")}</h2>
                 <p className="mt-1 text-sm text-slate-600">{t("starterEvaluations.manualStart.description")}</p>
               </div>
-              <button type="button" className="btn-ghost h-9 w-9 p-0" onClick={() => setDialogOpen(false)} aria-label={t("starterEvaluations.manualStart.cancel")}>
+              <button type="button" className="btn-ghost mr-5 mt-5 h-9 w-9 p-0" onClick={() => setDialogOpen(false)} aria-label={t("starterEvaluations.manualStart.cancel")}>
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-5 space-y-4">
+            <div className="mt-5 flex-1 space-y-4 overflow-y-auto px-5 pb-5">
               <label className="block text-sm font-semibold text-slate-700">
                 {t("starterEvaluations.manualStart.representative")}
                 <div className="relative mt-2">
                   <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
+                    role="combobox"
+                    aria-expanded="true"
+                    aria-controls="starter-evaluation-candidates"
+                    aria-activedescendant={candidates[activeCandidateIndex]?.id ? `starter-candidate-${candidates[activeCandidateIndex].id}` : undefined}
                     className="input pl-9"
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setActiveCandidateIndex(0);
+                    }}
+                    onKeyDown={(event) => {
+                      if (!candidates.length) return;
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setActiveCandidateIndex((current) => Math.min(current + 1, candidates.length - 1));
+                      }
+                      if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setActiveCandidateIndex((current) => Math.max(current - 1, 0));
+                      }
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        setSelectedRepresentativeId(candidates[activeCandidateIndex]?.id ?? "");
+                      }
+                    }}
                     placeholder={t("starterEvaluations.manualStart.searchPlaceholder")}
-                    disabled={loadingCandidates || saving}
+                    disabled={saving}
                   />
+                  {loadingCandidates && <LoaderCircle className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-slate-400" />}
                 </div>
               </label>
-              <select
-                className="input"
-                value={selectedRepresentativeId}
-                onChange={(event) => setSelectedRepresentativeId(event.target.value)}
-                disabled={loadingCandidates || saving}
-              >
-                {loadingCandidates && <option>{t("starterEvaluations.manualStart.loading")}</option>}
-                {!loadingCandidates && filteredCandidates.length === 0 && <option value="">{t("starterEvaluations.manualStart.noCandidates")}</option>}
-                {!loadingCandidates && filteredCandidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name} - {candidate.teamName || t("starterEvaluations.manualStart.noTeam")} - {candidate.country}
-                  </option>
+              <div id="starter-evaluation-candidates" role="listbox" className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                {candidateError && (
+                  <div className="space-y-3 px-3 py-3 text-sm">
+                    <p className="font-semibold text-rose-700">{candidateError}</p>
+                    <button type="button" className="btn-secondary" onClick={() => setCandidateReloadKey((current) => current + 1)} disabled={saving}>
+                      {t("starterEvaluations.manualStart.retry")}
+                    </button>
+                  </div>
+                )}
+                {!candidateError && loadingCandidates && !candidates.length && (
+                  <p className="px-3 py-3 text-sm font-semibold text-slate-500">
+                    {debouncedQuery ? t("starterEvaluations.manualStart.searchLoading") : t("starterEvaluations.manualStart.loading")}
+                  </p>
+                )}
+                {!candidateError && !loadingCandidates && candidates.length === 0 && (
+                  <p className="px-3 py-3 text-sm font-semibold text-slate-500">
+                    {debouncedQuery
+                      ? t("starterEvaluations.manualStart.noResultsFor").replace("{query}", debouncedQuery)
+                      : t("starterEvaluations.manualStart.noCandidatesInScope")}
+                  </p>
+                )}
+                {!candidateError && groupedCandidates.map((countryGroup) => (
+                  <div key={countryGroup.country}>
+                    <div className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      {countryGroup.country}
+                    </div>
+                    {countryGroup.teams.map((teamGroup) => (
+                      <div key={`${countryGroup.country}-${teamGroup.teamName}`}>
+                        <div className="border-b border-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                          {teamGroup.teamName || t("starterEvaluations.manualStart.noTeam")}
+                        </div>
+                        {teamGroup.candidates.map((candidate) => {
+                          const selected = candidate.id === selectedRepresentativeId;
+                          const active = candidates[activeCandidateIndex]?.id === candidate.id;
+                          return (
+                            <button
+                              id={`starter-candidate-${candidate.id}`}
+                              role="option"
+                              aria-selected={selected}
+                              key={candidate.id}
+                              type="button"
+                              className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 ${selected ? "bg-brand-50" : active ? "bg-slate-50" : "hover:bg-slate-50"}`}
+                              onClick={() => setSelectedRepresentativeId(candidate.id)}
+                              disabled={saving}
+                            >
+                              <span className="flex min-w-0 items-center gap-3">
+                                <Avatar initials={candidate.initials || "VT"} src={candidate.avatarUrl} alt={candidate.name} className="h-10 w-10 text-xs" />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-bold text-slate-950">{candidate.name}</span>
+                                  <span className="mt-0.5 block truncate text-xs text-slate-500">
+                                    {teamGroup.teamName || t("starterEvaluations.manualStart.noTeam")} - {candidate.country}
+                                  </span>
+                                  {candidate.email && <span className="mt-0.5 block truncate text-xs text-slate-400">{candidate.email}</span>}
+                                </span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-2">
+                                {candidate.representativeLevel && (
+                                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${representativeLevelBadgeClass[candidate.representativeLevel]}`}>
+                                    {t(`representativeLevel.${candidate.representativeLevel}` as TranslationKey)}
+                                  </span>
+                                )}
+                                {selected && <Check className="h-4 w-4 text-brand-700" />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
                 ))}
-              </select>
-              <label className="block text-sm font-semibold text-slate-700">
+              </div>
+              {selectedCandidate && (
+                <p className="text-xs font-semibold text-slate-500">
+                  {t("starterEvaluations.manualStart.selected")}: {selectedCandidate.name}
+                </p>
+              )}
+              <label className="block space-y-2 text-sm font-semibold text-slate-700">
                 {t("starterEvaluations.manualStart.date")}
                 <input
                   type="date"
-                  className="input mt-2"
+                  className="input"
                   value={evaluationDate}
                   onChange={(event) => setEvaluationDate(event.target.value)}
                   disabled={saving}
@@ -557,7 +672,7 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
                 </div>
               )}
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
               <button type="button" className="btn-secondary" onClick={() => setDialogOpen(false)} disabled={saving}>
                 {t("starterEvaluations.manualStart.cancel")}
               </button>
@@ -572,6 +687,23 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
       )}
     </div>
   );
+}
+
+function groupStarterEvaluationCandidates(candidates: StarterEvaluationCandidate[]) {
+  const countryGroups = new Map<string, Map<string, StarterEvaluationCandidate[]>>();
+  for (const candidate of candidates) {
+    const teamName = candidate.teamName || "";
+    if (!countryGroups.has(candidate.country)) countryGroups.set(candidate.country, new Map());
+    const teamGroups = countryGroups.get(candidate.country)!;
+    teamGroups.set(teamName, [...(teamGroups.get(teamName) ?? []), candidate]);
+  }
+  return [...countryGroups.entries()].map(([country, teamMap]) => ({
+    country,
+    teams: [...teamMap.entries()].map(([teamName, teamCandidates]) => ({
+      teamName,
+      candidates: teamCandidates,
+    })),
+  }));
 }
 
 function Dashboard() {
@@ -1078,6 +1210,39 @@ function countryName(country: string) {
   return country === "BE" ? "België" : country === "NL" ? "Nederland" : country === "DE" ? "Duitsland" : country;
 }
 
+function initialFicheTabFromHash(): FicheTabId {
+  if (typeof window === "undefined") return "overview";
+  return normalizeFicheTabId(window.location.hash.slice(1));
+}
+
+function normalizeFicheTabId(value: string): FicheTabId {
+  const tabs: FicheTabId[] = [
+    "overview",
+    "performanceCircle",
+    "personalCriteria",
+    "actionPoints",
+    "helpRequests",
+    "coachings",
+    "kpis",
+    "evaluations",
+    "contactMoments",
+    "retrainings",
+    "salesTrainings",
+    "timeline",
+  ];
+  return tabs.includes(value as FicheTabId) ? value as FicheTabId : "overview";
+}
+
+function phoneHref(phone: string) {
+  return phone.replace(/[^\d+]/g, "");
+}
+
+function plainTextSummary(value: string, maxLength = 120) {
+  const text = hasHtmlMarkup(value) ? richTextToPlainText(value) : value;
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > maxLength ? `${compact.slice(0, maxLength - 1).trimEnd()}…` : compact;
+}
+
 function coachingScoreOutOfFive(coaching: HistoricalCoaching) {
   if (coaching.overallScore !== undefined) return coaching.overallScore / 20;
   const scores = coaching.phaseScores.length ? coaching.phaseScores : coaching.generalScores;
@@ -1187,11 +1352,12 @@ function RepresentativesList() {
 
 function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?: boolean }) {
   const { user } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const { error, loading, representatives } = useRepresentatives();
   const { dataset: performanceDataset, error: performanceError } = usePerformance();
   const { modules } = useModules();
   const representative = representatives.find((item) => item.id === id);
-  const [tab, setTab] = useState("overzicht");
+  const [tab, setTab] = useState<FicheTabId>(() => initialFicheTabFromHash());
   const visibleSections = useMemo(
     () => representative
       ? getVisibleFicheSections({ user, representative, modules })
@@ -1204,9 +1370,9 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
       : [],
     [modules, representative, user]
   );
-  const activeTab = visibleTabs.some((item) => item.label === tab)
+  const activeTab = visibleTabs.some((item) => item.id === tab)
     ? tab
-    : visibleTabs[0]?.label ?? "overzicht";
+    : visibleTabs[0]?.id ?? "overview";
   const timelineItemTypes = useMemo(
     () => getFicheTimelineItemTypes(visibleSections),
     [visibleSections]
@@ -1215,6 +1381,13 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
   const showActionPoints = visibleSections.has("actionPoints");
   const showPerformance = visibleSections.has("performanceCircle");
   const showKpis = visibleSections.has("kpis");
+
+  function selectTab(nextTab: FicheTabId) {
+    setTab(nextTab);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${nextTab}`);
+    }
+  }
 
   if (loading) {
     return <EmptyState title="Vertegenwoordiger laden" description="De gegevens worden uit MariaDB opgehaald." />;
@@ -1243,34 +1416,50 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
     <div className="space-y-6">
       {teamMode && <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← Terug naar Mijn Team</Link>}
       <div className="card overflow-hidden">
-        <div className="flex min-h-32 items-center bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500 px-5 pb-8 pt-6 sm:min-h-36 sm:px-7 sm:pb-10 sm:pt-8">
-          <h1 className="ml-24 min-w-0 break-words text-2xl font-extrabold leading-tight text-white drop-shadow-sm sm:ml-32 sm:text-3xl lg:text-[34px]">
-            {representative.firstName} {representative.lastName}
-          </h1>
-        </div>
-        <div className="flex flex-col gap-4 px-5 pb-5 sm:flex-row sm:items-start sm:gap-5 sm:px-7">
-          <Avatar initials={representative.initials} className="-mt-10 h-24 w-24 shrink-0 border-4 border-white bg-brand-100 text-2xl shadow-lg sm:h-28 sm:w-28" />
-          <div className="min-w-0 flex-1 sm:pt-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
-              <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
-              <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{representativeRoleLabel}</span>
-              {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>}
+        <div className="bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500 px-5 py-4 text-white sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Avatar initials={representative.initials} className="h-16 w-16 shrink-0 border-2 border-white/80 bg-white/95 text-lg text-brand-800 shadow-md" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="min-w-0 break-words text-2xl font-extrabold leading-tight drop-shadow-sm sm:text-3xl">
+                  {representative.firstName} {representative.lastName}
+                </h1>
+                <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/25">{representativeRoleLabel}</span>
+                {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-blue-50">
+                <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
+                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-semibold text-white">
+                {representative.email && (
+                  <a className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" href={`mailto:${representative.email}`}>
+                    <Mail className="h-4 w-4" /> {representative.email}
+                  </a>
+                )}
+                {representative.phone && (
+                  <a className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" href={`tel:${phoneHref(representative.phone)}`}>
+                    <Phone className="h-4 w-4" /> {representative.phone}
+                  </a>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
               {showPerformance && <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />}
+              {showCoachings && can(user, "intervention:create") && <Link href="/begeleidingen/nieuw" className="btn-primary w-full justify-center bg-white text-brand-800 hover:bg-blue-50 sm:w-auto"><Plus className="h-4 w-4" /> Begeleiding</Link>}
             </div>
           </div>
-          {showCoachings && can(user, "intervention:create") && <Link href="/begeleidingen/nieuw" className="btn-primary w-full shrink-0 sm:mt-2 sm:w-auto"><Plus className="h-4 w-4" /> Begeleiding</Link>}
         </div>
         <div className="mext-horizontal-scrollbar flex min-h-[58px] gap-1 overflow-x-auto border-t border-slate-100 px-4 pt-2">
           {visibleTabs.map((item) => (
-            <button key={item.id} onClick={() => setTab(item.label)} className={`min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold capitalize transition-colors ${activeTab === item.label ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
-              {item.label}
+            <button key={item.id} onClick={() => selectTab(item.id)} className={`min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold transition-colors ${activeTab === item.id ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+              {t(item.translationKey as TranslationKey)}
             </button>
           ))}
         </div>
       </div>
 
-      {activeTab === "overzicht" && (
+      {activeTab === "overview" && (
         <>
           {(showCoachings || showPerformance) && (
             <section className={`grid gap-4 ${showCoachings && showPerformance ? "lg:grid-cols-[220px_1fr]" : ""}`}>
@@ -1324,29 +1513,25 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
                 ))}
               </div>
             )}
-            <div className="card p-5">
-              <h2 className="font-bold text-slate-900">Contactgegevens</h2>
-              <div className="mt-5 space-y-4">
-                <p className="flex items-center gap-3 text-sm text-slate-600"><Mail className="h-4 w-4 text-brand-700" /> {representative.email}</p>
-                <p className="flex items-center gap-3 text-sm text-slate-600"><Phone className="h-4 w-4 text-brand-700" /> {representative.phone}</p>
-                {showCoachings && <p className="flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>}
-              </div>
-            </div>
+            {showCoachings && <div className="card p-5">
+              <h2 className="font-bold text-slate-900">Laatste activiteit</h2>
+              <p className="mt-4 flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>
+            </div>}
           </section>
         </>
       )}
       {performanceError && (showCoachings || showActionPoints || showPerformance || showKpis) && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
-      {activeTab === "Prestatiecirkel" && (
+      {activeTab === "performanceCircle" && (
         scoredCoachings.length ? <PerformanceEvolution
           coachings={scoredCoachings}
           representativeName={`${representative.firstName} ${representative.lastName}`}
         /> : <EmptyState title="Geen score beschikbaar" description={latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."} />
       )}
-      {activeTab === "persoonlijke criteria" && <PersonalCriteriaPanel representative={representative} />}
-      {activeTab === "KPI's" && <KpiPanel representativeId={representative.id} />}
-      {activeTab === "actiepunten" && <RepresentativeActionPointsPanel representativeId={representative.id} />}
-      {["begeleidingen", "contactmomenten", "retrainingen", "sales trainingen", "hulpaanvragen", "tijdlijn"].includes(activeTab) && <TimelinePanel title={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={timelineItemTypesForTab(activeTab, timelineItemTypes)} />}
-      {activeTab === "productanalyse" && <TimelinePanel title={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={[]} />}
+      {activeTab === "personalCriteria" && <PersonalCriteriaPanel representative={representative} />}
+      {activeTab === "kpis" && <KpiPanel representativeId={representative.id} />}
+      {activeTab === "actionPoints" && <RepresentativeActionPointsPanel representativeId={representative.id} />}
+      {activeTab === "evaluations" && <RepresentativeEvaluationsPanel representativeId={representative.id} />}
+      {["coachings", "contactMoments", "retrainings", "salesTrainings", "helpRequests", "timeline"].includes(activeTab) && <TimelinePanel tab={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={timelineItemTypesForTab(activeTab, timelineItemTypes)} />}
     </div>
   );
 }
@@ -1608,30 +1793,31 @@ function KpiPanel({ representativeId }: { representativeId: string }) {
 }
 
 function timelineItemTypesForTab(
-  tab: string,
+  tab: FicheTabId,
   visibleItemTypes: FicheTimelineItemType[]
 ): FicheTimelineItemType[] {
-  if (tab === "begeleidingen") return visibleItemTypes.includes("begeleiding") ? ["begeleiding"] : [];
-  if (tab === "contactmomenten") return visibleItemTypes.includes("contactmoment") ? ["contactmoment"] : [];
-  if (tab === "retrainingen") return visibleItemTypes.includes("retraining") ? ["retraining"] : [];
-  if (tab === "sales trainingen") return visibleItemTypes.includes("sales_training") ? ["sales_training"] : [];
-  if (tab === "hulpaanvragen") return visibleItemTypes.includes("hulpaanvraag") ? ["hulpaanvraag"] : [];
-  if (tab === "tijdlijn") return visibleItemTypes;
+  if (tab === "coachings") return visibleItemTypes.includes("begeleiding") ? ["begeleiding"] : [];
+  if (tab === "contactMoments") return visibleItemTypes.includes("contactmoment") ? ["contactmoment"] : [];
+  if (tab === "retrainings") return visibleItemTypes.includes("retraining") ? ["retraining"] : [];
+  if (tab === "salesTrainings") return visibleItemTypes.includes("sales_training") ? ["sales_training"] : [];
+  if (tab === "helpRequests") return visibleItemTypes.includes("hulpaanvraag") ? ["hulpaanvraag"] : [];
+  if (tab === "timeline") return visibleItemTypes;
   return [];
 }
 
 function TimelinePanel({
-  title,
+  tab,
   representativeId,
   representativeName,
   itemTypes,
 }: {
-  title: string;
+  tab: FicheTabId;
   representativeId: string;
   representativeName: string;
   itemTypes: FicheTimelineItemType[];
 }) {
   const { user } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const workflowApi = useWorkflow();
   const { dataset: performanceDataset } = usePerformance();
   const allowedTypes = new Set(itemTypes);
@@ -1640,10 +1826,17 @@ function TimelinePanel({
       ? [
           ...performanceDataset.historicalCoachings
             .filter((item) => item.representativeId === representativeId)
-            .map((item) => ({ id: item.id, type: "begeleiding" as const, date: item.date, owner: item.ownerName, status: item.status })),
+            .map((item) => ({
+              id: item.id,
+              type: "begeleiding" as const,
+              date: item.date,
+              owner: item.ownerName,
+              status: item.status,
+              score: item.overallScore,
+            })),
           ...workflowApi.visibleInterventions(user)
             .filter((item) => item.representativeId === representativeId)
-            .map((item) => ({ id: item.id, type: "begeleiding" as const, date: item.plannedDate ?? item.updatedAt, owner: "Coaching", status: item.status })),
+            .map((item) => ({ id: item.id, type: "begeleiding" as const, date: item.plannedDate ?? item.updatedAt, owner: "Coaching", status: item.status, score: undefined })),
         ]
       : []),
     ...(allowedTypes.has("contactmoment")
@@ -1680,19 +1873,43 @@ function TimelinePanel({
   ].map((item) => [`${item.type}:${item.id}`, item])).values()]
     .sort((a, b) => b.date.localeCompare(a.date));
 
+  const title = t(ficheTabTitleKey(tab));
+  const isCoachings = tab === "coachings";
+
   return (
     <div className="card overflow-hidden">
-      <SectionTitle title={`${title[0].toUpperCase()}${title.slice(1)}`} subtitle={`Historiek en geplande items voor ${representativeName}`} />
+      <SectionTitle title={title} subtitle={t("myTeam.profile.timeline.subtitle").replace("{name}", representativeName)} />
+      {isCoachings && workflowItems.length > 0 && (
+        <div className="hidden grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_44px] gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+          <span>{t("myTeam.profile.column.date")}</span>
+          <span>{t("myTeam.profile.column.responsible")}</span>
+          <span>{t("myTeam.profile.column.score")}</span>
+          <span>{t("myTeam.profile.column.status")}</span>
+          <span />
+        </div>
+      )}
       <div className="divide-y divide-slate-100">
         {workflowItems.map((item) => (
-          <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className="flex items-center gap-4 p-5 transition hover:bg-slate-50">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700"><ClipboardCheck className="h-5 w-5" /></div>
-            <div className="flex-1"><p className="font-semibold capitalize text-slate-900">{item.type.replace("_", " ")}</p><p className="mt-1 text-xs text-slate-500">{new Date(item.date).toLocaleDateString("nl-BE")} · {item.owner}</p></div>
-            <StatusBadge status={item.status} />
-            <ChevronRight className="h-4 w-4 text-slate-300" />
+          <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className={isCoachings ? "grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 focus-visible:bg-brand-50 md:grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_44px] md:items-center md:gap-3" : "flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50"}>
+            {isCoachings ? (
+              <>
+                <span className="font-semibold text-slate-800">{formatShortDate(item.date)}</span>
+                <span className="truncate text-slate-600">{item.owner}</span>
+                <span className="font-bold text-slate-900">{formatOfficialCoachingScore("score" in item ? item.score : undefined)}</span>
+                <StatusBadge status={item.status} />
+                <ChevronRight className="hidden h-4 w-4 justify-self-end text-slate-300 md:block" />
+              </>
+            ) : (
+              <>
+                <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700"><ClipboardCheck className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1"><p className="font-semibold capitalize text-slate-900">{item.type.replace("_", " ")}</p><p className="mt-0.5 truncate text-xs text-slate-500">{formatShortDate(item.date)} · {item.owner}</p></div>
+                <StatusBadge status={item.status} />
+                <ChevronRight className="h-4 w-4 text-slate-300" />
+              </>
+            )}
           </Link>
         ))}
-        {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{title === "begeleidingen" ? "Nog geen begeleidingen beschikbaar" : "Nog geen items in deze historiek."}</p>}
+        {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{isCoachings ? t("myTeam.profile.coachings.empty") : t("myTeam.profile.timeline.empty")}</p>}
       </div>
     </div>
   );
@@ -1705,6 +1922,88 @@ function timelineItemHref(type: string, id: string) {
   if (type === "retraining") return `/retrainingen/${id}`;
   if (type === "sales_training") return `/sales-trainingen/${id}`;
   return "/mijn-team";
+}
+
+function ficheTabTitleKey(tab: FicheTabId): TranslationKey {
+  return `myTeam.profile.tab.${tab}` as TranslationKey;
+}
+
+function formatOfficialCoachingScore(score: number | undefined) {
+  if (score === undefined) return "—";
+  return `${(score / 20).toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`;
+}
+
+function starterEvaluationMomentKey(moment: StarterEvaluationProfileItem["moment"]): TranslationKey {
+  if (moment === "MONTH_1_5") return "starterEvaluations.milestone.month1_5";
+  if (moment === "MONTH_3") return "starterEvaluations.milestone.month3";
+  if (moment === "MONTH_5") return "starterEvaluations.milestone.month5";
+  return "myTeam.profile.evaluations.manual";
+}
+
+function RepresentativeEvaluationsPanel({ representativeId }: { representativeId: string }) {
+  const { user } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+  const [evaluations, setEvaluations] = useState<StarterEvaluationProfileItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    fetch(`/api/starter-evaluations/profile?actorId=${encodeURIComponent(user.id)}&representativeId=${encodeURIComponent(representativeId)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json() as { evaluations?: StarterEvaluationProfileItem[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? t("myTeam.profile.evaluations.loadError"));
+        setEvaluations(payload.evaluations ?? []);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : t("myTeam.profile.evaluations.loadError"));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [representativeId, t, user.id]);
+
+  return (
+    <div className="card overflow-hidden">
+      <SectionTitle title={t("myTeam.profile.tab.evaluations")} subtitle={t("myTeam.profile.evaluations.subtitle")} />
+      {loading ? (
+        <p className="p-6 text-sm font-semibold text-slate-500">{t("myTeam.profile.evaluations.loading")}</p>
+      ) : error ? (
+        <p className="m-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>
+      ) : evaluations.length === 0 ? (
+        <p className="p-8 text-center text-sm text-slate-500">{t("myTeam.profile.evaluations.empty")}</p>
+      ) : (
+        <>
+          <div className="hidden grid-cols-[112px_minmax(120px,0.9fr)_minmax(130px,1fr)_120px_112px_44px] gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+            <span>{t("myTeam.profile.column.date")}</span>
+            <span>{t("myTeam.profile.column.type")}</span>
+            <span>{t("myTeam.profile.column.responsible")}</span>
+            <span>{t("myTeam.profile.column.status")}</span>
+            <span>{t("myTeam.profile.column.approvedAt")}</span>
+            <span />
+          </div>
+          <div className="divide-y divide-slate-100">
+            {evaluations.map((evaluation) => (
+              <Link key={evaluation.id} href={evaluation.href} className="grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 focus-visible:bg-brand-50 md:grid-cols-[112px_minmax(120px,0.9fr)_minmax(130px,1fr)_120px_112px_44px] md:items-center md:gap-3">
+                <span className="font-semibold text-slate-800">{formatShortDate(evaluation.evaluationDate)}</span>
+                <span className="truncate text-slate-600">{t(starterEvaluationMomentKey(evaluation.moment))}</span>
+                <span className="truncate text-slate-600">{evaluation.startedByName || evaluation.leaderName || "—"}</span>
+                <StatusBadge status={evaluation.status.toLowerCase()} />
+                <span className="text-slate-600">{evaluation.approvedAt ? formatShortDate(evaluation.approvedAt) : "—"}</span>
+                <ChevronRight className="hidden h-4 w-4 justify-self-end text-slate-300 md:block" />
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function RepresentativeActionPointsPanel({ representativeId }: { representativeId: string }) {
@@ -1721,7 +2020,7 @@ function RepresentativeActionPointsPanel({ representativeId }: { representativeI
     <div className="card overflow-hidden">
       <SectionTitle title="Actiepunten" subtitle="Open en afgewerkte opvolgacties voor deze vertegenwoordiger" />
       <div className="divide-y divide-slate-100">
-        {actions.map((action) => <div key={action.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"}</p></div><StatusBadge status={action.status} /></div>)}
+        {actions.map((action) => <div key={action.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900" title={action.title}>{plainTextSummary(action.title)}</p><p className="mt-0.5 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"}</p></div><StatusBadge status={action.status} /></div>)}
         {actions.length === 0 && <p className="p-8 text-center text-sm text-slate-500">Geen actiepunten gevonden.</p>}
       </div>
     </div>

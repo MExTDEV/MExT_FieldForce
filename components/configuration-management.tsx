@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -127,6 +127,7 @@ type EditorState =
       id?: string;
       textNl: string;
       helpNl: string;
+      optionsJson: string;
       answerType: string;
       assignee: string;
       required: boolean;
@@ -163,7 +164,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     if (!response.ok) {
       const requestLabel = payload.requestId ? ` (${payload.requestId})` : "";
       throw new Error(
-        `${payload.details ?? payload.error ?? "Beheer kon niet worden geladen."}${requestLabel}`
+        `${payload.error ?? "Beheer kon niet worden geladen."}${requestLabel}`
       );
     }
     setData(payload);
@@ -218,7 +219,27 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     return <EmptyState title="Beheer laden" description="Configuratie wordt uit MariaDB opgehaald." />;
   }
   if (!data) {
-    return <EmptyState title="Beheer niet beschikbaar" description={error ?? "Onbekende fout."} />;
+    return (
+      <div className="card grid min-h-64 place-items-center p-8 text-center">
+        <div>
+          <div className="mx-auto mb-4 h-12 w-12 rounded-2xl bg-brand-50" />
+          <h2 className="font-semibold text-slate-900">Beheer niet beschikbaar</h2>
+          <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{error ?? "Onbekende fout."}</p>
+          <button
+            type="button"
+            className="btn-secondary mt-4"
+            onClick={() => {
+              setError(undefined);
+              void refresh().catch((cause) =>
+                setError(cause instanceof Error ? cause.message : "Beheer kon niet worden geladen.")
+              );
+            }}
+          >
+            Opnieuw proberen
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const titles = {
@@ -229,7 +250,7 @@ export function ConfigurationManagement({ section }: { section: Section }) {
     kapstok: "Kapstok beheer",
   };
   const canCreateKpis = hasPermission(user, "kpisCreate");
-  const canManageStarterEvaluationQuestions = ["SUPER_ADMIN", "GROUP_MANAGER"].includes(user.role);
+  const canManageStarterEvaluationQuestions = hasPermission(user, "starterEvaluationsManage");
   const filteredKpis = filterKpis(data, kpiFilters);
   const showAddButton = section !== "rollen" &&
     (section !== "kpis" || canCreateKpis) &&
@@ -627,6 +648,11 @@ function StarterEvaluationQuestionManagement({
                   </div>
                   <p className="mt-2 text-sm font-semibold text-slate-950">{question.textNl}</p>
                   {question.helpNl && <p className="mt-1 text-sm text-slate-600">{question.helpNl}</p>}
+                  {question.optionsJson && (
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      Opties: {optionsTextFromJson(question.optionsJson).split("\n").join(" | ")}
+                    </p>
+                  )}
                   <p className="mt-2 text-xs text-slate-500">
                     {question.scopeLinks
                       .filter((link) => link.scopeType === group.scope)
@@ -1775,9 +1801,25 @@ function StarterEvaluationQuestionEditor({
   onCancel: () => void;
   onSave: () => void;
 }) {
-  const answerTypes = ["SHORT_TEXT", "RICH_TEXT", "BOOLEAN", "NUMBER", "SCORE", "LINKED_CRITERION", "ACTION_POINTS"];
-  const assignees = ["REPRESENTATIVE", "EVALUATOR", "BOTH_SEPARATE", "SYSTEM"];
-  const valid = Boolean(editor.textNl.trim() && editor.scopeLinks.length);
+  const answerTypes = [
+    ["SHORT_TEXT", "Korte tekst"],
+    ["RICH_TEXT", "Tekst met opmaak"],
+    ["CHOICE", "Keuze"],
+    ["MULTI_CHOICE", "Meerkeuze"],
+    ["SCORE", "Score"],
+    ["BOOLEAN", "Ja/nee"],
+    ["NUMBER", "Getal"],
+    ["LINKED_CRITERION", "Gekoppeld criterium"],
+    ["ACTION_POINTS", "Actiepunten"],
+  ];
+  const assignees = [
+    ["REPRESENTATIVE", "Vertegenwoordiger"],
+    ["EVALUATOR", "Verkoopleider"],
+    ["BOTH_SEPARATE", "Beiden apart"],
+    ["SYSTEM", "Systeem"],
+  ];
+  const needsOptions = editor.answerType === "CHOICE" || editor.answerType === "MULTI_CHOICE";
+  const valid = Boolean(editor.textNl.trim() && editor.scopeLinks.length && (!needsOptions || editor.optionsJson.trim()));
   const updateLink = (index: number, patch: Partial<StarterEvaluationQuestionScopeDraft>) => {
     onChange({
       ...editor,
@@ -1790,18 +1832,19 @@ function StarterEvaluationQuestionEditor({
         <Field label="Vraagtekst">
           <textarea className="field min-h-24" value={editor.textNl} onChange={(event) => onChange({ ...editor, textNl: event.target.value })} />
         </Field>
-        <Field label="Hulpetekst">
-          <textarea className="field min-h-20" value={editor.helpNl} onChange={(event) => onChange({ ...editor, helpNl: event.target.value })} />
+        <Field label={editor.answerType === "RICH_TEXT" || editor.answerType === "SHORT_TEXT" ? "Hulpetekst" : "Extra uitleg bij de vraag"}>
+          <SimpleRichTextField value={editor.helpNl} onChange={(helpNl) => onChange({ ...editor, helpNl })} />
+          <p className="mt-1 text-xs text-slate-500">Deze tekst wordt als WYSIWYG-uitleg bij de vraag gebruikt.</p>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Antwoordtype">
             <select className="field" value={editor.answerType} onChange={(event) => onChange({ ...editor, answerType: event.target.value })}>
-              {answerTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+              {answerTypes.map(([type, label]) => <option key={type} value={type}>{label}</option>)}
             </select>
           </Field>
           <Field label="Invuller">
             <select className="field" value={editor.assignee} onChange={(event) => onChange({ ...editor, assignee: event.target.value })}>
-              {assignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
+              {assignees.map(([assignee, label]) => <option key={assignee} value={assignee}>{label}</option>)}
             </select>
           </Field>
           <Field label="Volgorde">
@@ -1816,6 +1859,17 @@ function StarterEvaluationQuestionEditor({
             Actief
           </label>
         </div>
+        {needsOptions && (
+          <Field label="Keuzeopties">
+            <textarea
+              className="field min-h-28"
+              value={editor.optionsJson}
+              onChange={(event) => onChange({ ...editor, optionsJson: event.target.value })}
+              placeholder={"Een optie per regel"}
+            />
+            <p className="mt-1 text-xs text-slate-500">Eén optie per regel. Deze opties worden vastgelegd in de evaluatiesnapshot.</p>
+          </Field>
+        )}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-950">Scopekoppelingen</h3>
@@ -1913,6 +1967,7 @@ function newEditor(
       kind: "starterEvaluationQuestion",
       textNl: "",
       helpNl: "",
+      optionsJson: "",
       answerType: "RICH_TEXT",
       assignee: "BOTH_SEPARATE",
       required: false,
@@ -1932,6 +1987,7 @@ function starterEvaluationQuestionEditorFromItem(
     id: item.id,
     textNl: item.textNl,
     helpNl: item.helpNl,
+    optionsJson: optionsTextFromJson(item.optionsJson),
     answerType: item.answerType,
     assignee: item.assignee,
     required: item.required,
@@ -1945,6 +2001,16 @@ function starterEvaluationQuestionEditorFromItem(
       sortOrder: link.sortOrder,
     })),
   };
+}
+
+function optionsTextFromJson(value: string) {
+  if (!value.trim()) return "";
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.join("\n") : value;
+  } catch {
+    return value;
+  }
 }
 
 function importExportTopicForSection(
@@ -2643,6 +2709,38 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1.5 block text-sm font-semibold text-slate-700">{label}</span>
       {children}
     </label>
+  );
+}
+
+function SimpleRichTextField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current && ref.current.innerHTML !== value) {
+      ref.current.innerHTML = value;
+    }
+  }, [value]);
+
+  function apply(command: "bold" | "italic" | "insertUnorderedList") {
+    document.execCommand(command);
+    onChange(ref.current?.innerHTML ?? "");
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex gap-1 border-b border-slate-100 p-1.5">
+        <button type="button" className="btn-ghost h-8 px-2 text-xs font-bold" onClick={() => apply("bold")}>B</button>
+        <button type="button" className="btn-ghost h-8 px-2 text-xs italic" onClick={() => apply("italic")}>I</button>
+        <button type="button" className="btn-ghost h-8 px-2 text-xs" onClick={() => apply("insertUnorderedList")}>Lijst</button>
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        className="min-h-24 px-3 py-2 text-sm leading-6 text-slate-800 outline-none"
+        onInput={() => onChange(ref.current?.innerHTML ?? "")}
+        onBlur={() => onChange(ref.current?.innerHTML ?? "")}
+      />
+    </div>
   );
 }
 

@@ -22,6 +22,7 @@ import {
   createKpiTargetScopeKey,
   detectKpiTargetConflicts,
 } from "@/lib/server/kpi-targets";
+import { ensureStarterEvaluationConfiguration } from "@/lib/server/starter-evaluations";
 import { criterionScopeKey } from "@/lib/server/criterion-scopes";
 import {
   columnsExist,
@@ -192,13 +193,13 @@ export async function getManagementConfiguration(
   const needsRoles = !section || section === "rollen";
 
   const [teams, kpiConfiguration, focuses, starterEvaluationQuestions, managementRoles] = await Promise.all([
-    needsTeams ? listManagementTeams(actor) : Promise.resolve([]),
+    needsTeams ? loadManagementComponent("teams", actor, () => listManagementTeams(actor)) : Promise.resolve([]),
     needsKpis
-      ? listManagementKpis(actor)
+      ? loadManagementComponent("kpis", actor, () => listManagementKpis(actor))
       : Promise.resolve(emptyKpiConfiguration()),
-    needsFocuses ? listManagementFocuses() : Promise.resolve([]),
-    needsStarterEvaluationQuestions ? listStarterEvaluationQuestions() : Promise.resolve([]),
-    needsRoles ? listManagementRoles() : Promise.resolve([]),
+    needsFocuses ? loadManagementComponent("kapstok", actor, () => listManagementFocuses()) : Promise.resolve([]),
+    needsStarterEvaluationQuestions ? loadManagementComponent("starterEvaluationQuestions", actor, () => listStarterEvaluationQuestions()) : Promise.resolve([]),
+    needsRoles ? loadManagementComponent("roles", actor, () => listManagementRoles()) : Promise.resolve([]),
   ]);
 
   return {
@@ -208,6 +209,26 @@ export async function getManagementConfiguration(
     starterEvaluationQuestions,
     roles: managementRoles,
   };
+}
+
+async function loadManagementComponent<T>(
+  component: string,
+  actor: MockUser,
+  load: () => Promise<T>
+) {
+  try {
+    return await load();
+  } catch (error) {
+    console.error("[management:component-load-failed]", {
+      component,
+      actorId: actor.id,
+      actorRole: actor.role,
+      errorType: error instanceof Error ? error.name : typeof error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 }
 
 function emptyKpiConfiguration() {
@@ -266,6 +287,8 @@ async function listManagementFocuses() {
 }
 
 export async function listStarterEvaluationQuestions() {
+  await ensureStarterEvaluationConfiguration();
+
   const questions = await prisma.starterEvaluationQuestion.findMany({
     include: {
       section: { select: { titleNl: true } },
@@ -313,6 +336,7 @@ export async function listStarterEvaluationQuestions() {
     sectionTitle: question.section.titleNl,
     textNl: question.textNl,
     helpNl: question.helpNl ?? "",
+    optionsJson: String((question as { optionsJson?: string | null }).optionsJson ?? ""),
     answerType: question.answerType,
     assignee: question.assignee,
     required: question.required,
@@ -1432,6 +1456,7 @@ export async function saveStarterEvaluationQuestion(
     id?: string;
     textNl: string;
     helpNl?: string;
+    optionsJson?: string;
     answerType: StarterEvaluationAnswerType;
     assignee: StarterEvaluationAssignee;
     required: boolean;
@@ -1450,6 +1475,7 @@ export async function saveStarterEvaluationQuestion(
   const textNl = input.textNl.trim();
   if (!textNl) throw new Error("Vraagtekst is verplicht.");
   if (!isStarterEvaluationAnswerType(input.answerType)) throw new Error("Selecteer een geldig antwoordtype.");
+  const optionsJson = normalizeStarterQuestionOptions(input.answerType, input.optionsJson ?? "");
   if (!isStarterEvaluationAssignee(input.assignee)) throw new Error("Selecteer een geldige invuller.");
   if (!input.scopeLinks.length) throw new Error("Koppel minstens een scope aan deze vraag.");
   const defaultSection = await prisma.starterEvaluationSection.findFirst({
@@ -1466,6 +1492,7 @@ export async function saveStarterEvaluationQuestion(
           data: {
             textNl,
             helpNl: input.helpNl?.trim() || null,
+            optionsJson,
             answerType: input.answerType,
             assignee: input.assignee,
             required: input.required,
@@ -1480,6 +1507,7 @@ export async function saveStarterEvaluationQuestion(
             sectionId: defaultSection.id,
             textNl,
             helpNl: input.helpNl?.trim() || null,
+            optionsJson,
             answerType: input.answerType,
             assignee: input.assignee,
             required: input.required,
@@ -1514,8 +1542,8 @@ export async function deactivateStarterEvaluationQuestion(actor: MockUser, id: s
 }
 
 function requireStarterEvaluationQuestionManagement(actor: MockUser) {
-  if (!["SUPER_ADMIN", "GROUP_MANAGER"].includes(actor.role)) {
-    throw new Error("Alleen Super Admin en Group Manager mogen evaluatievragen beheren.");
+  if (!can(actor, "starterEvaluationsManage")) {
+    throw new Error("Je mag evaluatievragen niet beheren.");
   }
 }
 
@@ -1569,7 +1597,7 @@ async function normalizeStarterEvaluationQuestionScopeLinks(
 }
 
 function isStarterEvaluationAnswerType(value: string): value is StarterEvaluationAnswerType {
-  return ["SHORT_TEXT", "RICH_TEXT", "BOOLEAN", "NUMBER", "PERCENTAGE", "CURRENCY", "SCORE", "CHOICE", "DATE", "SYSTEM", "LINKED_CRITERION", "ACTION_POINTS"].includes(value);
+  return ["SHORT_TEXT", "RICH_TEXT", "BOOLEAN", "NUMBER", "PERCENTAGE", "CURRENCY", "SCORE", "CHOICE", "MULTI_CHOICE", "DATE", "SYSTEM", "LINKED_CRITERION", "ACTION_POINTS"].includes(value);
 }
 
 function isStarterEvaluationAssignee(value: string): value is StarterEvaluationAssignee {
@@ -1578,6 +1606,16 @@ function isStarterEvaluationAssignee(value: string): value is StarterEvaluationA
 
 function createManagementId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeStarterQuestionOptions(answerType: StarterEvaluationAnswerType, value: string) {
+  if (answerType !== "CHOICE" && answerType !== "MULTI_CHOICE") return null;
+  const options = value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!options.length) throw new Error("Voeg minstens een keuzeoptie toe.");
+  return JSON.stringify([...new Set(options)]);
 }
 
 export async function deactivateCriterionScopeLink(actor: MockUser, id: string) {

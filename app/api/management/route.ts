@@ -79,13 +79,14 @@ export async function GET(request: Request) {
         const kpiConfiguration = includeKpis
           ? await listManagementKpis(actor)
           : { kpis: [], kpiCategories: [], kpiTypes: [], kpiTargetTypes: [] };
+        const starterEvaluationQuestions = section === "starterEvaluations" && canViewStarterEvaluations
+          ? await loadManagementRouteComponent("starterEvaluationQuestions", actor, () => listStarterEvaluationQuestions())
+          : [];
         return {
           teams: includeTeams ? await listManagementTeams(actor) : [],
           ...kpiConfiguration,
           focuses: [],
-          starterEvaluationQuestions: section === "starterEvaluations" && canViewStarterEvaluations
-            ? await listStarterEvaluationQuestions()
-            : [],
+          starterEvaluationQuestions,
           roles: [],
         };
       }
@@ -93,6 +94,26 @@ export async function GET(request: Request) {
     }
     return getManagementConfiguration(actor, section);
   }, "Beheerconfiguratie kon niet worden geladen.");
+}
+
+async function loadManagementRouteComponent<T>(
+  component: string,
+  actor: { id: string; role: string },
+  load: () => Promise<T>
+) {
+  try {
+    return await load();
+  } catch (error) {
+    console.error("[api/management:component-load-failed]", {
+      component,
+      actorId: actor.id,
+      actorRole: actor.role,
+      errorType: error instanceof Error ? error.name : typeof error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 }
 
 export async function POST(request: Request) {
@@ -236,6 +257,7 @@ async function mutate(request: Request, operation: "create" | "update" | "delete
               id: operation === "update" ? String(payload.id) : undefined,
               textNl: String(payload.textNl ?? ""),
               helpNl: typeof payload.helpNl === "string" ? payload.helpNl : "",
+              optionsJson: typeof payload.optionsJson === "string" ? payload.optionsJson : "",
               answerType: String(payload.answerType ?? "RICH_TEXT") as never,
               assignee: String(payload.assignee ?? "BOTH_SEPARATE") as never,
               required: payload.required === true,
@@ -382,9 +404,11 @@ function isSafeManagementMessage(message: string) {
       "Globale kapstokkoppelingen kunnen alleen door een Super Admin worden gewijzigd.",
       "Je hebt geen toegang tot evaluatievraagbeheer.",
       "Alleen Super Admin en Group Manager mogen evaluatievragen beheren.",
+      "Je mag evaluatievragen niet beheren.",
       "Vraagtekst is verplicht.",
       "Selecteer een geldig antwoordtype.",
       "Selecteer een geldige invuller.",
+      "Voeg minstens een keuzeoptie toe.",
       "Koppel minstens een scope aan deze vraag.",
       "Er is geen actieve evaluatierubriek gevonden.",
       "Globale evaluatievragen kunnen alleen door groepsbeheer worden gewijzigd.",

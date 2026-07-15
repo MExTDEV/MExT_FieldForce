@@ -14,25 +14,25 @@ export type FicheSectionId =
   | "actionPoints"
   | "performanceCircle"
   | "kpis"
+  | "evaluations"
   | "contactMoments"
   | "retrainings"
   | "salesTrainings"
   | "helpRequests"
-  | "timeline"
-  | "productAnalysis";
+  | "timeline";
 
 export type FicheTabId =
   | "overview"
   | "performanceCircle"
   | "personalCriteria"
-  | "kpis"
+  | "actionPoints"
+  | "helpRequests"
   | "coachings"
+  | "kpis"
+  | "evaluations"
   | "contactMoments"
   | "retrainings"
   | "salesTrainings"
-  | "helpRequests"
-  | "actionPoints"
-  | "productAnalysis"
   | "timeline";
 
 type FicheVisibilityContext = {
@@ -54,26 +54,26 @@ export const ficheSectionRules: FicheSectionRule[] = [
   { id: "actionPoints", moduleCode: "ACTIEPUNTEN", permissions: ["modulePreparation"] },
   { id: "performanceCircle", moduleCode: "RAPPORTERING", permissions: ["moduleReporting", "performanceView"] },
   { id: "kpis", moduleCode: "RAPPORTERING", permissions: ["moduleReporting", "performanceScoresView"] },
+  { id: "evaluations", moduleCode: "TUSSENTIJDSE_EVALUATIES", permissions: ["menu.coaching.starterEvaluations"] },
   { id: "contactMoments", moduleCode: "CONTACTMOMENTEN", permissions: ["modulePreparation"] },
   { id: "retrainings", moduleCode: "RETRAININGEN", permissions: ["modulePreparation"] },
   { id: "salesTrainings", moduleCode: "SALESTRAININGEN", permissions: ["modulePreparation"] },
   { id: "helpRequests", moduleCode: "HULPAANVRAGEN", permissions: ["modulePreparation"] },
-  { id: "productAnalysis", moduleCode: "RAPPORTERING", permissions: ["moduleReporting", "performanceScoresView"] },
 ];
 
-export const ficheTabDefinitions: { id: FicheTabId; label: string; section: FicheSectionId }[] = [
-  { id: "overview", label: "overzicht", section: "overview" },
-  { id: "performanceCircle", label: "Prestatiecirkel", section: "performanceCircle" },
-  { id: "personalCriteria", label: "persoonlijke criteria", section: "personalCriteria" },
-  { id: "kpis", label: "KPI's", section: "kpis" },
-  { id: "coachings", label: "begeleidingen", section: "coachings" },
-  { id: "contactMoments", label: "contactmomenten", section: "contactMoments" },
-  { id: "retrainings", label: "retrainingen", section: "retrainings" },
-  { id: "salesTrainings", label: "sales trainingen", section: "salesTrainings" },
-  { id: "helpRequests", label: "hulpaanvragen", section: "helpRequests" },
-  { id: "actionPoints", label: "actiepunten", section: "actionPoints" },
-  { id: "productAnalysis", label: "productanalyse", section: "productAnalysis" },
-  { id: "timeline", label: "tijdlijn", section: "timeline" },
+export const ficheTabDefinitions: { id: FicheTabId; translationKey: string; section: FicheSectionId }[] = [
+  { id: "overview", translationKey: "myTeam.profile.tab.overview", section: "overview" },
+  { id: "performanceCircle", translationKey: "myTeam.profile.tab.performanceCircle", section: "performanceCircle" },
+  { id: "personalCriteria", translationKey: "myTeam.profile.tab.personalCriteria", section: "personalCriteria" },
+  { id: "actionPoints", translationKey: "myTeam.profile.tab.actionPoints", section: "actionPoints" },
+  { id: "helpRequests", translationKey: "myTeam.profile.tab.helpRequests", section: "helpRequests" },
+  { id: "coachings", translationKey: "myTeam.profile.tab.coachings", section: "coachings" },
+  { id: "kpis", translationKey: "myTeam.profile.tab.kpis", section: "kpis" },
+  { id: "evaluations", translationKey: "myTeam.profile.tab.evaluations", section: "evaluations" },
+  { id: "contactMoments", translationKey: "myTeam.profile.tab.contactMoments", section: "contactMoments" },
+  { id: "retrainings", translationKey: "myTeam.profile.tab.retrainings", section: "retrainings" },
+  { id: "salesTrainings", translationKey: "myTeam.profile.tab.salesTrainings", section: "salesTrainings" },
+  { id: "timeline", translationKey: "myTeam.profile.tab.timeline", section: "timeline" },
 ];
 
 const timelineSections: FicheSectionId[] = [

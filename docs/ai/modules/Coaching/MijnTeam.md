@@ -77,11 +77,33 @@ Possible content:
 - Coaching history;
 - Performance Circle;
 - KPI;
+- Tussentijdse evaluaties;
 - Action Points;
 - Contactmomenten;
 - relevant timeline items.
 
 Disabled modules do not leave empty tabs or inaccessible links.
+
+The employee fiche tab order is:
+
+1. Overzicht
+2. Prestatiecirkel
+3. Persoonlijke Criteria
+4. Actiepunten
+5. Hulpaanvragen
+6. Begeleidingen
+7. KPI's
+8. Evaluaties
+9. Contactmomenten
+10. Retrainingen
+11. Sales Trainingen
+12. Tijdlijn
+
+Productanalyse is not a FieldForce profile module and must not appear in this menu.
+
+The fiche header shows the person's team, country, role/level, e-mail and phone when available. Contact links use semantic `mailto:` and `tel:` links and must not be repeated in the body.
+
+The Begeleidingen tab may show the official total score from the shared performance dataset (`overallScore`). Missing or not-yet-visible scores are shown as a neutral dash, not as zero.
 
 ---
 

@@ -16,6 +16,7 @@ export type StarterEvaluationAnswerType =
   | "CURRENCY"
   | "SCORE"
   | "CHOICE"
+  | "MULTI_CHOICE"
   | "DATE"
   | "SYSTEM"
   | "LINKED_CRITERION"
@@ -63,6 +64,7 @@ export type StarterEvaluationQuestionSeed = {
   required?: boolean;
   active?: boolean;
   answerType: StarterEvaluationAnswerType;
+  options?: string[];
   assignee: StarterEvaluationAssignee;
   moments: StarterEvaluationMoment[];
   scopeType?: CriterionScopeType;
@@ -278,13 +280,14 @@ export function dueStarterEvaluationMoments(startDate: Date, referenceDate = new
 
 export function canStartStarterEvaluation(actor: MockUser) {
   return manualStarterEvaluationRoles.has(actor.role) &&
+    actor.permissions?.starterEvaluationsExecute !== false &&
     actor.permissions?.["menu.coaching.starterEvaluations"] !== false &&
     actor.permissions?.modulePreparation !== false;
 }
 
 export function canStartStarterEvaluationForRepresentative(
   actor: MockUser,
-  representative: { id: string; representativeId?: string | null; role: Role | string; country: Country | string; teamId?: string | null }
+  representative: { id: string; representativeId?: string | null; representativeLevel?: RepresentativeLevel | string | null; role: Role | string; country: Country | string; teamId?: string | null }
 ) {
   if (!canStartStarterEvaluation(actor)) return false;
   if (representative.role !== "REPRESENTATIVE") return false;

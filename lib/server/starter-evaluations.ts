@@ -86,11 +86,12 @@ export async function ensureStarterEvaluationConfiguration(tx: Prisma.Transactio
         required: question.required ?? false,
         active: question.active ?? true,
         answerType: question.answerType,
+        optionsJson: question.options ? JSON.stringify(question.options) : null,
         assignee: question.assignee,
         momentsJson: momentsJson(question.moments),
         scopeType: question.scopeType ?? "GLOBAL",
         scopeKey: question.scopeKey ?? "GLOBAL",
-      },
+      } as unknown as Prisma.StarterEvaluationQuestionUncheckedCreateInput,
       update: {
         sectionId,
         textNl: question.textNl,
@@ -165,17 +166,25 @@ export async function generateDueStarterEvaluations(referenceDate = new Date()):
 
 export async function listManualStarterEvaluationCandidates(actor: MockUser) {
   if (!canStartStarterEvaluation(actor)) return [];
+  return searchManualStarterEvaluationCandidates(actor, "");
+}
+
+export async function searchManualStarterEvaluationCandidates(actor: MockUser, query: string, limit = 50) {
+  if (!canStartStarterEvaluation(actor)) return [];
+  const normalizedQuery = normalizeCandidateSearchValue(query);
+  const resultLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 50;
   const representatives = await prisma.user.findMany({
     where: {
       active: true,
       role: "REPRESENTATIVE",
-      representativeLevel: "STARTER",
     },
     select: {
       id: true,
       representativeId: true,
       firstName: true,
       lastName: true,
+      email: true,
+      avatarUrl: true,
       role: true,
       country: true,
       teamId: true,
@@ -187,9 +196,29 @@ export async function listManualStarterEvaluationCandidates(actor: MockUser) {
   });
   return representatives
     .filter((representative) => canStartStarterEvaluationForRepresentative(actor, representative))
+    .filter((representative) => {
+      if (!normalizedQuery) return true;
+      const haystack = normalizeCandidateSearchValue([
+        representative.firstName,
+        representative.lastName,
+        `${representative.firstName} ${representative.lastName}`,
+        representative.email,
+        representative.representativeId ?? "",
+        representative.representativeLevel,
+        representative.country,
+        representative.team?.name ?? "",
+      ].join(" "));
+      return haystack.includes(normalizedQuery);
+    })
+    .slice(0, resultLimit)
     .map((representative) => ({
       id: representative.id,
       name: `${representative.firstName} ${representative.lastName}`.trim(),
+      email: representative.email,
+      initials: `${representative.firstName[0] ?? ""}${representative.lastName[0] ?? ""}`.toUpperCase(),
+      avatarUrl: representative.avatarUrl ?? "",
+      representativeId: representative.representativeId ?? "",
+      representativeLevel: representative.representativeLevel,
       country: representative.country,
       teamId: representative.teamId,
       teamName: representative.team?.name ?? "",
@@ -211,7 +240,6 @@ export async function createManualStarterEvaluation(input: {
       id: input.representativeId,
       active: true,
       role: "REPRESENTATIVE",
-      representativeLevel: "STARTER",
     },
     select: {
       id: true,
@@ -226,7 +254,7 @@ export async function createManualStarterEvaluation(input: {
       team: { select: { name: true, primaryLeaderId: true } },
     },
   });
-  if (!representative) badRequest("Selecteer een geldige starter.");
+  if (!representative) badRequest("Selecteer een geldige vertegenwoordiger.");
   if (!canStartStarterEvaluationForRepresentative(input.actor, representative)) {
     forbidden("Deze vertegenwoordiger valt buiten je toegestane scope.");
   }
@@ -426,8 +454,7 @@ async function snapshotEvaluationForm(
       },
     });
     for (const question of applicableQuestions) {
-      await tx.starterEvaluationQuestionSnapshot.create({
-        data: {
+      const questionSnapshotData = {
           evaluationId,
           sectionSnapshotId: sectionSnapshot.id,
           sourceQuestionId: question.id,
@@ -437,17 +464,20 @@ async function snapshotEvaluationForm(
           textDe: question.textDe,
           helpNl: question.helpNl,
           helpFr: question.helpFr,
-          helpDe: question.helpDe,
-          sortOrder: question.sortOrder,
-          required: question.required,
-          answerType: question.answerType,
-          assignee: question.assignee,
+            helpDe: question.helpDe,
+            sortOrder: question.sortOrder,
+            required: question.required,
+            answerType: question.answerType,
+            optionsJson: (question as { optionsJson?: string | null }).optionsJson ?? null,
+            assignee: question.assignee,
           momentsJson: question.momentsJson,
           appliedScopeType: question.scopeType,
           appliedScopeKey: question.scopeKey,
           linkedCriterionType: question.linkedCriterionType,
           linkedCriterionId: question.linkedCriterionId,
-        },
+        };
+      await tx.starterEvaluationQuestionSnapshot.create({
+        data: questionSnapshotData as unknown as Prisma.StarterEvaluationQuestionSnapshotUncheckedCreateInput,
       });
     }
   }
@@ -466,6 +496,7 @@ function dedupeApplicableQuestions<
     sortOrder: number;
     required: boolean;
     answerType: string;
+    optionsJson?: string | null;
     assignee: string;
     linkedCriterionType: string | null;
     linkedCriterionId: string | null;
@@ -573,4 +604,12 @@ function inferMomentFromEvaluationDate(startDate: Date | null, evaluationDate: D
   const match = (Object.entries(milestones) as [StarterEvaluationMoment, Date][])
     .find(([, date]) => date.toISOString().slice(0, 10) === iso);
   return match?.[0] ?? null;
+}
+
+function normalizeCandidateSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }

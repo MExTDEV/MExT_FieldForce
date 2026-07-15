@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Interactieve visualisatie van de volledige FieldForce coachingworkflow.">
+  <title>FieldForce — Coachingworkflow</title>
+  <style>
+    :root {
+      --ink: #142b31;
+      --muted: #61747a;
+      --line: #dce6e5;
+      --paper: #f5f7f4;
+      --card: #ffffff;
+      --navy: #102b31;
+      --navy-2: #183d44;
+      --mint: #61d6b4;
+      --mint-soft: #dff8ef;
+      --blue: #5177f3;
+      --blue-soft: #e9eeff;
+      --amber: #f5aa45;
+      --amber-soft: #fff0d9;
+      --red: #dd5f62;
+      --red-soft: #fde8e8;
+      --shadow: 0 18px 60px rgba(23, 52, 58, .09);
+      --radius-lg: 24px;
+      --radius-md: 17px;
+      --radius-sm: 12px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 79% 4%, rgba(97, 214, 180, .15), transparent 24rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    button:focus-visible, a:focus-visible, select:focus-visible {
+      outline: 3px solid rgba(81, 119, 243, .35);
+      outline-offset: 3px;
+    }
+
+    .app-shell { min-height: 100vh; }
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      width: 250px;
+      display: flex;
+      flex-direction: column;
+      padding: 28px 20px 22px;
+      color: #f6fffc;
+      background:
+        radial-gradient(circle at 12% 4%, rgba(97, 214, 180, .22), transparent 14rem),
+        var(--navy);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
+    .brand-mark {
+      width: 39px; height: 39px; display: grid; place-items: center;
+      border-radius: 12px; color: var(--navy); background: var(--mint);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
+    }
+    .brand-name { font-weight: 780; letter-spacing: -.02em; }
+    .brand-tag { display: block; color: #9eb9b7; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+
+    .side-nav { display: grid; gap: 8px; margin-top: 48px; }
+    .nav-link {
+      display: flex; align-items: center; gap: 12px; padding: 11px 13px;
+      border: 0; border-radius: 12px; color: #aac1c0; background: transparent;
+      cursor: pointer; transition: .2s ease;
+    }
+    .nav-link:hover, .nav-link.active { color: white; background: rgba(255,255,255,.085); }
+    .nav-link.active::before { content: ""; width: 4px; height: 18px; border-radius: 5px; background: var(--mint); }
+    .nav-link:not(.active)::before { content: ""; width: 4px; height: 18px; }
+    .nav-icon { width: 18px; height: 18px; opacity: .9; }
+
+    .side-scenario {
+      margin-top: auto; padding: 16px; border: 1px solid rgba(255,255,255,.11);
+      border-radius: 17px; background: rgba(255,255,255,.06);
+    }
+    .side-scenario .label { color: #8eaaa8; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .side-scenario strong { display: block; margin: 7px 0 4px; font-size: 14px; }
+    .side-scenario p { margin: 0 0 14px; color: #acc2c0; font-size: 12px; }
+    .ghost-light {
+      width: 100%; padding: 9px 10px; border: 1px solid rgba(255,255,255,.15); border-radius: 10px;
+      color: white; background: transparent; cursor: pointer;
+    }
+    .ghost-light:hover { background: rgba(255,255,255,.08); }
+
+    .main { margin-left: 250px; }
+    .topbar {
+      position: sticky; top: 0; z-index: 15; height: 72px; padding: 0 40px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(245, 247, 244, .88); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(220,230,229,.75);
+    }
+    .breadcrumb { font-size: 13px; color: var(--muted); }
+    .breadcrumb strong { color: var(--ink); }
+    .top-actions, .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .live-pill {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.72);
+      font-size: 12px; font-weight: 700;
+    }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 5px rgba(97,214,180,.18); }
+    .avatar {
+      width: 37px; height: 37px; display: grid; place-items: center; border-radius: 50%;
+      color: white; background: linear-gradient(135deg, var(--blue), #7c91ea); font-size: 12px; font-weight: 800;
+    }
+    .mobile-menu { display: none; border: 0; background: transparent; cursor: pointer; }
+
+    .content { width: min(1420px, calc(100% - 64px)); margin: 0 auto; padding: 36px 0 72px; }
+    section { scroll-margin-top: 92px; }
+    .section-kicker { margin: 0 0 8px; color: #237a68; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 760px; margin-bottom: 18px; font-size: clamp(36px, 4.4vw, 67px); line-height: .98; letter-spacing: -.055em; }
+    h2 { margin-bottom: 7px; font-size: clamp(27px, 3vw, 39px); letter-spacing: -.035em; line-height: 1.12; }
+    h3 { letter-spacing: -.02em; }
+    .lede { max-width: 730px; margin-bottom: 26px; color: var(--muted); font-size: 16px; }
+
+    .hero {
+      position: relative; min-height: 465px; overflow: hidden; padding: 48px;
+      display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); align-items: center; gap: 28px;
+      border: 1px solid rgba(220,230,229,.86); border-radius: 30px; background: rgba(255,255,255,.86); box-shadow: var(--shadow);
+    }
+    .hero::before {
+      content: ""; position: absolute; width: 480px; height: 480px; right: -210px; top: -270px;
+      border: 75px solid rgba(97,214,180,.13); border-radius: 50%;
+    }
+    .hero::after {
+      content: ""; position: absolute; width: 260px; height: 260px; right: 8%; bottom: -205px;
+      border: 55px solid rgba(81,119,243,.1); border-radius: 50%;
+    }
+    .hero-copy { position: relative; z-index: 2; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 11px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      padding: 12px 17px; border: 1px solid transparent; border-radius: 12px; font-size: 13px; font-weight: 760;
+      cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { color: white; background: var(--ink); box-shadow: 0 10px 24px rgba(20,43,49,.17); }
+    .btn-primary:hover { background: #0b2227; }
+    .btn-secondary { border-color: var(--line); background: white; }
+    .btn-secondary:hover { background: #f8fbfa; }
+    .btn-danger { color: #9f383b; background: var(--red-soft); }
+    .btn-small { padding: 9px 12px; font-size: 12px; }
+
+    .hero-card {
+      position: relative; z-index: 2; align-self: stretch; padding: 24px; display: flex; flex-direction: column; justify-content: space-between;
+      border-radius: 23px; color: white; background:
+        linear-gradient(145deg, rgba(255,255,255,.07), transparent 50%), var(--navy);
+      box-shadow: 0 25px 45px rgba(16,43,49,.2);
+    }
+    .hero-card-head { display: flex; align-items: center; justify-content: space-between; }
+    .tiny-label { color: #9ab6b4; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    .status-dot { display: inline-flex; align-items: center; gap: 6px; color: #c7dad8; font-size: 11px; }
+    .status-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); }
+    .session-title { margin: 30px 0 20px; }
+    .session-title h3 { margin: 5px 0; font-size: 24px; }
+    .session-title p { color: #a9bfbd; font-size: 13px; }
+    .person-row { display: flex; align-items: center; gap: 11px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,.1); }
+    .person-avatar { width: 35px; height: 35px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--navy); background: var(--mint); font-size: 11px; font-weight: 850; }
+    .person-avatar.alt { color: white; background: var(--blue); }
+    .person-row strong { display: block; font-size: 12px; }
+    .person-row span { color: #9bb4b2; font-size: 11px; }
+    .progress-meta { display: flex; justify-content: space-between; margin: 20px 0 7px; color: #b5c8c6; font-size: 11px; }
+    .progress-track { height: 6px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.12); }
+    .progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--mint); transition: width .45s ease; }
+
+    .quick-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+    .stat-card { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.72); }
+    .stat-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; background: var(--mint-soft); color: #267763; }
+    .stat-icon.blue { color: #3e5ed1; background: var(--blue-soft); }
+    .stat-icon.amber { color: #996019; background: var(--amber-soft); }
+    .stat-card strong { display: block; margin-top: 16px; font-size: 20px; letter-spacing: -.03em; }
+    .stat-card p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+
+    .section-block { margin-top: 86px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 25px; }
+    .section-head p:not(.section-kicker) { margin: 0; color: var(--muted); font-size: 14px; }
+    .filter-wrap { display: flex; align-items: center; gap: 9px; }
+    .filter-wrap label { color: var(--muted); font-size: 12px; }
+    .role-select {
+      min-width: 190px; padding: 10px 36px 10px 12px; border: 1px solid var(--line); border-radius: 11px;
+      color: var(--ink); background: white; cursor: pointer;
+    }
+
+    .workflow-shell { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: white; box-shadow: var(--shadow); }
+    .workflow-top { padding: 22px 24px 16px; border-bottom: 1px solid var(--line); }
+    .scenario-state { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .scenario-label { display: flex; align-items: center; gap: 11px; }
+    .scenario-number { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; color: #245a50; background: var(--mint-soft); font-size: 11px; font-weight: 850; }
+    .scenario-label strong { display: block; font-size: 13px; }
+    .scenario-label span { color: var(--muted); font-size: 11px; }
+    .scenario-progress { width: min(270px, 32vw); }
+    .scenario-progress .progress-track { background: #edf2f1; }
+    .scenario-progress .progress-fill { background: var(--blue); }
+
+    .workflow-scroll { overflow-x: auto; padding: 25px 24px 18px; scrollbar-width: thin; scrollbar-color: #c9d8d6 transparent; }
+    .workflow-rail { position: relative; min-width: 1050px; display: grid; grid-template-columns: repeat(8, minmax(105px, 1fr)); gap: 13px; }
+    .workflow-rail::before { content: ""; position: absolute; left: 7%; right: 7%; top: 23px; height: 2px; background: #dfe9e7; }
+    .stage-button { position: relative; z-index: 2; padding: 0 5px 10px; border: 0; text-align: left; background: transparent; cursor: pointer; }
+    .stage-orb {
+      width: 46px; height: 46px; display: grid; place-items: center; margin-bottom: 13px;
+      border: 5px solid white; border-radius: 50%; color: #6a7d81; background: #e7eeec;
+      box-shadow: 0 0 0 1px #dce6e4; font-size: 12px; font-weight: 850; transition: .2s ease;
+    }
+    .stage-button:hover .stage-orb { transform: translateY(-2px); }
+    .stage-button.active .stage-orb { color: white; background: var(--blue); box-shadow: 0 0 0 3px rgba(81,119,243,.16); }
+    .stage-button.complete .stage-orb { color: #155c4d; background: var(--mint); }
+    .stage-button.filtered-out { opacity: .27; }
+    .stage-name { display: block; margin-bottom: 4px; color: var(--ink); font-size: 12px; font-weight: 780; }
+    .stage-actor { display: block; color: var(--muted); font-size: 10px; }
+
+    .detail-grid { display: grid; grid-template-columns: 1.1fr .75fr .85fr; border-top: 1px solid var(--line); }
+    .detail-panel { min-height: 300px; padding: 27px; }
+    .detail-panel + .detail-panel { border-left: 1px solid var(--line); }
+    .detail-overline { margin-bottom: 8px; color: var(--blue); font-size: 10px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    .detail-title { margin-bottom: 8px; font-size: 23px; }
+    .detail-summary { color: var(--muted); font-size: 13px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0 20px; }
+    .chip { padding: 6px 9px; border-radius: 999px; color: #40575d; background: #eff4f3; font-size: 10px; font-weight: 720; }
+    .chip.primary { color: #3153c4; background: var(--blue-soft); }
+    .chip.warning { color: #8b5712; background: var(--amber-soft); }
+    .checklist { display: grid; gap: 11px; margin: 0; padding: 0; list-style: none; }
+    .checklist li { display: grid; grid-template-columns: 18px 1fr; gap: 9px; color: #496066; font-size: 12px; }
+    .check-icon { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 6px; color: #1c6d5c; background: var(--mint-soft); font-size: 10px; font-weight: 900; }
+    .panel-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+    .panel-title h3 { margin: 0; font-size: 14px; }
+    .panel-title span { color: var(--muted); font-size: 10px; }
+    .decision-list { display: grid; gap: 9px; }
+    .decision-btn {
+      width: 100%; padding: 11px 12px; display: flex; align-items: center; justify-content: space-between;
+      border: 1px solid var(--line); border-radius: 11px; text-align: left; background: white; cursor: pointer;
+    }
+    .decision-btn:hover { border-color: #acbfbc; background: #fbfdfc; }
+    .decision-btn.selected { border-color: var(--blue); background: var(--blue-soft); }
+    .decision-btn.danger.selected { border-color: var(--red); background: var(--red-soft); }
+    .decision-btn strong { font-size: 12px; }
+    .decision-btn span { color: var(--muted); font-size: 10px; }
+    .empty-decision { padding: 14px; border-radius: 12px; color: var(--muted); background: #f4f7f6; font-size: 12px; }
+    .deadline-card { padding: 14px; border-radius: 13px; background: var(--navy); color: white; }
+    .deadline-card strong { display: block; margin: 4px 0; font-size: 14px; }
+    .deadline-card p { margin: 0; color: #aec4c2; font-size: 11px; }
+    .action-row { display: flex; gap: 8px; margin-top: 17px; }
+    .action-row .btn { flex: 1; }
+
+    .activity { display: grid; gap: 0; }
+    .activity-item { position: relative; display: grid; grid-template-columns: 18px 1fr; gap: 10px; padding-bottom: 16px; }
+    .activity-item:not(:last-child)::after { content: ""; position: absolute; left: 6px; top: 14px; bottom: 0; width: 1px; background: var(--line); }
+    .activity-dot { position: relative; z-index: 1; width: 13px; height: 13px; margin-top: 2px; border: 3px solid white; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 1px #badbd2; }
+    .activity-item.alert .activity-dot { background: var(--amber); box-shadow: 0 0 0 1px #e5c28e; }
+    .activity-copy strong { display: block; font-size: 11px; }
+    .activity-copy p { margin: 2px 0 0; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .activity-copy time { color: #8c9b9e; font-size: 9px; }
+
+    .rules-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; margin-top: 16px; }
+    .rule-card { position: relative; overflow: hidden; min-height: 137px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; }
+    .rule-card::after { content: attr(data-day); position: absolute; right: 8px; bottom: -24px; color: rgba(20,43,49,.045); font-size: 80px; font-weight: 900; letter-spacing: -.08em; }
+    .rule-card .rule-day { color: var(--blue); font-size: 10px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    .rule-card strong { display: block; margin: 9px 0 5px; font-size: 15px; }
+    .rule-card p { position: relative; z-index: 1; margin: 0; color: var(--muted); font-size: 11px; }
+
+    .role-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+    .role-card { padding: 17px; border: 1px solid var(--line); border-radius: 15px; text-align: left; background: white; cursor: pointer; transition: .18s ease; }
+    .role-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(23,52,58,.08); }
+    .role-card.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(81,119,243,.1); }
+    .role-symbol { width: 34px; height: 34px; display: grid; place-items: center; margin-bottom: 13px; border-radius: 10px; background: var(--mint-soft); font-size: 13px; font-weight: 850; }
+    .role-card:nth-child(2) .role-symbol { background: var(--blue-soft); }
+    .role-card:nth-child(3) .role-symbol { background: var(--amber-soft); }
+    .role-card:nth-child(4) .role-symbol { background: #efeafd; }
+    .role-card:nth-child(5) .role-symbol { background: #e7f0f2; }
+    .role-card strong { display: block; font-size: 12px; }
+    .role-card span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+    .matrix-wrap { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: white; box-shadow: var(--shadow); }
+    .matrix-header { padding: 20px 23px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .matrix-header h3 { margin: 0; font-size: 15px; }
+    .matrix-header span { color: var(--muted); font-size: 11px; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; min-width: 830px; border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 14px 16px; border-bottom: 1px solid #edf2f1; text-align: center; }
+    th { color: #728286; background: #fbfcfc; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+    th:first-child, td:first-child { text-align: left; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr { transition: .15s ease; }
+    tbody tr.row-muted { opacity: .28; }
+    .permission { width: 21px; height: 21px; display: inline-grid; place-items: center; border-radius: 7px; font-size: 10px; font-weight: 900; }
+    .permission.yes { color: #196653; background: var(--mint-soft); }
+    .permission.view { color: #3758c8; background: var(--blue-soft); }
+    .permission.no { color: #9aa8aa; background: #f1f4f3; }
+    .matrix-note { padding: 14px 20px; color: var(--muted); background: #fbfcfc; border-top: 1px solid var(--line); font-size: 10px; }
+
+    .toast {
+      position: fixed; right: 25px; bottom: 25px; z-index: 50; max-width: 360px; padding: 14px 16px;
+      display: flex; align-items: flex-start; gap: 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
+      color: white; background: var(--navy); box-shadow: 0 18px 45px rgba(16,43,49,.28);
+      transform: translateY(130%); opacity: 0; transition: .28s ease;
+    }
+    .toast.visible { transform: translateY(0); opacity: 1; }
+    .toast-icon { width: 24px; height: 24px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; color: var(--navy); background: var(--mint); font-size: 12px; font-weight: 900; }
+    .toast strong { display: block; font-size: 12px; }
+    .toast span { display: block; margin-top: 2px; color: #a9c0be; font-size: 10px; }
+    .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @media (max-width: 1150px) {
+      .sidebar { width: 210px; }
+      .main { margin-left: 210px; }
+      .content { width: min(100% - 42px, 1200px); }
+      .hero { padding: 36px; }
+      .detail-grid { grid-template-columns: 1fr 1fr; }
+      .detail-panel:last-child { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
+      .activity { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .activity-item:not(:last-child)::after { display: none; }
+      .role-cards { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 800px) {
+      .sidebar { transform: translateX(-100%); transition: .25s ease; }
+      .sidebar.open { transform: translateX(0); box-shadow: 30px 0 70px rgba(10,31,35,.3); }
+      .main { margin-left: 0; }
+      .mobile-menu { display: grid; place-items: center; }
+      .topbar { height: 64px; padding: 0 20px; }
+      .content { width: calc(100% - 30px); padding-top: 20px; }
+      .hero { min-height: auto; padding: 28px; grid-template-columns: 1fr; }
+      .hero-card { min-height: 350px; }
+      .quick-stats, .rules-strip { grid-template-columns: 1fr; }
+      .section-block { margin-top: 58px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .filter-wrap { width: 100%; justify-content: space-between; }
+      .role-select { min-width: 0; flex: 1; }
+      .scenario-state { align-items: flex-start; flex-direction: column; }
+      .scenario-progress { width: 100%; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .detail-panel + .detail-panel, .detail-panel:last-child { border-left: 0; border-top: 1px solid var(--line); }
+      .activity { grid-template-columns: 1fr; }
+      .activity-item:not(:last-child)::after { display: block; }
+      .role-cards { grid-template-columns: repeat(2, 1fr); }
+      .live-pill { display: none; }
+    }
+
+    @media (max-width: 480px) {
+      .topbar { padding: 0 15px; }
+      .breadcrumb span { display: none; }
+      .hero { padding: 22px; border-radius: 23px; }
+      h1 { font-size: 38px; }
+      .hero-actions { display: grid; }
+      .quick-stats { grid-template-columns: 1fr; }
+      .detail-panel { padding: 22px; }
+      .role-cards { grid-template-columns: 1fr; }
+      .action-row { flex-direction: column; }
+      .toast { left: 15px; right: 15px; bottom: 15px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Hoofdnavigatie">
+      <a class="brand" href="#overzicht" aria-label="FieldForce coachingworkflow">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="23" height="23" viewBox="0 0 24 24" fill="none"><path d="M6 7.2h12M6 12h7.5M6 16.8h9.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="17.5" cy="12" r="2.5" fill="currentColor"/></svg>
+        </span>
+        <span><span class="brand-name">FieldForce</span><span class="brand-tag">Grow. Coach. Perform.</span></span>
+      </a>
+
+      <nav class="side-nav">
+        <a class="nav-link active" href="#overzicht" data-nav="overzicht">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          Overzicht
+        </a>
+        <a class="nav-link" href="#workflow" data-nav="workflow">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="2.5" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="6" r="2.5" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 11 15.5 7M8.5 13l7 4" stroke="currentColor" stroke-width="1.8"/></svg>
+          Workflow
+        </a>
+        <a class="nav-link" href="#rollen" data-nav="rollen">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none"><path d="M16 20v-1.5c0-2.5-2-4.5-4.5-4.5h-3C6 14 4 16 4 18.5V20M10 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7-1a2.5 2.5 0 0 1 0 5m3 6v-1.5a4 4 0 0 0-2.5-3.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          Rollen &amp; rechten
+        </a>
+      </nav>
+
+      <div class="side-scenario">
+        <span class="label">Demomodus</span>
+        <strong>Begeleiding FF-2026-0714</strong>
+        <p>Alle namen en gegevens zijn fictieve voorbeeldgegevens.</p>
+        <button class="ghost-light" id="resetScenario" type="button">Scenario opnieuw starten</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Navigatie openen" aria-expanded="false">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="breadcrumb"><span>Procesbibliotheek&nbsp; / &nbsp;</span><strong>Coachingworkflow</strong></div>
+        </div>
+        <div class="top-actions">
+          <span class="live-pill"><span class="pulse"></span>Interactief scenario</span>
+          <span class="avatar" title="Sara Verhaeghe — Verkoopleider">SV</span>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="overzicht" aria-labelledby="page-title">
+          <div class="hero">
+            <div class="hero-copy">
+              <p class="section-kicker">FieldForce procesvisualisatie</p>
+              <h1 id="page-title">Van planning tot akkoord, zonder blinde vlekken.</h1>
+              <p class="lede">Doorloop een volledige begeleiding, ontdek wie wanneer aan zet is en test de belangrijkste beslismomenten in een realistisch voorbeeldscenario.</p>
+              <div class="hero-actions">
+                <a class="btn btn-primary" href="#workflow">
+                  Start de workflow
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+                <a class="btn btn-secondary" href="#rollen">Bekijk rollen &amp; rechten</a>
+              </div>
+            </div>
+
+            <article class="hero-card" aria-label="Voorbeeldbegeleiding">
+              <div>
+                <div class="hero-card-head"><span class="tiny-label">Actief dossier</span><span class="status-dot" id="heroStatus">Gepland</span></div>
+                <div class="session-title">
+                  <span class="tiny-label">Donderdag 16 juli · 09:00</span>
+                  <h3>Coaching op klantenbezoek</h3>
+                  <p>Team West-Vlaanderen · Roeselare</p>
+                </div>
+                <div class="person-row"><span class="person-avatar">NJ</span><span><strong>Nora Janssens</strong><span>Vertegenwoordiger · begeleide gebruiker</span></span></div>
+                <div class="person-row"><span class="person-avatar alt">BD</span><span><strong>Bram De Clercq</strong><span>Professional · uitvoerder</span></span></div>
+              </div>
+              <div>
+                <div class="progress-meta"><span id="heroProgressLabel">Stap 1 van 8</span><span id="heroProgressPercent">0%</span></div>
+                <div class="progress-track"><div class="progress-fill" id="heroProgress"></div></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="quick-stats" role="group" aria-label="Samenvatting van de workflow">
+            <article class="stat-card"><span class="stat-icon" aria-hidden="true">8</span><strong>8 processtappen</strong><p>Van inplannen tot definitief afsluiten.</p></article>
+            <article class="stat-card"><span class="stat-icon blue" aria-hidden="true">5</span><strong>5 actieve rollen</strong><p>Met heldere lees-, schrijf- en beslisrechten.</p></article>
+            <article class="stat-card"><span class="stat-icon amber" aria-hidden="true">3</span><strong>3 deadlines</strong><p>2, 5 en 14 werkdagen sturen de opvolging.</p></article>
+          </div>
+        </section>
+
+        <section id="workflow" class="section-block" aria-labelledby="workflow-title">
+          <div class="section-head">
+            <div><p class="section-kicker">Klik, kies en doorloop</p><h2 id="workflow-title">De coachingworkflow</h2><p>Selecteer een stap voor uitleg of speel het scenario chronologisch af.</p></div>
+            <div class="filter-wrap"><label for="roleFilter">Toon stappen voor</label><select class="role-select" id="roleFilter"><option value="all">Alle rollen</option><option value="planner">Planner</option><option value="executor">Uitvoerder</option><option value="representative">Vertegenwoordiger</option><option value="leader">Verkoopleider</option><option value="system">Systeem</option></select></div>
+          </div>
+
+          <div class="workflow-shell">
+            <div class="workflow-top">
+              <div class="scenario-state">
+                <div class="scenario-label"><span class="scenario-number" id="scenarioStep">01</span><span><strong id="scenarioTitle">Planning klaarzetten</strong><span id="scenarioSubtitle">Sara Verhaeghe is nu aan zet</span></span></div>
+                <div class="scenario-progress"><div class="progress-meta"><span>Scenariovoortgang</span><span id="scenarioProgressText">0 / 7 overgangen</span></div><div class="progress-track"><div class="progress-fill" id="scenarioProgress"></div></div></div>
+              </div>
+            </div>
+
+            <div class="workflow-scroll" role="group" aria-label="Processtappen">
+              <div class="workflow-rail" id="workflowRail"></div>
+            </div>
+
+            <div class="detail-grid">
+              <article class="detail-panel" aria-live="polite">
+                <div class="detail-overline" id="detailOverline"></div>
+                <h3 class="detail-title" id="detailTitle">Planning klaarzetten</h3>
+                <p class="detail-summary" id="detailSummary"></p>
+                <div class="chips" id="detailChips"></div>
+                <ul class="checklist" id="detailChecklist"></ul>
+              </article>
+              <article class="detail-panel">
+                <div class="panel-title"><h3>Beslismoment</h3><span id="decisionHint"></span></div>
+                <div id="decisionContent"></div>
+                <div class="action-row" id="stageActions"></div>
+              </article>
+              <aside class="detail-panel" aria-label="Dossierverloop">
+                <div class="panel-title"><h3>Live dossierverloop</h3><span>FF-2026-0714</span></div>
+                <div class="activity" id="activityLog"></div>
+              </aside>
+            </div>
+          </div>
+
+          <div class="rules-strip" role="group" aria-label="Automatische termijnen">
+            <article class="rule-card" data-day="2"><span class="rule-day">Na 2 werkdagen</span><strong>Uitvoerder finaliseert</strong><p>De inhoud kan nog worden afgewerkt; de planner ziet dat de termijn loopt.</p></article>
+            <article class="rule-card" data-day="5"><span class="rule-day">Na 5 werkdagen</span><strong>Automatisch akkoord</strong><p>Bij uitblijven van reactie volgt automatisch akkoord, met mail en notificatie.</p></article>
+            <article class="rule-card" data-day="14"><span class="rule-day">Na 14 dagen</span><strong>Alleen lezen of verbergen</strong><p>De ingestelde bewaarkeuze bepaalt wat de vertegenwoordiger daarna nog ziet.</p></article>
+          </div>
+        </section>
+
+        <section id="rollen" class="section-block" aria-labelledby="roles-title">
+          <div class="section-head"><div><p class="section-kicker">Verantwoordelijkheden</p><h2 id="roles-title">Wie mag wat?</h2><p>Klik op een rol om de bijbehorende rechten in de matrix uit te lichten.</p></div></div>
+
+          <div class="role-cards" id="roleCards">
+            <button class="role-card" type="button" data-role="planner"><span class="role-symbol">PL</span><strong>Planner</strong><span>Plant, stuurt terug, wijzigt en sluit administratief.</span></button>
+            <button class="role-card" type="button" data-role="executor"><span class="role-symbol">UV</span><strong>Uitvoerder</strong><span>Start en voert de begeleiding inhoudelijk uit.</span></button>
+            <button class="role-card" type="button" data-role="representative"><span class="role-symbol">VW</span><strong>Vertegenwoordiger</strong><span>Leest, reflecteert en geeft formeel akkoord.</span></button>
+            <button class="role-card" type="button" data-role="leader"><span class="role-symbol">VL</span><strong>Verkoopleider</strong><span>Volgt team, actiepunten en uitzonderingen op.</span></button>
+            <button class="role-card" type="button" data-role="system"><span class="role-symbol">SY</span><strong>Systeem</strong><span>Bewaakt termijnen, zichtbaarheid en notificaties.</span></button>
+          </div>
+
+          <div class="matrix-wrap">
+            <div class="matrix-header"><h3>Rechtenmatrix begeleiding</h3><span><b>✓</b> beheren · <b>○</b> bekijken · <b>—</b> geen recht</span></div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Handeling</th><th data-col="planner">Planner</th><th data-col="executor">Uitvoerder</th><th data-col="representative">Vertegenwoordiger</th><th data-col="leader">Verkoopleider</th><th data-col="system">Systeem</th></tr></thead>
+                <tbody>
+                  <tr data-row-roles="planner leader"><td>Begeleiding inplannen</td><td class="planner"><span class="permission yes">✓</span></td><td class="executor"><span class="permission no">—</span></td><td class="representative"><span class="permission no">—</span></td><td class="leader"><span class="permission yes">✓</span></td><td class="system"><span class="permission no">—</span></td></tr>
+                  <tr data-row-roles="executor"><td>Inhoud invullen en finaliseren</td><td class="planner"><span class="permission view">○</span></td><td class="executor"><span class="permission yes">✓</span></td><td class="representative"><span class="permission view">○</span></td><td class="leader"><span class="permission view">○</span></td><td class="system"><span class="permission no">—</span></td></tr>
+                  <tr data-row-roles="planner leader"><td>Actiepunten goedkeuren of bijsturen</td><td class="planner"><span class="permission yes">✓</span></td><td class="executor"><span class="permission view">○</span></td><td class="representative"><span class="permission view">○</span></td><td class="leader"><span class="permission yes">✓</span></td><td class="system"><span class="permission no">—</span></td></tr>
+                  <tr data-row-roles="representative"><td>Reflectievragen beantwoorden</td><td class="planner"><span class="permission view">○</span></td><td class="executor"><span class="permission view">○</span></td><td class="representative"><span class="permission yes">✓</span></td><td class="leader"><span class="permission view">○</span></td><td class="system"><span class="permission no">—</span></td></tr>
+                  <tr data-row-roles="representative system"><td>Formeel akkoord of niet-akkoord</td><td class="planner"><span class="permission view">○</span></td><td class="executor"><span class="permission view">○</span></td><td class="representative"><span class="permission yes">✓</span></td><td class="leader"><span class="permission view">○</span></td><td class="system"><span class="permission yes">✓</span></td></tr>
+                  <tr data-row-roles="planner leader"><td>Administratief afsluiten</td><td class="planner"><span class="permission yes">✓</span></td><td class="executor"><span class="permission no">—</span></td><td class="representative"><span class="permission no">—</span></td><td class="leader"><span class="permission yes">✓</span></td><td class="system"><span class="permission no">—</span></td></tr>
+                  <tr data-row-roles="system"><td>Deadline en notificaties bewaken</td><td class="planner"><span class="permission view">○</span></td><td class="executor"><span class="permission view">○</span></td><td class="representative"><span class="permission view">○</span></td><td class="leader"><span class="permission view">○</span></td><td class="system"><span class="permission yes">✓</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="matrix-note">Managers boven de verkoopleider erven rechten volgens land-, team- en gebruikersscope. Professional en Expert kunnen uitvoeren, maar nooit zelf inplannen.</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span class="toast-icon">✓</span><span><strong id="toastTitle"></strong><span id="toastText"></span></span></div>
+  <div class="sr-only" id="liveRegion" aria-live="polite"></div>
+
+  <script>
+    const roles = {
+      planner: 'Planner', executor: 'Uitvoerder', representative: 'Vertegenwoordiger', leader: 'Verkoopleider', system: 'Systeem'
+    };
+
+    const stages = [
+      {
+        id: 'planning', title: 'Planning', verb: 'Planning klaarzetten', actor: 'Planner', actorName: 'Sara Verhaeghe', roles: ['planner', 'leader', 'system'],
+        summary: 'Een bevoegde manager plant de begeleiding in naam van de uitvoerder en bepaalt wie vooraf op de hoogte wordt gebracht.',
+        chips: ['Planner: Sara Verhaeghe', 'Uitvoerder: Bram De Clercq', '16 juli · 09:00'],
+        checklist: ['Datum, duur en begeleide gebruiker vastleggen', 'Professional of Expert als uitvoerder aanduiden', 'Verplaatsen of annuleren blijft mogelijk vóór de start'],
+        deadline: 'Voor de start', deadlineText: 'Datum en uur blijven aanpasbaar tot iemand “Begeleiding starten” kiest.',
+        decision: { key: 'notify', hint: 'Zichtbaarheid vóór de start', options: [
+          { value: 'yes', title: 'Vooraf verwittigen', text: 'Uitvoerder, vertegenwoordiger en VL krijgen bericht.' },
+          { value: 'no', title: 'Nog niet verwittigen', text: 'Vertegenwoordiger ziet het dossier pas vanaf akkoordflow.' }
+        ]}
+      },
+      {
+        id: 'preparation', title: 'Voorbereiding', verb: 'Bezoek voorbereiden', actor: 'Uitvoerder', actorName: 'Bram De Clercq', roles: ['executor', 'planner'],
+        summary: 'De uitvoerder bekijkt klantgegevens, eerdere afspraken, actiepunten, prestatiecirkels en recente resultaten als voorbereiding op het bezoek.',
+        chips: ['Contactfiche', 'Vorige actiepunten', 'Scoretabellen'],
+        checklist: ['Focusfasen selecteren', 'Openstaande actiepunten meenemen', 'Vorige ingevulde fases correct duiden'],
+        deadline: 'Tot startmoment', deadlineText: 'De voorbereiding blijft bewerkbaar tot de begeleiding officieel wordt gestart.'
+      },
+      {
+        id: 'start', title: 'Start', verb: 'Begeleiding starten', actor: 'Uitvoerder', actorName: 'Bram De Clercq', roles: ['executor', 'system'],
+        summary: 'De knop “Begeleiding starten” vergrendelt de planning. Vanaf dat moment is verplaatsen niet meer mogelijk en begint de uitvoering.',
+        chips: ['Locatiecontrole', 'Starttijd 09:00', 'Planning vergrendeld'],
+        checklist: ['Start expliciet registreren', 'Auditlog met gebruiker en tijd bewaren', 'Bij niet-start automatisch opvolgen'],
+        deadline: 'Op de geplande dag', deadlineText: 'Niet gestart? Dan markeert het systeem de afspraak als niet uitgevoerd en waarschuwt het planner en uitvoerder.',
+        decision: { key: 'started', hint: 'Op het geplande moment', options: [
+          { value: 'yes', title: 'Begeleiding starten', text: 'De uitvoering opent en planning wordt vergrendeld.' },
+          { value: 'no', title: 'Niet uitgevoerd', text: 'Planner en uitvoerder krijgen een waarschuwing.', danger: true }
+        ]}
+      },
+      {
+        id: 'execution', title: 'Uitvoering', verb: 'Coachen en observeren', actor: 'Uitvoerder', actorName: 'Bram De Clercq', roles: ['executor', 'representative'],
+        summary: 'Tijdens klantenbezoeken registreert de uitvoerder observaties, scores, prestatiecirkels en rijke tekst met behoud van opmaak.',
+        chips: ['KPI’s', 'Golden MExT Rules', 'WYSIWYG-notities'],
+        checklist: ['Alleen relevante fases scoren', 'Sterktes en aandachtspunten concreet formuleren', 'Afspraken koppelen aan observeerbaar gedrag'],
+        deadline: 'Tijdens begeleiding', deadlineText: 'Invoer wordt tussentijds bewaard; de begeleide vertegenwoordiger kan niet aanpassen.'
+      },
+      {
+        id: 'finalize', title: 'Afronden', verb: 'Verslag finaliseren', actor: 'Uitvoerder', actorName: 'Bram De Clercq', roles: ['executor', 'planner', 'system'],
+        summary: 'De uitvoerder rondt het begeleidingsverslag af en bezorgt het aan de planner voor inhoudelijke controle van de actiepunten.',
+        chips: ['Verslag compleet', 'Scores bewaard', 'Naar planner'],
+        checklist: ['Verplichte velden controleren', 'Opmaak in scherm en PDF behouden', 'Finalisatie als statuswijziging melden'],
+        deadline: 'Binnen 2 werkdagen', deadlineText: 'De uitvoerder kan alsnog afwerken; de planner ziet de termijn en open status.'
+      },
+      {
+        id: 'actions', title: 'Actiepunten', verb: 'Actiepunten controleren', actor: 'Planner', actorName: 'Sara Verhaeghe', roles: ['planner', 'leader', 'executor'],
+        summary: 'De planner controleert eerst de voorgestelde actiepunten en kan inhoud bijsturen zonder opnieuw akkoord van de uitvoerder.',
+        chips: ['2 actiepunten', 'Target + datum', 'Planner beslist'],
+        checklist: ['Titel, omschrijving en target valideren', 'Looptijd en producten controleren', 'Pas daarna voor akkoord versturen'],
+        deadline: 'Vóór verzending', deadlineText: 'Zonder goedgekeurde actiepunten kan het dossier niet naar de vertegenwoordiger.'
+      },
+      {
+        id: 'agreement', title: 'Akkoord', verb: 'Akkoord vragen', actor: 'Vertegenwoordiger', actorName: 'Nora Janssens', roles: ['representative', 'planner', 'system', 'leader'],
+        summary: 'De vertegenwoordiger beantwoordt eerst drie reflectievragen. Pas daarna wordt het verslag zichtbaar en kan formeel akkoord of gemotiveerd niet-akkoord volgen.',
+        chips: ['3 verplichte reflecties', 'Mail + bel + ping', 'Formele bevestiging'],
+        checklist: ['Aan welke KPI of Golden MExT Rule ga je werken?', 'Wat heb je geleerd en hoe ga je dit verbeteren?', 'Welk concreet doel wil je de komende weken bereiken?'],
+        deadline: 'Binnen 5 werkdagen', deadlineText: 'Geen reactie? Het systeem registreert automatisch akkoord en meldt dit aan betrokkenen.',
+        decision: { key: 'agreement', hint: 'Na invullen reflectievragen', options: [
+          { value: 'yes', title: 'Voor akkoord', text: 'Het dossier gaat naar administratieve afsluiting.' },
+          { value: 'no', title: 'Niet akkoord', text: 'Motivatie naar planner; aanpassing en nieuwe verzending.', danger: true }
+        ]}
+      },
+      {
+        id: 'closed', title: 'Afsluiting', verb: 'Administratief afsluiten', actor: 'Planner', actorName: 'Sara Verhaeghe', roles: ['planner', 'leader', 'system', 'representative'],
+        summary: 'Na akkoord sluit de planner het dossier administratief af. Het verslag, de historie en de actiepunten blijven volgens de ingestelde zichtbaarheid beschikbaar.',
+        chips: ['Definitief', 'Auditlog compleet', 'Actiepunten actief'],
+        checklist: ['Akkoordstatus verifiëren', 'Actiepunten activeren en opvolgbaar maken', 'Dossier definitief en niet-bewerkbaar opslaan'],
+        deadline: 'Na akkoord', deadlineText: 'Na 14 dagen bepaalt de instelling of het dossier alleen-lezen blijft of verdwijnt voor de vertegenwoordiger.'
+      }
+    ];
+
+    const baseActivity = [
+      { title: 'Scenario geopend', text: 'Voorbeeldbegeleiding staat klaar voor planning.', time: 'Nu', type: 'normal' }
+    ];
+
+    const state = {
+      current: 0,
+      selected: 0,
+      filter: 'all',
+      decisions: {},
+      stopped: false,
+      revision: false,
+      history: [...baseActivity]
+    };
+
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+    function renderRail() {
+      const rail = $('#workflowRail');
+      rail.innerHTML = stages.map((stage, index) => {
+        const matches = state.filter === 'all' || stage.roles.includes(state.filter);
+        const status = index < state.current ? 'complete' : index === state.selected ? 'active' : '';
+        const orb = index < state.current ? '✓' : String(index + 1).padStart(2, '0');
+        return `<button class="stage-button ${status} ${matches ? '' : 'filtered-out'}" data-stage="${index}" aria-label="Stap ${index + 1}: ${stage.title}" aria-current="${index === state.selected ? 'step' : 'false'}">
+          <span class="stage-orb">${orb}</span><span class="stage-name">${stage.title}</span><span class="stage-actor">${stage.actor}</span>
+        </button>`;
+      }).join('');
+      $$('.stage-button', rail).forEach(button => button.addEventListener('click', () => {
+        state.selected = Number(button.dataset.stage);
+        render();
+      }));
+    }
+
+    function renderDetail() {
+      const stage = stages[state.selected];
+      $('#detailOverline').textContent = `Stap ${state.selected + 1} · ${stage.actor}`;
+      $('#detailTitle').textContent = stage.verb;
+      $('#detailSummary').textContent = stage.summary;
+      $('#detailChips').innerHTML = stage.chips.map((chip, i) => `<span class="chip ${i === 0 ? 'primary' : ''}">${chip}</span>`).join('');
+      $('#detailChecklist').innerHTML = stage.checklist.map(item => `<li><span class="check-icon">✓</span><span>${item}</span></li>`).join('');
+      renderDecision(stage);
+    }
+
+    function renderDecision(stage) {
+      const content = $('#decisionContent');
+      const actions = $('#stageActions');
+      $('#decisionHint').textContent = stage.decision?.hint || 'Procesregel';
+
+      if (stage.decision) {
+        const selected = state.decisions[stage.decision.key];
+        content.innerHTML = `<div class="decision-list">${stage.decision.options.map(option => `
+          <button class="decision-btn ${option.danger ? 'danger' : ''} ${selected === option.value ? 'selected' : ''}" data-decision="${stage.decision.key}" data-value="${option.value}">
+            <span><strong>${option.title}</strong><span>${option.text}</span></span><b>${selected === option.value ? '✓' : '›'}</b>
+          </button>`).join('')}</div>
+          <div class="deadline-card" style="margin-top:12px"><span class="tiny-label">${stage.deadline}</span><strong>Termijnbewaking actief</strong><p>${stage.deadlineText}</p></div>`;
+        $$('.decision-btn', content).forEach(btn => btn.addEventListener('click', () => chooseDecision(btn.dataset.decision, btn.dataset.value)));
+      } else {
+        content.innerHTML = `<div class="deadline-card"><span class="tiny-label">${stage.deadline}</span><strong>Automatische procesbewaking</strong><p>${stage.deadlineText}</p></div>`;
+      }
+
+      const isCurrent = state.selected === state.current;
+      if (state.stopped) {
+        actions.innerHTML = `<button class="btn btn-secondary" data-action="reset">Scenario herstellen</button>`;
+      } else if (!isCurrent) {
+        actions.innerHTML = `<button class="btn btn-secondary" data-action="return">Terug naar actuele stap</button>`;
+      } else if (state.current === stages.length - 1) {
+        actions.innerHTML = `<button class="btn btn-primary" data-action="complete">Dossier definitief afsluiten</button>`;
+      } else if (state.current === 6 && state.decisions.agreement === 'no') {
+        actions.innerHTML = `<button class="btn btn-primary" data-action="revise">Aanpassen en opnieuw versturen</button>`;
+      } else {
+        const needsDecision = stage.decision && !state.decisions[stage.decision.key];
+        actions.innerHTML = `<button class="btn btn-primary" data-action="next" ${needsDecision ? 'disabled aria-disabled="true" style="opacity:.45;cursor:not-allowed"' : ''}>${stage.id === 'actions' ? 'Goedkeuren en versturen' : 'Volgende stap'} <span aria-hidden="true">→</span></button>`;
+      }
+      $$('[data-action]', actions).forEach(btn => btn.addEventListener('click', handleAction));
+    }
+
+    function chooseDecision(key, value) {
+      state.decisions[key] = value;
+      const stage = stages[state.current];
+      let title = 'Keuze opgeslagen';
+      let text = '';
+
+      if (key === 'notify') {
+        text = value === 'yes' ? 'Betrokkenen worden vooraf verwittigd.' : 'De vertegenwoordiger blijft voorlopig niet geïnformeerd.';
+        pushActivity(value === 'yes' ? 'Vooraf informeren staat aan' : 'Stille planning gekozen', text, value === 'no' ? 'alert' : 'normal');
+      }
+      if (key === 'started') {
+        if (value === 'no') {
+          state.stopped = true;
+          title = 'Begeleiding niet uitgevoerd';
+          text = 'Planner en uitvoerder ontvangen een waarschuwing.';
+          pushActivity(title, text, 'alert');
+        } else {
+          text = 'Planning is vergrendeld en uitvoering kan starten.';
+          pushActivity('Begeleiding gestart', text, 'normal');
+        }
+      }
+      if (key === 'agreement') {
+        if (value === 'no') {
+          state.revision = true;
+          title = 'Niet-akkoord geregistreerd';
+          text = 'De gemotiveerde reactie gaat terug naar de planner.';
+          pushActivity(title, text, 'alert');
+        } else {
+          title = 'Akkoord geregistreerd';
+          text = 'Planner en verkoopleider krijgen een bevestiging.';
+          pushActivity(title, text, 'normal');
+        }
+      }
+      showToast(title, text);
+      render();
+    }
+
+    function handleAction(event) {
+      const action = event.currentTarget.dataset.action;
+      if (action === 'reset') return resetScenario();
+      if (action === 'return') { state.selected = state.current; return render(); }
+      if (action === 'revise') {
+        state.decisions.agreement = null;
+        state.revision = false;
+        pushActivity('Verslag aangepast', 'Nieuwe versie is opnieuw voor akkoord verstuurd.', 'normal');
+        showToast('Opnieuw verstuurd', 'Nora ontvangt een nieuwe notificatie en ping.');
+        return render();
+      }
+      if (action === 'complete') {
+        pushActivity('Dossier definitief afgesloten', 'Actiepunten zijn actief en auditlog is compleet.', 'normal');
+        showToast('Workflow voltooid', 'De voorbeeldbegeleiding is administratief afgesloten.');
+        $('#heroStatus').textContent = 'Afgesloten';
+        event.currentTarget.disabled = true;
+        event.currentTarget.textContent = 'Dossier is afgesloten ✓';
+        return renderActivity();
+      }
+      if (action === 'next') {
+        const stage = stages[state.current];
+        if (stage.decision && !state.decisions[stage.decision.key]) return;
+        const next = Math.min(state.current + 1, stages.length - 1);
+        pushActivity(`${stages[next].title} geopend`, `${stages[next].actorName} is nu aan zet.`, 'normal');
+        state.current = next;
+        state.selected = next;
+        showToast('Status bijgewerkt', `${stages[next].verb} is de volgende stap.`);
+        render();
+      }
+    }
+
+    function pushActivity(title, text, type = 'normal') {
+      state.history.unshift({ title, text, time: 'Zojuist', type });
+      state.history = state.history.slice(0, 5);
+    }
+
+    function renderActivity() {
+      $('#activityLog').innerHTML = state.history.map(item => `<div class="activity-item ${item.type === 'alert' ? 'alert' : ''}"><span class="activity-dot"></span><span class="activity-copy"><strong>${item.title}</strong><p>${item.text}</p><time>${item.time}</time></span></div>`).join('');
+    }
+
+    function renderProgress() {
+      const progress = Math.round((state.current / (stages.length - 1)) * 100);
+      const currentStage = stages[state.current];
+      $('#heroProgress').style.width = `${progress}%`;
+      $('#heroProgressLabel').textContent = `Stap ${state.current + 1} van ${stages.length}`;
+      $('#heroProgressPercent').textContent = `${progress}%`;
+      $('#scenarioProgress').style.width = `${progress}%`;
+      $('#scenarioProgressText').textContent = `${state.current} / ${stages.length - 1} overgangen`;
+      $('#scenarioStep').textContent = String(state.current + 1).padStart(2, '0');
+      $('#scenarioTitle').textContent = currentStage.verb;
+      $('#scenarioSubtitle').textContent = `${currentStage.actorName} is nu aan zet`;
+      if (state.current > 0 && state.current < 7) $('#heroStatus').textContent = currentStage.title;
+    }
+
+    function render() {
+      renderRail();
+      renderDetail();
+      renderActivity();
+      renderProgress();
+      $('#liveRegion').textContent = `Stap ${state.selected + 1}: ${stages[state.selected].title}`;
+    }
+
+    function resetScenario() {
+      state.current = 0;
+      state.selected = 0;
+      state.decisions = {};
+      state.stopped = false;
+      state.revision = false;
+      state.history = [...baseActivity];
+      $('#heroStatus').textContent = 'Gepland';
+      showToast('Scenario herstart', 'Alle keuzes en statussen zijn teruggezet.');
+      render();
+    }
+
+    let toastTimer;
+    function showToast(title, text) {
+      $('#toastTitle').textContent = title;
+      $('#toastText').textContent = text;
+      $('#toast').classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3500);
+    }
+
+    $('#roleFilter').addEventListener('change', event => {
+      state.filter = event.target.value;
+      renderRail();
+      if (state.filter !== 'all') showToast(`${roles[state.filter]} gemarkeerd`, 'Niet-relevante processtappen zijn gedimd.');
+    });
+
+    $$('.role-card').forEach(card => card.addEventListener('click', () => {
+      const wasSelected = card.classList.contains('selected');
+      $$('.role-card').forEach(c => c.classList.remove('selected'));
+      $$('tbody tr').forEach(row => row.classList.remove('row-muted'));
+      if (!wasSelected) {
+        card.classList.add('selected');
+        const role = card.dataset.role;
+        $$('tbody tr').forEach(row => {
+          if (!row.dataset.rowRoles.split(' ').includes(role)) row.classList.add('row-muted');
+        });
+        showToast(`${roles[role]} geselecteerd`, 'Relevante rechten zijn uitgelicht.');
+      }
+    }));
+
+    $('#resetScenario').addEventListener('click', resetScenario);
+    $('#mobileMenu').addEventListener('click', () => {
+      const open = $('#sidebar').classList.toggle('open');
+      $('#mobileMenu').setAttribute('aria-expanded', String(open));
+    });
+    $$('.nav-link').forEach(link => link.addEventListener('click', () => {
+      $('#sidebar').classList.remove('open');
+      $('#mobileMenu').setAttribute('aria-expanded', 'false');
+    }));
+
+    const observedSections = $$('main section[id]');
+    const navObserver = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      $$('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.nav === visible.target.id));
+    }, { rootMargin: '-25% 0px -60% 0px', threshold: [0, .2, .5] });
+    observedSections.forEach(section => navObserver.observe(section));
+
+    render();
+  </script>
+</body>
+</html>

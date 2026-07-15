@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   canViewFicheSection,
+  ficheTabDefinitions,
   getFicheTimelineItemTypes,
   getVisibleFicheSections,
   getVisibleFicheTabs,
@@ -18,6 +19,7 @@ const moduleCodes: AppModuleCode[] = [
   "HULPAANVRAGEN",
   "ACTIEPUNTEN",
   "RAPPORTERING",
+  "TUSSENTIJDSE_EVALUATIES",
 ];
 
 function modules(disabled: AppModuleCode[] = []): AppModuleConfig[] {
@@ -59,7 +61,29 @@ assert.equal(canViewFicheSection("coachings", { user: leader, representative: re
 assert.equal(canViewFicheSection("actionPoints", { user: leader, representative: repBeTeam, modules: allModules }), true);
 assert.equal(canViewFicheSection("performanceCircle", { user: leader, representative: repBeTeam, modules: allModules }), true);
 assert.equal(canViewFicheSection("kpis", { user: leader, representative: repBeTeam, modules: allModules }), true);
+assert.equal(canViewFicheSection("evaluations", { user: leader, representative: repBeTeam, modules: allModules }), true);
 assert.equal(canViewFicheSection("coachings", { user: leader, representative: repNl, modules: allModules }), false, "Een verkoopleider mag geen fiche-secties zien buiten het eigen team.");
+
+assert.deepEqual(
+  ficheTabDefinitions.map((tab) => tab.id),
+  [
+    "overview",
+    "performanceCircle",
+    "personalCriteria",
+    "actionPoints",
+    "helpRequests",
+    "coachings",
+    "kpis",
+    "evaluations",
+    "contactMoments",
+    "retrainings",
+    "salesTrainings",
+    "timeline",
+  ],
+  "De profieltabvolgorde moet overeenkomen met de vastgelegde functionele volgorde."
+);
+assert.ok(!ficheTabDefinitions.map((tab) => String(tab.id)).includes("productAnalysis"), "Productanalyse mag niet meer in het profielmenu staan.");
+assert.ok(ficheTabDefinitions.some((tab) => tab.id === "evaluations"), "Evaluaties moet in het profielmenu staan.");
 
 const noCoachingModule = modules(["BEGELEIDINGEN"]);
 assert.equal(canViewFicheSection("coachings", { user: leader, representative: repBeTeam, modules: noCoachingModule }), false);
@@ -78,7 +102,12 @@ assert.equal(canViewFicheSection("retrainings", { user: noPreparationPermission,
 const noReportingModule = modules(["RAPPORTERING"]);
 assert.equal(canViewFicheSection("performanceCircle", { user: leader, representative: repBeTeam, modules: noReportingModule }), false);
 assert.equal(canViewFicheSection("kpis", { user: leader, representative: repBeTeam, modules: noReportingModule }), false);
-assert.equal(canViewFicheSection("productAnalysis", { user: leader, representative: repBeTeam, modules: noReportingModule }), false);
+
+const noEvaluationsModule = modules(["TUSSENTIJDSE_EVALUATIES"]);
+assert.equal(canViewFicheSection("evaluations", { user: leader, representative: repBeTeam, modules: noEvaluationsModule }), false);
+
+const noEvaluationsMenu = user("SALES_LEADER", { "menu.coaching.starterEvaluations": false });
+assert.equal(canViewFicheSection("evaluations", { user: noEvaluationsMenu, representative: repBeTeam, modules: allModules }), false);
 
 const noPerformanceView = user("SALES_LEADER", { performanceView: false });
 assert.equal(canViewFicheSection("performanceCircle", { user: noPerformanceView, representative: repBeTeam, modules: allModules }), false);

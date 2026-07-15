@@ -6,7 +6,9 @@ Functional area status: `PARTIALLY_DEFINED`
 
 ## Purpose
 
-Tussentijdse evaluaties ondersteunt startersevaluaties voor actieve vertegenwoordigers met `representativeLevel = STARTER`.
+Tussentijdse evaluaties ondersteunt automatische startersevaluaties voor actieve vertegenwoordigers met `representativeLevel = STARTER`.
+
+Manuele tussentijdse evaluaties kunnen worden gestart voor elke actieve evalueerbare vertegenwoordiger binnen de toegestane scope, ongeacht `representativeLevel` (`STARTER`, `SALES_EXECUTIVE`, `PROFESSIONAL` of `EXPERT`). Het carrièreniveau is in de manuele startflow uitsluitend informatief en mag niet als rol- of toegangscontrole worden gebruikt.
 
 De vaste evaluatiemomenten zijn:
 
@@ -27,13 +29,14 @@ Geimplementeerd:
 - dynamisch beheerbare evaluatievragen via `Beheer > Vragen tussentijdse evaluatie`;
 - multi-scope koppelingen per vraag via `StarterEvaluationQuestionScopeLink`;
 - unieke databasebeperking op `representativeId + moment` voor automatische evaluaties;
-- manuele startflow via de overzichtspagina voor leidinggevende en administratieve rollen;
+- manuele startflow via de overzichtspagina voor leidinggevende en administratieve rollen, met doorzoekbare vertegenwoordigerselectie op naam, team en land;
 - duplicate guard op actieve evaluaties met dezelfde vertegenwoordiger en evaluatiedatum;
 - auditlogactie `starterEvaluation.manualStart`;
 - KPI-vlag `includeInStarterEvaluations`;
 - centrale milestoneberekening in `lib/starter-evaluations.ts`;
 - idempotente servergeneratie in `lib/server/starter-evaluations.ts`;
 - initiele idempotente seed voor rubrieken en vragen gebaseerd op de oude ODS-evaluatieformulieren;
+- de beheerlijst initialiseert dezelfde standaardrubrieken en -vragen idempotent voordat ze de configuratie toont;
 - Plesk-geschikt commando:
 
 ```powershell
@@ -46,7 +49,9 @@ Aanbevolen schema: dagelijks voor de werkdag, Europe/Brussels.
 
 De module gebruikt bestaande module- en menuactivatie. Evaluaties worden alleen gegenereerd wanneer de module actief is.
 
-Manuele aanmaak is toegestaan voor `SALES_LEADER`, `COUNTRY_MANAGER`, `SALES_MANAGER`, `GROUP_MANAGER`, `ADMIN` en `SUPER_ADMIN`, binnen hun bestaande team- of landenscope. `REPRESENTATIVE` mag nooit zelf een tussentijdse evaluatie starten. De frontend verbergt de knop, maar de API valideert dezelfde scope opnieuw server-side.
+Manuele aanmaak gebruikt het rolrecht `starterEvaluationsExecute` (`Tussentijdse evaluatie > Uitvoeren`) binnen de bestaande team- of landenscope. Standaard staat dit aan voor alle rollen behalve `REPRESENTATIVE` en `SERVICE_OPERATOR`. De frontend verbergt de knop, de kandidaten-API toont alleen actieve vertegenwoordigers binnen de effectieve scope en de aanmaak-API valideert dezelfde scope opnieuw server-side. Een aangepast verzoek voor een vertegenwoordiger buiten scope moet worden geweigerd.
+
+Vraagbeheer gebruikt het rolrecht `starterEvaluationsManage` (`Tussentijdse evaluatie > Beheer`). Standaard staat dit aan voor alle rollen behalve `REPRESENTATIVE`, `SERVICE_OPERATOR` en `SALES_LEADER`. De beheerroute is `Beheer > Vragen tussentijdse evaluatie`.
 
 De vraagconfiguratie ondersteunt cumulatieve scope:
 

@@ -221,6 +221,7 @@ enum StarterEvaluationAnswerType {
   CURRENCY
   SCORE
   CHOICE
+  MULTI_CHOICE
   DATE
   SYSTEM
   LINKED_CRITERION
@@ -1189,6 +1190,7 @@ model StarterEvaluationQuestion {
   required       Boolean                        @default(false)
   active         Boolean                        @default(true)
   answerType     StarterEvaluationAnswerType
+  optionsJson    String?                        @db.LongText
   assignee       StarterEvaluationAssignee
   momentsJson    String                         @db.VarChar(255)
   scopeType      CriterionScopeType             @default(GLOBAL)
@@ -1332,6 +1334,7 @@ model StarterEvaluationQuestionSnapshot {
   sortOrder          Int
   required           Boolean
   answerType         StarterEvaluationAnswerType
+  optionsJson        String?                        @db.LongText
   assignee           StarterEvaluationAssignee
   momentsJson        String                         @db.VarChar(255)
   appliedScopeType   CriterionScopeType

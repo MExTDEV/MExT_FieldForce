@@ -62,6 +62,8 @@ export type FieldForcePermissionKey =
   | "actionPointsCreate"
   | "actionPointsManage"
   | "actionPointsClose"
+  | "starterEvaluationsExecute"
+  | "starterEvaluationsManage"
   | "kpisView"
   | "kpisCreate"
   | "kpisManage"
@@ -268,6 +270,7 @@ export type ManagementStarterEvaluationQuestion = {
   textNl: string;
   helpNl: string;
   answerType: string;
+  optionsJson: string;
   assignee: string;
   required: boolean;
   active: boolean;

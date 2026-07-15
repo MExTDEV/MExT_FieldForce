@@ -4,7 +4,7 @@ import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
 import { writeAuditLog } from "@/lib/server/audit";
 import {
   createManualStarterEvaluation,
-  listManualStarterEvaluationCandidates,
+  searchManualStarterEvaluationCandidates,
   StarterEvaluationDuplicateError,
 } from "@/lib/server/starter-evaluations";
 
@@ -12,7 +12,11 @@ export async function GET(request: Request) {
   return handleApi("api/starter-evaluations:get", async () => {
     const url = new URL(request.url);
     const actor = await requireAuthenticatedUser(url.searchParams.get("actorId"));
-    return { candidates: await listManualStarterEvaluationCandidates(actor) };
+    const query = url.searchParams.get("q") ?? "";
+    const limit = Number(url.searchParams.get("limit") ?? 50);
+    return {
+      candidates: await searchManualStarterEvaluationCandidates(actor, query, limit),
+    };
   }, "Tussentijdse evaluaties konden niet worden geladen.");
 }
 

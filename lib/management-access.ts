@@ -51,8 +51,8 @@ export const managementSections: ManagementSectionDefinition[] = [
     section: "starterEvaluations",
     href: "/beheer/starterEvaluations",
     navKey: "nav.starterEvaluationQuestions",
-    permission: "menu.coaching.kpis",
-    requiredPermissions: ["kpisView"],
+    permission: "menu.coaching.starterEvaluations",
+    requiredPermissions: ["starterEvaluationsManage"],
   },
   {
     section: "kapstok",
