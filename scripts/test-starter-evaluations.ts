@@ -114,6 +114,17 @@ for (const expectedSql of [
 ]) {
   assert.ok(repairMigration.includes(expectedSql), `Reparatiemigratie mist ${expectedSql}.`);
 }
+const defaultQuestionSeedMigration = readFileSync("prisma/migrations/0037_seed_starter_evaluation_default_questions/migration.sql", "utf8");
+for (const expectedSql of [
+  "INSERT INTO `StarterEvaluationSection`",
+  "INSERT INTO `StarterEvaluationQuestion`",
+  "INSERT INTO `StarterEvaluationQuestionScopeLink`",
+  "job_expectations_1",
+  "next_period_action_points",
+  "general_evaluation_summary",
+]) {
+  assert.ok(defaultQuestionSeedMigration.includes(expectedSql), `Standaardvragenmigratie mist ${expectedSql}.`);
+}
 
 console.log("Tussentijdse evaluaties: mijlpalen, scopes, seed, moduletoegang en manuele start gevalideerd.");
 
