@@ -30,6 +30,7 @@ Geimplementeerd:
 - multi-scope koppelingen per vraag via `StarterEvaluationQuestionScopeLink`;
 - unieke databasebeperking op `representativeId + moment` voor automatische evaluaties;
 - manuele startflow via de overzichtspagina voor leidinggevende en administratieve rollen, met doorzoekbare vertegenwoordigerselectie op naam, team en land;
+- compact invulformulier op de detailroute met dezelfde kaart- en veldstijl als Contactmomenten, inclusief WYSIWYG-invoer voor tekstvragen en conceptopslag in `StarterEvaluationAnswer`;
 - duplicate guard op actieve evaluaties met dezelfde vertegenwoordiger en evaluatiedatum;
 - auditlogactie `starterEvaluation.manualStart`;
 - KPI-vlag `includeInStarterEvaluations`;

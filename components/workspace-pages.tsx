@@ -267,6 +267,7 @@ type StarterEvaluationCandidate = {
 type StarterEvaluationDetail = {
   id: string;
   status: string;
+  moment?: "MONTH_1_5" | "MONTH_3" | "MONTH_5" | null;
   evaluationDate: string;
   representativeName: string;
   teamName: string;
@@ -281,6 +282,8 @@ type StarterEvaluationDetail = {
       text: string;
       answerType: string;
       assignee: string;
+      required: boolean;
+      answers: Record<string, string>;
     }[];
   }[];
 };
@@ -317,6 +320,9 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
   const [detail, setDetail] = useState<StarterEvaluationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [detailAnswers, setDetailAnswers] = useState<Record<string, string>>({});
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailSaveMessage, setDetailSaveMessage] = useState<{ type: "success" | "error"; text: string }>();
   const milestones = [
     [t("starterEvaluations.milestone.month1_5"), t("starterEvaluations.milestone.month1_5.description")],
     [t("starterEvaluations.milestone.month3"), t("starterEvaluations.milestone.month3.description")],
@@ -370,7 +376,15 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
       .then(async (response) => {
         const payload = await response.json() as { evaluation?: StarterEvaluationDetail; error?: string };
         if (!response.ok || !payload.evaluation) throw new Error(payload.error ?? t("starterEvaluations.detail.loadError"));
-        if (!cancelled) setDetail(payload.evaluation);
+        if (!cancelled) {
+          setDetail(payload.evaluation);
+          const answerRole = user.role === "REPRESENTATIVE" ? "REPRESENTATIVE" : "EVALUATOR";
+          setDetailAnswers(Object.fromEntries(
+            payload.evaluation.sections.flatMap((section) =>
+              section.questions.map((question) => [question.id, question.answers[answerRole] ?? ""])
+            )
+          ));
+        }
       })
       .catch((cause) => {
         if (!cancelled) setDetailError(cause instanceof Error ? cause.message : t("starterEvaluations.detail.loadError"));
@@ -428,12 +442,35 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
     }
   }
 
+  async function saveStarterEvaluationAnswers() {
+    if (!detail) return;
+    setDetailSaving(true);
+    setDetailSaveMessage(undefined);
+    try {
+      const response = await fetch(`/api/starter-evaluations/${encodeURIComponent(detail.id)}?actorId=${encodeURIComponent(user.id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          answers: Object.entries(detailAnswers).map(([questionId, value]) => ({ questionId, value })),
+        }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? t("starterEvaluations.detail.saveError"));
+      setDetailSaveMessage({ type: "success", text: t("starterEvaluations.detail.saved") });
+    } catch (error) {
+      setDetailSaveMessage({ type: "error", text: error instanceof Error ? error.message : t("starterEvaluations.detail.saveError") });
+    } finally {
+      setDetailSaving(false);
+    }
+  }
+
   if (evaluationId) {
     return (
-      <div className="space-y-5">
+      <div className="mx-auto max-w-5xl space-y-5">
         <PageHeader
+          eyebrow={t("starterEvaluations.detail.eyebrow")}
           title={t("starterEvaluations.detail.title")}
-          description={detail ? `${detail.representativeName} - ${detail.evaluationDate}` : t("starterEvaluations.detail.description")}
+          description={detail ? `${detail.representativeName} - ${formatShortDate(detail.evaluationDate)}` : t("starterEvaluations.detail.description")}
           actions={
             <Link href="/tussentijdse-evaluaties" className="btn-secondary">
               {t("starterEvaluations.detail.back")}
@@ -452,33 +489,46 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
         )}
         {detail && (
           <>
-            <div className="grid gap-3 md:grid-cols-4">
-              {[
-                [t("starterEvaluations.detail.representative"), detail.representativeName],
-                [t("starterEvaluations.detail.team"), detail.teamName || "-"],
-                [t("starterEvaluations.detail.country"), detail.country],
-                [t("starterEvaluations.detail.evaluator"), detail.leaderName || "-"],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
-                </div>
-              ))}
+            <section className="card p-5">
+              <div className="grid gap-4 md:grid-cols-4">
+                <SummaryValue label={t("starterEvaluations.detail.representative")} value={detail.representativeName} />
+                <SummaryValue label={t("starterEvaluations.detail.team")} value={detail.teamName || "-"} />
+                <SummaryValue label={t("starterEvaluations.detail.country")} value={detail.country} />
+                <SummaryValue label={t("starterEvaluations.detail.evaluator")} value={detail.leaderName || detail.manualStartedByName || "-"} />
+              </div>
+            </section>
+            <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-950">{t("starterEvaluations.detail.formTitle")}</p>
+                <p className="text-xs text-slate-500">{t("starterEvaluations.detail.formDescription")}</p>
+              </div>
+              <button type="button" className="btn-primary" disabled={detailSaving} onClick={() => void saveStarterEvaluationAnswers()}>
+                {detailSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                {detailSaving ? t("starterEvaluations.detail.saving") : t("starterEvaluations.detail.save")}
+              </button>
             </div>
+            {detailSaveMessage && (
+              <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${detailSaveMessage.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
+                {detailSaveMessage.text}
+              </div>
+            )}
             <div className="space-y-4">
-              {detail.sections.map((section) => (
-                <section key={section.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                  <h2 className="text-base font-bold text-slate-950">{section.title}</h2>
-                  <div className="mt-4 space-y-4">
+              {detail.sections.map((section, sectionIndex) => (
+                <section key={section.id} className="card overflow-hidden">
+                  <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("starterEvaluations.detail.section")} {sectionIndex + 1}</p>
+                    <h2 className="mt-1 text-lg font-bold text-slate-950">{section.title}</h2>
+                  </div>
+                  <div className="space-y-5 p-5">
                     {section.questions.map((question) => (
-                      <label key={question.id} className="block">
-                        <span className="text-sm font-semibold text-slate-700">{question.text}</span>
-                        <textarea
-                          className="input mt-2 min-h-24"
-                          placeholder={t("starterEvaluations.detail.answerPlaceholder")}
-                          readOnly
-                        />
-                      </label>
+                      <StarterEvaluationAnswerField
+                        key={question.id}
+                        question={question}
+                        value={detailAnswers[question.id] ?? ""}
+                        disabled={detailSaving || question.assignee === "SYSTEM"}
+                        t={t}
+                        onChange={(value) => setDetailAnswers((current) => ({ ...current, [question.id]: value }))}
+                      />
                     ))}
                   </div>
                 </section>
@@ -687,6 +737,46 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
       )}
     </div>
   );
+}
+
+function StarterEvaluationAnswerField({
+  disabled,
+  onChange,
+  question,
+  t,
+  value,
+}: {
+  disabled: boolean;
+  onChange: (value: string) => void;
+  question: StarterEvaluationDetail["sections"][number]["questions"][number];
+  t: (key: TranslationKey) => string;
+  value: string;
+}) {
+  const label = `${question.text}${question.required ? " *" : ""}`;
+  const unsupported = ["SYSTEM", "LINKED_CRITERION", "ACTION_POINTS"].includes(question.answerType);
+  if (unsupported) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-bold text-slate-900">{label}</p>
+        <p className="mt-2 text-sm text-slate-500">{t("starterEvaluations.detail.automaticPlaceholder")}</p>
+      </div>
+    );
+  }
+  if (question.answerType === "BOOLEAN") {
+    return (
+      <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <input className="mt-1" type="checkbox" checked={value === "true"} disabled={disabled} onChange={(event) => onChange(event.target.checked ? "true" : "false")} />
+        <span className="font-semibold text-slate-900">{label}</span>
+      </label>
+    );
+  }
+  if (["NUMBER", "PERCENTAGE", "CURRENCY", "SCORE"].includes(question.answerType)) {
+    return <TextField label={label} type="number" value={value} disabled={disabled} onChange={onChange} />;
+  }
+  if (question.answerType === "DATE") {
+    return <TextField label={label} type="date" value={value} disabled={disabled} onChange={onChange} />;
+  }
+  return <RichTextEditor label={label} value={value} disabled={disabled} onChange={onChange} />;
 }
 
 function groupStarterEvaluationCandidates(candidates: StarterEvaluationCandidate[]) {
