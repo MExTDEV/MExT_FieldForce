@@ -319,6 +319,17 @@ enum DeviceRegistrationStatus {
   REVOKED
 }
 
+enum DeviceControlCommandType {
+  LOGOUT
+  WIPE
+}
+
+enum DeviceControlCommandStatus {
+  PENDING
+  DELIVERED
+  ACKNOWLEDGED
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -416,6 +427,7 @@ model User {
   erpOutboxCommands        ErpOutboxCommand[]          @relation("ErpOutboxCommandActor")
   registeredSalesDevices   DeviceRegistration[]        @relation("DeviceRegistrationOwner")
   revokedSalesDevices      DeviceRegistration[]        @relation("DeviceRegistrationRevokedBy")
+  requestedDeviceControls  DeviceControlCommand[]      @relation("DeviceControlCommandRequestedBy")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -518,13 +530,16 @@ model UserLoginSession {
   browser         String?
   operatingSystem String?
   deviceType      String?
+  deviceRegistrationId String?
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceRegistration DeviceRegistration? @relation(fields: [deviceRegistrationId], references: [id], onDelete: SetNull)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([userId, loginAt])
   @@index([userId, provider])
   @@index([userId, lastActivityAt])
+  @@index([deviceRegistrationId, logoutAt])
 }
 
 model Team {
@@ -2078,14 +2093,61 @@ model DeviceRegistration {
   revokedAt              DateTime?
   revokedByUserId        String?
   revocationReason       String?                  @db.Text
+  keyVersion             Int                      @default(0)
+  keyFingerprint         String?                  @unique @db.Char(64)
+  keyProvisionedAt       DateTime?
+  keyRevokedAt           DateTime?
+  deviceTokenHash        String?                  @unique @db.Char(64)
+  deviceTokenIssuedAt    DateTime?
+  deviceTokenRevokedAt   DateTime?
   user                   User                     @relation("DeviceRegistrationOwner", fields: [userId], references: [id], onDelete: Cascade)
   revokedBy              User?                    @relation("DeviceRegistrationRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  keyChallenges          DeviceKeyProvisioningChallenge[]
+  controlCommands        DeviceControlCommand[]
+  loginSessions          UserLoginSession[]
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
   @@index([userId, status])
   @@index([status, lastSeenAt])
   @@index([revokedByUserId])
+}
+
+model DeviceKeyProvisioningChallenge {
+  id                   String             @id @default(cuid())
+  challengeId          String             @unique @db.VarChar(64)
+  deviceRegistrationId String
+  tokenHash            String             @unique @db.Char(64)
+  loginSessionId       String?
+  targetKeyVersion     Int
+  expiresAt            DateTime
+  consumedAt           DateTime?
+  deviceRegistration   DeviceRegistration @relation(fields: [deviceRegistrationId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+
+  @@index([deviceRegistrationId, expiresAt], map: "DKPC_device_expiry_idx")
+  @@index([loginSessionId])
+}
+
+model DeviceControlCommand {
+  id                   String                     @id @default(cuid())
+  commandId            String                     @unique @db.VarChar(64)
+  deviceRegistrationId String
+  type                 DeviceControlCommandType
+  status               DeviceControlCommandStatus @default(PENDING)
+  pendingKey           String?                    @unique @db.VarChar(191)
+  requestedByUserId    String
+  reason               String                     @db.Text
+  requestedAt          DateTime                   @default(now())
+  deliveredAt          DateTime?
+  acknowledgedAt       DateTime?
+  deviceRegistration   DeviceRegistration         @relation(fields: [deviceRegistrationId], references: [id], onDelete: Cascade)
+  requestedBy          User                       @relation("DeviceControlCommandRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+
+  @@index([deviceRegistrationId, status])
+  @@index([requestedByUserId, requestedAt])
 }
 
 model ErpOutboxCommand {

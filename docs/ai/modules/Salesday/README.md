@@ -46,6 +46,7 @@ FieldForce is the entry, offline and presentation layer for sales operations. Bu
 - Milestone 1 persistent integration-ledger slice: `MILESTONE-1-INTEGRATION-LEDGER.md`
 - Milestone 1 encrypted offline-store foundation: `MILESTONE-1-OFFLINE-STORE.md`
 - Milestone 1 personal device registration: `MILESTONE-1-DEVICE-REGISTRATION.md`
+- Milestone 1 key provisioning and remote control: `MILESTONE-1-DEVICE-SECURITY.md`
 - Original repository and prototype evidence: `../../../SALESDAY-INTEGRATION-AUDIT.md`
 - Shared roles and scope: `../../03_ROLES.md`
 - Shared architecture and integration boundaries: `../../01_ARCHITECTURE.md`

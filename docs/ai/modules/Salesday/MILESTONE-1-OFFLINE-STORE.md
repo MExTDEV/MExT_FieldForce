@@ -39,8 +39,8 @@ TypeScript and targeted ESLint validation are part of this slice's acceptance ch
 
 This source foundation is not yet a production offline implementation. The following remain mandatory:
 
-- secure key provisioning and key revocation for the server-backed `DeviceRegistration` described in `MILESTONE-1-DEVICE-REGISTRATION.md`;
-- Android/MDM binding, remote session invalidation and a remote-wipe endpoint;
+- PWA runtime wiring for the key provisioning, session invalidation and remote-control foundation described in `MILESTONE-1-DEVICE-SECURITY.md`;
+- Android/MDM binding and a real remote-wipe exercise;
 - biometric/PIN resume gate;
 - wiring SalesDay drafts and the command outbox to this store;
 - continuous autosave, sync status, retry and day −1 blocking UI;

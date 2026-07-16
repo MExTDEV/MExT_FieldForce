@@ -1,8 +1,8 @@
 # Milestone 1 — SalesDay device registration
 
-Status: `IMPLEMENTED IN SOURCE — DEPLOYMENT AND KEY LIFECYCLE PENDING`
+Status: `IMPLEMENTED IN SOURCE — PRODUCTION DEPLOYMENT PENDING`
 
-This slice establishes the server-side identity and lifecycle for a Representative's personal SalesDay device. It does not yet issue encryption keys or contact an MDM provider.
+This slice establishes the server-side identity and lifecycle for a Representative's personal SalesDay device. Key provisioning and remote control are implemented separately in `MILESTONE-1-DEVICE-SECURITY.md`; an actual MDM provider remains pending.
 
 ## Persistence
 
@@ -54,8 +54,7 @@ Normal Prisma client generation was blocked by the query-engine DLL held by the 
 
 ## Still open
 
-- secure device-key issue, rotation and revocation;
-- remote logout/wipe command delivery and acknowledgement;
+- PWA runtime integration of the device-key and remote-control source foundation;
 - device compliance/MDM provider integration and supported-OS policy;
 - binding an online login session and offline bootstrap to the active registration;
 - production migration deployment and real-device acceptance.

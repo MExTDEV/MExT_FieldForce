@@ -596,6 +596,21 @@ Critical rules:
 - device replacement requires a new device identity after controlled revocation;
 - the record stores no raw offline encryption key;
 - migration `0042` is not deployed to the configured production database.
+
+## SalesDay device security
+
+Migration `0043_salesday_device_security` additively defines the key lifecycle, session binding and remote-control ledger.
+
+Critical rules:
+
+- only a SHA-256 key fingerprint is stored; raw offline encryption keys remain on the device as non-exportable `CryptoKey` values;
+- provisioning challenges are device-, owner- and session-bound, short-lived and one-use;
+- the device bearer token is returned once and only its SHA-256 hash is stored;
+- `UserLoginSession.deviceRegistrationId` allows remote logout/wipe to invalidate bound sessions server-side;
+- control commands are durable and auditable, with at most one open device/type command through nullable unique `pendingKey`;
+- a wipe revokes registration and key immediately, while the device token remains accepted only by acknowledgement until its revocation timestamp is set;
+- the revoked token hash is retained for idempotent acknowledgement retry and is never accepted by normal authenticated APIs;
+- migration `0043` is not deployed to the configured production database.
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

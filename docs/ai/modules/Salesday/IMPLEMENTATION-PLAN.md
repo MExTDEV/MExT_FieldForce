@@ -411,7 +411,7 @@ Evidence and deliberately unresolved adapter details are recorded in `MILESTONE-
 
 ## Milestone 1 — Platform integration, replica and offline foundation
 
-Status: `IN PROGRESS` — the persistent integration-ledger, encrypted offline-store and personal device-registration foundations are implemented in source; see `MILESTONE-1-INTEGRATION-LEDGER.md`, `MILESTONE-1-OFFLINE-STORE.md` and `MILESTONE-1-DEVICE-REGISTRATION.md`. Production database deployment, secure key provisioning and the remaining offline/platform deliverables are still pending.
+Status: `IN PROGRESS` — the persistent integration-ledger, encrypted offline-store, personal device-registration and device-security foundations are implemented in source; see the linked Milestone 1 evidence documents in `README.md`. Production database deployment, PWA runtime integration and the remaining offline/platform deliverables are still pending.
 
 ### Deliverables
 

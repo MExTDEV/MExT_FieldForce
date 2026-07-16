@@ -39,19 +39,37 @@ export function actorCanAccessCountry(user: MockUser, country: string) {
 export async function requireAuthenticatedUser(
   requestedActorId?: string | null
 ): Promise<MockUser> {
+  return (await requireAuthenticatedUserContext(requestedActorId)).actor;
+}
+
+export async function requireAuthenticatedUserContext(
+  requestedActorId?: string | null
+): Promise<{ actor: MockUser; loginSessionId: string | null }> {
   if (authMode === "demo") {
     if (!requestedActorId) unauthorized("Geen actieve demogebruiker ontvangen.");
     const demoUser = await findActiveUser(requestedActorId);
     if (!demoUser) unauthorized("Actieve demogebruiker niet gevonden.");
-    return demoUser;
+    return { actor: demoUser, loginSessionId: null };
   }
 
   const session = await auth();
   const databaseUserId = session?.user?.databaseUserId;
   if (!databaseUserId) unauthorized();
+  const loginSessionId = session.user?.loginSessionId;
+  if (!loginSessionId) unauthorized("Geen geldige login-sessie gevonden.");
+  const activeLoginSession = await prisma.userLoginSession.findFirst({
+    where: {
+      sessionId: loginSessionId,
+      userId: databaseUserId,
+      logoutAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    select: { id: true },
+  });
+  if (!activeLoginSession) unauthorized("Deze login-sessie is verlopen of op afstand afgemeld.");
   const user = await findActiveUser(databaseUserId);
   if (!user) unauthorized("De aangemelde gebruiker is niet actief in FieldForce.");
-  return user;
+  return { actor: user, loginSessionId };
 }
 
 export async function requireAuthenticatedRead() {
