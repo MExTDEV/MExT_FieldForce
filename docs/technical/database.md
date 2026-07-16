@@ -274,6 +274,8 @@ Migration `0034_starter_evaluations` adds the foundation for starter evaluations
 - `StarterEvaluationAnswer` stores separate representative, evaluator and system answers.
 - `StarterEvaluationDraftActionPoint` stores draft action points until a future approval workflow activates real `ActionPoint` rows.
 
+Fresh MariaDB deployments use the explicit `SEQSL_question_scope_key` name for the question scope-link uniqueness index. The shortened name stays within MariaDB's 64-character identifier limit and matches the later schema-repair migration.
+
 The generation job is `npm run starter-evaluations:generate`.
 
 Migration `0035_starter_evaluation_permissions_and_options` adds explicit permissions `starterEvaluationsExecute` and `starterEvaluationsManage`, and stores choice options on question definitions and snapshots.

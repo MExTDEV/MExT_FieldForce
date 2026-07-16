@@ -108,7 +108,7 @@ CREATE TABLE `StarterEvaluationQuestionScopeLink` (
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `StarterEvaluationQuestionScopeLink_questionId_scopeType_scopeKey_key` (`questionId`, `scopeType`, `scopeKey`),
+  UNIQUE INDEX `SEQSL_question_scope_key` (`questionId`, `scopeType`, `scopeKey`),
   INDEX `StarterEvaluationQuestionScopeLink_scopeType_scopeKey_idx` (`scopeType`, `scopeKey`),
   INDEX `StarterEvaluationQuestionScopeLink_questionId_sortOrder_idx` (`questionId`, `sortOrder`),
   INDEX `StarterEvaluationQuestionScopeLink_country_idx` (`country`),

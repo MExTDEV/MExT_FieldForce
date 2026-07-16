@@ -74,8 +74,9 @@ Validation recorded on 16 July 2026:
 - Contract calculation/import/letter regressions: pass;
 - direct Next.js production build: pass;
 - normal Prisma Client read against the configured datasource: pass;
-- guarded ledger database test: not run because no dedicated `SALES_ERP_LEDGER_TEST_DATABASE_URL` was supplied;
-- migration deployment: not run; `0040` remains pending on the configured database.
+- dedicated test-database validation: pass; see `MILESTONE-1-DATABASE-VALIDATION-2026-07-16.md`;
+- guarded ledger database test: pass on two consecutive runs with zero remaining test artifacts;
+- production migration deployment: not run; `0040` remains pending on the configured `MExT_FieldForce` database.
 
 ## Deployment gate
 
