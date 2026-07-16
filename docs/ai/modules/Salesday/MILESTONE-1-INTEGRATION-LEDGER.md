@@ -4,7 +4,7 @@
 
 Status: `IMPLEMENTED IN SOURCE — DATABASE DEPLOYMENT PENDING`
 
-This slice implements the persistent ERP integration foundation. It does not complete all Milestone 1 deliverables: device binding, encrypted IndexedDB, draft autosave, day −1 blocking, emergency mode, feature flags, notifications and UI remain open.
+This slice implements the persistent ERP integration foundation. The separate encrypted IndexedDB foundation is described in `MILESTONE-1-OFFLINE-STORE.md`; secure device/key provisioning, draft autosave, day −1 blocking, emergency mode, feature flags, notifications and UI remain open.
 
 Migration `0040_sales_erp_integration_ledger` is additive and has not been applied to the configured external VPS database.
 
