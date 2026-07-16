@@ -309,6 +309,16 @@ enum ErpReconciliationIncidentStatus {
   IGNORED
 }
 
+enum DevicePlatform {
+  WINDOWS
+  ANDROID
+}
+
+enum DeviceRegistrationStatus {
+  ACTIVE
+  REVOKED
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -404,6 +414,8 @@ model User {
   contractLetterTemplatesActivated ContractLetterTemplate[] @relation("ContractLetterTemplateActivatedBy")
   contractGeneratedDocuments ContractGeneratedDocument[] @relation("ContractGeneratedDocumentGeneratedBy")
   erpOutboxCommands        ErpOutboxCommand[]          @relation("ErpOutboxCommandActor")
+  registeredSalesDevices   DeviceRegistration[]        @relation("DeviceRegistrationOwner")
+  revokedSalesDevices      DeviceRegistration[]        @relation("DeviceRegistrationRevokedBy")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -2049,6 +2061,31 @@ model ErpInboxMessage {
   @@index([status, nextAttemptAt, leaseExpiresAt])
   @@index([provider, eventType, entityExternalId])
   @@index([occurredAt])
+}
+
+model DeviceRegistration {
+  id                     String                   @id @default(cuid())
+  deviceId               String                   @unique @db.VarChar(128)
+  userId                 String
+  activeUserKey          String?                  @unique
+  platform               DevicePlatform
+  status                 DeviceRegistrationStatus @default(ACTIVE)
+  deviceLabel            String?
+  operatingSystemVersion String?                  @db.VarChar(64)
+  appVersion             String?                  @db.VarChar(64)
+  registeredAt           DateTime                 @default(now())
+  lastSeenAt             DateTime                 @default(now())
+  revokedAt              DateTime?
+  revokedByUserId        String?
+  revocationReason       String?                  @db.Text
+  user                   User                     @relation("DeviceRegistrationOwner", fields: [userId], references: [id], onDelete: Cascade)
+  revokedBy              User?                    @relation("DeviceRegistrationRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  @@index([userId, status])
+  @@index([status, lastSeenAt])
+  @@index([revokedByUserId])
 }
 
 model ErpOutboxCommand {

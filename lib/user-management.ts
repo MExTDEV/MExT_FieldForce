@@ -118,6 +118,13 @@ export const fieldForceBasePermissionGroups: {
       { key: "contractModelsManage", label: "Contractmodellen beheren" },
     ],
   },
+  {
+    title: "SalesDay",
+    description: "Beveiligd beheer van SalesDay-platformfuncties en geregistreerde toestellen.",
+    permissions: [
+      { key: "salesday.manage", label: "SalesDay en toestellen beheren" },
+    ],
+  },
 ];
 
 export const fieldForcePermissionGroups = [

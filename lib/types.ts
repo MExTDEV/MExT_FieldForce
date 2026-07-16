@@ -76,6 +76,7 @@ export type FieldForcePermissionKey =
   | "contractArticlesManage"
   | "contractImportsManage"
   | "contractModelsManage"
+  | "salesday.manage"
   | "menu.coaching.enabled"
   | "menu.coaching.dashboard"
   | "menu.coaching.planning"

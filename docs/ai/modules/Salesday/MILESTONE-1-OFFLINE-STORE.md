@@ -39,7 +39,7 @@ TypeScript and targeted ESLint validation are part of this slice's acceptance ch
 
 This source foundation is not yet a production offline implementation. The following remain mandatory:
 
-- server-backed `DeviceRegistration`, key provisioning and key revocation;
+- secure key provisioning and key revocation for the server-backed `DeviceRegistration` described in `MILESTONE-1-DEVICE-REGISTRATION.md`;
 - Android/MDM binding, remote session invalidation and a remote-wipe endpoint;
 - biometric/PIN resume gate;
 - wiring SalesDay drafts and the command outbox to this store;

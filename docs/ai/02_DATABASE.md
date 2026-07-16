@@ -582,6 +582,20 @@ Critical rules:
 - migration `0040` is currently pending on the configured external database.
 
 The guarded database test requires a separate `SALES_ERP_LEDGER_TEST_DATABASE_URL` whose database name contains `test`. It must never use the normal application database.
+
+## SalesDay device registration
+
+Migration `0042_salesday_device_registration` additively defines `DeviceRegistration` for the server-side identity and lifecycle of a Representative's personal SalesDay device.
+
+Critical rules:
+
+- `deviceId` is opaque, application-generated and globally unique;
+- a device ID never changes owner and a revoked device ID is never reactivated;
+- `activeUserKey` is equal to the owner ID only while active and is `NULL` after revocation; its unique constraint enforces at most one active device per user while retaining history;
+- revocation retains actor, timestamp and reason;
+- device replacement requires a new device identity after controlled revocation;
+- the record stores no raw offline encryption key;
+- migration `0042` is not deployed to the configured production database.
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

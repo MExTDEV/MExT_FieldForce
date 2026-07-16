@@ -331,6 +331,8 @@ These roles do not create or edit a Representative's appointments, customers, sa
 
 Beheer, warehouse, integration monitoring and emergency-mode actions require separate explicit permissions. Admin or Super Admin status does not itself create an ordinary operational action on behalf of a Representative.
 
+Personal SalesDay device registration is limited to the Representative for the own user. Device revocation requires the explicit `salesday.manage` permission and effective country scope. This permission defaults to Super Admin only; it remains configurable through the existing role grants and user overrides. It does not permit acting in the Representative's operational workflow.
+
 ## Enforcement
 
 Navigation, direct page access, APIs, file downloads, offline bootstrap data and background command processing must enforce the same effective SalesDay scope.
