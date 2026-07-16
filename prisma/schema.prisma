@@ -428,6 +428,8 @@ model User {
   registeredSalesDevices   DeviceRegistration[]        @relation("DeviceRegistrationOwner")
   revokedSalesDevices      DeviceRegistration[]        @relation("DeviceRegistrationRevokedBy")
   requestedDeviceControls  DeviceControlCommand[]      @relation("DeviceControlCommandRequestedBy")
+  activatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeActivatedBy")
+  deactivatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeDeactivatedBy")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -2148,6 +2150,26 @@ model DeviceControlCommand {
 
   @@index([deviceRegistrationId, status])
   @@index([requestedByUserId, requestedAt])
+}
+
+model SalesDayEmergencyMode {
+  id                  String    @id @default(cuid())
+  activeKey           String?   @unique @db.VarChar(32)
+  reason              String    @db.Text
+  startsAt            DateTime
+  endsAt              DateTime
+  activatedByUserId   String
+  activatedBy         User      @relation("SalesDayEmergencyModeActivatedBy", fields: [activatedByUserId], references: [id], onDelete: Restrict)
+  deactivatedAt       DateTime?
+  deactivatedByUserId String?
+  deactivationReason  String?   @db.Text
+  deactivatedBy       User?     @relation("SalesDayEmergencyModeDeactivatedBy", fields: [deactivatedByUserId], references: [id], onDelete: Restrict)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([startsAt, endsAt])
+  @@index([activatedByUserId, createdAt])
+  @@index([deactivatedByUserId])
 }
 
 model ErpOutboxCommand {

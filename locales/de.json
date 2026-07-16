@@ -689,5 +689,15 @@
   "salesday.sync.description.attention": "Eine oder mehrere Änderungen müssen geprüft oder erneut versucht werden.",
   "salesday.sync.description.error": "Der aktuelle Status konnte nicht sicher bestätigt werden.",
   "salesday.sync.description.ready": "Auf diesem Gerät warten keine Änderungen mehr.",
-  "salesday.sync.description.stopped": "Die sichere Geräteverbindung ist noch nicht aktiv."
+  "salesday.sync.description.stopped": "Die sichere Geräteverbindung ist noch nicht aktiv.",
+  "salesday.dayGate.blockedTitle": "Arbeitstag noch gesperrt",
+  "salesday.dayGate.blockedDescription": "Änderungen eines früheren Arbeitstags sind noch nicht vollständig vom ERP bestätigt. Agenda und Vorbereitung bleiben gesperrt; Synchronisierung und Support bleiben verfügbar.",
+  "salesday.dayGate.localPending": "Noch auf diesem Gerät",
+  "salesday.dayGate.serverPending": "Noch in Bearbeitung",
+  "salesday.dayGate.openSync": "Synchronisierung öffnen",
+  "salesday.dayGate.openSupport": "Support öffnen",
+  "salesday.dayGate.emergencyTitle": "Zentraler Notfallmodus aktiv",
+  "salesday.dayGate.emergencyDescription": "Sie dürfen mit der zuletzt synchronisierten Agenda arbeiten. Neue Änderungen warten geordnet, bis die ERP-Verbindung wiederhergestellt ist.",
+  "salesday.dayGate.reason": "Störungsgrund",
+  "salesday.dayGate.until": "Aktiv bis"
 }

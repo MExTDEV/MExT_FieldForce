@@ -689,5 +689,15 @@
   "salesday.sync.description.attention": "Une ou plusieurs modifications nécessitent un contrôle ou une nouvelle tentative.",
   "salesday.sync.description.error": "L'état actuel n'a pas pu être confirmé de manière sécurisée.",
   "salesday.sync.description.ready": "Aucune modification n'est encore en attente sur cet appareil.",
-  "salesday.sync.description.stopped": "La connexion sécurisée de l'appareil n'est pas encore active."
+  "salesday.sync.description.stopped": "La connexion sécurisée de l'appareil n'est pas encore active.",
+  "salesday.dayGate.blockedTitle": "Journée de travail encore bloquée",
+  "salesday.dayGate.blockedDescription": "Des modifications d'une journée précédente ne sont pas encore entièrement confirmées par l'ERP. Votre agenda et votre préparation restent fermés ; la synchronisation et le support restent disponibles.",
+  "salesday.dayGate.localPending": "Encore sur cet appareil",
+  "salesday.dayGate.serverPending": "Encore en traitement",
+  "salesday.dayGate.openSync": "Ouvrir la synchronisation",
+  "salesday.dayGate.openSupport": "Ouvrir le support",
+  "salesday.dayGate.emergencyTitle": "Mode d'urgence central actif",
+  "salesday.dayGate.emergencyDescription": "Vous pouvez travailler avec le dernier agenda synchronisé. Les nouvelles modifications restent ordonnées en attente jusqu'au rétablissement de la connexion ERP.",
+  "salesday.dayGate.reason": "Motif de l'incident",
+  "salesday.dayGate.until": "Actif jusqu'au"
 }

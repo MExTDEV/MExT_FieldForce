@@ -611,6 +611,20 @@ Critical rules:
 - a wipe revokes registration and key immediately, while the device token remains accepted only by acknowledgement until its revocation timestamp is set;
 - the revoked token hash is retained for idempotent acknowledgement retry and is never accepted by normal authenticated APIs;
 - migration `0043` is not deployed to the configured production database.
+
+## SalesDay day gate and emergency mode
+
+Migration `0044_salesday_day_gate_emergency` additively defines `SalesDayEmergencyMode` and the `salesday.emergencyMode.manage` permission.
+
+Critical rules:
+
+- nullable unique `activeKey` permits only one open central emergency window while retaining expired/deactivated history;
+- every window stores incident reason, explicit start/end and activating actor;
+- an early stop stores timestamp, actor and mandatory reason;
+- activation/deactivation and their `AuditLog` row share one serializable transaction;
+- the permission defaults to `SUPER_ADMIN` and remains distinct from ordinary SalesDay/device management;
+- day −1 evidence continues to come from dated `ErpOutboxCommand` rows and the encrypted device queue; emergency mode does not delete or accept commands;
+- migration `0044` is not deployed to the configured production database.
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

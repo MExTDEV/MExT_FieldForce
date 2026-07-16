@@ -333,6 +333,8 @@ Beheer, warehouse, integration monitoring and emergency-mode actions require sep
 
 Personal SalesDay device registration is limited to the Representative for the own user. Device revocation requires the explicit `salesday.manage` permission and effective country scope. This permission defaults to Super Admin only; it remains configurable through the existing role grants and user overrides. It does not permit acting in the Representative's operational workflow.
 
+Activating or stopping ERP-outage emergency mode requires the separate `salesday.emergencyMode.manage` permission. It defaults to Super Admin only and does not grant any ordinary Representative action. Every activation and early stop requires a reason and is audited.
+
 ## Enforcement
 
 Navigation, direct page access, APIs, file downloads, offline bootstrap data and background command processing must enforce the same effective SalesDay scope.

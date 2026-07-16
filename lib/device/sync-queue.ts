@@ -64,6 +64,7 @@ export type DeviceSyncQueueSummary = {
   oldestQueuedAt?: string;
   nextRetryAt?: string;
   lastPersistedAt?: string;
+  openBusinessDates: string[];
   issues: DeviceSyncQueueIssue[];
   updatedAt: string;
 };
@@ -310,6 +311,7 @@ export class SalesDayDeviceSyncQueue {
         .map((entry) => entry.nextAttemptAt!)
         .sort()[0],
       lastPersistedAt: snapshot.persistedCommands.map((marker) => marker.persistedAt).sort().at(-1),
+      openBusinessDates: [...new Set(snapshot.entries.flatMap((entry) => entry.businessDate ? [entry.businessDate] : []))].sort(),
       issues: snapshot.entries
         .filter((entry) => entry.status === "RETRYABLE" || entry.status === "REJECTED")
         .map((entry) => ({

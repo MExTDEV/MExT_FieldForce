@@ -28,6 +28,7 @@ class FakeQueue {
       oldestQueuedAt: this.pending ? "2026-07-16T20:00:00.000Z" : undefined,
       nextRetryAt: undefined,
       lastPersistedAt: this.persisted ? "2026-07-16T23:00:00.000Z" : undefined,
+      openBusinessDates: [],
       issues: [],
       updatedAt: "2026-07-16T23:00:00.000Z",
     };

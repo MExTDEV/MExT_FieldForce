@@ -687,5 +687,15 @@
   "salesday.sync.description.attention": "Een of meer wijzigingen vereisen controle of een nieuwe poging.",
   "salesday.sync.description.error": "De actuele status kon niet veilig worden bevestigd.",
   "salesday.sync.description.ready": "Er staan op dit toestel geen wijzigingen meer te wachten.",
-  "salesday.sync.description.stopped": "De beveiligde toestelverbinding is nog niet actief."
+  "salesday.sync.description.stopped": "De beveiligde toestelverbinding is nog niet actief.",
+  "salesday.dayGate.blockedTitle": "Werkdag nog geblokkeerd",
+  "salesday.dayGate.blockedDescription": "Wijzigingen van een vorige werkdag zijn nog niet volledig door het ERP bevestigd. Je agenda en voorbereiding blijven dicht; synchronisatie en support blijven beschikbaar.",
+  "salesday.dayGate.localPending": "Nog op dit toestel",
+  "salesday.dayGate.serverPending": "Nog in verwerking",
+  "salesday.dayGate.openSync": "Synchronisatie openen",
+  "salesday.dayGate.openSupport": "Support openen",
+  "salesday.dayGate.emergencyTitle": "Centrale noodmodus actief",
+  "salesday.dayGate.emergencyDescription": "Je mag met de laatst gesynchroniseerde agenda werken. Nieuwe wijzigingen blijven in volgorde wachten tot de ERP-verbinding hersteld is.",
+  "salesday.dayGate.reason": "Incidentreden",
+  "salesday.dayGate.until": "Actief tot"
 }

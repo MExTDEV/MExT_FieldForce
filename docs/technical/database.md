@@ -442,6 +442,12 @@ Use a dedicated migrated database for `npm run test:sales-erp-ledger-db`. The te
 
 The local development server may lock the Prisma query-engine DLL. Source validation may generate types with `--no-engine`, but the normal runtime client must be restored and verified with the regular MySQL datasource before completion. Do not stop the user-managed development server solely for generation.
 
+## SalesDay day gate and emergency mode
+
+Migration `0044_salesday_day_gate_emergency` adds the `SalesDayEmergencyMode` incident-window table, its actor foreign keys and the `salesday.emergencyMode.manage` permission with a `SUPER_ADMIN` default grant.
+
+`activeKey = 'GLOBAL'` exists only on the single open window. Deactivation or expiry cleanup sets it to `NULL`, retaining full history. Activation and early deactivation use serializable transactions and write the corresponding `AuditLog` record atomically. The migration is additive and performs no business-data backfill. It must not be deployed as part of local source validation.
+
 ---
 
 # Hulpaanvragen
