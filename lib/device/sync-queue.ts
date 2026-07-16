@@ -43,6 +43,31 @@ export type DeviceSyncBatchResult = {
   persistedCommandIds: string[];
 };
 
+export type DeviceSyncQueueIssue = {
+  commandId: string;
+  commandType: SalesErpCommand["commandType"];
+  status: "RETRYABLE" | "REJECTED";
+  attemptCount: number;
+  businessDate?: string;
+  nextAttemptAt?: string;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+};
+
+export type DeviceSyncQueueSummary = {
+  pending: number;
+  uploading: number;
+  retryable: number;
+  rejected: number;
+  open: number;
+  persisted: number;
+  oldestQueuedAt?: string;
+  nextRetryAt?: string;
+  lastPersistedAt?: string;
+  issues: DeviceSyncQueueIssue[];
+  updatedAt: string;
+};
+
 export class DeviceSyncTransportError extends Error {
   constructor(
     message: string,
@@ -266,7 +291,7 @@ export class SalesDayDeviceSyncQueue {
     await this.saveSnapshot({ ...snapshot, entries, updatedAt: this.now().toISOString() });
   }
 
-  async summary() {
+  async summary(): Promise<DeviceSyncQueueSummary> {
     const snapshot = await this.loadSnapshot();
     const counts = { pending: 0, uploading: 0, retryable: 0, rejected: 0 };
     for (const entry of snapshot.entries) {
@@ -280,6 +305,23 @@ export class SalesDayDeviceSyncQueue {
       open: snapshot.entries.length,
       persisted: snapshot.persistedCommands.length,
       oldestQueuedAt: snapshot.entries.map((entry) => entry.queuedAt).sort()[0],
+      nextRetryAt: snapshot.entries
+        .filter((entry) => entry.status === "RETRYABLE" && entry.nextAttemptAt)
+        .map((entry) => entry.nextAttemptAt!)
+        .sort()[0],
+      lastPersistedAt: snapshot.persistedCommands.map((marker) => marker.persistedAt).sort().at(-1),
+      issues: snapshot.entries
+        .filter((entry) => entry.status === "RETRYABLE" || entry.status === "REJECTED")
+        .map((entry) => ({
+          commandId: entry.command.commandId,
+          commandType: entry.command.commandType,
+          status: entry.status as "RETRYABLE" | "REJECTED",
+          attemptCount: entry.attemptCount,
+          businessDate: entry.businessDate,
+          nextAttemptAt: entry.nextAttemptAt,
+          lastErrorCode: entry.lastErrorCode,
+          lastErrorMessage: entry.lastErrorMessage,
+        })),
       updatedAt: snapshot.updatedAt,
     };
   }

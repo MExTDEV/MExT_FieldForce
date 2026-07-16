@@ -88,12 +88,28 @@ export async function ingestOfflineSalesErpCommands(input: {
   provider: string;
   items: unknown;
 }) {
-  const deviceId = normalizeDeviceId(input.deviceId);
+  const { deviceId } = await requireActiveSalesDayDevice(input);
   assertSalesErpProvider(input.provider);
   const provider: SalesErpProvider = input.provider;
   const items = parseOfflineSalesErpCommandItems(input.items);
   assertOfflineCommandActor(input.actor, deviceId, items);
 
+  return prisma.$transaction(async (database) => {
+    const persistedCommandIds: string[] = [];
+    for (const item of items) {
+      const row = await enqueueSalesErpCommandInTransaction(database, { provider, ...item });
+      persistedCommandIds.push(row.commandId);
+    }
+    return { persistedCommandIds };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function requireActiveSalesDayDevice(input: {
+  actor: MockUser;
+  loginSessionId: string | null;
+  deviceId: string;
+}) {
+  const deviceId = normalizeDeviceId(input.deviceId);
   const device = await prisma.deviceRegistration.findFirst({
     where: {
       deviceId,
@@ -122,15 +138,7 @@ export async function ingestOfflineSalesErpCommands(input: {
       message: "Het actieve, beveiligde SalesDay-toestel of de gebonden login-sessie is niet geldig.",
     });
   }
-
-  return prisma.$transaction(async (database) => {
-    const persistedCommandIds: string[] = [];
-    for (const item of items) {
-      const row = await enqueueSalesErpCommandInTransaction(database, { provider, ...item });
-      persistedCommandIds.push(row.commandId);
-    }
-    return { persistedCommandIds };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return { deviceId, registrationId: device.id };
 }
 
 function normalizeDeviceId(value: string) {

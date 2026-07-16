@@ -17,7 +17,7 @@ This slice connects offline SalesDay commands to the persistent ERP integration 
 - retryable and definitive errors remain visible in the queue with attempt and error metadata;
 - successful commands are removed only after the server confirms every command ID, while a compact local idempotency marker prevents accidental reconstruction under another command ID.
 
-The queue supports explicit manual retry. Exponential retry delay is capped at five minutes. Scheduling that retry automatically and presenting it in the tablet interface belong to the next Milestone 1 slice.
+The queue supports explicit manual retry. Exponential retry delay is capped at five minutes. Automatic scheduling and the tablet status contract are implemented by `MILESTONE-1-SYNC-RUNTIME.md`.
 
 ## Server ingest guarantees
 
@@ -57,8 +57,7 @@ The route does not call Business Central/NAV or Odoo directly. It only performs 
 ## Remaining runtime work
 
 - wire each approved SalesDay mutation to draft persistence plus outbox enqueue at its safe lifecycle boundary;
-- add an online/background scheduler, connectivity recovery and manual retry controls;
-- expose freshness, last durable server acceptance and reconciliation status;
+- wire the automatic runtime and status card into the provisioned SalesDay PWA shell;
 - implement day −1 blocking and audited emergency mode on top of durable status;
 - run browser/Android fault-injection tests for reload, storage pressure, offline transitions and remote revocation;
 - validate the real ERP adapter separately when its interface is supplied.
