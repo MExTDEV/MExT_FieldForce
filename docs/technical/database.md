@@ -424,6 +424,24 @@ Deployment requirements for Contactmoment and user profile photos:
 
 ---
 
+# SalesDay ERP integration ledger
+
+Migration `0040_sales_erp_integration_ledger` adds the provider-neutral SalesDay integration ledger:
+
+- inbound event deduplication and processing leases;
+- outbound idempotent commands and dependency foreign keys;
+- replica cursors/checkpoints;
+- reconciliation incidents;
+- an outbox actor foreign key to `User`.
+
+The migration is additive and performs no backfill. On 2026-07-16, `npm run db:migrate:status` confirmed that `0040_sales_erp_integration_ledger` is pending on the configured `MExT_FieldForce` VPS database. It was deliberately not deployed during source implementation.
+
+Use a dedicated migrated database for `npm run test:sales-erp-ledger-db`. The test requires `SALES_ERP_LEDGER_TEST_DATABASE_URL` and refuses database names without `test`.
+
+The local development server may lock the Prisma query-engine DLL. Source validation may generate types with `--no-engine`, but the normal runtime client must be restored and verified with the regular MySQL datasource before completion. Do not stop the user-managed development server solely for generation.
+
+---
+
 # Hulpaanvragen
 
 Help requests are stored in `HelpRequest`.

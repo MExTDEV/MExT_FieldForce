@@ -147,6 +147,13 @@ Implementation order, data boundaries, tests and production gates:
 
 - `modules/Salesday/IMPLEMENTATION-PLAN.md`
 
+Provider-neutral ERP contract, schema/migration design and Milestone 0 baseline:
+
+- `modules/Salesday/ERP-CONTRACT.md`
+- `modules/Salesday/SCHEMA-DESIGN.md`
+- `modules/Salesday/MILESTONE-0-BASELINE.md`
+- `modules/Salesday/MILESTONE-1-INTEGRATION-LEDGER.md`
+
 Original SalesApp → FieldForce repository and integration evidence:
 
 - `../SALESDAY-INTEGRATION-AUDIT.md`

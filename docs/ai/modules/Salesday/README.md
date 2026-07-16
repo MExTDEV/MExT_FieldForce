@@ -40,6 +40,10 @@ FieldForce is the entry, offline and presentation layer for sales operations. Bu
 
 - Stable approved behaviour: `DECISIONS.md`
 - Implementation order and acceptance gates: `IMPLEMENTATION-PLAN.md`
+- Provider-neutral ERP resources, commands and delivery rules: `ERP-CONTRACT.md`
+- Shared relation/article and integration-ledger migration design: `SCHEMA-DESIGN.md`
+- Milestone 0 validation and isolated baseline failures: `MILESTONE-0-BASELINE.md`
+- Milestone 1 persistent integration-ledger slice: `MILESTONE-1-INTEGRATION-LEDGER.md`
 - Original repository and prototype evidence: `../../../SALESDAY-INTEGRATION-AUDIT.md`
 - Shared roles and scope: `../../03_ROLES.md`
 - Shared architecture and integration boundaries: `../../01_ARCHITECTURE.md`

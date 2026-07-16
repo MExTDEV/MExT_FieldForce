@@ -385,6 +385,10 @@ Representative defaults grant own operational actions. Management defaults grant
 
 ## Milestone 0 — Contracts, baseline and migration design
 
+Status: `COMPLETE` (16 July 2026)
+
+Evidence and deliberately unresolved adapter details are recorded in `MILESTONE-0-BASELINE.md`, `ERP-CONTRACT.md` and `SCHEMA-DESIGN.md`.
+
 ### Deliverables
 
 - approve this decision document and plan;
@@ -406,6 +410,8 @@ Representative defaults grant own operational actions. Management defaults grant
 - test commands and known baseline failures documented.
 
 ## Milestone 1 — Platform integration, replica and offline foundation
+
+Status: `IN PROGRESS` — the persistent integration-ledger slice is implemented in source; see `MILESTONE-1-INTEGRATION-LEDGER.md`. Database deployment and the remaining offline/platform deliverables are still pending.
 
 ### Deliverables
 

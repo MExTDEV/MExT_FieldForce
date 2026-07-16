@@ -85,6 +85,38 @@ This rule overrides old historical notes that asked an AI to verify or restart p
 
 ---
 
+# Test Harness
+
+## API persistence script has no authenticated session
+
+Status: `Confirmed Open`
+
+`npm run test:api-persistence` calls protected API routes without establishing an authenticated test session. It currently fails first on `/api/representatives` with `Aanmelden is vereist.`
+
+Required direction:
+
+- keep the production API authentication requirement intact;
+- make the harness create a supported authenticated test context;
+- keep this script outside source-only release gates until that harness setup is deterministic.
+
+Latest verification: reproduced on 2026-07-16 during the SalesDay Milestone 0 baseline.
+
+## Database verification script depends on absent STEP9 fixtures
+
+Status: `Confirmed Open`
+
+`npm run test:db-verification` expects at least two STEP9 runs with four interventions each. A normal developer database is not guaranteed to contain that scenario, so the script currently fails its fixture-count assertion.
+
+Required direction:
+
+- provide deterministic test seeding or a dedicated prepared integration database;
+- do not insert hidden fixtures into an arbitrary developer or production-like database;
+- keep the script outside source-only release gates until setup and teardown are explicit.
+
+Latest verification: reproduced on 2026-07-16 during the SalesDay Milestone 0 baseline.
+
+---
+
 # Coaching Lifecycle
 
 ## Multiple approval-like technical statuses

@@ -268,6 +268,47 @@ enum ContractLetterTemplateStatus {
   FAILED
 }
 
+enum ErpIntegrationProvider {
+  MOCK
+  BC_NAV
+  ODOO
+}
+
+enum ErpInboxStatus {
+  RECEIVED
+  PROCESSING
+  APPLIED
+  RETRYABLE
+  FAILED
+}
+
+enum ErpOutboxStatus {
+  PENDING
+  PROCESSING
+  ACCEPTED
+  REJECTED
+  RETRYABLE
+}
+
+enum ErpReconciliationIncidentType {
+  COMMAND_UNKNOWN
+  ACKNOWLEDGEMENT_MISMATCH
+  EVENT_PAYLOAD_CONFLICT
+  EVENT_APPLY_FAILED
+  CHECKPOINT_INVALID
+  PERMISSION_REVOKED
+  AUTHORIZATION_ERROR
+  DEPENDENCY_REJECTED
+  REPEATED_FAILURE
+  PROVIDER_ERROR
+}
+
+enum ErpReconciliationIncidentStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -362,6 +403,7 @@ model User {
   contractLetterTemplatesUploaded ContractLetterTemplate[] @relation("ContractLetterTemplateUploadedBy")
   contractLetterTemplatesActivated ContractLetterTemplate[] @relation("ContractLetterTemplateActivatedBy")
   contractGeneratedDocuments ContractGeneratedDocument[] @relation("ContractGeneratedDocumentGeneratedBy")
+  erpOutboxCommands        ErpOutboxCommand[]          @relation("ErpOutboxCommandActor")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -1979,6 +2021,135 @@ model ContractGeneratedDocument {
   @@index([templateId])
   @@index([generatedByUserId])
   @@index([language])
+}
+
+model ErpInboxMessage {
+  id               String                 @id @default(cuid())
+  provider         ErpIntegrationProvider
+  messageId        String
+  schemaVersion    String
+  eventType        String
+  entityExternalId String
+  sourceVersion    String
+  occurredAt       DateTime
+  payloadJson      String                 @db.LongText
+  eventFingerprint String                 @db.Char(64)
+  status           ErpInboxStatus         @default(RECEIVED)
+  attemptCount     Int                    @default(0)
+  nextAttemptAt    DateTime?
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?
+  appliedAt        DateTime?
+  lastErrorCode    String?
+  lastErrorMessage String?                @db.Text
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([provider, messageId])
+  @@index([status, nextAttemptAt, leaseExpiresAt])
+  @@index([provider, eventType, entityExternalId])
+  @@index([occurredAt])
+}
+
+model ErpOutboxCommand {
+  id                       String                      @id @default(cuid())
+  provider                 ErpIntegrationProvider
+  commandId                String                      @unique
+  schemaVersion            String
+  commandType              String
+  businessKey              String
+  idempotencyKey           String
+  commandFingerprint       String                      @db.Char(64)
+  issuedAt                 DateTime
+  conflictPriority         String                      @default("FIELDFORCE")
+  contextJson              String                      @db.LongText
+  payloadJson              String                      @db.LongText
+  actorUserId              String
+  representativeExternalId String
+  deviceId                 String
+  country                  Country
+  appointmentExternalId    String?
+  businessDate             DateTime?                   @db.Date
+  status                   ErpOutboxStatus             @default(PENDING)
+  attemptCount             Int                         @default(0)
+  nextAttemptAt            DateTime?
+  lastAttemptAt            DateTime?
+  leaseOwner               String?
+  leaseExpiresAt           DateTime?
+  acknowledgedAt           DateTime?
+  externalEntityId         String?
+  acknowledgedSourceVersion String?
+  acknowledgementJson      String?                     @db.LongText
+  lastErrorCode            String?
+  lastErrorMessage         String?                     @db.Text
+  actor                    User                        @relation("ErpOutboxCommandActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  dependencies             ErpOutboxDependency[]       @relation("ErpOutboxDependencyCommand")
+  dependents               ErpOutboxDependency[]       @relation("ErpOutboxDependencyTarget")
+  incidents                ErpReconciliationIncident[]
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+
+  @@unique([provider, idempotencyKey])
+  @@index([status, nextAttemptAt, leaseExpiresAt])
+  @@index([actorUserId, businessDate, status])
+  @@index([provider, commandType, businessKey])
+  @@index([appointmentExternalId])
+}
+
+model ErpOutboxDependency {
+  id                 String           @id @default(cuid())
+  commandId          String
+  dependsOnCommandId String
+  command            ErpOutboxCommand @relation("ErpOutboxDependencyCommand", fields: [commandId], references: [commandId], onDelete: Cascade)
+  dependsOnCommand   ErpOutboxCommand @relation("ErpOutboxDependencyTarget", fields: [dependsOnCommandId], references: [commandId], onDelete: Restrict)
+  createdAt          DateTime         @default(now())
+
+  @@unique([commandId, dependsOnCommandId])
+  @@index([dependsOnCommandId])
+}
+
+model ErpReplicaCheckpoint {
+  id                  String                 @id @default(cuid())
+  provider            ErpIntegrationProvider
+  streamKey           String
+  scopeKey            String
+  schemaVersion       String
+  cursor              String                 @db.LongText
+  sourceCheckpoint    String?                @db.LongText
+  lastSuccessfulSyncAt DateTime
+  lastEventOccurredAt DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@unique([provider, streamKey, scopeKey])
+  @@index([provider, lastSuccessfulSyncAt])
+}
+
+model ErpReconciliationIncident {
+  id               String                          @id @default(cuid())
+  provider         ErpIntegrationProvider
+  type             ErpReconciliationIncidentType
+  status           ErpReconciliationIncidentStatus @default(OPEN)
+  deduplicationKey String
+  commandId        String?
+  entityType       String?
+  entityExternalId String?
+  summary          String                          @db.Text
+  detailsJson      String?                         @db.LongText
+  occurrenceCount  Int                             @default(1)
+  firstDetectedAt  DateTime                        @default(now())
+  lastDetectedAt   DateTime                        @default(now())
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionNote   String?                         @db.Text
+  command          ErpOutboxCommand?               @relation(fields: [commandId], references: [commandId], onDelete: SetNull)
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+
+  @@unique([provider, deduplicationKey])
+  @@index([status, type, lastDetectedAt])
+  @@index([commandId])
+  @@index([entityType, entityExternalId])
 }
 
 model AuditLog {

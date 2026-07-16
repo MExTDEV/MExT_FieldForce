@@ -188,6 +188,10 @@ Important integrations:
 
 Business workflows must not depend directly on one external provider when a reusable integration boundary is practical.
 
+SalesDay uses the provider-neutral `SalesErpPort` and `sales-erp.v1` contracts. Local business mutations and their ERP outbox command commit in one database transaction. Provider events first enter a deduplicated inbox and are applied transactionally. Expiring database leases permit worker recovery after crashes; acknowledgements and periodic reconciliation prevent timeout-based duplicate business effects. Replay always receives an explicit server-side authorization callback. The deterministic mock provider is blocked in production and BC/NAV/Odoo fail closed until real adapters are configured.
+
+See `modules/Salesday/ERP-CONTRACT.md` and `modules/Salesday/MILESTONE-1-INTEGRATION-LEDGER.md`.
+
 Microsoft profile-photo synchronization belongs to the management profile boundary (`Beheer -> Instellingen -> Profiel`). It uses Microsoft Graph through the server-side profile-photo sync service and must not expose tokens, client secrets or raw Graph responses to the frontend.
 Manual profile-photo sync may return sanitized, non-persistent diagnostic lines
 for the clicked run only. These diagnostics must not include tokens, secrets or

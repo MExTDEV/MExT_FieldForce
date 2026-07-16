@@ -558,6 +558,30 @@ This document does not contain SQL migration scripts.
 This document does not replace detailed technical database documentation.
 
 Use this document as the AI-facing database architecture guide.
+
+---
+
+# SalesDay ERP integration ledger
+
+Migration `0040_sales_erp_integration_ledger` additively defines:
+
+- `ErpInboxMessage` for provider/message deduplication and atomic event application;
+- `ErpOutboxCommand` for idempotent FieldForce commands, actor/device context, retries and acknowledgements;
+- `ErpOutboxDependency` for ordered command chains;
+- `ErpReplicaCheckpoint` for provider/stream/scope cursors;
+- `ErpReconciliationIncident` for deduplicated operational failures.
+
+Critical rules:
+
+- local business mutation and outbox insert share one Prisma transaction;
+- inbox domain mutation and applied marker share one Prisma transaction;
+- workers use expiring leases and compare-and-set updates;
+- terminal records are retained, not deleted as part of retry handling;
+- provider/message ID and provider/idempotency key are database-unique;
+- replay authorization is server-side and mandatory;
+- migration `0040` is currently pending on the configured external database.
+
+The guarded database test requires a separate `SALES_ERP_LEDGER_TEST_DATABASE_URL` whose database name contains `test`. It must never use the normal application database.
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met
