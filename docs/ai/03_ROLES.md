@@ -273,6 +273,8 @@ Main behaviour:
 - management of global Coaching configuration.
 - closing concrete Action Points globally when `actionPointsClose` is active.
 
+Permission resolution always grants every registered permission to `SUPER_ADMIN`; role grants or user-level permission overrides cannot disable Super Admin access.
+
 Super Admin still respects business lifecycle locks unless an explicit administrative override exists.
 
 Full visibility does not justify duplicating workflow logic.
@@ -293,6 +295,45 @@ Undefined:
 - complete Coaching creation, execution, approval and action-point behaviour.
 
 Do not invent Service Operator Coaching workflows.
+
+---
+
+# SalesDay Role Behaviour
+
+SalesDay business behaviour is owned by `modules/Salesday/DECISIONS.md`.
+
+`Sales Leader` and `Verkoopleider` are the same role and reuse the Coaching team relation.
+
+## Representative
+
+A Representative may perform the complete approved SalesDay operation only for the own working day and effective scope, including:
+
+- preparation and own appointment execution;
+- an own additional appointment for today;
+- appointment-gated customer access and customer maintenance;
+- sales documents, visit report, lead, follow-up and reference;
+- own replenishment receipt and consumables request;
+- own day closure and cash process.
+
+Customer search for creating today's appointment is limited to the effective customer/team scope. Full customer details remain appointment-gated.
+
+## Management
+
+SalesDay management access is read-only:
+
+- Verkoopleider: effective team(s);
+- Sales Manager and Country Manager: teams in assigned countries;
+- Group Manager: explicitly assigned group/countries;
+- Admin: effective assigned country/team scope;
+- Super Admin: all scope.
+
+These roles do not create or edit a Representative's appointments, customers, sales, stock, visit reports, cash or day closure on the Representative's behalf.
+
+Beheer, warehouse, integration monitoring and emergency-mode actions require separate explicit permissions. Admin or Super Admin status does not itself create an ordinary operational action on behalf of a Representative.
+
+## Enforcement
+
+Navigation, direct page access, APIs, file downloads, offline bootstrap data and background command processing must enforce the same effective SalesDay scope.
 
 ---
 

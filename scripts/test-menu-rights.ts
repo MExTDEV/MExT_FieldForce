@@ -10,6 +10,7 @@ import {
   coachingModuleNavigationRules,
 } from "../lib/navigation-access";
 import { appModuleRegistry } from "../lib/modules";
+import { can } from "../lib/permissions";
 import { fieldForcePermissionGroups, roleTemplates } from "../lib/user-management";
 import { applyPermissionOverrides, listPermissionOverrides, resolveRolePermissions } from "../lib/role-permissions";
 import type {
@@ -98,9 +99,9 @@ for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER", 
 
 const representative = user("REPRESENTATIVE");
 const representativeDomains = getAvailableDomains(representative, modules);
-expect(representativeDomains.length === 1, "Een vertegenwoordiger mag standaard alleen Coaching zien.");
-expect(representativeDomains[0]?.key === "coaching", "Coaching moet het hoofditem van de vertegenwoordiger zijn.");
-const representativeLinks = representativeDomains[0]?.links.map((link) => link.key) ?? [];
+expect(representativeDomains.length === 2, "Een vertegenwoordiger moet standaard Coaching en Contract zien.");
+expect(representativeDomains.some((domain) => domain.key === "contract"), "Contract ontbreekt voor de vertegenwoordiger.");
+const representativeLinks = representativeDomains.find((domain) => domain.key === "coaching")?.links.map((link) => link.key) ?? [];
 expect(representativeLinks.includes("dashboard"), "Dashboard ontbreekt voor de vertegenwoordiger.");
 expect(representativeLinks.includes("planning"), "Planning ontbreekt voor de vertegenwoordiger.");
 expect(representativeLinks.includes("coachings"), "Begeleidingen ontbreekt voor de vertegenwoordiger.");
@@ -121,6 +122,10 @@ for (const role of ["SALES_LEADER", "SALES_MANAGER", "COUNTRY_MANAGER", "REPRESE
 
 const adminWithoutLog = user("ADMIN", { "menu.coaching.log": false });
 expect(!canAccessManagementSection(adminWithoutLog, "log"), "Een user override moet Beheer > Log kunnen uitschakelen.");
+expect(
+  can(user("SUPER_ADMIN", { "menu.contract.open": false }), "menu.contract.open"),
+  "Een Super Admin mag nooit door een user override worden geblokkeerd."
+);
 const salesManagerWithLog = user("SALES_MANAGER", { "menu.coaching.log": true });
 expect(canAccessManagementSection(salesManagerWithLog, "log"), "Een user override moet Beheer > Log kunnen inschakelen.");
 expect(!canAccessManagementSection(user("COUNTRY_MANAGER"), "teams"), "Country Manager heeft standaard geen teambeheer.");

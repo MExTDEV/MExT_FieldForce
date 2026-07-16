@@ -109,6 +109,15 @@ export const fieldForceBasePermissionGroups: {
       { key: "technicalImportExport", label: "Import/export beheren" },
     ],
   },
+  {
+    title: "Contractcalculatie",
+    description: "Beheeracties voor artikelen, Excel-import en contractmodellen.",
+    permissions: [
+      { key: "contractArticlesManage", label: "Contractartikelen beheren" },
+      { key: "contractImportsManage", label: "Contractimport beheren" },
+      { key: "contractModelsManage", label: "Contractmodellen beheren" },
+    ],
+  },
 ];
 
 export const fieldForcePermissionGroups = [
@@ -148,6 +157,8 @@ const representativeMenuPermissions: FieldForcePermissionKey[] = [
   "menu.coaching.coachings",
   "menu.coaching.starterEvaluations",
   "menu.coaching.actionPoints",
+  "menu.contract.enabled",
+  "menu.contract.open",
 ];
 
 const serviceOperatorMenuPermissions: FieldForcePermissionKey[] = [
@@ -357,6 +368,9 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "kpisManage",
       "kpiTargetsManage",
       "kpiCategoriesManage",
+      "contractArticlesManage",
+      "contractImportsManage",
+      "contractModelsManage",
       ...internalMenuPermissions,
       "menu.coaching.teams",
       "menu.coaching.kpis",

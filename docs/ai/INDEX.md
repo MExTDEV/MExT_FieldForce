@@ -133,6 +133,36 @@ Do not load resolved or unrelated issues as standard context.
 
 ---
 
+# SalesDay Domain
+
+Start with:
+
+- `modules/Salesday/README.md`
+
+Stable approved SalesDay behaviour:
+
+- `modules/Salesday/DECISIONS.md`
+
+Implementation order, data boundaries, tests and production gates:
+
+- `modules/Salesday/IMPLEMENTATION-PLAN.md`
+
+Original SalesApp → FieldForce repository and integration evidence:
+
+- `../SALESDAY-INTEGRATION-AUDIT.md`
+
+Add:
+
+- `03_ROLES.md` for SalesDay/Inventory permissions and scope;
+- `02_DATABASE.md` for replica, commands, shared relation/article and Inventory persistence;
+- `01_ARCHITECTURE.md` for ERP adapter, offline and module boundaries;
+- `04_UI_GUIDELINES.md` for SalesDay/Inventory tablet and PWA screens;
+- `05_DEVELOPMENT_STANDARDS.md` for implementation and release validation.
+
+The ERP transport remains `PARTIALLY_DEFINED`. Do not invent BC/NAV or Odoo endpoints, payloads, credentials or acknowledgement behaviour.
+
+---
+
 # Coaching Domain
 
 Start with:

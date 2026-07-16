@@ -23,6 +23,7 @@ export const permissionsByRole: Record<Role, string[]> = {
 };
 
 export function can(user: MockUser, permission: string) {
+  if (user.role === "SUPER_ADMIN") return true;
   if (user.permissions && permission in user.permissions) {
     return Boolean(user.permissions[permission as keyof typeof user.permissions]);
   }
@@ -87,7 +88,7 @@ export function canAccessPST(user: MockUser) {
 }
 
 export function canAccessContract(user: MockUser) {
-  return canAccessSalesday(user);
+  return Boolean(user.id);
 }
 
 export function canAccessService(user: MockUser) {

@@ -242,6 +242,32 @@ enum StarterEvaluationAnswerRole {
   SYSTEM
 }
 
+enum ContractCalculationStatus {
+  DRAFT
+  SIGNED
+}
+
+enum ContractModelStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum ContractImportStatus {
+  VALIDATING
+  PREVIEW_READY
+  IMPORTED
+  FAILED
+  CANCELLED
+}
+
+enum ContractLetterTemplateStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  FAILED
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -328,6 +354,14 @@ model User {
   starterEvaluationQuestionsCreated StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionCreatedBy")
   starterEvaluationQuestionsUpdated StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionUpdatedBy")
   countryAccess             UserCountryAccess[]
+  contractCustomers         ContractCustomer[]         @relation("ContractCustomerOwner")
+  contractCalculations      ContractCalculation[]      @relation("ContractCalculationOwner")
+  contractModelVersionsActivated ContractModelVersion[] @relation("ContractModelVersionActivatedBy")
+  contractModelVersionsImported ContractModelVersion[] @relation("ContractModelVersionImportedBy")
+  contractImportRuns        ContractImportRun[]        @relation("ContractImportStartedBy")
+  contractLetterTemplatesUploaded ContractLetterTemplate[] @relation("ContractLetterTemplateUploadedBy")
+  contractLetterTemplatesActivated ContractLetterTemplate[] @relation("ContractLetterTemplateActivatedBy")
+  contractGeneratedDocuments ContractGeneratedDocument[] @relation("ContractGeneratedDocumentGeneratedBy")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -457,6 +491,8 @@ model Team {
   criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkTeam")
   starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionTeam")
   starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[] @relation("StarterEvaluationQuestionScopeLinkTeam")
+  contractCustomers ContractCustomer[]
+  contractCalculations ContractCalculation[]
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -1685,6 +1721,264 @@ model ProductAnalysis {
   updatedAt             DateTime @updatedAt
 
   @@unique([representativeId, productId])
+}
+
+model ContractArticle {
+  id                   String                    @id @default(cuid())
+  articleNumber        String                    @unique
+  stemNumber           String
+  descriptionNl        String                    @db.Text
+  descriptionFr        String                    @db.Text
+  descriptionDe        String                    @db.Text
+  unitPrice            Decimal                   @db.Decimal(14, 4)
+  unitCost             Decimal                   @db.Decimal(14, 4)
+  unit                 String                    @default("stuk")
+  vatRate              Decimal                   @default(21.00) @db.Decimal(5, 2)
+  active               Boolean                   @default(true)
+  externalSource       String?
+  externalId           String?
+  lastSyncedAt         DateTime?
+  sourceModelVersionId String?
+  sourceModelVersion   ContractModelVersion?     @relation(fields: [sourceModelVersionId], references: [id], onDelete: SetNull)
+  calculationLines     ContractCalculationLine[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([stemNumber])
+  @@index([active])
+  @@index([sourceModelVersionId])
+}
+
+model ContractCustomer {
+  id               String                  @id @default(cuid())
+  companyName      String
+  contactName      String?
+  email            String?
+  phone            String?
+  address          String?                 @db.Text
+  street           String?
+  houseNumber      String?
+  postalCode       String?
+  city             String?
+  countryCode      Country
+  vatNumber        String?
+  preferredLanguage Language                @default(nl)
+  ownerUserId      String
+  teamIdSnapshot   String?
+  countrySnapshot  Country
+  externalSource   String?
+  externalId       String?
+  lastSyncedAt     DateTime?
+  isDemo           Boolean                 @default(false)
+  owner            User                    @relation("ContractCustomerOwner", fields: [ownerUserId], references: [id])
+  teamSnapshot     Team?                   @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
+  calculations     ContractCalculation[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([ownerUserId])
+  @@index([teamIdSnapshot])
+  @@index([countrySnapshot])
+  @@index([companyName])
+}
+
+model ContractModelVersion {
+  id                       String                    @id @default(cuid())
+  code                     String
+  label                    String
+  status                   ContractModelStatus       @default(DRAFT)
+  sourceFileName           String?
+  sourceFileSha256         String                    @unique
+  sourceWorkbookVersion    String?
+  calculationEngineVersion String
+  notes                    String?                   @db.Text
+  activatedAt              DateTime?
+  activatedByUserId        String?
+  importedByUserId         String?
+  activatedBy              User?                     @relation("ContractModelVersionActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  importedBy               User?                     @relation("ContractModelVersionImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+  articles                 ContractArticle[]
+  termRules                ContractTermRule[]
+  calculations             ContractCalculation[]
+  importRuns               ContractImportRun[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+
+  @@index([status])
+  @@index([code])
+  @@index([activatedByUserId])
+  @@index([importedByUserId])
+}
+
+model ContractTermRule {
+  id                 String               @id @default(cuid())
+  modelVersionId     String
+  durationYears      Int
+  discountPercentage Decimal              @db.Decimal(6, 2)
+  priceMultiplier    Decimal              @db.Decimal(8, 4)
+  active             Boolean              @default(true)
+  sortOrder          Int                  @default(0)
+  modelVersion       ContractModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@unique([modelVersionId, durationYears])
+  @@index([active, sortOrder])
+}
+
+model ContractCalculation {
+  id                         String                    @id @default(cuid())
+  calculationNumber          String                    @unique
+  name                       String
+  status                     ContractCalculationStatus @default(DRAFT)
+  customerId                 String
+  ownerUserId                String
+  teamIdSnapshot             String?
+  countrySnapshot            Country
+  customerLanguage           Language                  @default(nl)
+  modelVersionId             String
+  durationYears              Int
+  discountPercentageSnapshot Decimal                   @db.Decimal(6, 2)
+  subtotal                   Decimal                   @db.Decimal(14, 2)
+  discountAmount             Decimal                   @db.Decimal(14, 2)
+  annualPrice                Decimal                   @db.Decimal(14, 2)
+  totalCost                  Decimal                   @db.Decimal(14, 2)
+  contractLetterTemplateId   String?
+  contractLetterLanguage     Language?
+  contractLetterGeneratedAt  DateTime?
+  signedByName               String?
+  signedAt                   DateTime?
+  signedPlace                String?
+  signatureData              String?                   @db.LongText
+  customer                   ContractCustomer          @relation(fields: [customerId], references: [id])
+  owner                      User                      @relation("ContractCalculationOwner", fields: [ownerUserId], references: [id])
+  teamSnapshot               Team?                     @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
+  modelVersion               ContractModelVersion      @relation(fields: [modelVersionId], references: [id])
+  contractLetterTemplate     ContractLetterTemplate?    @relation("ContractCalculationLetterTemplate", fields: [contractLetterTemplateId], references: [id], onDelete: SetNull)
+  generatedDocuments         ContractGeneratedDocument[]
+  lines                      ContractCalculationLine[]
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+
+  @@index([customerId])
+  @@index([ownerUserId])
+  @@index([teamIdSnapshot])
+  @@index([countrySnapshot])
+  @@index([status])
+  @@index([modelVersionId])
+  @@index([contractLetterTemplateId])
+  @@index([createdAt])
+}
+
+model ContractCalculationLine {
+  id                    String              @id @default(cuid())
+  calculationId         String
+  articleId             String
+  articleNumberSnapshot String
+  stemNumberSnapshot    String
+  descriptionNlSnapshot String              @db.Text
+  descriptionFrSnapshot String              @db.Text
+  descriptionDeSnapshot String              @db.Text
+  quantity              Decimal             @db.Decimal(14, 3)
+  unitPriceSnapshot     Decimal             @db.Decimal(14, 4)
+  unitCostSnapshot      Decimal             @db.Decimal(14, 4)
+  lineAmount            Decimal             @db.Decimal(14, 2)
+  lineCost              Decimal             @db.Decimal(14, 2)
+  sortOrder             Int                 @default(0)
+  calculation           ContractCalculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)
+  article               ContractArticle     @relation(fields: [articleId], references: [id])
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([calculationId])
+  @@index([articleId])
+  @@index([sortOrder])
+}
+
+model ContractImportRun {
+  id                    String                @id @default(cuid())
+  status                ContractImportStatus  @default(VALIDATING)
+  sourceFileName        String
+  sourceFileSha256      String
+  sourceWorkbookVersion String?
+  modelVersionId        String?
+  startedByUserId       String
+  startedAt             DateTime              @default(now())
+  finishedAt            DateTime?
+  foundArticles         Int                   @default(0)
+  newArticles           Int                   @default(0)
+  changedArticles       Int                   @default(0)
+  deactivatedArticles   Int                   @default(0)
+  unchangedArticles     Int                   @default(0)
+  errorCount            Int                   @default(0)
+  warningCount          Int                   @default(0)
+  previewJson           String?               @db.LongText
+  errorJson             String?               @db.LongText
+  modelVersion          ContractModelVersion? @relation(fields: [modelVersionId], references: [id], onDelete: SetNull)
+  startedBy             User                  @relation("ContractImportStartedBy", fields: [startedByUserId], references: [id])
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([status, startedAt])
+  @@index([sourceFileSha256])
+  @@index([modelVersionId])
+  @@index([startedByUserId])
+}
+
+model ContractLetterTemplate {
+  id                    String                       @id @default(cuid())
+  language              Language
+  name                  String
+  version               Int
+  status                ContractLetterTemplateStatus @default(DRAFT)
+  sourceFileName        String
+  sourceFileSha256      String
+  sourceMimeType        String
+  sourceContent         String                       @db.LongText
+  usedParametersJson    String                       @db.LongText
+  validationJson        String                       @db.LongText
+  uploadedByUserId      String
+  activatedByUserId     String?
+  activatedAt           DateTime?
+  uploadedBy            User                         @relation("ContractLetterTemplateUploadedBy", fields: [uploadedByUserId], references: [id])
+  activatedBy           User?                        @relation("ContractLetterTemplateActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  calculations          ContractCalculation[]        @relation("ContractCalculationLetterTemplate")
+  generatedDocuments    ContractGeneratedDocument[]
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  @@unique([language, version])
+  @@index([language, status])
+  @@index([sourceFileSha256])
+  @@index([uploadedByUserId])
+  @@index([activatedByUserId])
+}
+
+model ContractGeneratedDocument {
+  id                      String                 @id @default(cuid())
+  calculationId           String
+  templateId              String
+  language                Language
+  documentVersion         Int
+  placeholderSnapshotJson String                 @db.LongText
+  generatedFileName       String
+  unsignedPdfStorageKey   String?
+  signedPdfStorageKey     String
+  unsignedPdfSha256       String?
+  signedPdfSha256         String
+  generatedByUserId       String
+  generatedAt             DateTime               @default(now())
+  signedAt                DateTime?
+  calculation             ContractCalculation    @relation(fields: [calculationId], references: [id], onDelete: Restrict)
+  template                ContractLetterTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  generatedBy             User                   @relation("ContractGeneratedDocumentGeneratedBy", fields: [generatedByUserId], references: [id])
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  @@unique([calculationId, documentVersion])
+  @@index([templateId])
+  @@index([generatedByUserId])
+  @@index([language])
 }
 
 model AuditLog {

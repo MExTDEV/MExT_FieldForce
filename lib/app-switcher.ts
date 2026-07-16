@@ -358,7 +358,12 @@ export const appSwitcherDomains: DomainDefinition[] = [
     enabledPermission: "menu.contract.enabled",
     isAvailable: withinDomain(canAccessContract),
     links: [
-      { key: "open", label: "Contracttool openen", description: "Tijdelijke route", href: "/contract", icon: ClipboardCheck, permission: "menu.contract.open", tone: placeholderTone, isAvailable: withinDomain(canAccessContract) },
+      { key: "dashboard", label: "Dashboard", description: "Contractwaarde en recente berekeningen", href: "/contract", icon: LayoutDashboard, permission: "menu.contract.open", tone: coachingLinkTone, isAvailable: withinDomain(canAccessContract) },
+      { key: "new", label: "Nieuwe berekening", description: "Contractprijs berekenen", href: "/contract/new", icon: ClipboardCheck, permission: "menu.contract.open", tone: coachingLinkTone, isAvailable: withinDomain(canAccessContract) },
+      { key: "calculations", label: "Berekeningen", description: "Concepten en ondertekende contracten", href: "/contract/calculations", icon: ListChecks, permission: "menu.contract.open", tone: coachingLinkTone, isAvailable: withinDomain(canAccessContract) },
+      { key: "customers", label: "Klanten", description: "Manuele klantgegevens", href: "/contract/customers", icon: Users, permission: "menu.contract.open", tone: coachingLinkTone, isAvailable: withinDomain(canAccessContract) },
+      { key: "reporting", label: "Rapportering", description: "Omzet en kost", href: "/contract/reporting", icon: BarChart3, permission: "menu.contract.open", tone: coachingLinkTone, isAvailable: withinDomain(canAccessContract) },
+      { key: "manage", label: "Beheer", description: "Artikelen, import en modellen", href: "/contract/manage", icon: Settings, permission: "menu.contract.open", tone: coachingLinkTone, isAvailable: (user) => ["ADMIN", "SUPER_ADMIN"].includes(user.role) },
     ],
   },
   {

@@ -119,6 +119,15 @@ const representativeNav = [
   { href: "/mijn-verslagen", key: "nav.myReports", icon: ClipboardCheck },
 ] as const;
 
+const contractNav = [
+  { href: "/contract", key: "contract.nav.dashboard", icon: LayoutDashboard },
+  { href: "/contract/new", key: "contract.nav.new", icon: ClipboardCheck },
+  { href: "/contract/calculations", key: "contract.nav.calculations", icon: ListChecks },
+  { href: "/contract/customers", key: "contract.nav.customers", icon: Users },
+  { href: "/contract/reporting", key: "contract.nav.reporting", icon: BarChart3 },
+  { href: "/contract/manage", key: "contract.nav.manage", icon: Settings, manageOnly: true },
+] as const;
+
 function canSeeModuleNav(user: MockUser, code: AppModuleCode) {
   return canAccessCoachingModuleNavigation(user, code);
 }
@@ -132,6 +141,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openManagementGroups, setOpenManagementGroups] = useState<Record<string, boolean>>({});
   const visibleManagementSections = getVisibleManagementSections(user);
+  const isContractPath = pathname === "/contract" || pathname.startsWith("/contract/");
   const visibleManagementNav = visibleManagementSections.flatMap((section) => {
     const item = manageNav.find((candidate) => candidate.section === section.section);
     return item ? [{ ...section, icon: item.icon }] : [];
@@ -147,7 +157,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeDashboard = canAccessDashboard(user);
   const canSeeMyTeam =
     isModuleEnabled("BEGELEIDINGEN") && canAccessMyTeamNavigation(user);
-  const mainNav = [...(canSeeDashboard ? [dashboardNav] : []), ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
+  const mainNav = isContractPath
+    ? contractNav.filter((item) => !("manageOnly" in item) || !item.manageOnly || ["ADMIN", "SUPER_ADMIN"].includes(user.role))
+    : [...(canSeeDashboard ? [dashboardNav] : []), ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
 
   if (pathname === "/login") return <>{children}</>;
   if (status === "loading") {
@@ -208,7 +220,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
         ))}
-        {user.role === "REPRESENTATIVE" && isModuleEnabled("ACTIEPUNTEN") && canAccessCoachingModuleNavigation(user, "ACTIEPUNTEN") && representativeNav.map((item) => (
+        {!isContractPath && user.role === "REPRESENTATIVE" && isModuleEnabled("ACTIEPUNTEN") && canAccessCoachingModuleNavigation(user, "ACTIEPUNTEN") && representativeNav.map((item) => (
           <NavItem
             key={item.href}
             href={item.href}
@@ -219,7 +231,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
         ))}
-        {groupedManagementNav.length > 0 && (
+        {!isContractPath && groupedManagementNav.length > 0 && (
           <>
             {!collapsed && <p className="px-3 pb-1 pt-5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Beheer</p>}
             {groupedManagementNav.map((item) => {
