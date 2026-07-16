@@ -42,7 +42,7 @@ This source foundation is not yet a production offline implementation. The follo
 - PWA runtime wiring for the key provisioning, session invalidation and remote-control foundation described in `MILESTONE-1-DEVICE-SECURITY.md`;
 - Android/MDM binding and a real remote-wipe exercise;
 - biometric/PIN resume gate;
-- workflow-form wiring for the shared draft/autosave layer described in `MILESTONE-1-DRAFT-AUTOSAVE.md` and wiring the command outbox to encrypted device storage;
+- workflow-form wiring for the shared draft/autosave layer described in `MILESTONE-1-DRAFT-AUTOSAVE.md` and the encrypted command queue described in `MILESTONE-1-SYNC-QUEUE.md`;
 - sync status, retry and day −1 blocking UI;
 - a controlled migration or expiry path for any existing local-storage drafts;
 - real-browser IndexedDB, storage-pressure, upgrade, logout and device-loss acceptance tests.

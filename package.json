@@ -63,6 +63,7 @@
     "test:salesday-device-registration": "tsx scripts/test-salesday-device-registration.ts",
     "test:salesday-device-security": "tsx scripts/test-salesday-device-security.ts",
     "test:salesday-draft-store": "tsx scripts/test-salesday-draft-store.ts",
+    "test:salesday-sync-queue": "tsx scripts/test-salesday-sync-queue.ts && tsx scripts/test-salesday-sync-queue-concurrency.ts",
     "contract:import-catalog": "tsx scripts/import-contract-catalog.ts",
     "utf8:diagnose": "tsx scripts/diagnose-utf8.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",

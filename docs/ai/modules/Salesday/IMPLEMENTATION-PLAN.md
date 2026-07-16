@@ -411,7 +411,7 @@ Evidence and deliberately unresolved adapter details are recorded in `MILESTONE-
 
 ## Milestone 1 — Platform integration, replica and offline foundation
 
-Status: `IN PROGRESS` — the persistent integration-ledger, encrypted offline-store, personal device-registration, device-security and encrypted draft/autosave foundations are implemented in source; see the linked Milestone 1 evidence documents in `README.md`. Production database deployment, workflow-form wiring and the remaining offline/platform deliverables are still pending.
+Status: `IN PROGRESS` — the persistent integration-ledger, encrypted offline-store, personal device-registration, device-security, encrypted draft/autosave and encrypted offline-command queue foundations are implemented in source. Authenticated offline batches can be accepted transactionally into the ERP ledger; see the linked Milestone 1 evidence documents in `README.md`. Production database deployment, workflow-form wiring, automatic scheduling/status UI and the remaining offline/platform deliverables are still pending.
 
 ### Deliverables
 
