@@ -697,5 +697,11 @@
   "salesday.dayGate.emergencyTitle": "Centrale noodmodus actief",
   "salesday.dayGate.emergencyDescription": "Je mag met de laatst gesynchroniseerde agenda werken. Nieuwe wijzigingen blijven in volgorde wachten tot de ERP-verbinding hersteld is.",
   "salesday.dayGate.reason": "Incidentreden",
-  "salesday.dayGate.until": "Actief tot"
+  "salesday.dayGate.until": "Actief tot",
+  "salesday.access.loading": "SalesDay-toegang controleren",
+  "salesday.access.loadingDescription": "Je geactiveerde land-, team- en gebruikersscope wordt veilig opgehaald.",
+  "salesday.access.disabled": "SalesDay niet geactiveerd",
+  "salesday.access.disabledDescription": "SalesDay is niet actief voor je huidige scope. Neem contact op met de backoffice als dit onverwacht is.",
+  "salesday.access.inventoryDisabled": "Voorraad niet geactiveerd",
+  "salesday.access.foundationReady": "De beveiligde platform-, toestel-, offline- en synchronisatiefundering is actief. Operationele schermen worden in de volgende mijlpaal aangesloten."
 }

@@ -330,6 +330,20 @@ enum DeviceControlCommandStatus {
   ACKNOWLEDGED
 }
 
+enum SalesDayFeatureKey {
+  SALESDAY
+  INVENTORY
+  OFFLINE_COMMANDS
+  ERP_WRITES
+}
+
+enum SalesDayFeatureScope {
+  GLOBAL
+  COUNTRY
+  TEAM
+  USER
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -430,6 +444,8 @@ model User {
   requestedDeviceControls  DeviceControlCommand[]      @relation("DeviceControlCommandRequestedBy")
   activatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeActivatedBy")
   deactivatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeDeactivatedBy")
+  salesDayFeatureOverrides SalesDayFeatureFlag[] @relation("SalesDayFeatureTargetUser")
+  updatedSalesDayFeatureFlags SalesDayFeatureFlag[] @relation("SalesDayFeatureUpdatedBy")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -564,6 +580,7 @@ model Team {
   starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[] @relation("StarterEvaluationQuestionScopeLinkTeam")
   contractCustomers ContractCustomer[]
   contractCalculations ContractCalculation[]
+  salesDayFeatureFlags SalesDayFeatureFlag[]
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -2170,6 +2187,29 @@ model SalesDayEmergencyMode {
   @@index([startsAt, endsAt])
   @@index([activatedByUserId, createdAt])
   @@index([deactivatedByUserId])
+}
+
+model SalesDayFeatureFlag {
+  id          String               @id @default(cuid())
+  key         SalesDayFeatureKey
+  scope       SalesDayFeatureScope
+  scopeKey    String               @unique @db.VarChar(191)
+  enabled     Boolean              @default(false)
+  country     Country?
+  teamId      String?
+  userId      String?
+  updatedById String?
+  team        Team?                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user        User?                @relation("SalesDayFeatureTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  updatedBy   User?                @relation("SalesDayFeatureUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([key, scope, enabled])
+  @@index([country, key])
+  @@index([teamId, key])
+  @@index([userId, key])
+  @@index([updatedById])
 }
 
 model ErpOutboxCommand {

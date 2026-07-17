@@ -124,6 +124,8 @@ export const fieldForceBasePermissionGroups: {
     permissions: [
       { key: "salesday.manage", label: "SalesDay en toestellen beheren" },
       { key: "salesday.emergencyMode.manage", label: "SalesDay-noodmodus beheren" },
+      { key: "salesday.settings.manage", label: "SalesDay-activatie en runtime beheren" },
+      { key: "salesday.integration.monitor", label: "SalesDay-integratie opvolgen" },
     ],
   },
 ];
@@ -167,6 +169,10 @@ const representativeMenuPermissions: FieldForcePermissionKey[] = [
   "menu.coaching.actionPoints",
   "menu.contract.enabled",
   "menu.contract.open",
+  "menu.salesday.enabled",
+  "menu.salesday.preparation",
+  "menu.salesday.agenda",
+  "menu.salesday.stock",
 ];
 
 const serviceOperatorMenuPermissions: FieldForcePermissionKey[] = [

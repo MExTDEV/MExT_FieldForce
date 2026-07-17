@@ -15,7 +15,10 @@ export function createSalesErpPort(input: {
         message: "The Sales ERP mock provider is disabled in production",
       });
     }
-    return new SalesErpMockAdapter(input.mockOptions);
+    return new SalesErpMockAdapter({
+      ...input.mockOptions,
+      runtimeEnvironment: input.runtimeEnvironment ?? process.env.NODE_ENV,
+    });
   }
 
   throw new SalesErpError({

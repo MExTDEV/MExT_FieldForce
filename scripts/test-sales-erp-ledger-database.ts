@@ -139,6 +139,7 @@ async function main() {
     await dispatchSalesErpOutboxBatch({
       port: adapter,
       workerId: `${prefix}-worker-1`,
+      writesEnabled: true,
       authorize: async () => ({ allowed: true }),
       now: fixedNow,
     });
@@ -149,6 +150,7 @@ async function main() {
     await dispatchSalesErpOutboxBatch({
       port: adapter,
       workerId: `${prefix}-worker-2`,
+      writesEnabled: true,
       authorize: async () => ({ allowed: true }),
       now: fixedNow,
     });
@@ -183,6 +185,7 @@ async function main() {
     const lostDispatch = await dispatchSalesErpOutboxBatch({
       port: lostPort,
       workerId: `${prefix}-worker-lost`,
+      writesEnabled: true,
       authorize: async () => ({ allowed: true }),
       now: fixedNow,
       policy: { leaseMs: 1_000, baseRetryDelayMs: 0, maxRetryDelayMs: 0 },
@@ -205,6 +208,7 @@ async function main() {
     const permissionDispatch = await dispatchSalesErpOutboxBatch({
       port: adapter,
       workerId: `${prefix}-worker-permission`,
+      writesEnabled: true,
       authorize: async (submittedCommand) =>
         submittedCommand.commandId === permissionCommand.commandId
           ? { allowed: false, reason: "Test permission revoked", reasonCode: "PERMISSION_REVOKED" }

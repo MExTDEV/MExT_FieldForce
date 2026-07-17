@@ -625,6 +625,19 @@ Critical rules:
 - the permission defaults to `SUPER_ADMIN` and remains distinct from ordinary SalesDay/device management;
 - day −1 evidence continues to come from dated `ErpOutboxCommand` rows and the encrypted device queue; emergency mode does not delete or accept commands;
 - migration `0044` is not deployed to the configured production database.
+## SalesDay feature controls
+
+Migration `0045_salesday_feature_controls` additively defines `SalesDayFeatureFlag` and the `salesday.settings.manage` and `salesday.integration.monitor` permissions.
+
+Critical rules:
+
+- `scopeKey` is the unique deterministic identity for a feature/scope/target combination;
+- global, country, team and user records remain explicit and default disabled;
+- target rows reference existing `Team` or `User` records and retain the last updating actor;
+- runtime provider, mock-seed and notification-type configuration reuses server-only `AppSetting` key `salesday.runtime.v1`;
+- flag/runtime mutation and `AuditLog` creation share one transaction;
+- migration `0045` contains no activation rows, runtime seed or business data and is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

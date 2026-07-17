@@ -3,7 +3,6 @@ import { ErpOutboxStatus, ErpReconciliationIncidentStatus } from "@prisma/client
 import type { MockUser } from "@/lib/types";
 import { prisma } from "@/lib/server/db";
 import {
-  assertSalesErpProvider,
   prismaSalesErpProvider,
   type SalesErpProvider,
 } from "@/lib/server/integrations/sales-erp";
@@ -19,12 +18,11 @@ export async function getOwnSalesDaySyncStatus(input: {
   actor: MockUser;
   loginSessionId: string | null;
   deviceId: string;
-  provider: string;
+  provider: SalesErpProvider;
   now?: Date;
 }) {
   const { deviceId } = await requireActiveSalesDayDevice(input);
-  assertSalesErpProvider(input.provider);
-  const provider: SalesErpProvider = input.provider;
+  const provider = input.provider;
   const prismaProvider = prismaSalesErpProvider(provider);
   const commandScope = {
     provider: prismaProvider,

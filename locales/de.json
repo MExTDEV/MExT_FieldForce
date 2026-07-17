@@ -699,5 +699,11 @@
   "salesday.dayGate.emergencyTitle": "Zentraler Notfallmodus aktiv",
   "salesday.dayGate.emergencyDescription": "Sie dürfen mit der zuletzt synchronisierten Agenda arbeiten. Neue Änderungen warten geordnet, bis die ERP-Verbindung wiederhergestellt ist.",
   "salesday.dayGate.reason": "Störungsgrund",
-  "salesday.dayGate.until": "Aktiv bis"
+  "salesday.dayGate.until": "Aktiv bis",
+  "salesday.access.loading": "SalesDay-Zugriff wird geprüft",
+  "salesday.access.loadingDescription": "Die Aktivierung für Land, Team und Benutzer wird sicher geladen.",
+  "salesday.access.disabled": "SalesDay nicht aktiviert",
+  "salesday.access.disabledDescription": "SalesDay ist für Ihren aktuellen Bereich nicht aktiv. Wenden Sie sich an das Backoffice, falls dies unerwartet ist.",
+  "salesday.access.inventoryDisabled": "Bestand nicht aktiviert",
+  "salesday.access.foundationReady": "Die sichere Plattform-, Geräte-, Offline- und Synchronisierungsgrundlage ist aktiv. Die operativen Bildschirme werden im nächsten Meilenstein angebunden."
 }

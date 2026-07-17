@@ -74,6 +74,7 @@ export function canCreateCoachingIntervention(user: MockUser) {
 
 export function canAccessSalesday(user: MockUser) {
   return [
+    "REPRESENTATIVE",
     "SALES_LEADER",
     "SALES_MANAGER",
     "COUNTRY_MANAGER",

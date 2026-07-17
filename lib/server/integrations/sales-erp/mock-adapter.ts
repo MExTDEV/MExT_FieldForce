@@ -20,6 +20,7 @@ import {
   fingerprintSalesErpCommand,
 } from "./idempotency";
 import type { SalesErpEventRequest, SalesErpPort } from "./port";
+import { assertSalesDayMockSeedAllowed } from "@/lib/salesday/runtime-configuration";
 
 const bootstrapResources: SalesErpBootstrapResource[] = [
   "customers",
@@ -56,6 +57,7 @@ const supportedCommands: SalesErpCommandType[] = [
 type MockOutcome = SalesErpCommandAcknowledgement["status"];
 
 export type SalesErpMockAdapterOptions = {
+  runtimeEnvironment?: string;
   now?: () => Date;
   defaultPageSize?: number;
   dataset?: SalesErpMockDataset;
@@ -100,6 +102,7 @@ export class SalesErpMockAdapter implements SalesErpPort {
   private readonly submittedCommands: SalesErpCommand[] = [];
 
   constructor(options: SalesErpMockAdapterOptions = {}) {
+    assertSalesDayMockSeedAllowed(options.runtimeEnvironment);
     this.now = options.now ?? (() => new Date());
     this.defaultPageSize = pageSize(options.defaultPageSize, 100);
     this.dataset = options.dataset ?? salesErpMockDataset;

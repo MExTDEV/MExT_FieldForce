@@ -99,8 +99,13 @@ for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER", 
 
 const representative = user("REPRESENTATIVE");
 const representativeDomains = getAvailableDomains(representative, modules);
-expect(representativeDomains.length === 2, "Een vertegenwoordiger moet standaard Coaching en Contract zien.");
+expect(representativeDomains.length === 3, "Een vertegenwoordiger moet standaard Coaching, SalesDay en Contract zien.");
 expect(representativeDomains.some((domain) => domain.key === "contract"), "Contract ontbreekt voor de vertegenwoordiger.");
+const representativeSalesDayLinks = representativeDomains.find((domain) => domain.key === "salesday")?.links.map((link) => link.key) ?? [];
+expect(representativeSalesDayLinks.includes("preparation"), "SalesDay-voorbereiding ontbreekt voor de vertegenwoordiger.");
+expect(representativeSalesDayLinks.includes("agenda"), "SalesDay-agenda ontbreekt voor de vertegenwoordiger.");
+expect(representativeSalesDayLinks.includes("stock"), "SalesDay-voorraad ontbreekt voor de vertegenwoordiger.");
+expect(!representativeSalesDayLinks.includes("team"), "SalesDay Mijn Team mag niet zichtbaar zijn voor de vertegenwoordiger.");
 const representativeLinks = representativeDomains.find((domain) => domain.key === "coaching")?.links.map((link) => link.key) ?? [];
 expect(representativeLinks.includes("dashboard"), "Dashboard ontbreekt voor de vertegenwoordiger.");
 expect(representativeLinks.includes("planning"), "Planning ontbreekt voor de vertegenwoordiger.");

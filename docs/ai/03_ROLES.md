@@ -335,6 +335,10 @@ Personal SalesDay device registration is limited to the Representative for the o
 
 Activating or stopping ERP-outage emergency mode requires the separate `salesday.emergencyMode.manage` permission. It defaults to Super Admin only and does not grant any ordinary Representative action. Every activation and early stop requires a reason and is audited.
 
+Managing global/country/team/user activation or the server-owned ERP runtime requires `salesday.settings.manage`. Reading technical integration incidents requires `salesday.integration.monitor`. Both default to Super Admin only, remain configurable through role grants and user overrides, and do not grant Representative operational actions.
+
+Representatives receive SalesDay preparation, agenda and stock menu rights, but effective visibility still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
+
 ## Enforcement
 
 Navigation, direct page access, APIs, file downloads, offline bootstrap data and background command processing must enforce the same effective SalesDay scope.

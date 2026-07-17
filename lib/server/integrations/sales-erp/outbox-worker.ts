@@ -29,6 +29,7 @@ export type SalesErpReplayAuthorization = (
 export type DispatchSalesErpOutboxInput = {
   port: SalesErpPort;
   workerId: string;
+  writesEnabled: boolean;
   authorize: SalesErpReplayAuthorization;
   limit?: number;
   now?: Date;
@@ -162,6 +163,17 @@ export async function dispatchSalesErpOutboxBatch(input: DispatchSalesErpOutboxI
   const limit = input.limit ?? 50;
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
     throw new SalesErpError({ code: "INVALID_CONTRACT", message: "Outbox batch limit must be 1 to 500" });
+  }
+  if (!input.writesEnabled) {
+    return {
+      disabled: true,
+      dependencyRejected: 0,
+      claimed: 0,
+      accepted: 0,
+      rejected: 0,
+      retryable: 0,
+      permissionRejected: 0,
+    };
   }
   const policy = normalizeSalesErpWorkerPolicy(input.policy);
   const dependencyRejected = await rejectCommandsWithRejectedDependencies(input.port.provider);
@@ -320,6 +332,7 @@ export async function dispatchSalesErpOutboxBatch(input: DispatchSalesErpOutboxI
   }
 
   return {
+    disabled: false,
     dependencyRejected,
     claimed: claimed.length,
     accepted,

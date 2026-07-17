@@ -10,6 +10,7 @@ import { PerformanceProvider } from "@/components/performance-provider";
 import { RepresentativesProvider } from "@/components/representatives-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { WorkflowProvider } from "@/components/workflow-provider";
+import { SalesDayFeatureProvider } from "@/components/salesday/feature-provider";
 import { branding } from "@/config/branding";
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body suppressHydrationWarning>
         <AuthSessionProvider>
           <SessionProvider>
+            <SalesDayFeatureProvider>
             <ModuleProvider>
               <RepresentativesProvider>
                 <ConfigurationProvider>
@@ -53,6 +55,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 </ConfigurationProvider>
               </RepresentativesProvider>
             </ModuleProvider>
+            </SalesDayFeatureProvider>
           </SessionProvider>
         </AuthSessionProvider>
       </body>

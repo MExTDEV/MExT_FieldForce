@@ -78,6 +78,8 @@ export type FieldForcePermissionKey =
   | "contractModelsManage"
   | "salesday.manage"
   | "salesday.emergencyMode.manage"
+  | "salesday.settings.manage"
+  | "salesday.integration.monitor"
   | "menu.coaching.enabled"
   | "menu.coaching.dashboard"
   | "menu.coaching.planning"

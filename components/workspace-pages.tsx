@@ -37,6 +37,7 @@ import { useWorkflow } from "@/components/workflow-provider";
 import { usePersonalCriteria } from "@/components/personal-criteria-provider";
 import { usePerformance } from "@/components/performance-provider";
 import { useModules } from "@/components/module-provider";
+import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { MyReflectionsPage, MyReportsPage } from "@/components/representative-workflow-pages";
 import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/contact-help-workflows";
@@ -176,6 +177,7 @@ const handledHelpRequestStatuses = new Set([
 export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user, loading: sessionLoading, error: sessionError } = useSession();
   const { isModuleEnabled } = useModules();
+  const salesDayFeatures = useSalesDayFeatures();
   const path = segments.join("/");
   const routeModule = moduleForRoute(segments[0] ?? "");
 
@@ -202,6 +204,15 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   }
   if (path === "mijn-gegevens") return <MyProfilePage />;
   if (path === "taken-vandaag") return <TodayTasksPage />;
+  if (segments[0] === "salesday" && salesDayFeatures.loading) {
+    return <EmptyState title={translate(user.language, "salesday.access.loading")} description={translate(user.language, "salesday.access.loadingDescription")} />;
+  }
+  if (segments[0] === "salesday" && !salesDayFeatures.isEnabled("SALESDAY")) {
+    return <EmptyState title={translate(user.language, "salesday.access.disabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
+  }
+  if (segments[0] === "salesday" && segments[1] === "mijn-voorraad" && !salesDayFeatures.isEnabled("INVENTORY")) {
+    return <EmptyState title={translate(user.language, "salesday.access.inventoryDisabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
+  }
   if (segments[0] === "salesday") return <PlaceholderWorkspace title="Salesday" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "pst") return <PlaceholderWorkspace title="PST" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "contract") return <PlaceholderWorkspace title="Contract" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;

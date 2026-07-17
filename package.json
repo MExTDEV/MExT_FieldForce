@@ -66,6 +66,7 @@
     "test:salesday-sync-queue": "tsx scripts/test-salesday-sync-queue.ts && tsx scripts/test-salesday-sync-queue-concurrency.ts",
     "test:salesday-sync-runtime": "tsx scripts/test-salesday-sync-runtime.ts",
     "test:salesday-day-gate": "tsx scripts/test-salesday-day-gate.ts",
+    "test:salesday-feature-controls": "tsx scripts/test-salesday-feature-controls.ts",
     "contract:import-catalog": "tsx scripts/import-contract-catalog.ts",
     "utf8:diagnose": "tsx scripts/diagnose-utf8.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",

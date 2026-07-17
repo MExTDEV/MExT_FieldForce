@@ -699,5 +699,11 @@
   "salesday.dayGate.emergencyTitle": "Mode d'urgence central actif",
   "salesday.dayGate.emergencyDescription": "Vous pouvez travailler avec le dernier agenda synchronisé. Les nouvelles modifications restent ordonnées en attente jusqu'au rétablissement de la connexion ERP.",
   "salesday.dayGate.reason": "Motif de l'incident",
-  "salesday.dayGate.until": "Actif jusqu'au"
+  "salesday.dayGate.until": "Actif jusqu’au",
+  "salesday.access.loading": "Vérification de l’accès à SalesDay",
+  "salesday.access.loadingDescription": "L’activation de votre pays, équipe et utilisateur est chargée de manière sécurisée.",
+  "salesday.access.disabled": "SalesDay non activé",
+  "salesday.access.disabledDescription": "SalesDay n’est pas actif pour votre périmètre actuel. Contactez le back-office si cela est inattendu.",
+  "salesday.access.inventoryDisabled": "Stock non activé",
+  "salesday.access.foundationReady": "La base sécurisée de la plateforme, des appareils, du mode hors ligne et de la synchronisation est active. Les écrans opérationnels seront connectés lors du prochain jalon."
 }

@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client";
 import type { MockUser } from "@/lib/types";
 import { prisma } from "@/lib/server/db";
 import {
-  assertSalesErpProvider,
   enqueueSalesErpCommandInTransaction,
   SalesErpError,
   serializeSalesErpCommand,
@@ -85,12 +84,11 @@ export async function ingestOfflineSalesErpCommands(input: {
   actor: MockUser;
   loginSessionId: string | null;
   deviceId: string;
-  provider: string;
+  provider: SalesErpProvider;
   items: unknown;
 }) {
   const { deviceId } = await requireActiveSalesDayDevice(input);
-  assertSalesErpProvider(input.provider);
-  const provider: SalesErpProvider = input.provider;
+  const provider = input.provider;
   const items = parseOfflineSalesErpCommandItems(input.items);
   assertOfflineCommandActor(input.actor, deviceId, items);
 

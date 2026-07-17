@@ -450,6 +450,10 @@ Migration `0044_salesday_day_gate_emergency` adds the `SalesDayEmergencyMode` in
 
 ---
 
+## SalesDay feature controls
+
+Migration `0045_salesday_feature_controls` adds the scoped `SalesDayFeatureFlag` table, target/updater foreign keys and the two explicit settings/monitor permissions. No activation records are seeded: absence remains disabled. Runtime provider and notification configuration uses the existing `AppSetting` table under `salesday.runtime.v1`. Source validation may generate Prisma types, but this migration must not be applied to production as part of local implementation.
+
 # Hulpaanvragen
 
 Help requests are stored in `HelpRequest`.

@@ -51,6 +51,7 @@ FieldForce is the entry, offline and presentation layer for sales operations. Bu
 - Milestone 1 encrypted offline command queue: `MILESTONE-1-SYNC-QUEUE.md`
 - Milestone 1 automatic sync runtime and freshness status: `MILESTONE-1-SYNC-RUNTIME.md`
 - Milestone 1 day −1 gate and audited emergency mode: `MILESTONE-1-DAY-GATE.md`
+- Milestone 1 server feature controls, production guard and notification privacy: `MILESTONE-1-FEATURE-CONTROLS.md`
 - Original repository and prototype evidence: `../../../SALESDAY-INTEGRATION-AUDIT.md`
 - Shared roles and scope: `../../03_ROLES.md`
 - Shared architecture and integration boundaries: `../../01_ARCHITECTURE.md`
