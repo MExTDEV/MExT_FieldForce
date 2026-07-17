@@ -69,8 +69,7 @@ export function buildHistoricalComparisonOptions(input: {
       candidate.id !== input.currentId &&
       candidate.representativeId === input.representativeId &&
       candidate.date < input.currentDate &&
-      isHistoricalComparisonStatus(candidate.status) &&
-      candidate.scores.length > 0
+      isHistoricalComparisonStatus(candidate.status)
     )
     .sort((left, right) => right.date.localeCompare(left.date))
     .map(({ id, date, ownerName, status }) => ({ id, date, ownerName, status }));

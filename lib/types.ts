@@ -555,7 +555,7 @@ export type ActionPointProductOption = {
 
 export type CoachingSimpleScore = {
   criterion: string;
-  score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt";
+  score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt" | null;
   comment: string;
   previousScore?: number;
 };

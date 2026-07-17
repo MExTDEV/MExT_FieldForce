@@ -39,6 +39,7 @@ import {
 } from "@/lib/coaching/approval-notifications";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { historicalStatuses } from "@/lib/server/coaching-historical-comparison";
+import { coachingReportIssues } from "@/lib/coaching/report-form";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -520,6 +521,19 @@ async function requireExistingCoachingsMutable(
       stored.notifyRepresentative !== Boolean(next.notifyRepresentative);
     if ((next.status === "geannuleerd" || planningChanged) && (stored.status !== "GEPLAND" || hasData)) {
       forbidden("Alleen een lege, geplande begeleiding kan gewijzigd of verwijderd worden.");
+    }
+    if (["voltooid", "gefinaliseerd", "gesloten"].includes(next.status)) {
+      const issues = coachingReportIssues({ dossier: next.dossier, actionPoints: next.actionPoints });
+      const missingScore = issues.find((issue) => issue.code === "general_score_missing" || issue.code === "personality_score_missing");
+      if (missingScore) {
+        forbidden(`Kies expliciet een score of NVT voor alle verplichte evaluatiepunten${missingScore.criterion ? `: ${missingScore.criterion}` : ""}.`);
+      }
+      if (issues.some((issue) => issue.code === "action_point_missing")) {
+        forbidden("Voeg minstens één nieuw actiepunt toe voordat je de begeleiding afsluit.");
+      }
+      if (issues.some((issue) => ["action_point_title_missing", "action_point_priority_missing", "action_point_tips_missing"].includes(issue.code))) {
+        forbidden("Titel, prioriteit en Tips & Tricks zijn verplicht voor nieuwe actiepunten.");
+      }
     }
     if (["voltooid", "gefinaliseerd", "gesloten"].includes(next.status) && next.actionPoints.filter((item) => item.isNew && item.title.trim()).length < 1) {
       forbidden("Voeg minstens één nieuw actiepunt toe voordat je de begeleiding afsluit.");

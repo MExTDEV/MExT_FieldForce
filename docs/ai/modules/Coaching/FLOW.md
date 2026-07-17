@@ -191,6 +191,22 @@ The exact active criteria come from the current scoped configuration.
 
 ---
 
+## Seven-step report behaviour
+
+Execution uses the shared seven-step Begeleiding report documented in
+Begeleidingen.md. Navigation remains non-linear and incomplete steps remain
+editable. All field types, including rich text, scores, appointments and Action
+Points, autosave through the same serial queue.
+
+General and personality criteria require an explicit numeric or NVT selection.
+An unselected score remains distinct from explicit NVT in the existing score
+persistence. Missing selections do not block step navigation, but they block
+completion both in the UI and on the server.
+
+The final step combines completion and the existing submission-for-approval
+transition. Saving or closing the report never submits it for approval.
+Lifecycle locks, scope enforcement, notifications, approval ownership and
+audit behaviour remain unchanged.
 # 4. Saving Incomplete
 
 A partially completed Begeleiding may be saved as Incomplete.

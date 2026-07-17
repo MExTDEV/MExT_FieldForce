@@ -206,6 +206,46 @@ block planning or export.
 
 ---
 
+# Seven-step execution report
+
+An editable Begeleiding opens as one freely navigable seven-step report:
+
+1. Algemene gegevens;
+2. Voorbereiding;
+3. Evaluatie Algemene punten;
+4. Evaluatie Persoonlijkheid;
+5. Afspraken;
+6. Actiepunten;
+7. Afsluiten.
+
+The stepper does not enforce linear navigation. It distinguishes the active
+step, completed optional content, incomplete content and missing mandatory
+content. Pending debounced changes are flushed before step navigation.
+
+Every report change is autosaved through one serial save queue. Text input uses
+a short debounce. A newer local version is never replaced by an older response.
+A failed request keeps the local value and browser draft, shows a non-blocking
+error and offers retry. Refreshing an editable report restores and resubmits a
+newer unsent browser draft.
+
+General and personality scores use three distinct values:
+
+- null plus notApplicable = false: no explicit selection yet;
+- a numeric score: explicit numeric selection;
+- null plus notApplicable = true: explicit NVT selection.
+
+New reports start with no general or personality score selected. Existing
+reports retain their stored numeric/NVT meaning. No schema migration is needed
+because the existing Score.score and Score.notApplicable fields already encode
+all three states.
+
+Step 7 uses the existing central score calculation and shows the report
+summary, missing mandatory data and direct links back to the affected step.
+Saving stays in the report. Closing flushes the draft and returns to the
+Begeleidingen overview without finalising. Finalising first performs the same
+validation server-side, persists the completed report and then invokes the
+existing send-for-approval transition. The submit control is guarded against
+double activation.
 # Historical Score Comparison
 
 During execution, the score area of the Begeleiding form contains a comparison selector above the representative score sections.
@@ -214,7 +254,8 @@ The selector:
 
 - is labelled as a comparison with a previous Begeleiding;
 - lists only earlier Begeleidingen for the same coached person;
-- excludes the current record, cancelled records, deleted records, future records and records without saved score data;
+- excludes the current record, cancelled records, deleted records and future records;
+- keeps completed records without score data selectable and shows a local empty score state;
 - sorts eligible records newest first;
 - defaults to the newest eligible previous record;
 - includes a no-comparison option that hides historical scores.

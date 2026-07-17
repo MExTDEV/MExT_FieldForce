@@ -30,8 +30,8 @@ const options = buildHistoricalComparisonOptions({
 
 assert.deepEqual(
   options.map((item) => item.id),
-  ["previous-new", "previous-old"],
-  "Alleen eerdere, niet-geannuleerde begeleidingen met scoredata van dezelfde vertegenwoordiger mogen in de dropdown staan."
+  ["empty", "previous-new", "previous-old"],
+  "Alle eerdere afgeronde, niet-geannuleerde begeleidingen van dezelfde vertegenwoordiger moeten in de dropdown staan, ook zonder score."
 );
 
 const lookup = buildHistoricalScoreLookup(candidates.find((item) => item.id === "previous-new")!.scores);

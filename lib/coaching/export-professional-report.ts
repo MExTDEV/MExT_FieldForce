@@ -699,7 +699,7 @@ function collectScoreRows(intervention?: CoachingIntervention): ScoreRow[] {
 }
 
 function simpleScoreRow(score: CoachingSimpleScore, group: string): ScoreRow | undefined {
-  if (score.score === "nvt") return undefined;
+  if (typeof score.score !== "number") return undefined;
   return { group, criterion: score.criterion, current: score.score * 20, previous: score.previousScore === undefined ? undefined : score.previousScore * 20, comment: score.comment };
 }
 

@@ -9,6 +9,8 @@ import {
   CalendarCheck,
   CalendarDays,
   Check,
+  CheckCircle2,
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -24,7 +26,9 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
+  RefreshCw,
   Search,
+  Save,
   Sparkles,
   Target,
   Users,
@@ -140,6 +144,11 @@ import {
   localDateKey,
 } from "@/lib/coaching/visibility";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
+import {
+  coachingReportIssues,
+  type CoachingReportIssue,
+  type CoachingReportStepId,
+} from "@/lib/coaching/report-form";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
   hasHtmlMarkup,
@@ -2269,8 +2278,8 @@ function defaultDossierState() {
     sector: "",
     groupAttentionPoints: ["", "", ""],
     individualAttentionPoint: "",
-    generalScores: dossierGeneralCriteria.map((criterion) => ({ criterion, score: "nvt" as const, comment: "" })),
-    personalityScores: dossierPersonalityCriteria.map((criterion) => ({ criterion, score: "nvt" as const, comment: "" })),
+    generalScores: dossierGeneralCriteria.map((criterion) => ({ criterion, score: null, comment: "" })),
+    personalityScores: dossierPersonalityCriteria.map((criterion) => ({ criterion, score: null, comment: "" })),
   };
 }
 
@@ -2289,6 +2298,25 @@ function emptyAppointment(appointmentCriteria: string[]) {
     remarks: "",
   };
 }
+function coachingPersistenceInput(item: CoachingWorkflowItem, actorId: string) {
+  return {
+    id: item.id,
+    representativeId: item.representativeId,
+    initiatorId: actorId,
+    ownerId: item.ownerId,
+    plannedDate: item.plannedDate,
+    startTime: item.startTime,
+    endTime: item.endTime,
+    notifyRepresentative: item.notifyRepresentative,
+    subject: item.subject,
+    internalNotes: item.internalNotes,
+    focusNames: item.focusNames,
+    scores: item.scores,
+    actionPoints: toPersistableCoachingActionPoints(item.actionPoints),
+    dossier: item.dossier,
+    appointments: item.appointments,
+  };
+}
 
 function CoachingDossierDetail({
   intervention,
@@ -2300,6 +2328,7 @@ function CoachingDossierDetail({
   workflowApi: WorkflowApi;
 }) {
   const { user, managedUsers } = useSession();
+  const router = useRouter();
   const { coachingFramework } = useConfiguration();
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
@@ -2311,6 +2340,22 @@ function CoachingDossierDetail({
   const [historicalComparisonId, setHistoricalComparisonId] = useState("none");
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [historicalError, setHistoricalError] = useState<string>();
+  const [activeStep, setActiveStep] = useState<CoachingReportStepId>(1);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">("saved");
+  const [saveError, setAutosaveError] = useState<string>();
+  const localRef = useRef(local);
+  const saveCoachingRef = useRef(workflowApi.saveCoachingStatus);
+  const autosaveTimerRef = useRef<number | undefined>(undefined);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
+  const flushAutosaveRef = useRef<(force?: boolean) => Promise<boolean>>(async () => true);
+  const changeVersionRef = useRef(0);
+  const savedVersionRef = useRef(0);
+  const finalizeInFlightRef = useRef(false);
+  const lastObservedLocalRef = useRef(local);
+  const suppressAutosaveRef = useRef(false);
+  const draftRestoredRef = useRef(false);
+  const draftStorageKey = `fieldforce:coaching-report-draft:${local.id}:${user.id}`;
+  localRef.current = local;
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const approval = workflowApi.state.approvals.find((item) => item.interventionId === local.id);
   const updateActionTips = useCallback((actionId: string, tipsAndTricks: string) => {
@@ -2331,6 +2376,11 @@ function CoachingDossierDetail({
   const canManageCurrentCoaching = canManageCoaching(user, local);
   const canManageCompleted = canManageCurrentCoaching;
   const readOnly = !canManageCurrentCoaching || isApprovalLocked || isCompleted || local.status === "geannuleerd";
+  const validationIssues = useMemo(
+    () => coachingReportIssues({ dossier, actionPoints: local.actionPoints }),
+    [dossier, local.actionPoints]
+  );
+  const reportIsValid = validationIssues.length === 0;
   const historicalScoreLookup = useMemo(
     () => buildHistoricalScoreLookup(historicalComparison.selected?.scores ?? []),
     [historicalComparison.selected?.scores]
@@ -2350,6 +2400,109 @@ function CoachingDossierDetail({
       setLocal(intervention);
     }
   }, [intervention, user]);
+
+  useEffect(() => {
+    if (draftRestoredRef.current || readOnly || typeof window === "undefined") return;
+    draftRestoredRef.current = true;
+    try {
+      const stored = window.localStorage.getItem(draftStorageKey);
+      if (!stored) return;
+      const draft = JSON.parse(stored) as CoachingWorkflowItem;
+      if (draft.id === intervention.id && draft.updatedAt >= intervention.updatedAt) {
+        setLocal(draft);
+      }
+    } catch {
+      window.localStorage.removeItem(draftStorageKey);
+    }
+  }, [draftStorageKey, intervention.id, intervention.updatedAt, readOnly]);
+
+  async function flushAutosave(force = false): Promise<boolean> {
+    if (autosaveTimerRef.current !== undefined) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = undefined;
+    }
+    if (readOnly) return true;
+
+    const activeSave = saveInFlightRef.current;
+    if (activeSave) {
+      const activeResult = await activeSave;
+      if (savedVersionRef.current < changeVersionRef.current) {
+        return flushAutosaveRef.current(force);
+      }
+      return activeResult;
+    }
+
+    const version = changeVersionRef.current;
+    if (!force && version <= savedVersionRef.current) return true;
+    const snapshot = localRef.current;
+    setSaveStatus("saving");
+    setAutosaveError(undefined);
+
+    const request = (async () => {
+      try {
+        await saveCoachingRef.current(
+          coachingPersistenceInput(snapshot, user.id),
+          "in_uitvoering"
+        );
+        savedVersionRef.current = Math.max(savedVersionRef.current, version);
+        if (version === changeVersionRef.current) {
+          if (localRef.current.status !== "in_uitvoering") {
+            const markedInProgress = { ...localRef.current, status: "in_uitvoering" as const };
+            suppressAutosaveRef.current = true;
+            localRef.current = markedInProgress;
+            setLocal(markedInProgress);
+          }
+          window.localStorage.removeItem(draftStorageKey);
+          setSaveStatus("saved");
+        }
+        return true;
+      } catch (error) {
+        setSaveStatus("error");
+        setAutosaveError(error instanceof Error ? error.message : t("coaching.report.saveError"));
+        return false;
+      }
+    })();
+
+    saveInFlightRef.current = request;
+    const result = await request;
+    if (saveInFlightRef.current === request) saveInFlightRef.current = null;
+    if (result && savedVersionRef.current < changeVersionRef.current) {
+      return flushAutosaveRef.current(force);
+    }
+    return result;
+  }
+  flushAutosaveRef.current = flushAutosave;
+
+  useEffect(() => {
+    localRef.current = local;
+    if (lastObservedLocalRef.current === local) return;
+    lastObservedLocalRef.current = local;
+    if (suppressAutosaveRef.current) {
+      suppressAutosaveRef.current = false;
+      return;
+    }
+    if (readOnly || typeof window === "undefined") return;
+
+    changeVersionRef.current += 1;
+    setSaveStatus("saving");
+    setAutosaveError(undefined);
+    try {
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(local));
+    } catch {
+      // Autosave remains available even when browser storage is unavailable.
+    }
+    if (autosaveTimerRef.current !== undefined) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      void flushAutosaveRef.current();
+    }, 650);
+    return () => {
+      if (autosaveTimerRef.current !== undefined) window.clearTimeout(autosaveTimerRef.current);
+    };
+  }, [draftStorageKey, local, readOnly]);
+
+  useEffect(() => () => {
+    if (autosaveTimerRef.current !== undefined) window.clearTimeout(autosaveTimerRef.current);
+  }, []);
 
   const loadHistoricalComparison = useCallback(async (compareId?: string) => {
     setHistoricalLoading(true);
@@ -2486,6 +2639,73 @@ function CoachingDossierDetail({
     }
   }
 
+  async function navigateToStep(step: CoachingReportStepId) {
+    await flushAutosaveRef.current();
+    setActiveStep(step);
+  }
+
+  async function navigateToIssue(issue: CoachingReportIssue) {
+    let targetId = `coaching-step-${issue.step}`;
+    if (issue.code === "general_score_missing" && issue.criterion) {
+      targetId = `coaching-general-score-${dossier.generalScores.findIndex((score) => score.criterion === issue.criterion)}`;
+    } else if (issue.code === "personality_score_missing" && issue.criterion) {
+      targetId = `coaching-personality-score-${dossier.personalityScores.findIndex((score) => score.criterion === issue.criterion)}`;
+    } else if (issue.actionId) {
+      targetId = `coaching-action-${issue.actionId}`;
+    }
+    await navigateToStep(issue.step);
+    window.setTimeout(() => {
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.querySelector<HTMLElement>("button, input, select, [contenteditable='true']")?.focus();
+    }, 0);
+  }
+  async function saveAndStay() {
+    setMessage(undefined);
+    const saved = await flushAutosaveRef.current(true);
+    if (saved) setMessage(t("coaching.report.saved"));
+  }
+
+  async function closeReport() {
+    setMessage(undefined);
+    const saved = await flushAutosaveRef.current(true);
+    if (saved) router.push("/begeleidingen");
+  }
+
+  async function finalizeAndSendForApproval() {
+    if (finalizeInFlightRef.current || transitioning) return;
+    if (!reportIsValid) {
+      setMessage(t("coaching.report.validationBlocked"));
+      return;
+    }
+    finalizeInFlightRef.current = true;
+    setTransitioning(true);
+    setMessage(undefined);
+    try {
+      const autosaved = await flushAutosaveRef.current();
+      if (!autosaved) return;
+      const completed = await saveCoachingRef.current(
+        coachingPersistenceInput(localRef.current, user.id),
+        "voltooid"
+      );
+      suppressAutosaveRef.current = true;
+      localRef.current = completed;
+      setLocal(completed);
+      const submitted = await workflowApi.transitionCoaching(completed.id, "send_for_approval");
+      suppressAutosaveRef.current = true;
+      localRef.current = submitted;
+      setLocal(submitted);
+      window.localStorage.removeItem(draftStorageKey);
+      setSaveStatus("saved");
+      setMessage(t("coaching.report.sentForApproval"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("coaching.report.finalizeError"));
+    } finally {
+      finalizeInFlightRef.current = false;
+      setTransitioning(false);
+    }
+  }
+
   function updateDossier(partial: Partial<typeof dossier>) {
     setLocal((current) => ({ ...current, dossier: { ...(current.dossier ?? defaultDossierState()), ...partial } }));
   }
@@ -2570,13 +2790,13 @@ function CoachingDossierDetail({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← Terug naar begeleidingen</Link>
+      <div className="flex flex-wrap items-center justify-between gap-3" data-report-toolbar>
+        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← {t("coaching.report.back")}</Link>
         <div className="flex flex-wrap items-center gap-2">
           {can(user, "modulePdfExport") && (
             <button
               type="button"
-              className="btn-primary"
+              className="btn-secondary"
               disabled={isExportingReport}
               onClick={() => void downloadProfessionalReport()}
             >
@@ -2585,20 +2805,40 @@ function CoachingDossierDetail({
               ) : (
                 <FileDown className="h-4 w-4" />
               )}
-              {isExportingReport
-                ? "PDF-rapport maken..."
-                : "Professioneel PDF-rapport downloaden"}
+              {isExportingReport ? t("coaching.report.pdfCreating") : t("coaching.report.pdfDownload")}
             </button>
           )}
           <StatusBadge status={local.status} />
         </div>
       </div>
       <PageHeader
-        eyebrow="Begeleidingsdossier"
+        eyebrow={t("coaching.report.eyebrow")}
         title={`${representative.firstName} ${representative.lastName}`}
         description={`${formatShortDate(local.plannedDate)} · ${local.startTime ?? ""}-${local.endTime ?? ""} · ${reportingUserName(local.ownerId, managedUsers)}`}
       />
-      {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{message}</div>}
+      <div className="sticky top-16 z-20 space-y-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+        <div className="flex items-start justify-between gap-3">
+          <CoachingReportStepper
+            activeStep={activeStep}
+            issues={validationIssues}
+            hasAppointments={appointments.length > 0}
+            hasActionPoints={local.actionPoints.length > 0}
+            reportIsValid={reportIsValid}
+            t={t}
+            onNavigate={(step) => void navigateToStep(step)}
+          />
+          <AutosaveStatus status={saveStatus} t={t} />
+        </div>
+        {saveStatus === "error" && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+            <span>{saveError ?? t("coaching.report.saveError")}</span>
+            <button type="button" className="btn-secondary bg-white py-1.5 text-xs" onClick={() => void flushAutosaveRef.current(true)}>
+              <RefreshCw className="h-3.5 w-3.5" /> {t("coaching.report.retry")}
+            </button>
+          </div>
+        )}
+      </div>
+      {message && <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm font-semibold text-brand-900">{message}</div>}
       {reportMessage && (
         <div className={`rounded-2xl border p-4 text-sm font-semibold ${
           reportMessage.type === "success"
@@ -2610,26 +2850,41 @@ function CoachingDossierDetail({
       )}
       <CoachingOutlookSyncStatus intervention={local} />
 
+      {activeStep === 7 && (
       <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
         <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Totale begeleiding</p>
         <p className="mt-1 text-3xl font-black text-brand-950">{formatPercentage(totalCoachingScore)}</p>
         <p className="mt-1 text-sm text-brand-800">Automatisch berekend uit 80% afspraken en 20% hoofdformulier.</p>
       </section>
+      )}
 
-      <section className="card p-5 sm:p-6">
-        <h2 className="text-lg font-bold text-slate-950">Algemene gegevens</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <ReadOnlyField label="Datum" value={formatShortDate(local.plannedDate)} />
-          <ReadOnlyField label="Vertegenwoordiger" value={`${representative.firstName} ${representative.lastName}`} />
-          <ReadOnlyField label="Team" value={representative.team} />
-          <ReadOnlyField label="Niveau" value={representative.level} />
-          <ReadOnlyField label="Verkoopleider" value={reportingUserName(local.ownerId, managedUsers)} />
-          <TextField label="Aankomsttijd" type="time" value={dossier.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => updateDossier({ arrivalTime })} />
-          <TextField label="Vertrektijd" type="time" value={dossier.departureTime} disabled={readOnly} onChange={(departureTime) => updateDossier({ departureTime })} />
-          <TextField label="Aantal kilometers" value={dossier.kilometers} disabled={readOnly} onChange={(kilometers) => updateDossier({ kilometers })} />
-        </div>
-      </section>
+      {activeStep === 1 && (
+        <section id="coaching-step-1" className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]">
+          <div className="card p-5 sm:p-6">
+            <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalData")}</h2>
+            <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              <SummaryValue label={t("coaching.report.representative")} value={`${representative.firstName} ${representative.lastName}`} />
+              <SummaryValue label={t("coaching.report.coach")} value={reportingUserName(local.ownerId, managedUsers)} />
+              <SummaryValue label={t("coaching.report.date")} value={formatShortDate(local.plannedDate)} />
+              <SummaryValue label={t("coaching.report.plannedTime")} value={`${local.startTime ?? "--:--"} – ${local.endTime ?? "--:--"}`} />
+              <SummaryValue label={t("coaching.report.team")} value={representative.team} />
+              <SummaryValue label={t("coaching.report.country")} value={representative.country} />
+              <SummaryValue label={t("coaching.report.level")} value={representative.level} />
+              <SummaryValue label={t("coaching.report.type")} value={t("coaching.report.coachingType")} />
+            </dl>
+          </div>
+          <div className="card p-5 sm:p-6">
+            <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.actualData")}</h2>
+            <div className="mt-4 space-y-4">
+              <TextField label={t("coaching.report.arrivalTime")} type="time" value={dossier.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => updateDossier({ arrivalTime })} />
+              <TextField label={t("coaching.report.departureTime")} type="time" value={dossier.departureTime} disabled={readOnly} onChange={(departureTime) => updateDossier({ departureTime })} />
+              <TextField label={t("coaching.report.kilometers")} value={dossier.kilometers} disabled={readOnly} onChange={(kilometers) => updateDossier({ kilometers })} />
+            </div>
+          </div>
+        </section>
+      )}
 
+      <div id="coaching-step-2" className={activeStep === 2 ? "space-y-5" : "hidden"}>
       <section className="card p-5 sm:p-6">
         <h2 className="text-lg font-bold text-slate-950">I. Voorbereiding</h2>
         <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Categorieën</p><p className="mt-1 text-xs text-slate-500">Vooraf gekozen categorieën staan aan. Tijdens de begeleiding kun je altijd categorieën toevoegen.</p><div className="mt-3 flex flex-wrap gap-2">{coachingFramework.map((focus) => { const active = local.focusNames.includes(focus.name); return <button key={focus.name} type="button" disabled={readOnly} onClick={() => setLocal((current) => ({ ...current, focusNames: active ? current.focusNames.filter((name) => name !== focus.name) : [...current.focusNames, focus.name] }))} className={`rounded-full border px-3 py-2 text-xs font-bold ${active ? "border-brand-700 bg-brand-50 text-brand-800" : "border-slate-200 text-slate-500"}`}>{active ? "✓ " : "+ "}{focus.name}</button>; })}</div></div>
@@ -2650,11 +2905,12 @@ function CoachingDossierDetail({
         onSelect={selectHistoricalComparison}
         onRetry={() => void loadHistoricalComparison(historicalComparisonId === "none" ? undefined : historicalComparisonId)}
       />
+      </div>
 
-      <ScoreSection title="II. Evaluatie algemene punten" scores={dossier.generalScores} readOnly={readOnly} comparisonCategory="Dossier:Algemeen" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("generalScores", index, patch)} />
-      <ScoreSection title="III. Persoonlijkheid" scores={dossier.personalityScores} readOnly={readOnly} comparisonCategory="Dossier:Persoonlijkheid" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("personalityScores", index, patch)} />
+      <div id="coaching-step-3" className={activeStep === 3 ? "block" : "hidden"}><ScoreSection title={t("coaching.report.generalEvaluation")} scores={dossier.generalScores} readOnly={readOnly} idPrefix="coaching-general-score" comparisonCategory="Dossier:Algemeen" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("generalScores", index, patch)} /></div>
+      <div id="coaching-step-4" className={activeStep === 4 ? "block" : "hidden"}><ScoreSection title={t("coaching.report.personalityEvaluation")} scores={dossier.personalityScores} readOnly={readOnly} idPrefix="coaching-personality-score" comparisonCategory="Dossier:Persoonlijkheid" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("personalityScores", index, patch)} /></div>
 
-      <section className="card p-5 sm:p-6">
+      <section id="coaching-step-5" className={activeStep === 5 ? "card p-5 sm:p-6" : "hidden"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-slate-950">Afspraken</h2>
           {!readOnly && <button type="button" className="btn-secondary" onClick={addAppointment}><Plus className="h-4 w-4" /> Afspraak toevoegen</button>}
@@ -2697,14 +2953,14 @@ function CoachingDossierDetail({
         </div>
       </section>
 
-      <section className="card p-5 sm:p-6">
+      <section id="coaching-step-6" className={activeStep === 6 ? "card p-5 sm:p-6" : "hidden"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-slate-950">Actiepunten</h2>
           {!readOnly && <button type="button" className="btn-secondary" onClick={addActionPoint}><Plus className="h-4 w-4" /> Actiepunt</button>}
         </div>
         <div className="mt-4 grid gap-3">
           {local.actionPoints.map((action, index) => (
-            <div key={action.id} className={`rounded-2xl border p-4 ${action.isNew ? "border-brand-200 bg-brand-50/40" : "border-slate-200 bg-slate-50"}`}>
+            <div id={`coaching-action-${action.id}`} key={action.id} className={`rounded-2xl border p-4 ${action.isNew ? "border-brand-200 bg-brand-50/40" : "border-slate-200 bg-slate-50"}`}>
               <div className="grid gap-3 md:grid-cols-[1fr_150px_150px]">
                 {action.isNew ? <TextField label="Titel *" value={action.title} disabled={readOnly} onChange={(title) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item) }))} /> : <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Actiepunt</p><p className="mt-2 font-bold text-slate-900">{action.title}</p><p className="mt-1 text-sm text-slate-500">{action.description}</p></div>}
                 <ReadOnlyField label="Target" value={action.targetValue === undefined ? "Geen target" : String(action.targetValue)} />
@@ -2718,18 +2974,216 @@ function CoachingDossierDetail({
         </div>
       </section>
 
-      {!readOnly && (
+      {activeStep === 7 && <CoachingReportClosingSummary intervention={local} representative={representative} leaderName={reportingUserName(local.ownerId, managedUsers)} totalScore={totalCoachingScore} issues={validationIssues} t={t} onIssue={(issue) => void navigateToIssue(issue)} onStep={(step) => void navigateToStep(step)} />}
+      {activeStep === 7 && !readOnly && (
         <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:justify-end">
           {local.status === "gepland" && <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>Begeleiding verwijderen</button>}
-          <button type="button" className="btn-secondary" onClick={() => persist("in_uitvoering")}>Opslaan</button>
-          <button type="button" className="btn-secondary" onClick={() => persist("gesloten")}>Sluiten</button>
-          <button type="button" className="btn-primary" onClick={() => persist("voltooid")}>Afwerken</button>
+          <button type="button" className="btn-secondary" disabled={transitioning} onClick={() => void saveAndStay()}><Save className="h-4 w-4" /> {t("coaching.report.save")}</button>
+          <button type="button" className="btn-secondary" disabled={transitioning} onClick={() => void closeReport()}>{t("coaching.report.close")}</button>
+          <button type="button" className="btn-primary" disabled={!reportIsValid || transitioning} onClick={() => void finalizeAndSendForApproval()}>{transitioning && <LoaderCircle className="h-4 w-4 animate-spin" />}{transitioning ? t("coaching.report.finalizing") : t("coaching.report.finalizeAndSend")}</button>
         </div>
       )}
     </div>
   );
 }
 
+function CoachingReportStepper({
+  activeStep,
+  issues,
+  hasAppointments,
+  hasActionPoints,
+  reportIsValid,
+  t,
+  onNavigate,
+}: {
+  activeStep: CoachingReportStepId;
+  issues: CoachingReportIssue[];
+  hasAppointments: boolean;
+  hasActionPoints: boolean;
+  reportIsValid: boolean;
+  t: (key: TranslationKey) => string;
+  onNavigate: (step: CoachingReportStepId) => void;
+}) {
+  const steps: Array<{ id: CoachingReportStepId; label: TranslationKey }> = [
+    { id: 1, label: "coaching.report.step.general" },
+    { id: 2, label: "coaching.report.step.preparation" },
+    { id: 3, label: "coaching.report.step.generalEvaluation" },
+    { id: 4, label: "coaching.report.step.personality" },
+    { id: 5, label: "coaching.report.step.appointments" },
+    { id: 6, label: "coaching.report.step.actionPoints" },
+    { id: 7, label: "coaching.report.step.closing" },
+  ];
+
+  return (
+    <nav aria-label={t("coaching.report.steps")} className="min-w-0 flex-1 overflow-x-auto pb-1">
+      <ol className="flex min-w-max gap-2">
+        {steps.map((step) => {
+          const hasError = issues.some((issue) => issue.step === step.id) || (step.id === 7 && !reportIsValid);
+          const complete = !hasError && (
+            step.id <= 2 ||
+            [3, 4].includes(step.id) ||
+            (step.id === 5 && hasAppointments) ||
+            (step.id === 6 && hasActionPoints) ||
+            (step.id === 7 && reportIsValid)
+          );
+          const state = hasError ? "error" : complete ? "complete" : "incomplete";
+          const active = activeStep === step.id;
+          const Icon = state === "error" ? AlertTriangle : state === "complete" ? CheckCircle2 : MoreHorizontal;
+          const statusLabel = active
+            ? t("coaching.report.status.active")
+            : state === "error"
+              ? t("coaching.report.status.error")
+              : state === "complete"
+                ? t("coaching.report.status.complete")
+                : t("coaching.report.status.incomplete");
+          return (
+            <li key={step.id}>
+              <button
+                type="button"
+                aria-current={active ? "step" : undefined}
+                onClick={() => onNavigate(step.id)}
+                className={`flex min-h-14 items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${active ? "border-brand-700 bg-brand-50 text-brand-950 ring-2 ring-brand-100" : state === "error" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-slate-200 bg-white text-slate-700 hover:border-brand-300"}`}
+              >
+                <Icon className={`h-4 w-4 shrink-0 ${state === "error" ? "text-rose-600" : state === "complete" ? "text-emerald-600" : "text-slate-400"}`} />
+                <span>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider opacity-70">{step.id}. {statusLabel}</span>
+                  <span className="block max-w-36 text-xs font-bold">{t(step.label)}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function AutosaveStatus({
+  status,
+  t,
+}: {
+  status: "saving" | "saved" | "error";
+  t: (key: TranslationKey) => string;
+}) {
+  const label = status === "saving"
+    ? t("coaching.report.saving")
+    : status === "error"
+      ? t("coaching.report.saveFailed")
+      : t("coaching.report.saved");
+  return (
+    <div role="status" className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-bold ${status === "error" ? "bg-rose-100 text-rose-800" : status === "saving" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
+      {status === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : status === "error" ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+      {label}
+    </div>
+  );
+}
+
+function CoachingReportClosingSummary({
+  intervention,
+  representative,
+  leaderName,
+  totalScore,
+  issues,
+  t,
+  onIssue,
+  onStep,
+}: {
+  intervention: CoachingWorkflowItem;
+  representative: Representative;
+  leaderName: string;
+  totalScore?: number;
+  issues: CoachingReportIssue[];
+  t: (key: TranslationKey) => string;
+  onIssue: (issue: CoachingReportIssue) => void;
+  onStep: (step: CoachingReportStepId) => void;
+}) {
+  const dossier = intervention.dossier ?? defaultDossierState();
+  const appointments = (intervention.appointments ?? []).filter((appointment) => !appointment.isDeleted);
+  return (
+    <div id="coaching-step-7" className="space-y-5">
+      <section className="card p-5 sm:p-6">
+        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.summary")}</h2>
+        <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryValue label={t("coaching.report.representative")} value={`${representative.firstName} ${representative.lastName}`} />
+          <SummaryValue label={t("coaching.report.coach")} value={leaderName} />
+          <SummaryValue label={t("coaching.report.date")} value={formatShortDate(intervention.plannedDate)} />
+          <SummaryValue label={t("coaching.report.arrivalTime")} value={dossier.arrivalTime || "--:--"} />
+          <SummaryValue label={t("coaching.report.appointments")} value={String(appointments.length)} />
+          <SummaryValue label={t("coaching.report.actionPoints")} value={String(intervention.actionPoints.length)} />
+          <SummaryValue label={t("coaching.report.totalScore")} value={formatPercentage(totalScore)} />
+          <SummaryValue label={t("coaching.report.missingRequired")} value={String(issues.length)} />
+        </dl>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="card p-5">
+          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(3)}>
+            <h3 className="font-bold text-slate-950">{t("coaching.report.generalEvaluation")}</h3>
+            <ChevronRight className="h-4 w-4 text-brand-700" />
+          </button>
+          <ReadOnlySimpleScoreTable scores={dossier.generalScores} />
+        </div>
+        <div className="card p-5">
+          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(4)}>
+            <h3 className="font-bold text-slate-950">{t("coaching.report.personalityEvaluation")}</h3>
+            <ChevronRight className="h-4 w-4 text-brand-700" />
+          </button>
+          <ReadOnlySimpleScoreTable scores={dossier.personalityScores} />
+        </div>
+        <div className="card p-5">
+          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(5)}>
+            <h3 className="font-bold text-slate-950">{t("coaching.report.appointments")}</h3>
+            <ChevronRight className="h-4 w-4 text-brand-700" />
+          </button>
+          <div className="mt-3 space-y-2">
+            {appointments.slice(0, 3).map((appointment) => <p key={appointment.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{appointment.customer || t("coaching.report.newAppointment")}</p>)}
+            {!appointments.length && <p className="text-sm text-slate-500">{t("coaching.report.noAppointments")}</p>}
+          </div>
+        </div>
+        <div className="card p-5">
+          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(6)}>
+            <h3 className="font-bold text-slate-950">{t("coaching.report.actionPoints")}</h3>
+            <ChevronRight className="h-4 w-4 text-brand-700" />
+          </button>
+          <div className="mt-3 space-y-2">
+            {intervention.actionPoints.slice(0, 3).map((action) => <p key={action.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{action.title || t("coaching.report.untitledAction")}</p>)}
+            {!intervention.actionPoints.length && <p className="text-sm text-slate-500">{t("coaching.report.noActionPoints")}</p>}
+          </div>
+        </div>
+      </section>
+
+      {issues.length > 0 && (
+        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-rose-700" />
+            <h2 className="font-bold text-rose-950">{t("coaching.report.missingRequired")}</h2>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {issues.map((issue, index) => (
+              <button key={`${issue.code}:${issue.criterion ?? issue.actionId ?? index}`} type="button" className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-left text-sm font-semibold text-rose-800 ring-1 ring-rose-200" onClick={() => onIssue(issue)}>
+                <span>{coachingIssueLabel(issue, t)}</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function coachingIssueLabel(issue: CoachingReportIssue, t: (key: TranslationKey) => string) {
+  if (issue.code === "general_score_missing") {
+    return `${t("coaching.report.missingGeneralScore")}${issue.criterion ? `: ${issue.criterion}` : ""}`;
+  }
+  if (issue.code === "personality_score_missing") {
+    return `${t("coaching.report.missingPersonalityScore")}${issue.criterion ? `: ${issue.criterion}` : ""}`;
+  }
+  if (issue.code === "action_point_missing") return t("coaching.report.missingActionPoint");
+  if (issue.code === "action_point_title_missing") return t("coaching.report.missingActionTitle");
+  if (issue.code === "action_point_priority_missing") return t("coaching.report.missingActionPriority");
+  return t("coaching.report.missingActionTips");
+}
 function CompletedCoachingSummary({
   intervention,
   approval,
@@ -3015,7 +3469,7 @@ function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: 
         const trend = scoreTrend(score.score, score.previousScore);
         return <div key={score.criterion} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_90px_minmax(180px,1.2fr)] sm:items-center">
           <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{splitCriterion ? criterion.group : "Criterium"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{splitCriterion ? criterion.detail : score.criterion}</p></div>
-          <div><p className="text-sm font-bold text-slate-950">{score.score === "nvt" ? "N.v.t." : `${score.score} / 5`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}</p>}</div>
+          <div><p className="text-sm font-bold text-slate-950">{score.score === null ? "—" : score.score === "nvt" ? "N.v.t." : `${score.score} / 5`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}</p>}</div>
           <OptionalCoachingRemark value={score.comment} className="min-h-5 text-sm leading-5 text-slate-600" />
         </div>;
       })}
@@ -3053,7 +3507,7 @@ function splitScoreCriterion(value: string) {
   return { group: detail.length ? group : "Criterium", detail: detail.length ? detail.join(" - ") : group };
 }
 
-function scoreTrend(current?: number | "nvt", previous?: number) {
+function scoreTrend(current?: number | "nvt" | null, previous?: number) {
   if (typeof current !== "number" || previous === undefined) return { label: "", tone: "text-slate-500" };
   if (current > previous) return { label: "↑ Beter", tone: "text-emerald-700" };
   if (current < previous) return { label: "↓ Lager", tone: "text-rose-700" };
@@ -3212,7 +3666,7 @@ function HistoricalScoreComparisonPanel({
               <option value="none">{t("coaching.scores.noComparison")}</option>
               {options.map((option) => (
                 <option key={option.id} value={option.id}>
-                  {formatShortDate(option.date)} - {option.ownerName}
+                  {formatShortDate(option.date)} - {option.ownerName} - {option.status}
                 </option>
               ))}
             </select>
@@ -3239,6 +3693,7 @@ function HistoricalScoreComparisonPanel({
           </div>
         )}
         {selected && !error && (
+          <>
           <div>
             <PerformanceWheel
               representativeId={currentHistory.representativeId}
@@ -3248,13 +3703,32 @@ function HistoricalScoreComparisonPanel({
               coachings={wheelCoachings}
             />
           </div>
+            <div className="mt-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-slate-950">{t("coaching.report.historicalScores")}</h3>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={selected.status.toLowerCase()} />
+                  <span className="text-sm font-bold text-brand-800">{formatPercentage(selected.history.overallScore)}</span>
+                </div>
+              </div>
+              <div className="grid gap-2 lg:grid-cols-2">
+                {selected.scores.map((score) => (
+                  <div key={score.key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-sm font-semibold text-slate-700">{score.label ?? score.key}</span>
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-brand-800 ring-1 ring-slate-200">{score.score} / 5</span>
+                  </div>
+                ))}
+                {!selected.scores.length && <p className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">{t("coaching.preparation.noScores")}</p>}
+              </div>
+            </div>
+          </>
         )}
       </div>
     </section>
   );
 }
 
-function ScoreSection({ title, scores, readOnly, comparisonCategory, historicalScores, t, onChange }: { title: string; scores: { criterion: string; score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment: string }[]; readOnly: boolean; comparisonCategory?: string; historicalScores?: ReadonlyMap<string, HistoricalScoreReference>; t: (key: TranslationKey) => string; onChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void }) {
+function ScoreSection({ title, scores, readOnly, idPrefix, comparisonCategory, historicalScores, t, onChange }: { title: string; scores: CoachingSimpleScore[]; readOnly: boolean; idPrefix: string; comparisonCategory?: string; historicalScores?: ReadonlyMap<string, HistoricalScoreReference>; t: (key: TranslationKey) => string; onChange: (index: number, patch: { score?: CoachingSimpleScore["score"]; comment?: string }) => void }) {
   const options = [0, 1, 2, 3, 4, 5, "nvt"] as const;
   const showComparison = Boolean(comparisonCategory && historicalScores?.size);
   return (
@@ -3266,8 +3740,8 @@ function ScoreSection({ title, scores, readOnly, comparisonCategory, historicalS
             ? historicalScores?.get(historicalScoreKey(comparisonCategory, item.criterion))?.score
             : undefined;
           return (
-          <div key={item.criterion} className={`grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:items-center ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_110px_minmax(260px,1.2fr)_100px_minmax(220px,1fr)]" : "lg:grid-cols-[220px_1fr_1.4fr]"}`}>
-            <p className="font-semibold text-slate-900">{item.criterion}</p>
+          <div id={`${idPrefix}-${index}`} key={item.criterion} aria-invalid={item.score === null} className={`grid gap-3 rounded-2xl border p-4 lg:items-center ${item.score === null ? "border-rose-300 bg-rose-50/70" : "border-slate-200 bg-slate-50"} ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_110px_minmax(260px,1.2fr)_100px_minmax(220px,1fr)]" : "lg:grid-cols-[220px_1fr_1.4fr]"}`}>
+            <div><p className="font-semibold text-slate-900">{item.criterion}</p>{item.score === null && <p className="mt-1 text-xs font-bold text-rose-700">{t("coaching.report.scoreRequired")}</p>}</div>
             {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
             <div className="flex flex-wrap gap-2">
               {options.map((option) => (
@@ -3275,7 +3749,7 @@ function ScoreSection({ title, scores, readOnly, comparisonCategory, historicalS
               ))}
             </div>
             {showComparison && <ScoreDifferenceCell current={item.score} previous={previousScore} t={t} />}
-            <input className="field" disabled={readOnly} placeholder="Opmerking" value={item.comment} onChange={(event) => onChange(index, { comment: event.target.value })} />
+            <input className="field" disabled={readOnly} placeholder={t("coaching.report.comment")} value={item.comment} onChange={(event) => onChange(index, { comment: event.target.value })} />
           </div>
           );
         })}
@@ -3373,11 +3847,11 @@ function ScoreDifferenceCell({ current, previous, t }: { current: CoachingSimple
   );
 }
 
-function numericScore(value: 0 | 1 | 2 | 3 | 4 | 5 | "nvt") {
-  return value === "nvt" ? undefined : value;
+function numericScore(value: CoachingSimpleScore["score"]) {
+  return value === "nvt" || value === null ? undefined : value;
 }
 
-function averageFive(scores: { score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt" }[]) {
+function averageFive(scores: Array<{ score: CoachingSimpleScore["score"] }>) {
   const values: number[] = scores.flatMap((item) => {
     const score = numericScore(item.score);
     return score === undefined ? [] : [score];
@@ -3385,7 +3859,7 @@ function averageFive(scores: { score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt" }[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
 }
 
-function formatAppointmentAverage(appointment: { scores: { score: 0 | 1 | 2 | 3 | 4 | 5 | "nvt" }[] }) {
+function formatAppointmentAverage(appointment: { scores: Array<{ score: CoachingSimpleScore["score"] }> }) {
   const average = averageFive(appointment.scores);
   return average === undefined ? "-" : average.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
 }
@@ -3425,7 +3899,7 @@ function coachingInterventionAsHistory(
     ...dossier.generalScores.map((score) => ({ ...score, category: "Dossier:Algemeen" })),
     ...dossier.personalityScores.map((score) => ({ ...score, category: "Dossier:Persoonlijkheid" })),
   ].flatMap((score) =>
-    score.score === "nvt"
+    score.score === "nvt" || score.score === null
       ? []
       : [{
         focus: score.category,
@@ -3457,7 +3931,7 @@ function coachingInterventionAsHistory(
         ? [{ label: "Algemene begeleiding", score: Math.round(totalScore) }]
         : [],
     generalScores: [...dossier.generalScores, ...dossier.personalityScores].flatMap((score) =>
-      score.score === "nvt"
+      score.score === "nvt" || score.score === null
         ? []
         : [{ label: score.criterion, score: normalizePerformanceScore(score.score) }]
     ),
@@ -5386,4 +5860,3 @@ function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" |
 function SectionTitle({ title, subtitle, link }: { title: string; subtitle: string; link?: string }) {
   return <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div>{link && <Link href={link} className="flex items-center gap-1 text-sm font-semibold text-brand-700">Alles <ArrowRight className="h-4 w-4" /></Link>}</div>;
 }
-

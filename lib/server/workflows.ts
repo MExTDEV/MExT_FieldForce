@@ -790,7 +790,7 @@ async function replaceScores(
         interventionId,
         category: score.category,
         label: score.criterion,
-        score: score.score === "nvt" ? null : score.score,
+        score: typeof score.score === "number" ? score.score : null,
         notApplicable: score.score === "nvt",
         comment: score.comment,
       },
@@ -1236,15 +1236,15 @@ function snapshotsToSimpleScores(
     snapshots.filter((snapshot) => snapshot.criterionType === criterionType)
   ).map((snapshot) => ({
     criterion: snapshot.title,
-    score: "nvt" as const,
+    score: null,
     comment: "",
   }));
 }
 
 function toSimpleScoreValue(value: number | null, notApplicable: boolean): CoachingSimpleScore["score"] {
-  if (notApplicable || value === null) return "nvt";
-  if ([0, 1, 2, 3, 4, 5].includes(value)) return value as CoachingSimpleScore["score"];
-  return "nvt";
+  if (notApplicable) return "nvt";
+  if (value !== null && [0, 1, 2, 3, 4, 5].includes(value)) return value as CoachingSimpleScore["score"];
+  return null;
 }
 
 function dateFromString(value?: string | Date | null) {

@@ -19,6 +19,7 @@ import {
   resolveCoachingApprovalConfirmedRecipients,
 } from "@/lib/coaching/approval-notifications";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
+import { coachingReportIssues } from "@/lib/coaching/report-form";
 
 type CoachingTransition = "reopen" | "send_for_approval" | "approve";
 
@@ -74,6 +75,13 @@ export async function POST(
       requireManager(actor, coaching);
       if (!completedStatuses.includes(coaching.status as typeof completedStatuses[number])) {
         badRequest("Werk de begeleiding eerst af voordat je ze ter akkoord verstuurt.");
+      }
+      const validationState = await loadWorkflowStateFromDatabase({
+        interventionWhere: buildVisibleCoachingWhere(actor, { id }),
+      });
+      const report = validationState.interventions.find((item) => item.id === id);
+      if (!report || coachingReportIssues({ dossier: report.dossier, actionPoints: report.actionPoints }).length > 0) {
+        badRequest("De begeleiding bevat nog ontbrekende verplichte gegevens en kan niet voor akkoord worden verzonden.");
       }
       await prisma.$transaction(async (tx) => {
         await tx.intervention.update({

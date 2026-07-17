@@ -70,7 +70,7 @@ const personalityCriteria = [
 function defaultSimpleScores(criteria: string[]) {
   return criteria.map((criterion) => ({
     criterion,
-    score: "nvt" as const,
+    score: null,
     comment: "",
   }));
 }
