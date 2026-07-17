@@ -27,6 +27,7 @@ import {
   can,
   canAccessCoaching,
   canAccessContract,
+  canAccessInventory,
   canAccessPST,
   canAccessSalesday,
   canAccessService,
@@ -41,6 +42,7 @@ import {
 export type AppSwitcherDomainKey =
   | "coaching"
   | "salesday"
+  | "inventory"
   | "pst"
   | "contract"
   | "service";
@@ -336,6 +338,19 @@ export const appSwitcherDomains: DomainDefinition[] = [
     ],
   },
   {
+    key: "inventory",
+    title: "Inventory",
+    subtitle: "Voorraad. Bevoorrading. Dragers.",
+    icon: Contact,
+    enabledPermission: "menu.inventory.enabled",
+    isAvailable: withinDomain(canAccessInventory),
+    links: [
+      { key: "myStock", label: "Mijn voorraad", description: "Vertegenwoordigers- en voertuigstock", href: "/inventory/mijn-voorraad", icon: Contact, permission: "menu.inventory.myStock", tone: placeholderTone, isAvailable: withinDomain(canAccessInventory) },
+      { key: "replenishments", label: "Bevoorrading", description: "Transit, ontvangst en bewijs", href: "/inventory/bevoorrading", icon: ClipboardCheck, permission: "menu.inventory.replenishments", tone: placeholderTone, isAvailable: withinDomain(canAccessInventory) },
+      { key: "consumables", label: "Verbruiksgoederen", description: "Aanvraag naar ERP", href: "/inventory/verbruiksgoederen", icon: ListChecks, permission: "menu.inventory.consumables", tone: placeholderTone, isAvailable: withinDomain(canAccessInventory) },
+    ],
+  },
+  {
     key: "pst",
     title: "PST",
     subtitle: "Leads. Genehmigung. Contacts.",
@@ -439,6 +454,7 @@ export function getDomainForPath(pathname: string): AppSwitcherDomainKey {
     return "coaching";
   }
   if (segment === "salesday") return "salesday";
+  if (segment === "inventory") return "inventory";
   if (segment === "pst") return "pst";
   if (segment === "contract") return "contract";
   if (segment === "service") return "service";

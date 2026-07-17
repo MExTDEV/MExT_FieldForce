@@ -128,6 +128,17 @@ export const fieldForceBasePermissionGroups: {
       { key: "salesday.integration.monitor", label: "SalesDay-integratie opvolgen" },
     ],
   },
+  {
+    title: "Inventory",
+    description: "Gedeelde voorraad, bevoorrading, verbruiksgoederen en klantdragers.",
+    permissions: [
+      { key: "inventory.balance.readOwn", label: "Eigen voorraad bekijken" },
+      { key: "inventory.receipts.acceptOwn", label: "Eigen bevoorrading ontvangen" },
+      { key: "inventory.consumables.requestOwn", label: "Verbruiksgoederen aanvragen" },
+      { key: "inventory.carriers.writeOwnAppointment", label: "Klantdragers tijdens eigen werkdag beheren" },
+      { key: "inventory.manage", label: "Inventory-beheer en redenen beheren" },
+    ],
+  },
 ];
 
 export const fieldForcePermissionGroups = [
@@ -173,6 +184,10 @@ const representativeMenuPermissions: FieldForcePermissionKey[] = [
   "menu.salesday.preparation",
   "menu.salesday.agenda",
   "menu.salesday.stock",
+  "menu.inventory.enabled",
+  "menu.inventory.myStock",
+  "menu.inventory.replenishments",
+  "menu.inventory.consumables",
 ];
 
 const serviceOperatorMenuPermissions: FieldForcePermissionKey[] = [
@@ -199,6 +214,10 @@ const internalMenuPermissions: FieldForcePermissionKey[] = [
   "menu.salesday.agenda",
   "menu.salesday.team",
   "menu.salesday.stock",
+  "menu.inventory.enabled",
+  "menu.inventory.myStock",
+  "menu.inventory.replenishments",
+  "menu.inventory.consumables",
   "menu.pst.enabled",
   "menu.pst.dashboard",
   "menu.pst.planning",
@@ -225,6 +244,10 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "performanceScoresView",
       "kpisView",
       "reportingOwn",
+      "inventory.balance.readOwn",
+      "inventory.receipts.acceptOwn",
+      "inventory.consumables.requestOwn",
+      "inventory.carriers.writeOwnAppointment",
       ...representativeMenuPermissions
     ),
   },
@@ -385,6 +408,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "contractArticlesManage",
       "contractImportsManage",
       "contractModelsManage",
+      "inventory.manage",
       ...internalMenuPermissions,
       "menu.coaching.teams",
       "menu.coaching.kpis",

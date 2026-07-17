@@ -84,6 +84,10 @@ export function canAccessSalesday(user: MockUser) {
   ].includes(user.role);
 }
 
+export function canAccessInventory(user: MockUser) {
+  return canAccessSalesday(user) || canAccessService(user);
+}
+
 export function canAccessPST(user: MockUser) {
   return canAccessSalesday(user);
 }
