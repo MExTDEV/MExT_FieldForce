@@ -689,6 +689,16 @@ Migration `0048_salesday_appointment_operations` additively extends `SalesAppoin
 - no destructive statement or production seed is present;
 - migration `0048` is not deployed to the configured production database.
 
+## SalesDay preparation
+
+Migration `0049_salesday_preparation` additively defines preparation state/note/recommendation feedback plus immutable ERP commercial-history documents and lines.
+
+- country visibility configuration reuses audited `AppSetting` key `salesday.preparation.v1`;
+- recommendations derive from history snapshots and do not introduce a competing article master;
+- preparation writes are appointment-scoped and server-gated;
+- no destructive statement or production seed is present;
+- migration `0049` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

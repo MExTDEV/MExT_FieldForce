@@ -500,6 +500,9 @@ model User {
   salesAppointments                   SalesAppointment[]                    @relation("SalesAppointmentRepresentative")
   businessRelationChanges             BusinessRelationChange[]             @relation("BusinessRelationChangeActor")
   salesAppointmentChanges             SalesAppointmentChange[]             @relation("SalesAppointmentChangeActor")
+  preparedSalesAppointments           SalesPreparationState[]              @relation("SalesPreparationPreparedBy")
+  salesPreparationNotes               SalesPreparationNote[]
+  salesPreparationFeedback            SalesPreparationRecommendationFeedback[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -1957,6 +1960,7 @@ model BusinessRelation {
   contractCustomer         ContractCustomer?
   appointments             SalesAppointment[]
   changes                  BusinessRelationChange[]
+  commercialHistory        SalesCommercialHistoryDocument[]
   createdAt                DateTime                           @default(now())
   updatedAt                DateTime                           @updatedAt
 
@@ -2075,6 +2079,9 @@ model SalesAppointment {
   representative           User                   @relation("SalesAppointmentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
   team                     Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
   changes                  SalesAppointmentChange[]
+  preparationState         SalesPreparationState?
+  preparationNote          SalesPreparationNote?
+  preparationFeedback      SalesPreparationRecommendationFeedback[]
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 
@@ -2126,6 +2133,94 @@ model SalesAppointmentOutcomeReason {
 
   @@unique([provider, externalId])
   @@index([country, active, code])
+}
+
+model SalesPreparationState {
+  id             String           @id @default(cuid())
+  appointmentId  String           @unique
+  preparedById   String
+  preparedAt     DateTime
+  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  preparedBy     User             @relation("SalesPreparationPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([preparedById, preparedAt])
+}
+
+model SalesPreparationNote {
+  id             String           @id @default(cuid())
+  appointmentId  String           @unique
+  authorUserId   String
+  content        String           @db.Text
+  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  author         User             @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([authorUserId, updatedAt])
+}
+
+model SalesPreparationRecommendationFeedback {
+  id                String           @id @default(cuid())
+  appointmentId     String
+  actorUserId       String
+  articleExternalId String
+  relevant          Boolean?
+  addedManually     Boolean          @default(false)
+  comment           String?          @db.Text
+  appointment       SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  actor             User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([appointmentId, articleExternalId])
+  @@index([actorUserId, updatedAt])
+}
+
+model SalesCommercialHistoryDocument {
+  id                       String                 @id @default(cuid())
+  provider                 ErpIntegrationProvider
+  externalId               String
+  sourceVersion            String
+  sourceUpdatedAt          DateTime
+  documentType             String
+  documentNumber           String
+  documentDate             DateTime               @db.Date
+  relationId               String
+  representativeExternalId String?
+  currency                 String
+  amountExcludingVat       Decimal                @db.Decimal(14, 2)
+  amountIncludingVat       Decimal                @db.Decimal(14, 2)
+  paymentStatus            String
+  openAmount               Decimal                @db.Decimal(14, 2)
+  relation                 BusinessRelation       @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  lines                    SalesCommercialHistoryLine[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([relationId, documentDate])
+  @@index([documentType, documentDate])
+}
+
+model SalesCommercialHistoryLine {
+  id                       String                         @id @default(cuid())
+  documentId               String
+  lineNumber               Int
+  articleExternalId        String
+  articleNumberSnapshot    String
+  descriptionSnapshot      String
+  quantity                 Decimal                        @db.Decimal(14, 3)
+  unitSnapshot             String
+  unitPriceSnapshot        Decimal                        @db.Decimal(14, 4)
+  vatRateSnapshot          Decimal                        @db.Decimal(7, 4)
+  lineAmountExcludingVat   Decimal                        @db.Decimal(14, 2)
+  carrierExternalId        String?
+  document                 SalesCommercialHistoryDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, lineNumber])
+  @@index([articleExternalId])
 }
 
 model BusinessRelationChange {

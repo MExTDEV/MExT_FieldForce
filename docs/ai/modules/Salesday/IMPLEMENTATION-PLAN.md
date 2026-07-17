@@ -449,7 +449,7 @@ Status: `COMPLETE IN SOURCE` (16 July 2026) — the persistent integration-ledge
 
 ## Milestone 2 — Customers, appointments and day execution
 
-Status: `IN PROGRESS` — shared business relations, Contract compatibility, scoped customer operations, VAT validation, prospects, the appointment replica, binding route order, own-today commands and ERP outcome reasons are implemented in source. Migrations `0046` through `0048` are not deployed; preparation and day-execution slices remain in progress.
+Status: `IN PROGRESS` — shared relations/customer operations, appointment replica/commands, next-effective-workday preparation, notes/prepared state, ERP commercial history and explainable recommendations are implemented in source. Migrations `0046` through `0049` are not deployed; agenda and day-execution slices remain in progress.
 
 ### Deliverables
 

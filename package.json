@@ -72,6 +72,7 @@
     "test:salesday-business-relations": "tsx scripts/test-salesday-business-relations.ts",
     "test:salesday-customer-operations": "tsx scripts/test-salesday-customer-operations.ts",
     "test:salesday-appointment-operations": "tsx scripts/test-salesday-appointment-operations.ts",
+    "test:salesday-preparation": "tsx scripts/test-salesday-preparation.ts",
     "contract:import-catalog": "tsx scripts/import-contract-catalog.ts",
     "utf8:diagnose": "tsx scripts/diagnose-utf8.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",

@@ -484,6 +484,10 @@ Migration `0047_salesday_customer_operations` additively adds the appointment ac
 
 Migration `0048_salesday_appointment_operations` additively adds appointment local-revision/write-priority fields, `SalesAppointmentChange` evidence and the `SalesAppointmentOutcomeReason` ERP reference replica. Own-today mutations use serializable transactions and ordered outbox dependencies. Production deployment is pending.
 
+## SalesDay preparation
+
+Migration `0049_salesday_preparation` adds appointment preparation state/note/feedback and immutable ERP commercial-history document/line replicas. Country window configuration stays in audited `AppSetting`; recommendations are derived, not persisted as an opaque truth. Production deployment is pending.
+
 # Hulpaanvragen
 
 Help requests are stored in `HelpRequest`.

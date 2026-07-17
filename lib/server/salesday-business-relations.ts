@@ -13,6 +13,7 @@ import {
   applySalesErpAppointment,
   applySalesErpAppointmentOutcomeReason,
 } from "@/lib/server/salesday-appointments";
+import { applySalesErpCommercialHistory } from "@/lib/server/salesday-preparation";
 
 type NormalizedContact = {
   type: "PERSON" | "DEPARTMENT";
@@ -185,6 +186,9 @@ export async function applySalesDayReplicaEvent(tx: Prisma.TransactionClient, ev
   }
   if (event.eventType === "appointment-outcome-reason.upserted") {
     return applySalesErpAppointmentOutcomeReason(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "commercial-history.upserted") {
+    return applySalesErpCommercialHistory(tx, event.provider, event.payload);
   }
   return { status: "IGNORED_UNOWNED_RESOURCE" as const, eventType: event.eventType };
 }
