@@ -620,6 +620,10 @@ Source implementation is documented in `MILESTONE-5-CASH-WEEKLY-GATE.md`. The im
 
 ## Milestone 6 — Operational KPI, Power BI link and production readiness
 
+Status: `IMPLEMENTED IN SOURCE — EXTERNAL ACCEPTANCE PENDING` on 17 July 2026.
+
+Source implementation is documented in `MILESTONE-6-PRODUCTION-READINESS.md`. The implementation adds a scoped operational overview, secure external Power BI link configuration, readiness checks, all-country UAT-plan generation and production runbook guidance. It does not claim production readiness while real ERP, country UAT, migration rehearsal, backup/restore and MDM evidence are still external blockers.
+
 ### Deliverables
 
 - operational daily indicators from current replica;

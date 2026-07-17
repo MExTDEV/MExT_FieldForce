@@ -148,3 +148,12 @@ Milestone 5 keeps payment methods and cash-balance clearing ERP-owned.
 - Only payment methods with `affectsCashBalance = true` create local cash entries, and ordinary `ORDER` documents do not affect the Representative cash balance.
 - `cashBalances` are the ERP/backoffice-confirmed Representative balances. They are the normal source for clearing the weekly exact-zero cash gate.
 - FieldForce does not emit a deposit-confirmation or manual cash-override command. A Representative can see the cash sheet and sync/support while blocked, but unblocking requires a replicated ERP/backoffice confirmation.
+
+## Production acceptance boundary
+
+Milestone 6 adds source-level readiness checks, but the real ERP adapter remains an external acceptance gate.
+
+- Every command and event type in this contract must complete a real test-tenant round trip before production activation.
+- Mock provider and mock seed are forbidden in production.
+- Reconciliation incidents must be resolved from ERP evidence; FieldForce must not recreate uncertain business transactions with new command identities.
+- The operational dashboard may surface current ledger health, but Power BI remains the official historical reporting and KPI source.

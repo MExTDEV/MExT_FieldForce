@@ -738,6 +738,16 @@ Migration `0055_salesday_cash_weekly_gate` additively defines the SalesDay cash 
 - no destructive statement or production seed is present;
 - migration `0055` is not deployed to the configured production database.
 
+## SalesDay operational dashboard and production readiness
+
+Milestone 6 does not add a migration.
+
+- operational indicators are derived from existing SalesDay, Inventory, cash and ERP-ledger tables;
+- the secure Power BI link is stored in audited `AppSetting` key `salesday.powerbi.v1`;
+- optional external production-readiness evidence is stored in `AppSetting` key `salesday.productionReadiness.v1`;
+- Power BI embedding is not stored or rendered by FieldForce in this milestone;
+- production readiness is not inferred from database state alone and still requires external ERP, UAT, backup/restore, MDM and migration-rehearsal evidence.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

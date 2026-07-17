@@ -4,7 +4,7 @@
 
 - Business behaviour: `DEFINED`
 - External ERP transport: `PARTIALLY_DEFINED`
-- Production readiness: `NOT_IMPLEMENTED`
+- Production readiness: `IMPLEMENTED_IN_SOURCE — EXTERNAL_ACCEPTANCE_PENDING`
 
 The business decisions were confirmed on 16 July 2026.
 
@@ -60,6 +60,7 @@ FieldForce is the entry, offline and presentation layer for sales operations. Bu
 - Milestone 3 commercial documents, signatures, reserved numbers and printing: `MILESTONE-3-COMMERCIAL-DOCUMENTS.md`
 - Milestone 4 shared Inventory, receipt, consumables and carrier stock: `MILESTONE-4-SHARED-INVENTORY.md`
 - Milestone 5 cash sheet and weekly access gate: `MILESTONE-5-CASH-WEEKLY-GATE.md`
+- Milestone 6 operational indicators, Power BI link and production-readiness runbook: `MILESTONE-6-PRODUCTION-READINESS.md`
 - Original repository and prototype evidence: `../../../SALESDAY-INTEGRATION-AUDIT.md`
 - Shared roles and scope: `../../03_ROLES.md`
 - Shared architecture and integration boundaries: `../../01_ARCHITECTURE.md`
