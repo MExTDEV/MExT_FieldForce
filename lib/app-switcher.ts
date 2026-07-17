@@ -331,6 +331,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     enabledPermission: "menu.salesday.enabled",
     isAvailable: withinDomain(canAccessSalesday),
     links: [
+      { key: "overview", label: "Operationeel overzicht", description: "Dagindicatoren en Power BI-link", href: "/salesday", icon: LayoutDashboard, permission: "menu.salesday.enabled", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "preparation", label: "Mijn voorbereiding", description: "Tijdelijke route", href: "/salesday/mijn-voorbereiding", icon: BookOpenCheck, permission: "menu.salesday.preparation", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "agenda", label: "Mijn Agenda", description: "Tijdelijke route", href: "/salesday/mijn-agenda", icon: CalendarDays, permission: "menu.salesday.agenda", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "team", label: "Mijn Team", description: "Tijdelijke route", href: "/salesday/mijn-team", icon: UsersRound, permission: "menu.salesday.team", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
