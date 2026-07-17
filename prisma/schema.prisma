@@ -374,6 +374,19 @@ enum BusinessRelationBillingValidationStatus {
   INVALID
 }
 
+enum SalesAppointmentStatus {
+  PLANNED
+  COMPLETED
+  NOT_COMPLETED
+  MOVED
+  CANCELLED
+}
+
+enum SalesAppointmentOrigin {
+  ERP
+  REPRESENTATIVE
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -477,6 +490,8 @@ model User {
   salesDayFeatureOverrides SalesDayFeatureFlag[] @relation("SalesDayFeatureTargetUser")
   updatedSalesDayFeatureFlags SalesDayFeatureFlag[] @relation("SalesDayFeatureUpdatedBy")
   ownedBusinessRelations              BusinessRelation[]                   @relation("BusinessRelationOwner")
+  salesAppointments                   SalesAppointment[]                    @relation("SalesAppointmentRepresentative")
+  businessRelationChanges             BusinessRelationChange[]             @relation("BusinessRelationChangeActor")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -613,6 +628,7 @@ model Team {
   contractCalculations ContractCalculation[]
   salesDayFeatureFlags SalesDayFeatureFlag[]
   businessRelations                   BusinessRelation[]
+  salesAppointments                   SalesAppointment[]
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -1931,6 +1947,8 @@ model BusinessRelation {
   billingValidation        BusinessRelationBillingValidation?
   externalLinks            BusinessRelationExternalLink[]
   contractCustomer         ContractCustomer?
+  appointments             SalesAppointment[]
+  changes                  BusinessRelationChange[]
   createdAt                DateTime                           @default(now())
   updatedAt                DateTime                           @updatedAt
 
@@ -2019,6 +2037,64 @@ model BusinessRelationExternalLink {
   @@unique([relationId, provider])
   @@index([relationId])
   @@index([provider, sourceUpdatedAt])
+}
+
+model SalesAppointment {
+  id                       String                 @id @default(cuid())
+  provider                 ErpIntegrationProvider?
+  externalId               String?
+  sourceVersion            String?
+  sourceUpdatedAt          DateTime?
+  businessDate             DateTime               @db.Date
+  startsAt                 DateTime?
+  endsAt                   DateTime?
+  timeZone                 String
+  sequence                 Int
+  status                   SalesAppointmentStatus @default(PLANNED)
+  origin                   SalesAppointmentOrigin @default(ERP)
+  relationId               String
+  representativeUserId     String
+  representativeExternalId String
+  teamId                   String?
+  teamExternalId           String?
+  country                  Country
+  outcomeReasonExternalId  String?
+  outcomeComment           String?                @db.Text
+  relation                 BusinessRelation       @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  representative           User                   @relation("SalesAppointmentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  team                     Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([representativeUserId, businessDate, sequence])
+  @@index([relationId, businessDate])
+  @@index([teamId, businessDate])
+  @@index([country, businessDate])
+  @@index([status, businessDate])
+}
+
+model BusinessRelationChange {
+  id                    String           @id @default(cuid())
+  relationId            String
+  actorUserId           String
+  deviceId              String
+  appointmentExternalId String?
+  oldValueJson          String           @db.LongText
+  proposedValueJson     String           @db.LongText
+  validationJson        String           @db.LongText
+  commandId             String           @unique
+  erpAcknowledgedAt     DateTime?
+  erpAcknowledgementJson String?          @db.LongText
+  relation              BusinessRelation @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  actor                 User             @relation("BusinessRelationChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([relationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([appointmentExternalId])
+  @@index([erpAcknowledgedAt])
 }
 
 model ContractModelVersion {

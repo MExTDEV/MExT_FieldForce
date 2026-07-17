@@ -136,6 +136,18 @@ export async function applySalesErpCustomer(
 ) {
   const normalized = normalizeSalesErpCustomer(customer);
   const prismaProvider = provider as ErpIntegrationProvider;
+  const localScope = normalized.representativeExternalId
+    ? await tx.user.findFirst({
+        where: {
+          role: "REPRESENTATIVE",
+          OR: [
+            { representativeId: normalized.representativeExternalId },
+            { id: normalized.representativeExternalId },
+          ],
+        },
+        select: { id: true, teamId: true },
+      })
+    : null;
   const existingLink = await tx.businessRelationExternalLink.findUnique({
     where: { provider_externalId: { provider: prismaProvider, externalId: customer.externalId } },
     include: { relation: { include: { contractCustomer: true } } },
@@ -153,8 +165,8 @@ export async function applySalesErpCustomer(
   }
 
   const relation = relationId
-    ? await updateExistingRelation(tx, relationId, provider, customer.externalId, normalized, syncedAt)
-    : await createRelation(tx, provider, customer.externalId, normalized, syncedAt);
+    ? await updateExistingRelation(tx, relationId, provider, customer.externalId, normalized, localScope, syncedAt)
+    : await createRelation(tx, provider, customer.externalId, normalized, localScope, syncedAt);
 
   await updateContractCompatibility(tx, relation.id, provider, customer.externalId, normalized, syncedAt);
   return { status: relationId ? "UPDATED" as const : "CREATED" as const, relationId: relation.id };
@@ -172,11 +184,12 @@ async function createRelation(
   provider: SalesErpProvider,
   externalId: string,
   customer: NormalizedSalesErpCustomer,
+  localScope: { id: string; teamId: string | null } | null,
   syncedAt: Date,
 ) {
   return tx.businessRelation.create({
     data: {
-      ...relationValues(customer),
+      ...relationValues(customer, localScope),
       contacts: { create: customer.contacts },
       addresses: { create: customer.addresses },
       billingValidation: { create: customer.billingValidation },
@@ -199,11 +212,12 @@ async function updateExistingRelation(
   provider: SalesErpProvider,
   externalId: string,
   customer: NormalizedSalesErpCustomer,
+  localScope: { id: string; teamId: string | null } | null,
   syncedAt: Date,
 ) {
   await tx.businessRelation.update({
     where: { id: relationId },
-    data: relationValues(customer),
+    data: relationValues(customer, localScope),
   });
   await tx.businessRelationContact.deleteMany({ where: { relationId } });
   await tx.businessRelationAddress.deleteMany({ where: { relationId } });
@@ -242,7 +256,10 @@ async function updateExistingRelation(
   return tx.businessRelation.findUniqueOrThrow({ where: { id: relationId } });
 }
 
-function relationValues(customer: NormalizedSalesErpCustomer) {
+function relationValues(
+  customer: NormalizedSalesErpCustomer,
+  localScope: { id: string; teamId: string | null } | null,
+) {
   return {
     type: customer.type,
     status: customer.status,
@@ -251,6 +268,8 @@ function relationValues(customer: NormalizedSalesErpCustomer) {
     vatNumber: customer.vatNumber,
     preferredLanguage: customer.preferredLanguage,
     country: customer.country,
+    ownerUserId: localScope?.id ?? null,
+    teamId: localScope?.teamId ?? null,
     representativeExternalId: customer.representativeExternalId,
     teamExternalId: customer.teamExternalId,
     isDemo: customer.isDemo,

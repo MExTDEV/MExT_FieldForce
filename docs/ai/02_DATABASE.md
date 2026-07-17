@@ -669,6 +669,16 @@ Critical rules:
 - a pending explicit FieldForce edit is preserved when a competing ERP event arrives;
 - migration `0046` is not deployed to the configured production database.
 
+## SalesDay customer operations
+
+Migration `0047_salesday_customer_operations` additively defines `SalesAppointment` and `BusinessRelationChange`.
+
+- `SalesAppointment` provides the server-enforced link between a Representative, the local business date and the customer dossier;
+- `BusinessRelationChange` stores old/proposed customer values, validation evidence, device/actor context and the correlated ERP command;
+- customer writes, Contract projection updates, audit evidence and the ordered ERP outbox command share a serializable transaction;
+- no destructive statement or production seed is present;
+- migration `0047` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

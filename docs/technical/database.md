@@ -476,6 +476,10 @@ Migration `0045_salesday_feature_controls` adds the scoped `SalesDayFeatureFlag`
 
 Migration `0046_salesday_business_relations` adds `BusinessRelation`, normalized contact/address/billing tables, provider-scoped external links and the nullable unique `ContractCustomer.businessRelationId` bridge. The migration backfills Contract customers additively and contains no destructive statement. Application services dual-write new Contract customers transactionally while existing Contract snapshots remain unchanged. Production deployment is pending.
 
+## SalesDay customer operations
+
+Migration `0047_salesday_customer_operations` additively adds the appointment access root (`SalesAppointment`) and mutation evidence (`BusinessRelationChange`). Customer mutations recheck the appointment inside a serializable transaction and atomically persist the relation projection, validation evidence, audit record, Contract compatibility update and ordered ERP outbox command. Production deployment is pending.
+
 # Hulpaanvragen
 
 Help requests are stored in `HelpRequest`.
