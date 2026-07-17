@@ -84,6 +84,7 @@ expectText("lib/server/salesday-commercial-documents.ts", [
   "UNSIGNED_EXCEPTION",
   "sales-document.create",
   "representativeStockImpactQuantity",
+  "createInventoryMovementsForSalesDocumentInTransaction",
   "STANDARD_ANDROID_PRINT_SHARE",
   "REPLACEABLE_BOUNDARY",
   "requireContractAccess",

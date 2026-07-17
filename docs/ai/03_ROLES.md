@@ -339,6 +339,16 @@ Managing global/country/team/user activation or the server-owned ERP runtime req
 
 Representatives receive SalesDay preparation, agenda and stock menu rights, but effective visibility still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
 
+Shared Inventory uses separate permissions from SalesDay management:
+
+- `inventory.balance.readOwn` permits the Representative to read own Representative/vehicle stock;
+- `inventory.receipts.acceptOwn` permits receiving own replenishments with mandatory signature/photo evidence;
+- `inventory.consumables.requestOwn` permits creating an ERP consumables request, not approving or cancelling it;
+- `inventory.carriers.writeOwnAppointment` permits create/edit/archive/count of customer carriers only for appointment-gated customers on the own working day;
+- `inventory.manage` permits Beheer settings and reasons. It does not allow acting as a Representative in the daily operational flow.
+
+The Inventory main menu uses `menu.inventory.enabled`, `menu.inventory.myStock`, `menu.inventory.replenishments` and `menu.inventory.consumables`. Representative defaults include the own operational Inventory permissions. Admin receives `inventory.manage`; Super Admin receives all permissions.
+
 ## Enforcement
 
 Navigation, direct page access, APIs, file downloads, offline bootstrap data and background command processing must enforce the same effective SalesDay scope.

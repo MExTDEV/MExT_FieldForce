@@ -539,6 +539,8 @@ Status: `IMPLEMENTED IN SOURCE` (Milestone 3) — commercial document policy, ER
 
 ## Milestone 4 — Shared Inventory
 
+Status: `IMPLEMENTED IN SOURCE` by migration `0054_shared_inventory`, shared server services under `lib/server/inventory`, Inventory API routes and `npm run test:inventory-shared`.
+
 ### Deliverables
 
 - shared location and immutable movement primitives;

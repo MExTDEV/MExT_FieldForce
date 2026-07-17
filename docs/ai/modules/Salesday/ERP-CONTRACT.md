@@ -128,3 +128,13 @@ A real adapter is not accepted until all resource and command mappings document:
 - reconciliation after timeout;
 - scope enforcement;
 - test-tenant evidence for every supported capability.
+
+## Shared Inventory command ownership
+
+Milestone 4 persists Inventory source records locally but keeps the ERP/backoffice as owner of central warehouse stock, fulfilment and later consumables status.
+
+- `replenishment-receipt.submit` is emitted once per local receipt key and includes the local receipt ID, replenishment external ID, actual and damaged quantities, signature upload token and photo upload tokens.
+- `consumables-request.create` is emitted once per local request key. FieldForce does not approve, edit or cancel the request after submission.
+- `customer-location.upsert` is emitted for create, edit and archive of customer locations, sublocations and carriers. Archiving carries the FieldForce reason code.
+- `carrier-count.submit` is emitted for optional physical customer-carrier counts. Lines include theoretical quantity, counted quantity and reason code when a discrepancy exists.
+- Direct delivery SalesDay documents create local Inventory movements in the same transaction as the document source record and ERP outbox command. Ordinary Orders may carry an intended carrier but do not increase customer-carrier stock until ERP delivery confirmation.

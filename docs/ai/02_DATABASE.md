@@ -711,6 +711,21 @@ Migration `0053_salesday_commercial_documents` additively defines the source-sid
 - no destructive statement or production seed is present;
 - migration `0053` is not deployed to the configured production database.
 
+## Shared Inventory
+
+Migration `0054_shared_inventory` additively defines the shared Inventory persistence used by SalesDay and later Service.
+
+- `InventoryLocation` stores central warehouse, transit, Representative/vehicle, customer location, customer sublocation, customer carrier and quarantine locations;
+- `InventoryMovement` is immutable and idempotency-keyed; balances are derived into `InventoryBalance`;
+- replenishment replica, receipt lines, mandatory evidence and discrepancies are stored in `InventoryReplenishment`, `InventoryReceipt`, `InventoryReceiptEvidence` and `InventoryDiscrepancy`;
+- damaged receipt quantities move to quarantine and are not sellable Representative stock;
+- `InventoryConsumablesRequest` stores FieldForce-created ERP requests only; approval/edit/cancel after submission is not owned by FieldForce;
+- `InventoryCarrierCount` stores optional customer-carrier physical counts and immutable correction movements with mandatory discrepancy reason when quantities differ;
+- `InventoryReason` stores Beheer-managed archive, receipt discrepancy and carrier count reasons;
+- document direct deliveries create local movement records atomically with the SalesDay document transaction; ordinary Orders do not change Inventory balance before ERP delivery confirmation;
+- no destructive statement or production seed is present;
+- migration `0054` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met
