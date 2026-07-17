@@ -234,10 +234,14 @@ General and personality scores use three distinct values:
 - a numeric score: explicit numeric selection;
 - null plus notApplicable = true: explicit NVT selection.
 
-New reports start with no general or personality score selected. Existing
-reports retain their stored numeric/NVT meaning. No schema migration is needed
-because the existing Score.score and Score.notApplicable fields already encode
-all three states.
+New reports start with no general or personality score selected. Completed
+reports retain their stored numeric/NVT meaning. Migration
+`0051_coaching_clear_legacy_default_nvt` clears the former automatic NVT
+defaults only in reports that are still editable, so those questions require a
+new explicit choice. Legacy browser drafts receive the same one-time repair;
+new explicit NVT choices remain stored. No schema column is needed because the
+existing `Score.score` and `Score.notApplicable` fields already encode all three
+states.
 
 Step 7 uses the existing central score calculation and shows the report
 summary, missing mandatory data and direct links back to the affected step.
