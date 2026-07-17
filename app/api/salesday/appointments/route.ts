@@ -2,9 +2,9 @@ import { badRequest, handleApi, handleApiCreated } from "@/lib/server/api";
 import { requireAuthenticatedUserContext } from "@/lib/server/authenticated-user";
 import {
   createSalesDayAppointment,
-  listSalesDayAppointments,
   type SalesDayAppointmentInput,
 } from "@/lib/server/salesday-appointments";
+import { getSalesDayAgenda } from "@/lib/server/salesday-day-execution";
 import { assertSalesDayFeatureEnabled, getSalesDayRuntimeConfiguration } from "@/lib/server/salesday-feature-flags";
 import { requireActiveSalesDayDevice } from "@/lib/server/salesday-offline-sync";
 import { rethrowSalesDaySyncError } from "@/lib/server/salesday-sync-api";
@@ -12,10 +12,10 @@ import { rethrowSalesDaySyncError } from "@/lib/server/salesday-sync-api";
 export async function GET(request: Request) {
   return handleApi("api/salesday/appointments:get", async () => {
     const parameters = new URL(request.url).searchParams;
-    const { actor } = await requireAuthenticatedUserContext(parameters.get("actorId"));
+    const { actor, loginSessionId } = await requireAuthenticatedUserContext(parameters.get("actorId"));
     try {
       await assertSalesDayFeatureEnabled(actor, "SALESDAY");
-      return { appointments: await listSalesDayAppointments(actor) };
+      return getSalesDayAgenda({ actor, loginSessionId, deviceId: parameters.get("deviceId") ?? "" });
     } catch (error) {
       rethrowSalesDaySyncError(error);
     }

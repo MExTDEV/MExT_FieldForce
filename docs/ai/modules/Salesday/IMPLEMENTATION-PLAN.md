@@ -449,7 +449,7 @@ Status: `COMPLETE IN SOURCE` (16 July 2026) — the persistent integration-ledge
 
 ## Milestone 2 — Customers, appointments and day execution
 
-Status: `IN PROGRESS` — shared relations/customer operations, appointment replica/commands, next-effective-workday preparation, notes/prepared state, ERP commercial history and explainable recommendations are implemented in source. Migrations `0046` through `0049` are not deployed; agenda and day-execution slices remain in progress.
+Status: `IMPLEMENTED IN SOURCE` (Milestone 2) — shared relations/customer operations, appointment replica/commands, next-effective-workday preparation, agenda and day-execution, read-only Mijn Team and attachment staging are implemented in source. Migrations `0046` through `0052` remain deployment-pending; no production database was changed.
 
 ### Deliverables
 
@@ -469,6 +469,8 @@ Status: `IN PROGRESS` — shared relations/customer operations, appointment repl
 - mandatory day closure;
 - scoped read-only Mijn Team;
 - attachment staging by appointment/customer and ERP categories.
+
+The agenda/day-execution evidence is recorded in `MILESTONE-2-DAY-EXECUTION.md`; attachment staging evidence is recorded in `MILESTONE-2-ATTACHMENTS.md`. Both slices remain behind the existing server-side feature controls and require the real ERP adapter before production activation.
 
 ### Required tests
 

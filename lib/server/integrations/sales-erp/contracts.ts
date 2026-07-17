@@ -316,7 +316,7 @@ export type SalesErpCustomerUpsertCommand = {
 };
 
 export type SalesErpAppointmentUpsertCommand = {
-  localAppointmentId: string;
+  localAppointmentId?: string;
   externalId?: string;
   expectedSourceVersion?: string;
   businessDate: IsoDate;
@@ -329,7 +329,7 @@ export type SalesErpAppointmentUpsertCommand = {
 };
 
 export type SalesErpAppointmentOutcomeCommand = {
-  localAppointmentId: string;
+  localAppointmentId?: string;
   appointmentExternalId?: string;
   expectedSourceVersion?: string;
   outcome: "COMPLETED" | "NOT_COMPLETED" | "MOVED" | "CANCELLED";
@@ -339,15 +339,18 @@ export type SalesErpAppointmentOutcomeCommand = {
 };
 
 export type SalesErpVisitReportCommand = {
-  appointmentExternalId: string;
-  localReportId: string;
+  localAppointmentId?: string;
+  appointmentExternalId?: string;
+  localReportId?: string;
   html: string;
   closedAt: IsoDateTime;
 };
 
 export type SalesErpVisitReportAddendumCommand = {
-  appointmentExternalId: string;
-  reportExternalId: string;
+  localAppointmentId?: string;
+  appointmentExternalId?: string;
+  localReportId?: string;
+  reportExternalId?: string;
   localAddendumId: string;
   reason: string;
   html: string;
@@ -355,7 +358,8 @@ export type SalesErpVisitReportAddendumCommand = {
 };
 
 export type SalesErpLeadCommand = {
-  appointmentExternalId: string;
+  localAppointmentId?: string;
+  appointmentExternalId?: string;
   localLeadId: string;
   customerExternalId: string;
   title: string;
@@ -363,7 +367,8 @@ export type SalesErpLeadCommand = {
 };
 
 export type SalesErpFollowUpCommand = {
-  appointmentExternalId: string;
+  localAppointmentId?: string;
+  appointmentExternalId?: string;
   localFollowUpId: string;
   customerExternalId: string;
   type: string;
@@ -371,7 +376,8 @@ export type SalesErpFollowUpCommand = {
 };
 
 export type SalesErpReferenceCommand = {
-  appointmentExternalId: string;
+  localAppointmentId?: string;
+  appointmentExternalId?: string;
   localReferenceId: string;
   referringCustomerExternalId: string;
   proposedName: string;
@@ -483,6 +489,7 @@ export type SalesErpDayCloseCommand = {
   businessDate: IsoDate;
   closedAt: IsoDateTime;
   appointmentExternalIds: string[];
+  localAppointmentIds?: string[];
 };
 
 export type SalesErpAttachmentCommand = {
