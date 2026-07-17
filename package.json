@@ -70,6 +70,7 @@
     "test:salesday-cash-gate": "tsx scripts/test-salesday-cash-gate.ts",
     "test:salesday-feature-controls": "tsx scripts/test-salesday-feature-controls.ts",
     "test:salesday-operational-readiness": "tsx scripts/test-salesday-operational-readiness.ts",
+    "test:salesday-uat-mock-seed": "tsx scripts/test-salesday-uat-mock-seed.ts",
     "test:salesday-pwa-shell": "tsx scripts/test-salesday-pwa-shell.ts",
     "test:salesday-business-relations": "tsx scripts/test-salesday-business-relations.ts",
     "test:salesday-customer-operations": "tsx scripts/test-salesday-customer-operations.ts",
@@ -105,6 +106,7 @@
     "db:seed:dev": "tsx prisma/seed.ts --dev-demo",
     "auth:set-password": "tsx scripts/set-user-password.ts",
     "salesday:uat-plan": "tsx scripts/generate-salesday-uat-plan.ts",
+    "salesday:seed:uat-mock": "tsx scripts/seed-salesday-uat-mock.ts",
     "deploy:prepare": "npm run env:check:production && npm run db:generate && npm run db:migrate:deploy && npm run db:seed:config && npm run build",
     "start:production": "npm run env:check:production && node server.mjs"
   },
