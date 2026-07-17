@@ -5,6 +5,7 @@ import {
   listSalesDocumentsForAppointment,
   type SalesCommercialDocumentType,
   type SalesDocumentLineInput,
+  type SalesDocumentPaymentInput,
   type SalesDocumentSignatureInput,
 } from "@/lib/server/salesday-commercial-documents";
 import { assertSalesDayFeatureEnabled, getSalesDayRuntimeConfiguration } from "@/lib/server/salesday-feature-flags";
@@ -20,6 +21,7 @@ type Body = {
   overrideComment?: string;
   language?: Language;
   currency?: string;
+  payment?: SalesDocumentPaymentInput;
   lines?: SalesDocumentLineInput[];
   signature?: SalesDocumentSignatureInput;
 };
@@ -62,6 +64,7 @@ export async function POST(request: Request, context: { params: Promise<{ appoin
         overrideComment: body.overrideComment,
         language: body.language,
         currency: body.currency,
+        payment: body.payment,
         lines: body.lines,
         signature: body.signature,
       });

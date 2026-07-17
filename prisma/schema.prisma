@@ -523,6 +523,12 @@ enum InventoryCarrierCountStatus {
   REJECTED
 }
 
+enum SalesCashEntryType {
+  DOCUMENT_CASH_PAYMENT
+  ERP_DEPOSIT_CONFIRMATION
+  ERP_CORRECTION
+}
+
 model User {
   id                                  String                                   @id @default(cuid())
   firstName                           String
@@ -640,6 +646,8 @@ model User {
   salesReferences                     SalesReference[]
   salesDayClosures                    SalesDayClosure[]
   salesDocuments                      SalesDocument[]                          @relation("SalesDocumentRepresentative")
+  salesCashBalances                   SalesCashBalance[]                       @relation("SalesCashBalanceRepresentative")
+  salesCashEntries                    SalesCashEntry[]                         @relation("SalesCashEntryRepresentative")
   inventoryLocations                  InventoryLocation[]                      @relation("InventoryLocationRepresentative")
   inventoryMovements                  InventoryMovement[]                      @relation("InventoryMovementActor")
   inventoryReplenishments             InventoryReplenishment[]                 @relation("InventoryReplenishmentRepresentative")
@@ -2547,6 +2555,8 @@ model SalesDocument {
   amountIncludingVat     Decimal                         @db.Decimal(16, 4)
   overrideReasonId       String?
   overrideComment        String?                         @db.Text
+  paymentMethodId        String?
+  paymentMethodExternalId String?
   commandId              String                          @unique
   externalId             String?
   sourceVersion          String?
@@ -2556,8 +2566,10 @@ model SalesDocument {
   representative         User                            @relation("SalesDocumentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
   numberUse              SalesDocumentNumberUse          @relation(fields: [numberUseId], references: [id], onDelete: Restrict)
   overrideReason         SalesDocumentReason?            @relation("SalesDocumentOverrideReason", fields: [overrideReasonId], references: [id], onDelete: Restrict)
+  paymentMethod          SalesPaymentMethod?             @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
   lines                  SalesDocumentLine[]
   signatureEvidence      SalesDocumentSignatureEvidence?
+  cashEntry              SalesCashEntry?
   createdAt              DateTime                        @default(now())
   updatedAt              DateTime                        @updatedAt
 
@@ -2566,6 +2578,7 @@ model SalesDocument {
   @@index([representativeUserId, businessDate])
   @@index([status, createdAt])
   @@index([deliveryStatus, createdAt])
+  @@index([paymentMethodExternalId])
 }
 
 model SalesDocumentLine {
@@ -2615,6 +2628,85 @@ model SalesDocumentSignatureEvidence {
 
   @@index([status, signedAt])
   @@index([exceptionReasonId])
+}
+
+model SalesPaymentMethod {
+  id                 String             @id @default(cuid())
+  provider           ErpIntegrationProvider
+  externalId         String
+  sourceVersion      String
+  sourceUpdatedAt    DateTime
+  code               String
+  labelNl            String
+  labelFr            String
+  labelDe            String
+  country            Country?
+  active             Boolean            @default(true)
+  requiresComment    Boolean            @default(false)
+  affectsCashBalance Boolean            @default(false)
+  documents          SalesDocument[]
+  cashEntries        SalesCashEntry[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([country, active, code])
+  @@index([affectsCashBalance])
+}
+
+model SalesCashBalance {
+  id                       String                 @id @default(cuid())
+  provider                 ErpIntegrationProvider
+  externalId               String
+  sourceVersion            String
+  sourceUpdatedAt          DateTime
+  representativeUserId     String
+  representativeExternalId String
+  country                  Country
+  currency                 String
+  confirmedBalance         Decimal                @db.Decimal(16, 4)
+  lastDepositConfirmedAt   DateTime?
+  representative           User                   @relation("SalesCashBalanceRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  entries                  SalesCashEntry[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@unique([provider, representativeExternalId, currency])
+  @@index([representativeUserId, currency])
+  @@index([country, currency])
+}
+
+model SalesCashEntry {
+  id                   String              @id @default(cuid())
+  entryKey             String              @unique
+  type                 SalesCashEntryType
+  provider             ErpIntegrationProvider?
+  representativeUserId String
+  cashBalanceId        String?
+  salesDocumentId      String?             @unique
+  paymentMethodId      String?
+  country              Country
+  currency             String
+  businessDate         DateTime?           @db.Date
+  occurredAt           DateTime
+  amount               Decimal             @db.Decimal(16, 4)
+  balanceAfter         Decimal?            @db.Decimal(16, 4)
+  externalId           String?
+  sourceVersion        String?
+  commandId            String?
+  comment              String?             @db.Text
+  representative       User                @relation("SalesCashEntryRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  cashBalance          SalesCashBalance?   @relation(fields: [cashBalanceId], references: [id], onDelete: Restrict)
+  salesDocument        SalesDocument?      @relation(fields: [salesDocumentId], references: [id], onDelete: Restrict)
+  paymentMethod        SalesPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([representativeUserId, businessDate])
+  @@index([country, occurredAt])
+  @@index([cashBalanceId, occurredAt])
+  @@index([provider, externalId])
 }
 
 model InventoryReason {

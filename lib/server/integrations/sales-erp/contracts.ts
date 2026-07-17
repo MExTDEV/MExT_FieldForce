@@ -421,6 +421,7 @@ export type SalesErpSalesDocumentCommand = {
   documentDate: IsoDate;
   language: SalesErpLanguageCode;
   currency: SalesErpCurrencyCode;
+  paymentMethodExternalId?: string;
   proposedDocumentType: "ORDER" | "ORDER_ALREADY_DELIVERED" | "INVOICE";
   overrideReasonCode?: string;
   overrideComment?: string;

@@ -14,6 +14,10 @@ import {
   type SalesErpProvider,
 } from "@/lib/server/integrations/sales-erp";
 import { createInventoryMovementsForSalesDocumentInTransaction } from "@/lib/server/inventory/sales-documents";
+import {
+  createDocumentCashEntryInTransaction,
+  resolveSalesPaymentMethod,
+} from "@/lib/server/salesday-cash";
 import { salesDayBusinessDate } from "@/lib/server/salesday-customer-access";
 import { assertSalesDayServerDayAccess } from "@/lib/server/salesday-day-access";
 import type { MockUser } from "@/lib/types";
@@ -32,6 +36,10 @@ export type SalesDocumentSignatureInput = {
   signatureData?: string;
   unsignedExceptionReasonId?: string;
   unsignedExceptionComment?: string;
+};
+
+export type SalesDocumentPaymentInput = {
+  paymentMethodExternalId?: string;
 };
 
 type DocumentContext = {
@@ -347,6 +355,7 @@ export async function createSalesDocument(input: DocumentContext & {
   overrideComment?: string;
   language?: Language;
   currency?: string;
+  payment?: SalesDocumentPaymentInput;
   signature: SalesDocumentSignatureInput;
 }) {
   requireRepresentative(input.actor);
@@ -410,6 +419,11 @@ export async function createSalesDocument(input: DocumentContext & {
       comment: input.overrideComment,
     });
     const lines = preparedLines.map((line) => finalizeLineForDocumentType(line, documentType));
+    const paymentMethod = await resolveSalesPaymentMethod(tx, {
+      provider: input.provider,
+      country: input.actor.country,
+      paymentMethodExternalId: input.payment?.paymentMethodExternalId,
+    });
     const signature = await resolveSignatureEvidence(tx, {
       actor: input.actor,
       signature: input.signature,
@@ -465,6 +479,7 @@ export async function createSalesDocument(input: DocumentContext & {
         documentDate: businessDate,
         language,
         currency,
+        paymentMethodExternalId: paymentMethod?.externalId,
         proposedDocumentType,
         overrideReasonCode: override.reason?.code,
         overrideComment: override.comment ?? undefined,
@@ -508,6 +523,8 @@ export async function createSalesDocument(input: DocumentContext & {
         currency,
         language,
         templateVersion,
+        paymentMethodId: paymentMethod?.id ?? null,
+        paymentMethodExternalId: paymentMethod?.externalId ?? null,
         customerSnapshotJson: canonicalSalesErpJson(customerSnapshot),
         billingSnapshotJson: billingSnapshot ? canonicalSalesErpJson(billingSnapshot) : null,
         renderedDocumentHtml: rendered.html,
@@ -569,6 +586,13 @@ export async function createSalesDocument(input: DocumentContext & {
       occurredAt: now,
       lines: document.lines,
     });
+    await createDocumentCashEntryInTransaction(tx, {
+      document,
+      paymentMethod,
+      actor: input.actor,
+      occurredAt: now,
+      commandId,
+    });
     await tx.salesDocumentNumberUse.update({
       where: { id: numberUse.id },
       data: { status: "SUBMITTED", submittedAt: now },
@@ -591,6 +615,7 @@ export async function createSalesDocument(input: DocumentContext & {
       documentSha256: rendered.sha256,
       status: document.status,
       deliveryStatus: document.deliveryStatus,
+      paymentMethodExternalId: paymentMethod?.externalId ?? null,
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

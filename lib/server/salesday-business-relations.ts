@@ -15,6 +15,10 @@ import {
   applySalesErpReplenishment,
 } from "@/lib/server/inventory/service";
 import {
+  applySalesErpCashBalance,
+  applySalesErpPaymentMethod,
+} from "@/lib/server/salesday-cash";
+import {
   applySalesErpAppointment,
   applySalesErpAppointmentOutcomeReason,
 } from "@/lib/server/salesday-appointments";
@@ -192,6 +196,12 @@ export async function applySalesDayReplicaEvent(tx: Prisma.TransactionClient, ev
   }
   if (event.eventType === "appointment-outcome-reason.upserted") {
     return applySalesErpAppointmentOutcomeReason(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "payment-method.upserted") {
+    return applySalesErpPaymentMethod(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "cash-balance.upserted") {
+    return applySalesErpCashBalance(tx, event.provider, event.payload);
   }
   if (event.eventType === "article.upserted") {
     return applySalesErpArticle(tx, event.provider, event.payload);
