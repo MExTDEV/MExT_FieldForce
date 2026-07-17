@@ -57,6 +57,7 @@ FieldForce is the entry, offline and presentation layer for sales operations. Bu
 - Milestone 2 scoped customer operations, VAT validation and prospects: `MILESTONE-2-CUSTOMERS.md`
 - Milestone 2 appointment replica, order and commands: `MILESTONE-2-APPOINTMENTS.md`
 - Milestone 2 next-workday preparation and recommendations: `MILESTONE-2-PREPARATION.md`
+- Milestone 3 commercial documents, signatures, reserved numbers and printing: `MILESTONE-3-COMMERCIAL-DOCUMENTS.md`
 - Original repository and prototype evidence: `../../../SALESDAY-INTEGRATION-AUDIT.md`
 - Shared roles and scope: `../../03_ROLES.md`
 - Shared architecture and integration boundaries: `../../01_ARCHITECTURE.md`

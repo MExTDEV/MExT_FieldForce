@@ -495,6 +495,8 @@ The agenda/day-execution evidence is recorded in `MILESTONE-2-DAY-EXECUTION.md`;
 
 ## Milestone 3 — Commercial documents, signature and printing
 
+Status: `IMPLEMENTED IN SOURCE` (Milestone 3) — commercial document policy, ERP article/price replica, immutable document snapshots, reserved number blocks, signatures/unsigned exceptions, print/share boundary, settings API and Contract context gate are implemented in source. Migration `0053` remains deployment-pending; no production database was changed.
+
 ### Deliverables
 
 - server policy proposes Order, Order-Reeds-Geleverd or Factuur;

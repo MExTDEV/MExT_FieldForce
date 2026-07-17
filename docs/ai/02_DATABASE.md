@@ -699,6 +699,18 @@ Migration `0049_salesday_preparation` additively defines preparation state/note/
 - no destructive statement or production seed is present;
 - migration `0049` is not deployed to the configured production database.
 
+## SalesDay commercial documents
+
+Migration `0053_salesday_commercial_documents` additively defines the source-side commercial-document evidence for SalesDay.
+
+- `SalesArticle` and `SalesArticlePrice` store the provider-scoped official article, unit, VAT and country price replica;
+- `SalesDocumentReason` stores Beheer-managed override and unsigned-exception reasons;
+- `SalesDocumentNumberBlock` and `SalesDocumentNumberUse` store reserved official numbers, allocation, skipped/voided/accepted status and reconciliation evidence;
+- `SalesDocument`, `SalesDocumentLine` and `SalesDocumentSignatureEvidence` store immutable customer/billing/line/totals/language/template/signature snapshots;
+- document creation, number use, evidence, audit and ERP outbox command share a serializable transaction;
+- no destructive statement or production seed is present;
+- migration `0053` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

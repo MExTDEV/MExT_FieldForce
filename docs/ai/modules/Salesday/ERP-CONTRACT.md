@@ -94,6 +94,8 @@ Rules:
 
 Important dependency examples include prospect creation before its first sale, location creation before carrier count, and sales document acknowledgement before related finalisation where the concrete ERP requires it.
 
+For `sales-document.create`, FieldForce includes external customer and appointment IDs when already acknowledged. If a prospect/customer or own appointment is still pending, the command carries `localRelationId` and/or `localAppointmentId` and depends on the earlier command. The adapter must resolve the acknowledged ERP identity before native submission. Document lines include `representativeStockImpactQuantity` so Order, Order-Reeds-Geleverd and Factuur stock effects remain deterministic across retries.
+
 ## Acknowledgements, retry and reconciliation
 
 Acknowledgement statuses are:
