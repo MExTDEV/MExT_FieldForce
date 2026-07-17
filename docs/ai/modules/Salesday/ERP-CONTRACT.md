@@ -114,6 +114,8 @@ The mock dataset is fully fictitious, deterministic and covers Belgium, the Neth
 
 The factory rejects the `MOCK` provider when the runtime environment is `production`. BC/NAV and Odoo also fail closed until their adapters exist. A production deployment must never fall back to mock data or a different provider.
 
+The Milestone 7 UAT seed runner is a non-production operator tool. It may only target database names that are clearly isolated for development, demo, test, mock, sandbox, local or UAT use. The runner maps fictitious business records to existing active Representative users and refuses ambiguous database names by default. It is not an ERP substitute and must not be used to populate production.
+
 ## Real-adapter acceptance gate
 
 A real adapter is not accepted until all resource and command mappings document:

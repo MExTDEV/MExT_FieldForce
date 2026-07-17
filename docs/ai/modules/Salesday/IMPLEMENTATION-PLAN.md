@@ -28,6 +28,8 @@ The first activated production SalesDay includes milestones 1 through 5 below.
 
 Milestone 6 reporting is limited to operational indicators and a Power BI link. Embedded Power BI is explicitly optional and later.
 
+Milestone 7 is non-production enablement for mock/UAT data and navigation hardening while the real ERP adapter is pending. It does not authorise production mock data.
+
 ### 3.2 Flags
 
 Use server-evaluated flags at these levels:
@@ -644,6 +646,35 @@ Source implementation is documented in `MILESTONE-6-PRODUCTION-READINESS.md`. Th
 - real ERP round trips are proven for every command/event type;
 - emergency mode and rollback are rehearsed;
 - production contains no mock business data.
+
+## Milestone 7 — Mock/UAT seed and SalesDay navigation
+
+Status: `IMPLEMENTED IN SOURCE — NOT SEEDED ON CURRENT DATABASE` on 17 July 2026.
+
+Source implementation is documented in `MILESTONE-7-MOCK-UAT-SEED-AND-NAVIGATION.md`. The implementation expands the deterministic fictitious fixture, adds a guarded UAT/mock seed runner, keeps production and non-test database names fail-closed, and aligns the app switcher plus blue left sidebar with the SalesDay feature state and domain links.
+
+### Deliverables
+
+- richer provider-neutral fictitious UAT fixture for BE/NL/DE;
+- guarded seed runner with dry-run mode and production/non-test database refusal;
+- representative mapping to existing active FieldForce users, without demo-user creation;
+- runtime configuration, feature flags and SalesDay/Inventory reference settings for UAT walkthroughs;
+- shared app-switcher/sidebar domain helper for feature-aware SalesDay visibility;
+- SalesDay workspace screens for `Mijn voorraad` and `Kasblad`.
+
+### Required tests
+
+- ERP contract and fixture coverage;
+- seed guard, scenario and runner contract tests;
+- menu permission/domain tests for SalesDay feature state, Inventory subitem visibility and SalesDay route detection;
+- typecheck.
+
+### Exit criteria
+
+- current non-test database is refused by dry-run;
+- a synthetic UAT database name passes dry-run validation;
+- SalesDay app switcher and sidebar show the same permitted domain links;
+- no production database is changed and no mock business data is inserted in production.
 
 ## 9. Validation matrix
 
