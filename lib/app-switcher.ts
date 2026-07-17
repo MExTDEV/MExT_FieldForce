@@ -335,6 +335,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
       { key: "agenda", label: "Mijn Agenda", description: "Tijdelijke route", href: "/salesday/mijn-agenda", icon: CalendarDays, permission: "menu.salesday.agenda", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "team", label: "Mijn Team", description: "Tijdelijke route", href: "/salesday/mijn-team", icon: UsersRound, permission: "menu.salesday.team", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "stock", label: "Mijn Voorraad", description: "Tijdelijke route", href: "/salesday/mijn-voorraad", icon: Contact, permission: "menu.salesday.stock", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
+      { key: "cash", label: "Kasblad", description: "Kassaldo en ERP-bevestiging", href: "/salesday/cash", icon: ClipboardCheck, permission: "menu.salesday.cash", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
     ],
   },
   {

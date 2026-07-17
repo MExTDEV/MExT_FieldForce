@@ -110,6 +110,7 @@ export type FieldForcePermissionKey =
   | "menu.salesday.agenda"
   | "menu.salesday.team"
   | "menu.salesday.stock"
+  | "menu.salesday.cash"
   | "menu.inventory.enabled"
   | "menu.inventory.myStock"
   | "menu.inventory.replenishments"

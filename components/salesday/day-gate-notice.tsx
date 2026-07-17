@@ -35,6 +35,40 @@ export function SalesDayDayGateNotice({
       </section>
     );
   }
+  if (gate.reason === "CASH_BALANCE_NOT_ZERO" && gate.cashBlock) {
+    const balance = gate.cashBlock.missingCashBalance
+      ? t("salesday.dayGate.missingCashBalance")
+      : `${gate.cashBlock.confirmedBalance ?? "-"} ${gate.cashBlock.currency ?? ""}`.trim();
+    return (
+      <section className="card border-rose-300 bg-rose-50 p-4 sm:p-5" role="alert">
+        <div className="flex gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-100 text-rose-700">
+            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-rose-950">{t("salesday.dayGate.cashBlockedTitle")}</h2>
+            <p className="mt-1 text-sm leading-5 text-rose-900">{t("salesday.dayGate.cashBlockedDescription")}</p>
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+              <GateDetail label={t("salesday.dayGate.firstEffectiveWorkday")} value={formatDate(gate.cashBlock.firstEffectiveBusinessDate, language)} />
+              <GateDetail label={t("salesday.dayGate.cashBalance")} value={balance} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/salesday/cash" className="btn-primary min-h-11">
+                {t("salesday.dayGate.openCash")}
+              </Link>
+              <Link href="/salesday/sync" className="btn-secondary min-h-11">
+                <RefreshCw className="h-4 w-4" />
+                {t("salesday.dayGate.openSync")}
+              </Link>
+              <Link href="/salesday/support" className="btn-secondary min-h-11">
+                {t("salesday.dayGate.openSupport")}
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="card border-rose-300 bg-rose-50 p-4 sm:p-5" role="alert">
       <div className="flex gap-3">
@@ -70,6 +104,12 @@ function GateDetail({ label, value }: { label: string; value: string }) {
       <dd className="mt-0.5 font-semibold">{value}</dd>
     </div>
   );
+}
+
+function formatDate(value: string, language: Language) {
+  return new Intl.DateTimeFormat(language === "nl" ? "nl-BE" : language === "fr" ? "fr-BE" : "de-DE", {
+    dateStyle: "short",
+  }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
 function formatDateTime(value: string, language: Language) {
