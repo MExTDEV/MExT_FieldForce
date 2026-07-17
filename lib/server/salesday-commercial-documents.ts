@@ -13,6 +13,7 @@ import {
   type SalesErpArticle,
   type SalesErpProvider,
 } from "@/lib/server/integrations/sales-erp";
+import { createInventoryMovementsForSalesDocumentInTransaction } from "@/lib/server/inventory/sales-documents";
 import { salesDayBusinessDate } from "@/lib/server/salesday-customer-access";
 import { assertSalesDayServerDayAccess } from "@/lib/server/salesday-day-access";
 import type { MockUser } from "@/lib/types";
@@ -559,6 +560,14 @@ export async function createSalesDocument(input: DocumentContext & {
         },
       },
       include: { lines: true, signatureEvidence: true },
+    });
+    await createInventoryMovementsForSalesDocumentInTransaction(tx, {
+      actor: input.actor,
+      documentId: document.id,
+      documentType,
+      commandId,
+      occurredAt: now,
+      lines: document.lines,
     });
     await tx.salesDocumentNumberUse.update({
       where: { id: numberUse.id },

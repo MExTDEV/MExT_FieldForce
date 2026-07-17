@@ -455,125 +455,199 @@ enum SalesDocumentSignatureStatus {
   UNSIGNED_EXCEPTION
 }
 
+enum InventoryLocationType {
+  CENTRAL_WAREHOUSE
+  TRANSIT
+  REPRESENTATIVE_VEHICLE
+  CUSTOMER_LOCATION
+  CUSTOMER_SUBLOCATION
+  CUSTOMER_CARRIER
+  QUARANTINE
+}
+
+enum InventoryMovementType {
+  ERP_REPLENISHMENT_TRANSIT
+  REPLENISHMENT_RECEIPT
+  REPLENISHMENT_DAMAGED_QUARANTINE
+  SALES_DELIVERY
+  SALES_CARRIER_DELIVERY
+  CARRIER_COUNT_CORRECTION
+  ERP_CORRECTION
+}
+
+enum InventoryMovementStatus {
+  APPLIED
+  VOIDED
+}
+
+enum InventoryReasonKind {
+  ARCHIVE
+  CARRIER_COUNT_DISCREPANCY
+  RECEIPT_DISCREPANCY
+}
+
+enum InventoryReplenishmentStatus {
+  IN_TRANSIT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum InventoryReceiptStatus {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+enum InventoryReceiptEvidenceType {
+  REPRESENTATIVE_SIGNATURE
+  PHOTO
+}
+
+enum InventoryDiscrepancyType {
+  SHORTAGE
+  EXCESS
+  DAMAGE
+}
+
+enum InventoryConsumablesRequestStatus {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  FULFILLED
+}
+
+enum InventoryCarrierCountStatus {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
 model User {
-  id                       String                      @id @default(cuid())
-  firstName                String
-  lastName                 String
-  email                    String                      @unique
-  mobile                   String?
-  avatarUrl                String?
-  profilePhotoStorageKey   String?
-  profilePhotoMimeType     String?
-  profilePhotoHash         String?
-  profilePhotoSyncedAt     DateTime?
-  profilePhotoSyncStatus   UserProfilePhotoSyncStatus?
-  profilePhotoSyncError    String?                     @db.Text
-  branchNumber             String?
-  representativeId         String?                     @unique
-  entraId                  String?                     @unique
-  microsoftEmail           String?
-  lastLoginAt              DateTime?
-  passwordHash             String?
-  role                     Role
-  country                  Country
-  language                 Language                    @default(nl)
-  active                   Boolean                     @default(true)
-  representativeLevel      RepresentativeLevel         @default(STARTER)
-  starterStartDate         DateTime?                   @db.Date
-  teamSupervisor           Boolean                     @default(false)
-  teamId                   String?
-  levelId                  String?
-  team                     Team?                       @relation("TeamMembers", fields: [teamId], references: [id])
-  level                    Level?                      @relation(fields: [levelId], references: [id])
-  primaryTeams             Team[]                      @relation("PrimaryLeader")
-  teamLeaderships          TeamLeader[]
-  representedItems         Intervention[]              @relation("RepresentativeInterventions")
-  initiatedItems           Intervention[]              @relation("InitiatedInterventions")
-  ownedItems               Intervention[]              @relation("OwnedInterventions")
-  kpiSnapshots             KpiSnapshot[]
-  kpiTargetOverrides       KpiTargetOverride[]
-  scopedKpiDefinitions     KpiDefinition[]             @relation("KpiDefinitionUser")
-  createdKpiDefinitions    KpiDefinition[]             @relation("KpiDefinitionCreatedBy")
-  updatedKpiDefinitions    KpiDefinition[]             @relation("KpiDefinitionUpdatedBy")
-  kpiTargets               KpiTarget[]                 @relation("KpiTargetUser")
-  createdKpiTargets        KpiTarget[]                 @relation("KpiTargetCreatedBy")
-  updatedKpiTargets        KpiTarget[]                 @relation("KpiTargetUpdatedBy")
-  actionPoints             ActionPoint[]               @relation("RepresentativeActions")
-  ownedActionPoints        ActionPoint[]               @relation("OwnedActions")
-  closedActionPoints       ActionPoint[]               @relation("ClosedActionPoints")
-  reflections              Reflection[]
-  approvals                Approval[]
-  requestedHelp            HelpRequest[]               @relation("HelpRequester")
-  receivedHelp             HelpRequest[]               @relation("HelpRepresentative")
-  responsibleHelpRequests   HelpRequest[]               @relation("HelpResponsible")
-  helpRequestAnswers        HelpRequestAnswer[]         @relation("HelpAnswerAuthor")
-  productAnalyses          ProductAnalysis[]
-  auditLogs                AuditLog[]
-  microsoftAuthToken       MicrosoftAuthToken?
-  createdCriteria          PersonalCoachingCriterion[] @relation("CreatedPersonalCriteria")
-  representativeCriteria   PersonalCoachingCriterion[] @relation("RepresentativePersonalCriteria")
-  permissions              UserPermission[]
-  loginAliases             UserLoginAlias[]
-  loginSessions            UserLoginSession[]
-  trainingParticipants     TrainingParticipant[]
-  actionAssignments        ActionPointAssignment[]
-  closedActionAssignments  ActionPointAssignment[]      @relation("ClosedActionPointAssignments")
-  interventionParticipants InterventionParticipant[]
-  scopedActionDefinitions   ActionDefinition[]        @relation("ActionDefinitionUser")
-  createdActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionCreatedBy")
-  updatedActionDefinitions  ActionDefinition[]        @relation("ActionDefinitionUpdatedBy")
-  salesAttachments          SalesAttachment[]
-  actionTargetOverrides     ActionTargetOverride[]
-  criterionScopeLinks       CriterionScopeLink[]      @relation("CriterionScopeLinkUser")
-  coachingActions           CoachingAction[]
-  coachingChangeLogs        CoachingChangeLog[]
-  representativeLevelHistory RepresentativeLevelHistory[]
-  starterEvaluations        StarterEvaluation[]       @relation("StarterEvaluationRepresentative")
-  starterEvaluationLeader   StarterEvaluation[]       @relation("StarterEvaluationLeader")
-  starterEvaluationCountryManager StarterEvaluation[] @relation("StarterEvaluationCountryManager")
-  starterEvaluationCancelled StarterEvaluation[]      @relation("StarterEvaluationCancelledBy")
-  starterEvaluationSentForApproval StarterEvaluation[] @relation("StarterEvaluationSentForApprovalBy")
-  starterEvaluationApproved StarterEvaluation[]       @relation("StarterEvaluationApprovedBy")
-  starterEvaluationManualStarted StarterEvaluation[]  @relation("StarterEvaluationManualStartedBy")
-  starterEvaluationAnswers  StarterEvaluationAnswer[] @relation("StarterEvaluationAnswerUpdatedBy")
-  starterEvaluationActions  StarterEvaluationDraftActionPoint[] @relation("StarterEvaluationDraftActionOwner")
-  starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionUser")
-  starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[] @relation("StarterEvaluationQuestionScopeLinkUser")
-  starterEvaluationQuestionsCreated StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionCreatedBy")
-  starterEvaluationQuestionsUpdated StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionUpdatedBy")
-  countryAccess             UserCountryAccess[]
-  contractCustomers         ContractCustomer[]         @relation("ContractCustomerOwner")
-  contractCalculations      ContractCalculation[]      @relation("ContractCalculationOwner")
-  contractModelVersionsActivated ContractModelVersion[] @relation("ContractModelVersionActivatedBy")
-  contractModelVersionsImported ContractModelVersion[] @relation("ContractModelVersionImportedBy")
-  contractImportRuns        ContractImportRun[]        @relation("ContractImportStartedBy")
-  contractLetterTemplatesUploaded ContractLetterTemplate[] @relation("ContractLetterTemplateUploadedBy")
-  contractLetterTemplatesActivated ContractLetterTemplate[] @relation("ContractLetterTemplateActivatedBy")
-  contractGeneratedDocuments ContractGeneratedDocument[] @relation("ContractGeneratedDocumentGeneratedBy")
-  erpOutboxCommands        ErpOutboxCommand[]          @relation("ErpOutboxCommandActor")
-  registeredSalesDevices   DeviceRegistration[]        @relation("DeviceRegistrationOwner")
-  revokedSalesDevices      DeviceRegistration[]        @relation("DeviceRegistrationRevokedBy")
-  requestedDeviceControls  DeviceControlCommand[]      @relation("DeviceControlCommandRequestedBy")
-  activatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeActivatedBy")
-  deactivatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeDeactivatedBy")
-  salesDayFeatureOverrides SalesDayFeatureFlag[] @relation("SalesDayFeatureTargetUser")
-  updatedSalesDayFeatureFlags SalesDayFeatureFlag[] @relation("SalesDayFeatureUpdatedBy")
-  ownedBusinessRelations              BusinessRelation[]                   @relation("BusinessRelationOwner")
-  salesAppointments                   SalesAppointment[]                    @relation("SalesAppointmentRepresentative")
-  businessRelationChanges             BusinessRelationChange[]             @relation("BusinessRelationChangeActor")
-  salesAppointmentChanges             SalesAppointmentChange[]             @relation("SalesAppointmentChangeActor")
-  preparedSalesAppointments           SalesPreparationState[]              @relation("SalesPreparationPreparedBy")
+  id                                  String                                   @id @default(cuid())
+  firstName                           String
+  lastName                            String
+  email                               String                                   @unique
+  mobile                              String?
+  avatarUrl                           String?
+  profilePhotoStorageKey              String?
+  profilePhotoMimeType                String?
+  profilePhotoHash                    String?
+  profilePhotoSyncedAt                DateTime?
+  profilePhotoSyncStatus              UserProfilePhotoSyncStatus?
+  profilePhotoSyncError               String?                                  @db.Text
+  branchNumber                        String?
+  representativeId                    String?                                  @unique
+  entraId                             String?                                  @unique
+  microsoftEmail                      String?
+  lastLoginAt                         DateTime?
+  passwordHash                        String?
+  role                                Role
+  country                             Country
+  language                            Language                                 @default(nl)
+  active                              Boolean                                  @default(true)
+  representativeLevel                 RepresentativeLevel                      @default(STARTER)
+  starterStartDate                    DateTime?                                @db.Date
+  teamSupervisor                      Boolean                                  @default(false)
+  teamId                              String?
+  levelId                             String?
+  team                                Team?                                    @relation("TeamMembers", fields: [teamId], references: [id])
+  level                               Level?                                   @relation(fields: [levelId], references: [id])
+  primaryTeams                        Team[]                                   @relation("PrimaryLeader")
+  teamLeaderships                     TeamLeader[]
+  representedItems                    Intervention[]                           @relation("RepresentativeInterventions")
+  initiatedItems                      Intervention[]                           @relation("InitiatedInterventions")
+  ownedItems                          Intervention[]                           @relation("OwnedInterventions")
+  kpiSnapshots                        KpiSnapshot[]
+  kpiTargetOverrides                  KpiTargetOverride[]
+  scopedKpiDefinitions                KpiDefinition[]                          @relation("KpiDefinitionUser")
+  createdKpiDefinitions               KpiDefinition[]                          @relation("KpiDefinitionCreatedBy")
+  updatedKpiDefinitions               KpiDefinition[]                          @relation("KpiDefinitionUpdatedBy")
+  kpiTargets                          KpiTarget[]                              @relation("KpiTargetUser")
+  createdKpiTargets                   KpiTarget[]                              @relation("KpiTargetCreatedBy")
+  updatedKpiTargets                   KpiTarget[]                              @relation("KpiTargetUpdatedBy")
+  actionPoints                        ActionPoint[]                            @relation("RepresentativeActions")
+  ownedActionPoints                   ActionPoint[]                            @relation("OwnedActions")
+  closedActionPoints                  ActionPoint[]                            @relation("ClosedActionPoints")
+  reflections                         Reflection[]
+  approvals                           Approval[]
+  requestedHelp                       HelpRequest[]                            @relation("HelpRequester")
+  receivedHelp                        HelpRequest[]                            @relation("HelpRepresentative")
+  responsibleHelpRequests             HelpRequest[]                            @relation("HelpResponsible")
+  helpRequestAnswers                  HelpRequestAnswer[]                      @relation("HelpAnswerAuthor")
+  productAnalyses                     ProductAnalysis[]
+  auditLogs                           AuditLog[]
+  microsoftAuthToken                  MicrosoftAuthToken?
+  createdCriteria                     PersonalCoachingCriterion[]              @relation("CreatedPersonalCriteria")
+  representativeCriteria              PersonalCoachingCriterion[]              @relation("RepresentativePersonalCriteria")
+  permissions                         UserPermission[]
+  loginAliases                        UserLoginAlias[]
+  loginSessions                       UserLoginSession[]
+  trainingParticipants                TrainingParticipant[]
+  actionAssignments                   ActionPointAssignment[]
+  closedActionAssignments             ActionPointAssignment[]                  @relation("ClosedActionPointAssignments")
+  interventionParticipants            InterventionParticipant[]
+  scopedActionDefinitions             ActionDefinition[]                       @relation("ActionDefinitionUser")
+  createdActionDefinitions            ActionDefinition[]                       @relation("ActionDefinitionCreatedBy")
+  updatedActionDefinitions            ActionDefinition[]                       @relation("ActionDefinitionUpdatedBy")
+  salesAttachments                    SalesAttachment[]
+  actionTargetOverrides               ActionTargetOverride[]
+  criterionScopeLinks                 CriterionScopeLink[]                     @relation("CriterionScopeLinkUser")
+  coachingActions                     CoachingAction[]
+  coachingChangeLogs                  CoachingChangeLog[]
+  representativeLevelHistory          RepresentativeLevelHistory[]
+  starterEvaluations                  StarterEvaluation[]                      @relation("StarterEvaluationRepresentative")
+  starterEvaluationLeader             StarterEvaluation[]                      @relation("StarterEvaluationLeader")
+  starterEvaluationCountryManager     StarterEvaluation[]                      @relation("StarterEvaluationCountryManager")
+  starterEvaluationCancelled          StarterEvaluation[]                      @relation("StarterEvaluationCancelledBy")
+  starterEvaluationSentForApproval    StarterEvaluation[]                      @relation("StarterEvaluationSentForApprovalBy")
+  starterEvaluationApproved           StarterEvaluation[]                      @relation("StarterEvaluationApprovedBy")
+  starterEvaluationManualStarted      StarterEvaluation[]                      @relation("StarterEvaluationManualStartedBy")
+  starterEvaluationAnswers            StarterEvaluationAnswer[]                @relation("StarterEvaluationAnswerUpdatedBy")
+  starterEvaluationActions            StarterEvaluationDraftActionPoint[]      @relation("StarterEvaluationDraftActionOwner")
+  starterEvaluationQuestions          StarterEvaluationQuestion[]              @relation("StarterEvaluationQuestionUser")
+  starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[]     @relation("StarterEvaluationQuestionScopeLinkUser")
+  starterEvaluationQuestionsCreated   StarterEvaluationQuestion[]              @relation("StarterEvaluationQuestionCreatedBy")
+  starterEvaluationQuestionsUpdated   StarterEvaluationQuestion[]              @relation("StarterEvaluationQuestionUpdatedBy")
+  countryAccess                       UserCountryAccess[]
+  contractCustomers                   ContractCustomer[]                       @relation("ContractCustomerOwner")
+  contractCalculations                ContractCalculation[]                    @relation("ContractCalculationOwner")
+  contractModelVersionsActivated      ContractModelVersion[]                   @relation("ContractModelVersionActivatedBy")
+  contractModelVersionsImported       ContractModelVersion[]                   @relation("ContractModelVersionImportedBy")
+  contractImportRuns                  ContractImportRun[]                      @relation("ContractImportStartedBy")
+  contractLetterTemplatesUploaded     ContractLetterTemplate[]                 @relation("ContractLetterTemplateUploadedBy")
+  contractLetterTemplatesActivated    ContractLetterTemplate[]                 @relation("ContractLetterTemplateActivatedBy")
+  contractGeneratedDocuments          ContractGeneratedDocument[]              @relation("ContractGeneratedDocumentGeneratedBy")
+  erpOutboxCommands                   ErpOutboxCommand[]                       @relation("ErpOutboxCommandActor")
+  registeredSalesDevices              DeviceRegistration[]                     @relation("DeviceRegistrationOwner")
+  revokedSalesDevices                 DeviceRegistration[]                     @relation("DeviceRegistrationRevokedBy")
+  requestedDeviceControls             DeviceControlCommand[]                   @relation("DeviceControlCommandRequestedBy")
+  activatedSalesDayEmergencyModes     SalesDayEmergencyMode[]                  @relation("SalesDayEmergencyModeActivatedBy")
+  deactivatedSalesDayEmergencyModes   SalesDayEmergencyMode[]                  @relation("SalesDayEmergencyModeDeactivatedBy")
+  salesDayFeatureOverrides            SalesDayFeatureFlag[]                    @relation("SalesDayFeatureTargetUser")
+  updatedSalesDayFeatureFlags         SalesDayFeatureFlag[]                    @relation("SalesDayFeatureUpdatedBy")
+  ownedBusinessRelations              BusinessRelation[]                       @relation("BusinessRelationOwner")
+  salesAppointments                   SalesAppointment[]                       @relation("SalesAppointmentRepresentative")
+  businessRelationChanges             BusinessRelationChange[]                 @relation("BusinessRelationChangeActor")
+  salesAppointmentChanges             SalesAppointmentChange[]                 @relation("SalesAppointmentChangeActor")
+  preparedSalesAppointments           SalesPreparationState[]                  @relation("SalesPreparationPreparedBy")
   salesPreparationNotes               SalesPreparationNote[]
   salesPreparationFeedback            SalesPreparationRecommendationFeedback[]
-  salesVisitReports                   SalesVisitReport[]                    @relation("SalesVisitReportAuthor")
-  salesVisitReportAddenda             SalesVisitReportAddendum[]            @relation("SalesVisitReportAddendumAuthor")
+  salesVisitReports                   SalesVisitReport[]                       @relation("SalesVisitReportAuthor")
+  salesVisitReportAddenda             SalesVisitReportAddendum[]               @relation("SalesVisitReportAddendumAuthor")
   salesLeads                          SalesLead[]
   salesFollowUps                      SalesFollowUp[]
-  salesReferences                    SalesReference[]
-  salesDayClosures                   SalesDayClosure[]
-  salesDocuments                     SalesDocument[]                    @relation("SalesDocumentRepresentative")
-  createdAt                DateTime                    @default(now())
-  updatedAt                DateTime                    @updatedAt
+  salesReferences                     SalesReference[]
+  salesDayClosures                    SalesDayClosure[]
+  salesDocuments                      SalesDocument[]                          @relation("SalesDocumentRepresentative")
+  inventoryLocations                  InventoryLocation[]                      @relation("InventoryLocationRepresentative")
+  inventoryMovements                  InventoryMovement[]                      @relation("InventoryMovementActor")
+  inventoryReplenishments             InventoryReplenishment[]                 @relation("InventoryReplenishmentRepresentative")
+  inventoryReceipts                   InventoryReceipt[]                       @relation("InventoryReceiptActor")
+  inventoryConsumablesRequests        InventoryConsumablesRequest[]            @relation("InventoryConsumablesRequestActor")
+  inventoryCarrierCounts              InventoryCarrierCount[]                  @relation("InventoryCarrierCountActor")
+  createdAt                           DateTime                                 @default(now())
+  updatedAt                           DateTime                                 @updatedAt
 
   @@index([country, role])
   @@index([teamId])
@@ -582,22 +656,22 @@ model User {
 }
 
 model ProfilePhotoSyncRun {
-  id               String                    @id @default(cuid())
-  trigger          ProfilePhotoSyncTrigger
-  status           ProfilePhotoSyncRunStatus @default(QUEUED)
-  startedByUserId  String?
-  startedAt        DateTime?
-  finishedAt       DateTime?
-  checkedUsers     Int                       @default(0)
-  updatedPhotos    Int                       @default(0)
-  unchangedPhotos  Int                       @default(0)
-  noPhotoUsers     Int                       @default(0)
-  skippedUsers     Int                       @default(0)
-  errorUsers       Int                       @default(0)
-  errorMessage     String?                   @db.Text
-  userErrorsJson   String?                   @db.LongText
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
+  id              String                    @id @default(cuid())
+  trigger         ProfilePhotoSyncTrigger
+  status          ProfilePhotoSyncRunStatus @default(QUEUED)
+  startedByUserId String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  checkedUsers    Int                       @default(0)
+  updatedPhotos   Int                       @default(0)
+  unchangedPhotos Int                       @default(0)
+  noPhotoUsers    Int                       @default(0)
+  skippedUsers    Int                       @default(0)
+  errorUsers      Int                       @default(0)
+  errorMessage    String?                   @db.Text
+  userErrorsJson  String?                   @db.LongText
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
 
   @@index([status, createdAt])
   @@index([trigger, createdAt])
@@ -605,15 +679,15 @@ model ProfilePhotoSyncRun {
 }
 
 model RepresentativeLevelHistory {
-  id             String              @id @default(cuid())
-  userId         String
-  oldValue       RepresentativeLevel?
-  newValue       RepresentativeLevel
-  changedById    String?
-  changedAt      DateTime            @default(now())
-  reason         String?             @db.Text
-  migrationKey   String?             @unique
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String               @id @default(cuid())
+  userId       String
+  oldValue     RepresentativeLevel?
+  newValue     RepresentativeLevel
+  changedById  String?
+  changedAt    DateTime             @default(now())
+  reason       String?              @db.Text
+  migrationKey String?              @unique
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, changedAt])
   @@index([changedById])
@@ -658,27 +732,27 @@ model UserLoginAlias {
 }
 
 model UserLoginSession {
-  id              String    @id @default(cuid())
-  userId          String
-  requestKey      String    @unique
-  sessionId       String    @unique
-  loginAt         DateTime  @default(now())
-  logoutAt        DateTime?
-  lastActivityAt  DateTime  @default(now())
-  expiresAt       DateTime
-  durationSeconds Int       @default(0)
-  provider        String
-  email           String?
-  ipAddress       String?
-  userAgent       String?   @db.Text
-  browser         String?
-  operatingSystem String?
-  deviceType      String?
+  id                   String              @id @default(cuid())
+  userId               String
+  requestKey           String              @unique
+  sessionId            String              @unique
+  loginAt              DateTime            @default(now())
+  logoutAt             DateTime?
+  lastActivityAt       DateTime            @default(now())
+  expiresAt            DateTime
+  durationSeconds      Int                 @default(0)
+  provider             String
+  email                String?
+  ipAddress            String?
+  userAgent            String?             @db.Text
+  browser              String?
+  operatingSystem      String?
+  deviceType           String?
   deviceRegistrationId String?
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceRegistration DeviceRegistration? @relation(fields: [deviceRegistrationId], references: [id], onDelete: SetNull)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceRegistration   DeviceRegistration? @relation(fields: [deviceRegistrationId], references: [id], onDelete: SetNull)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([userId, loginAt])
   @@index([userId, provider])
@@ -687,30 +761,30 @@ model UserLoginSession {
 }
 
 model Team {
-  id               String                      @id @default(cuid())
-  name             String
-  country          Country
-  primaryLeaderId  String?
-  active           Boolean                     @default(true)
-  primaryLeader    User?                       @relation("PrimaryLeader", fields: [primaryLeaderId], references: [id], onDelete: SetNull)
-  members          User[]                      @relation("TeamMembers")
-  leaders          TeamLeader[]
-  personalCriteria PersonalCoachingCriterion[]
-  kpiTargetOverrides KpiTargetOverride[]
-  kpiDefinitions     KpiDefinition[]             @relation("KpiDefinitionTeam")
-  kpiTargets         KpiTarget[]                 @relation("KpiTargetTeam")
-  actionDefinitions ActionDefinition[]
-  actionTargetOverrides ActionTargetOverride[]
-  criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkTeam")
-  starterEvaluationQuestions StarterEvaluationQuestion[] @relation("StarterEvaluationQuestionTeam")
+  id                                  String                               @id @default(cuid())
+  name                                String
+  country                             Country
+  primaryLeaderId                     String?
+  active                              Boolean                              @default(true)
+  primaryLeader                       User?                                @relation("PrimaryLeader", fields: [primaryLeaderId], references: [id], onDelete: SetNull)
+  members                             User[]                               @relation("TeamMembers")
+  leaders                             TeamLeader[]
+  personalCriteria                    PersonalCoachingCriterion[]
+  kpiTargetOverrides                  KpiTargetOverride[]
+  kpiDefinitions                      KpiDefinition[]                      @relation("KpiDefinitionTeam")
+  kpiTargets                          KpiTarget[]                          @relation("KpiTargetTeam")
+  actionDefinitions                   ActionDefinition[]
+  actionTargetOverrides               ActionTargetOverride[]
+  criterionScopeLinks                 CriterionScopeLink[]                 @relation("CriterionScopeLinkTeam")
+  starterEvaluationQuestions          StarterEvaluationQuestion[]          @relation("StarterEvaluationQuestionTeam")
   starterEvaluationQuestionScopeLinks StarterEvaluationQuestionScopeLink[] @relation("StarterEvaluationQuestionScopeLinkTeam")
-  contractCustomers ContractCustomer[]
-  contractCalculations ContractCalculation[]
-  salesDayFeatureFlags SalesDayFeatureFlag[]
+  contractCustomers                   ContractCustomer[]
+  contractCalculations                ContractCalculation[]
+  salesDayFeatureFlags                SalesDayFeatureFlag[]
   businessRelations                   BusinessRelation[]
   salesAppointments                   SalesAppointment[]
-  createdAt        DateTime                    @default(now())
-  updatedAt        DateTime                    @updatedAt
+  createdAt                           DateTime                             @default(now())
+  updatedAt                           DateTime                             @updatedAt
 
   @@unique([country, name])
 }
@@ -783,46 +857,46 @@ model Level {
 }
 
 model KpiDefinition {
-  id                  String                 @id @default(cuid())
-  code                String                 @unique
-  name                String
-  description         String
-  categoryId          String?                @map("category_id")
-  typeId              String?                @map("type_id")
-  targetTypeId        String?                @map("target_type_id")
-  country             Country?
-  teamId              String?                @map("target_team_id")
-  userId              String?                @map("target_user_id")
-  targetRole          Role?                  @map("target_role")
-  active              Boolean                @default(true)
-  unit                String
-  targetValue         Decimal                @default(0) @db.Decimal(14, 2)
-  minValue            Decimal?               @db.Decimal(14, 2)
-  maxValue            Decimal?               @db.Decimal(14, 2)
-  weight              Decimal?               @db.Decimal(8, 2)
-  countsForReporting  Boolean                @default(true) @map("counts_for_reporting")
-  countsForPerformanceCircle Boolean         @default(true) @map("counts_for_performance_circle")
-  includeInStarterEvaluations Boolean        @default(false) @map("include_in_starter_evaluations")
-  sortOrder           Int                    @default(0) @map("sort_order")
-  validFrom           DateTime               @default(now()) @map("valid_from")
-  validUntil          DateTime?              @map("valid_until")
-  createdById         String?                @map("created_by_user_id")
-  updatedById         String?                @map("updated_by_user_id")
-  evaluationDirection KpiEvaluationDirection @default(HIGHER_IS_BETTER)
-  category            KpiCategory?           @relation(fields: [categoryId], references: [id])
-  type                KpiType?               @relation(fields: [typeId], references: [id])
-  targetType          KpiTargetType?         @relation(fields: [targetTypeId], references: [id])
-  team                Team?                  @relation("KpiDefinitionTeam", fields: [teamId], references: [id], onDelete: Cascade)
-  user                User?                  @relation("KpiDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
-  createdBy           User?                  @relation("KpiDefinitionCreatedBy", fields: [createdById], references: [id])
-  updatedBy           User?                  @relation("KpiDefinitionUpdatedBy", fields: [updatedById], references: [id])
-  snapshots           KpiSnapshot[]
-  actionPoints        ActionPoint[]
-  targetOverrides     KpiTargetOverride[]
-  targets             KpiTarget[]
-  criterionScopeLinks CriterionScopeLink[]       @relation("CriterionScopeLinkKpi")
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  id                          String                 @id @default(cuid())
+  code                        String                 @unique
+  name                        String
+  description                 String
+  categoryId                  String?                @map("category_id")
+  typeId                      String?                @map("type_id")
+  targetTypeId                String?                @map("target_type_id")
+  country                     Country?
+  teamId                      String?                @map("target_team_id")
+  userId                      String?                @map("target_user_id")
+  targetRole                  Role?                  @map("target_role")
+  active                      Boolean                @default(true)
+  unit                        String
+  targetValue                 Decimal                @default(0) @db.Decimal(14, 2)
+  minValue                    Decimal?               @db.Decimal(14, 2)
+  maxValue                    Decimal?               @db.Decimal(14, 2)
+  weight                      Decimal?               @db.Decimal(8, 2)
+  countsForReporting          Boolean                @default(true) @map("counts_for_reporting")
+  countsForPerformanceCircle  Boolean                @default(true) @map("counts_for_performance_circle")
+  includeInStarterEvaluations Boolean                @default(false) @map("include_in_starter_evaluations")
+  sortOrder                   Int                    @default(0) @map("sort_order")
+  validFrom                   DateTime               @default(now()) @map("valid_from")
+  validUntil                  DateTime?              @map("valid_until")
+  createdById                 String?                @map("created_by_user_id")
+  updatedById                 String?                @map("updated_by_user_id")
+  evaluationDirection         KpiEvaluationDirection @default(HIGHER_IS_BETTER)
+  category                    KpiCategory?           @relation(fields: [categoryId], references: [id])
+  type                        KpiType?               @relation(fields: [typeId], references: [id])
+  targetType                  KpiTargetType?         @relation(fields: [targetTypeId], references: [id])
+  team                        Team?                  @relation("KpiDefinitionTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  user                        User?                  @relation("KpiDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy                   User?                  @relation("KpiDefinitionCreatedBy", fields: [createdById], references: [id])
+  updatedBy                   User?                  @relation("KpiDefinitionUpdatedBy", fields: [updatedById], references: [id])
+  snapshots                   KpiSnapshot[]
+  actionPoints                ActionPoint[]
+  targetOverrides             KpiTargetOverride[]
+  targets                     KpiTarget[]
+  criterionScopeLinks         CriterionScopeLink[]   @relation("CriterionScopeLinkKpi")
+  createdAt                   DateTime               @default(now())
+  updatedAt                   DateTime               @updatedAt
 
   @@index([categoryId])
   @@index([typeId])
@@ -881,30 +955,30 @@ model KpiTargetType {
 }
 
 model KpiTarget {
-  id              String          @id @default(cuid())
-  kpiDefinitionId String          @map("kpi_definition_id")
-  targetTypeId    String          @map("target_type_id")
+  id              String         @id @default(cuid())
+  kpiDefinitionId String         @map("kpi_definition_id")
+  targetTypeId    String         @map("target_type_id")
   scope           KpiTargetScope
-  scopeKey        String          @map("scope_key")
+  scopeKey        String         @map("scope_key")
   country         Country?
-  teamId          String?         @map("team_id")
-  userId          String?         @map("user_id")
+  teamId          String?        @map("team_id")
+  userId          String?        @map("user_id")
   role            Role?
-  periodType      KpiPeriodType   @map("period_type")
-  periodStart     DateTime        @map("period_start")
-  periodEnd       DateTime        @map("period_end")
-  targetValue     Decimal         @db.Decimal(14, 2) @map("target_value")
-  active          Boolean         @default(true)
-  createdById     String?         @map("created_by_user_id")
-  updatedById     String?         @map("updated_by_user_id")
-  kpiDefinition   KpiDefinition   @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
-  targetType      KpiTargetType   @relation(fields: [targetTypeId], references: [id])
-  team            Team?           @relation("KpiTargetTeam", fields: [teamId], references: [id], onDelete: Cascade)
-  user            User?           @relation("KpiTargetUser", fields: [userId], references: [id], onDelete: Cascade)
-  createdBy       User?           @relation("KpiTargetCreatedBy", fields: [createdById], references: [id])
-  updatedBy       User?           @relation("KpiTargetUpdatedBy", fields: [updatedById], references: [id])
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  periodType      KpiPeriodType  @map("period_type")
+  periodStart     DateTime       @map("period_start")
+  periodEnd       DateTime       @map("period_end")
+  targetValue     Decimal        @map("target_value") @db.Decimal(14, 2)
+  active          Boolean        @default(true)
+  createdById     String?        @map("created_by_user_id")
+  updatedById     String?        @map("updated_by_user_id")
+  kpiDefinition   KpiDefinition  @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+  targetType      KpiTargetType  @relation(fields: [targetTypeId], references: [id])
+  team            Team?          @relation("KpiTargetTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  user            User?          @relation("KpiTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy       User?          @relation("KpiTargetCreatedBy", fields: [createdById], references: [id])
+  updatedBy       User?          @relation("KpiTargetUpdatedBy", fields: [updatedById], references: [id])
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   @@unique([kpiDefinitionId, scopeKey, periodType, periodStart, periodEnd])
   @@index([kpiDefinitionId, active])
@@ -961,78 +1035,78 @@ model KpiSnapshot {
 }
 
 model Intervention {
-  id                   String                    @id @default(cuid())
-  type                 InterventionType
-  status               InterventionStatus        @default(CONCEPT)
-  representativeId     String
-  initiatorId          String
-  ownerId              String
-  teamId               String?
-  country              Country
-  title                String
-  description          String?
-  plannedAt            DateTime?
-  startTime            String?
-  endTime              String?
-  notifyRepresentative Boolean                   @default(false)
-  notifyCoachedRepresentative Boolean            @default(false)
-  notifyCoachedTeamLeaders Boolean               @default(false)
-  notifyExecutorTeamLeaders Boolean              @default(false)
-  notifyCoachedLeaderIntent Boolean              @default(false)
-  notifyExecutorLeaderIntent Boolean             @default(false)
-  peerCoach            Boolean                   @default(false)
-  teamDeviation        Boolean                   @default(false)
-  countryDeviation     Boolean                   @default(false)
-  deviationReason      String?                   @db.Text
-  deviationRecordedById String?
-  deviationRecordedAt  DateTime?
-  startedAt            DateTime?
-  actualStartedAt      DateTime?
-  completedAt          DateTime?
-  finalizedAt          DateTime?
-  executionDeadlineAt  DateTime?
-  approvalDeadlineAt   DateTime?
-  finalApprovalDeadlineAt DateTime?
-  performerAccessExpiresAt DateTime?
-  lateCompletion       Boolean                   @default(false)
-  lateCompletionReason String?                   @db.Text
-  administrativelyClosedAt DateTime?
-  administrativelyClosedById String?
-  administrativeCloseReason String?              @db.Text
-  copiedFromInterventionId String?
+  id                             String                      @id @default(cuid())
+  type                           InterventionType
+  status                         InterventionStatus          @default(CONCEPT)
+  representativeId               String
+  initiatorId                    String
+  ownerId                        String
+  teamId                         String?
+  country                        Country
+  title                          String
+  description                    String?
+  plannedAt                      DateTime?
+  startTime                      String?
+  endTime                        String?
+  notifyRepresentative           Boolean                     @default(false)
+  notifyCoachedRepresentative    Boolean                     @default(false)
+  notifyCoachedTeamLeaders       Boolean                     @default(false)
+  notifyExecutorTeamLeaders      Boolean                     @default(false)
+  notifyCoachedLeaderIntent      Boolean                     @default(false)
+  notifyExecutorLeaderIntent     Boolean                     @default(false)
+  peerCoach                      Boolean                     @default(false)
+  teamDeviation                  Boolean                     @default(false)
+  countryDeviation               Boolean                     @default(false)
+  deviationReason                String?                     @db.Text
+  deviationRecordedById          String?
+  deviationRecordedAt            DateTime?
+  startedAt                      DateTime?
+  actualStartedAt                DateTime?
+  completedAt                    DateTime?
+  finalizedAt                    DateTime?
+  executionDeadlineAt            DateTime?
+  approvalDeadlineAt             DateTime?
+  finalApprovalDeadlineAt        DateTime?
+  performerAccessExpiresAt       DateTime?
+  lateCompletion                 Boolean                     @default(false)
+  lateCompletionReason           String?                     @db.Text
+  administrativelyClosedAt       DateTime?
+  administrativelyClosedById     String?
+  administrativeCloseReason      String?                     @db.Text
+  copiedFromInterventionId       String?
   preparationReferenceCoachingId String?
-  historicAccessSettings String?                 @db.LongText
-  sentForApprovalAt    DateTime?
-  sentForApprovalById  String?
-  approvedByRepAt      DateTime?
-  approvedByRepId      String?
-  deletedAt            DateTime?
-  outlookEventId       String?
-  outlookICalUId       String?
-  outlookSyncStatus    OutlookSyncStatus         @default(NOT_SYNCED)
-  lastSyncedAt         DateTime?
-  syncError            String?                   @db.Text
-  representative       User                      @relation("RepresentativeInterventions", fields: [representativeId], references: [id])
-  initiator            User                      @relation("InitiatedInterventions", fields: [initiatorId], references: [id])
-  owner                User                      @relation("OwnedInterventions", fields: [ownerId], references: [id])
-  focuses              InterventionFocus[]
-  scores               Score[]
-  actionPoints         ActionPoint[]
-  reflection           Reflection?
-  approval             Approval?
-  criterionSnapshots   CoachingCriterionSnapshot[]
-  helpRequest          HelpRequest?
-  contactMoment        ContactMomentDetail?
-  coachingDetail       CoachingDetail?
-  trainingDetail       TrainingDetail?
-  participants         InterventionParticipant[]
-  trainingParticipants TrainingParticipant[]
-  coachingActions      CoachingAction[]
-  coachingChangeLogs   CoachingChangeLog[]
-  preparationReferenceCoaching Intervention?     @relation("PreparationReferenceCoaching", fields: [preparationReferenceCoachingId], references: [id], onDelete: SetNull)
-  preparationReferencedBy       Intervention[]    @relation("PreparationReferenceCoaching")
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
+  historicAccessSettings         String?                     @db.LongText
+  sentForApprovalAt              DateTime?
+  sentForApprovalById            String?
+  approvedByRepAt                DateTime?
+  approvedByRepId                String?
+  deletedAt                      DateTime?
+  outlookEventId                 String?
+  outlookICalUId                 String?
+  outlookSyncStatus              OutlookSyncStatus           @default(NOT_SYNCED)
+  lastSyncedAt                   DateTime?
+  syncError                      String?                     @db.Text
+  representative                 User                        @relation("RepresentativeInterventions", fields: [representativeId], references: [id])
+  initiator                      User                        @relation("InitiatedInterventions", fields: [initiatorId], references: [id])
+  owner                          User                        @relation("OwnedInterventions", fields: [ownerId], references: [id])
+  focuses                        InterventionFocus[]
+  scores                         Score[]
+  actionPoints                   ActionPoint[]
+  reflection                     Reflection?
+  approval                       Approval?
+  criterionSnapshots             CoachingCriterionSnapshot[]
+  helpRequest                    HelpRequest?
+  contactMoment                  ContactMomentDetail?
+  coachingDetail                 CoachingDetail?
+  trainingDetail                 TrainingDetail?
+  participants                   InterventionParticipant[]
+  trainingParticipants           TrainingParticipant[]
+  coachingActions                CoachingAction[]
+  coachingChangeLogs             CoachingChangeLog[]
+  preparationReferenceCoaching   Intervention?               @relation("PreparationReferenceCoaching", fields: [preparationReferenceCoachingId], references: [id], onDelete: SetNull)
+  preparationReferencedBy        Intervention[]              @relation("PreparationReferenceCoaching")
+  createdAt                      DateTime                    @default(now())
+  updatedAt                      DateTime                    @updatedAt
 
   @@index([representativeId, type])
   @@index([country, status])
@@ -1055,32 +1129,32 @@ enum OutlookSyncStatus {
 }
 
 model ContactMomentDetail {
-  id                   String       @id @default(cuid())
-  interventionId       String       @unique
+  id                   String              @id @default(cuid())
+  interventionId       String              @unique
   reason               String
   subject              String?
   contactType          String?
   location             String?
-  internalNotes        String?      @db.Text
-  reportedProblems     String?      @db.Text
-  leaderThemes         String       @db.LongText
-  representativeKpis   String       @db.LongText
-  representativeThemes String       @db.LongText
-  discussedThemes      String       @db.LongText
-  conclusion           String?      @db.Text
-  reportHtml           String?      @db.LongText
-  finalSnapshot        String?      @db.LongText
-  photosJson           String?      @db.LongText
+  internalNotes        String?             @db.Text
+  reportedProblems     String?             @db.Text
+  leaderThemes         String              @db.LongText
+  representativeKpis   String              @db.LongText
+  representativeThemes String              @db.LongText
+  discussedThemes      String              @db.LongText
+  conclusion           String?             @db.Text
+  reportHtml           String?             @db.LongText
+  finalSnapshot        String?             @db.LongText
+  photosJson           String?             @db.LongText
   sharedAt             DateTime?
   sharedById           String?
-  closedReason         String?      @db.Text
+  closedReason         String?             @db.Text
   closedAt             DateTime?
   closedById           String?
   previousStatus       InterventionStatus?
   sourceHelpRequestId  String?
-  intervention         Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  intervention         Intervention        @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([sharedAt])
   @@index([closedAt])
@@ -1100,40 +1174,40 @@ model CoachingFocus {
 }
 
 model CoachingCriterion {
-  id        String        @id @default(cuid())
-  focusId   String
-  name      String
-  active    Boolean       @default(true)
-  sortOrder Int
-  focus     CoachingFocus @relation(fields: [focusId], references: [id], onDelete: Cascade)
-  scores    Score[]
+  id                  String               @id @default(cuid())
+  focusId             String
+  name                String
+  active              Boolean              @default(true)
+  sortOrder           Int
+  focus               CoachingFocus        @relation(fields: [focusId], references: [id], onDelete: Cascade)
+  scores              Score[]
   criterionScopeLinks CriterionScopeLink[] @relation("CriterionScopeLinkCoatRack")
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@unique([focusId, name])
 }
 
 model ConfigurableCriterion {
-  id             String               @id @default(cuid())
-  type           CriterionType
-  code           String               @unique
-  title          String
-  description    String?              @db.Text
-  section        String?
-  answerType     String               @default("SCORE_0_5")
-  scoreType      String               @default("SCORE")
-  minScore       Int                  @default(0)
-  maxScore       Int                  @default(5)
-  weight         Decimal?             @db.Decimal(8, 2)
-  targetValue    Decimal?             @db.Decimal(14, 2)
-  required       Boolean              @default(false)
-  active         Boolean              @default(true)
-  createdById    String?
-  updatedById    String?
-  scopeLinks     CriterionScopeLink[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id          String               @id @default(cuid())
+  type        CriterionType
+  code        String               @unique
+  title       String
+  description String?              @db.Text
+  section     String?
+  answerType  String               @default("SCORE_0_5")
+  scoreType   String               @default("SCORE")
+  minScore    Int                  @default(0)
+  maxScore    Int                  @default(5)
+  weight      Decimal?             @db.Decimal(8, 2)
+  targetValue Decimal?             @db.Decimal(14, 2)
+  required    Boolean              @default(false)
+  active      Boolean              @default(true)
+  createdById String?
+  updatedById String?
+  scopeLinks  CriterionScopeLink[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@index([type, active])
 }
@@ -1241,31 +1315,31 @@ model CriterionScopeLink {
 }
 
 model CoachingCriterionSnapshot {
-  id                    String             @id @default(cuid())
-  interventionId        String
-  criterionType         CriterionType
-  sourceCriterionId     String
-  sourceCriterionKey    String
-  sourceScopeLinkId     String?
-  title                 String
-  description           String?            @db.Text
-  focusName             String?
-  section               String?
-  answerType            String
-  scoreType             String
-  minScore              Int?
-  maxScore              Int?
-  weight                Decimal?           @db.Decimal(8, 2)
-  targetValue           Decimal?           @db.Decimal(14, 2)
-  required              Boolean            @default(false)
-  appliedScopeType      CriterionScopeType
-  appliedScopeKey       String
-  appliedScopeLabel     String
-  sortOrder             Int                @default(0)
-  snapshotVersion       Int                @default(1)
-  intervention          Intervention       @relation(fields: [interventionId], references: [id], onDelete: Cascade)
-  scores                Score[]
-  createdAt             DateTime           @default(now())
+  id                 String             @id @default(cuid())
+  interventionId     String
+  criterionType      CriterionType
+  sourceCriterionId  String
+  sourceCriterionKey String
+  sourceScopeLinkId  String?
+  title              String
+  description        String?            @db.Text
+  focusName          String?
+  section            String?
+  answerType         String
+  scoreType          String
+  minScore           Int?
+  maxScore           Int?
+  weight             Decimal?           @db.Decimal(8, 2)
+  targetValue        Decimal?           @db.Decimal(14, 2)
+  required           Boolean            @default(false)
+  appliedScopeType   CriterionScopeType
+  appliedScopeKey    String
+  appliedScopeLabel  String
+  sortOrder          Int                @default(0)
+  snapshotVersion    Int                @default(1)
+  intervention       Intervention       @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  scores             Score[]
+  createdAt          DateTime           @default(now())
 
   @@unique([interventionId, criterionType, sourceCriterionId])
   @@index([interventionId, criterionType])
@@ -1359,31 +1433,31 @@ model TrainingDetail {
 }
 
 model ActionPoint {
-  id               String                  @id @default(cuid())
-  representativeId String
-  interventionId   String?
-  ownerId          String
-  title            String
-  description      String
-  type             ActionPointType
-  status           ActionPointStatus       @default(NIEUW)
-  priority         Priority                @default(NORMAL)
-  kpiDefinitionId  String?
-  startValue       Decimal?                @db.Decimal(14, 2)
-  targetValue      Decimal?                @db.Decimal(14, 2)
-  currentValue     Decimal?                @db.Decimal(14, 2)
-  dueDate          DateTime?
-  closedAt         DateTime?
-  closedByUserId   String?
-  representative   User                    @relation("RepresentativeActions", fields: [representativeId], references: [id])
-  intervention     Intervention?           @relation(fields: [interventionId], references: [id], onDelete: SetNull)
-  owner            User                    @relation("OwnedActions", fields: [ownerId], references: [id])
-  closedBy         User?                   @relation("ClosedActionPoints", fields: [closedByUserId], references: [id], onDelete: SetNull)
-  kpiDefinition    KpiDefinition?          @relation(fields: [kpiDefinitionId], references: [id])
-  assignments      ActionPointAssignment[]
+  id                      String                              @id @default(cuid())
+  representativeId        String
+  interventionId          String?
+  ownerId                 String
+  title                   String
+  description             String
+  type                    ActionPointType
+  status                  ActionPointStatus                   @default(NIEUW)
+  priority                Priority                            @default(NORMAL)
+  kpiDefinitionId         String?
+  startValue              Decimal?                            @db.Decimal(14, 2)
+  targetValue             Decimal?                            @db.Decimal(14, 2)
+  currentValue            Decimal?                            @db.Decimal(14, 2)
+  dueDate                 DateTime?
+  closedAt                DateTime?
+  closedByUserId          String?
+  representative          User                                @relation("RepresentativeActions", fields: [representativeId], references: [id])
+  intervention            Intervention?                       @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  owner                   User                                @relation("OwnedActions", fields: [ownerId], references: [id])
+  closedBy                User?                               @relation("ClosedActionPoints", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  kpiDefinition           KpiDefinition?                      @relation(fields: [kpiDefinitionId], references: [id])
+  assignments             ActionPointAssignment[]
   starterEvaluationDrafts StarterEvaluationDraftActionPoint[]
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  createdAt               DateTime                            @default(now())
+  updatedAt               DateTime                            @updatedAt
 
   @@index([representativeId, status])
   @@index([ownerId])
@@ -1395,16 +1469,16 @@ model ActionPoint {
 }
 
 model ActionPointAssignment {
-  id               String      @id @default(cuid())
+  id               String            @id @default(cuid())
   actionPointId    String
   representativeId String
-  scope            String      @default("individual")
+  scope            String            @default("individual")
   status           ActionPointStatus @default(OPEN)
   closedAt         DateTime?
   closedByUserId   String?
-  actionPoint      ActionPoint @relation(fields: [actionPointId], references: [id], onDelete: Cascade)
-  representative   User        @relation(fields: [representativeId], references: [id], onDelete: Cascade)
-  closedBy         User?       @relation("ClosedActionPointAssignments", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  actionPoint      ActionPoint       @relation(fields: [actionPointId], references: [id], onDelete: Cascade)
+  representative   User              @relation(fields: [representativeId], references: [id], onDelete: Cascade)
+  closedBy         User?             @relation("ClosedActionPointAssignments", fields: [closedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([actionPointId, representativeId])
   @@index([representativeId])
@@ -1413,60 +1487,60 @@ model ActionPointAssignment {
 }
 
 model StarterEvaluationSection {
-  id            String                    @id @default(cuid())
-  code          String                    @unique
+  id            String                             @id @default(cuid())
+  code          String                             @unique
   titleNl       String
   titleFr       String?
   titleDe       String?
-  descriptionNl String?                   @db.Text
-  descriptionFr String?                   @db.Text
-  descriptionDe String?                   @db.Text
-  sortOrder     Int                       @default(0)
-  active        Boolean                   @default(true)
-  momentsJson   String                    @db.VarChar(255)
+  descriptionNl String?                            @db.Text
+  descriptionFr String?                            @db.Text
+  descriptionDe String?                            @db.Text
+  sortOrder     Int                                @default(0)
+  active        Boolean                            @default(true)
+  momentsJson   String                             @db.VarChar(255)
   questions     StarterEvaluationQuestion[]
   snapshots     StarterEvaluationSectionSnapshot[]
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
+  createdAt     DateTime                           @default(now())
+  updatedAt     DateTime                           @updatedAt
 
   @@index([active, sortOrder])
 }
 
 model StarterEvaluationQuestion {
-  id             String                         @id @default(cuid())
-  key            String                         @unique
-  sectionId      String
-  textNl         String                         @db.Text
-  textFr         String?                        @db.Text
-  textDe         String?                        @db.Text
-  helpNl         String?                        @db.Text
-  helpFr         String?                        @db.Text
-  helpDe         String?                        @db.Text
-  sortOrder      Int                            @default(0)
-  required       Boolean                        @default(false)
-  active         Boolean                        @default(true)
-  answerType     StarterEvaluationAnswerType
-  optionsJson    String?                        @db.LongText
-  assignee       StarterEvaluationAssignee
-  momentsJson    String                         @db.VarChar(255)
-  scopeType      CriterionScopeType             @default(GLOBAL)
-  scopeKey       String                         @default("GLOBAL")
-  country        Country?
-  teamId         String?
-  userId         String?
-  createdById    String?
-  updatedById    String?
+  id                  String                               @id @default(cuid())
+  key                 String                               @unique
+  sectionId           String
+  textNl              String                               @db.Text
+  textFr              String?                              @db.Text
+  textDe              String?                              @db.Text
+  helpNl              String?                              @db.Text
+  helpFr              String?                              @db.Text
+  helpDe              String?                              @db.Text
+  sortOrder           Int                                  @default(0)
+  required            Boolean                              @default(false)
+  active              Boolean                              @default(true)
+  answerType          StarterEvaluationAnswerType
+  optionsJson         String?                              @db.LongText
+  assignee            StarterEvaluationAssignee
+  momentsJson         String                               @db.VarChar(255)
+  scopeType           CriterionScopeType                   @default(GLOBAL)
+  scopeKey            String                               @default("GLOBAL")
+  country             Country?
+  teamId              String?
+  userId              String?
+  createdById         String?
+  updatedById         String?
   linkedCriterionType CriterionType?
   linkedCriterionId   String?
-  section        StarterEvaluationSection       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  team           Team?                          @relation("StarterEvaluationQuestionTeam", fields: [teamId], references: [id], onDelete: SetNull)
-  user           User?                          @relation("StarterEvaluationQuestionUser", fields: [userId], references: [id], onDelete: SetNull)
-  createdBy      User?                          @relation("StarterEvaluationQuestionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy      User?                          @relation("StarterEvaluationQuestionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  scopeLinks     StarterEvaluationQuestionScopeLink[]
-  snapshots      StarterEvaluationQuestionSnapshot[]
-  createdAt      DateTime                       @default(now())
-  updatedAt      DateTime                       @updatedAt
+  section             StarterEvaluationSection             @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  team                Team?                                @relation("StarterEvaluationQuestionTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  user                User?                                @relation("StarterEvaluationQuestionUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy           User?                                @relation("StarterEvaluationQuestionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy           User?                                @relation("StarterEvaluationQuestionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  scopeLinks          StarterEvaluationQuestionScopeLink[]
+  snapshots           StarterEvaluationQuestionSnapshot[]
+  createdAt           DateTime                             @default(now())
+  updatedAt           DateTime                             @updatedAt
 
   @@index([sectionId, active, sortOrder])
   @@index([scopeType, scopeKey])
@@ -1499,19 +1573,19 @@ model StarterEvaluationQuestionScopeLink {
 }
 
 model StarterEvaluation {
-  id                         String                    @id @default(cuid())
+  id                         String                   @id @default(cuid())
   representativeId           String
   moment                     StarterEvaluationMoment?
-  status                     StarterEvaluationStatus   @default(DUE)
-  milestoneDate              DateTime                  @db.Date
-  starterStartDateSnapshot   DateTime                  @db.Date
+  status                     StarterEvaluationStatus  @default(DUE)
+  milestoneDate              DateTime                 @db.Date
+  starterStartDateSnapshot   DateTime                 @db.Date
   manualStartedById          String?
   manualStartedAt            DateTime?
-  plannedConversationDate    DateTime?                 @db.Date
-  plannedStartTime           String?                   @db.VarChar(5)
-  plannedEndTime             String?                   @db.VarChar(5)
+  plannedConversationDate    DateTime?                @db.Date
+  plannedStartTime           String?                  @db.VarChar(5)
+  plannedEndTime             String?                  @db.VarChar(5)
   plannedLocation            String?
-  planningNote               String?                   @db.Text
+  planningNote               String?                  @db.Text
   leaderId                   String?
   countryManagerId           String?
   evaluatorAnswersRevealedAt DateTime?
@@ -1519,32 +1593,32 @@ model StarterEvaluation {
   milestoneNotifiedAt        DateTime?
   sentForApprovalAt          DateTime?
   sentForApprovalById        String?
-  approvalComment            String?                   @db.Text
+  approvalComment            String?                  @db.Text
   approvedAt                 DateTime?
   approvedById               String?
   notAgreedAt                DateTime?
-  notAgreedReason            String?                   @db.Text
+  notAgreedReason            String?                  @db.Text
   cancelledAt                DateTime?
   cancelledById              String?
-  cancellationReason         String?                   @db.Text
+  cancellationReason         String?                  @db.Text
   finalDocumentStorageKey    String?
   finalDocumentHash          String?
-  kpiSnapshotJson            String?                   @db.LongText
-  autoDataSnapshotJson       String?                   @db.LongText
-  createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
+  kpiSnapshotJson            String?                  @db.LongText
+  autoDataSnapshotJson       String?                  @db.LongText
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
 
-  representative             User                      @relation("StarterEvaluationRepresentative", fields: [representativeId], references: [id], onDelete: Cascade)
-  leader                     User?                     @relation("StarterEvaluationLeader", fields: [leaderId], references: [id], onDelete: SetNull)
-  countryManager             User?                     @relation("StarterEvaluationCountryManager", fields: [countryManagerId], references: [id], onDelete: SetNull)
-  sentForApprovalBy          User?                     @relation("StarterEvaluationSentForApprovalBy", fields: [sentForApprovalById], references: [id], onDelete: SetNull)
-  approvedBy                 User?                     @relation("StarterEvaluationApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  cancelledBy                User?                     @relation("StarterEvaluationCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  manualStartedBy            User?                     @relation("StarterEvaluationManualStartedBy", fields: [manualStartedById], references: [id], onDelete: SetNull)
-  sectionSnapshots           StarterEvaluationSectionSnapshot[]
-  questionSnapshots          StarterEvaluationQuestionSnapshot[]
-  answers                    StarterEvaluationAnswer[]
-  draftActionPoints          StarterEvaluationDraftActionPoint[]
+  representative    User                                @relation("StarterEvaluationRepresentative", fields: [representativeId], references: [id], onDelete: Cascade)
+  leader            User?                               @relation("StarterEvaluationLeader", fields: [leaderId], references: [id], onDelete: SetNull)
+  countryManager    User?                               @relation("StarterEvaluationCountryManager", fields: [countryManagerId], references: [id], onDelete: SetNull)
+  sentForApprovalBy User?                               @relation("StarterEvaluationSentForApprovalBy", fields: [sentForApprovalById], references: [id], onDelete: SetNull)
+  approvedBy        User?                               @relation("StarterEvaluationApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  cancelledBy       User?                               @relation("StarterEvaluationCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  manualStartedBy   User?                               @relation("StarterEvaluationManualStartedBy", fields: [manualStartedById], references: [id], onDelete: SetNull)
+  sectionSnapshots  StarterEvaluationSectionSnapshot[]
+  questionSnapshots StarterEvaluationQuestionSnapshot[]
+  answers           StarterEvaluationAnswer[]
+  draftActionPoints StarterEvaluationDraftActionPoint[]
 
   @@unique([representativeId, moment])
   @@index([representativeId, milestoneDate, status])
@@ -1555,20 +1629,20 @@ model StarterEvaluation {
 }
 
 model StarterEvaluationSectionSnapshot {
-  id              String                    @id @default(cuid())
+  id              String                              @id @default(cuid())
   evaluationId    String
   sourceSectionId String?
   code            String
   titleNl         String
   titleFr         String?
   titleDe         String?
-  descriptionNl   String?                   @db.Text
-  descriptionFr   String?                   @db.Text
-  descriptionDe   String?                   @db.Text
+  descriptionNl   String?                             @db.Text
+  descriptionFr   String?                             @db.Text
+  descriptionDe   String?                             @db.Text
   sortOrder       Int
-  momentsJson     String                    @db.VarChar(255)
-  evaluation      StarterEvaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  sourceSection   StarterEvaluationSection? @relation(fields: [sourceSectionId], references: [id], onDelete: SetNull)
+  momentsJson     String                              @db.VarChar(255)
+  evaluation      StarterEvaluation                   @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  sourceSection   StarterEvaluationSection?           @relation(fields: [sourceSectionId], references: [id], onDelete: SetNull)
   questions       StarterEvaluationQuestionSnapshot[]
 
   @@unique([evaluationId, code])
@@ -1576,31 +1650,31 @@ model StarterEvaluationSectionSnapshot {
 }
 
 model StarterEvaluationQuestionSnapshot {
-  id                 String                         @id @default(cuid())
-  evaluationId       String
-  sectionSnapshotId  String
-  sourceQuestionId   String?
-  key                String
-  textNl             String                         @db.Text
-  textFr             String?                        @db.Text
-  textDe             String?                        @db.Text
-  helpNl             String?                        @db.Text
-  helpFr             String?                        @db.Text
-  helpDe             String?                        @db.Text
-  sortOrder          Int
-  required           Boolean
-  answerType         StarterEvaluationAnswerType
-  optionsJson        String?                        @db.LongText
-  assignee           StarterEvaluationAssignee
-  momentsJson        String                         @db.VarChar(255)
-  appliedScopeType   CriterionScopeType
-  appliedScopeKey    String
+  id                  String                           @id @default(cuid())
+  evaluationId        String
+  sectionSnapshotId   String
+  sourceQuestionId    String?
+  key                 String
+  textNl              String                           @db.Text
+  textFr              String?                          @db.Text
+  textDe              String?                          @db.Text
+  helpNl              String?                          @db.Text
+  helpFr              String?                          @db.Text
+  helpDe              String?                          @db.Text
+  sortOrder           Int
+  required            Boolean
+  answerType          StarterEvaluationAnswerType
+  optionsJson         String?                          @db.LongText
+  assignee            StarterEvaluationAssignee
+  momentsJson         String                           @db.VarChar(255)
+  appliedScopeType    CriterionScopeType
+  appliedScopeKey     String
   linkedCriterionType CriterionType?
   linkedCriterionId   String?
-  evaluation         StarterEvaluation              @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  sectionSnapshot    StarterEvaluationSectionSnapshot @relation(fields: [sectionSnapshotId], references: [id], onDelete: Cascade)
-  sourceQuestion     StarterEvaluationQuestion?     @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
-  answers            StarterEvaluationAnswer[]
+  evaluation          StarterEvaluation                @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  sectionSnapshot     StarterEvaluationSectionSnapshot @relation(fields: [sectionSnapshotId], references: [id], onDelete: Cascade)
+  sourceQuestion      StarterEvaluationQuestion?       @relation(fields: [sourceQuestionId], references: [id], onDelete: SetNull)
+  answers             StarterEvaluationAnswer[]
 
   @@unique([evaluationId, key])
   @@index([sectionSnapshotId, sortOrder], map: "SEQS_section_sort_idx")
@@ -1608,73 +1682,73 @@ model StarterEvaluationQuestionSnapshot {
 }
 
 model StarterEvaluationAnswer {
-  id                 String                    @id @default(cuid())
+  id                 String                            @id @default(cuid())
   evaluationId       String
   questionSnapshotId String
   role               StarterEvaluationAnswerRole
-  valueJson          String?                   @db.LongText
+  valueJson          String?                           @db.LongText
   updatedById        String?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
-  evaluation         StarterEvaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                          @default(now())
+  updatedAt          DateTime                          @updatedAt
+  evaluation         StarterEvaluation                 @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
   questionSnapshot   StarterEvaluationQuestionSnapshot @relation(fields: [questionSnapshotId], references: [id], onDelete: Cascade)
-  updatedBy          User?                     @relation("StarterEvaluationAnswerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy          User?                             @relation("StarterEvaluationAnswerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([questionSnapshotId, role])
   @@index([evaluationId, role])
 }
 
 model StarterEvaluationDraftActionPoint {
-  id                   String              @id @default(cuid())
+  id                   String            @id @default(cuid())
   evaluationId         String
   title                String
-  descriptionHtml      String?             @db.LongText
-  type                 ActionPointType     @default(VAARDIGHEID)
-  targetValue          Decimal?            @db.Decimal(14, 2)
-  startDate            DateTime?           @db.Date
-  dueDate              DateTime?           @db.Date
+  descriptionHtml      String?           @db.LongText
+  type                 ActionPointType   @default(VAARDIGHEID)
+  targetValue          Decimal?          @db.Decimal(14, 2)
+  startDate            DateTime?         @db.Date
+  dueDate              DateTime?         @db.Date
   ownerId              String?
   createdActionPointId String?
-  sortOrder            Int                 @default(0)
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  evaluation           StarterEvaluation   @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  owner                User?               @relation("StarterEvaluationDraftActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdActionPoint   ActionPoint?        @relation(fields: [createdActionPointId], references: [id], onDelete: SetNull)
+  sortOrder            Int               @default(0)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  evaluation           StarterEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  owner                User?             @relation("StarterEvaluationDraftActionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdActionPoint   ActionPoint?      @relation(fields: [createdActionPointId], references: [id], onDelete: SetNull)
 
   @@index([evaluationId, sortOrder])
   @@index([createdActionPointId])
 }
 
 model ActionDefinition {
-  id              String                 @id @default(cuid())
+  id              String                    @id @default(cuid())
   title           String
-  description     String                 @db.Text
-  tipsAndTricks   String                 @db.LongText
-  targetTypeId    String?                @map("target_type_id")
-  targetValue     Decimal?               @db.Decimal(14, 2)
-  priority        Priority               @default(NORMAL)
-  scope           ActionScope            @default(GLOBAL)
+  description     String                    @db.Text
+  tipsAndTricks   String                    @db.LongText
+  targetTypeId    String?                   @map("target_type_id")
+  targetValue     Decimal?                  @db.Decimal(14, 2)
+  priority        Priority                  @default(NORMAL)
+  scope           ActionScope               @default(GLOBAL)
   scopeKey        String
   country         Country?
   teamId          String?
   userId          String?
-  active          Boolean                @default(true)
+  active          Boolean                   @default(true)
   validFrom       DateTime
   validUntil      DateTime?
   deletedAt       DateTime?
   createdById     String
   updatedById     String
-  team            Team?                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user            User?                  @relation("ActionDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
-  targetType      ActionPointTargetType? @relation(fields: [targetTypeId], references: [id])
-  createdBy       User                   @relation("ActionDefinitionCreatedBy", fields: [createdById], references: [id])
-  updatedBy       User                   @relation("ActionDefinitionUpdatedBy", fields: [updatedById], references: [id])
+  team            Team?                     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user            User?                     @relation("ActionDefinitionUser", fields: [userId], references: [id], onDelete: Cascade)
+  targetType      ActionPointTargetType?    @relation(fields: [targetTypeId], references: [id])
+  createdBy       User                      @relation("ActionDefinitionCreatedBy", fields: [createdById], references: [id])
+  updatedBy       User                      @relation("ActionDefinitionUpdatedBy", fields: [updatedById], references: [id])
   products        ActionDefinitionProduct[]
   targetOverrides ActionTargetOverride[]
   coachingActions CoachingAction[]
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
 
   @@index([scope, scopeKey, active])
   @@index([validFrom, validUntil])
@@ -1686,7 +1760,7 @@ model ActionDefinition {
 
 model ActionPointTargetType {
   id                String             @id @default(cuid())
-  code              ActionScope         @unique
+  code              ActionScope        @unique
   name              String
   description       String?            @db.Text
   isActive          Boolean            @default(true) @map("is_active")
@@ -1734,31 +1808,31 @@ model ActionTargetOverride {
 }
 
 model CoachingAction {
-  id                 String            @id @default(cuid())
-  interventionId     String
-  actionDefinitionId String?
-  userId             String
-  title              String
-  description        String            @db.Text
-  tipsAndTricks      String            @db.LongText
-  targetValue        Decimal?          @db.Decimal(14, 2)
-  achievedScore      Decimal?          @db.Decimal(14, 2)
-  priority           Priority
-  isNew              Boolean           @default(false)
-  reviewStatus       CoachingActionReviewStatus @default(PROPOSED)
-  originalTitle      String?           @db.Text
-  originalDescription String?          @db.Text
-  originalTipsAndTricks String?        @db.LongText
-  rejectionReason    String?           @db.Text
-  reviewComment      String?           @db.Text
-  reviewedById       String?
-  reviewedAt         DateTime?
-  activatedAt        DateTime?
-  intervention       Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade)
-  actionDefinition   ActionDefinition? @relation(fields: [actionDefinitionId], references: [id], onDelete: SetNull)
-  user               User              @relation(fields: [userId], references: [id])
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                    String                     @id @default(cuid())
+  interventionId        String
+  actionDefinitionId    String?
+  userId                String
+  title                 String
+  description           String                     @db.Text
+  tipsAndTricks         String                     @db.LongText
+  targetValue           Decimal?                   @db.Decimal(14, 2)
+  achievedScore         Decimal?                   @db.Decimal(14, 2)
+  priority              Priority
+  isNew                 Boolean                    @default(false)
+  reviewStatus          CoachingActionReviewStatus @default(PROPOSED)
+  originalTitle         String?                    @db.Text
+  originalDescription   String?                    @db.Text
+  originalTipsAndTricks String?                    @db.LongText
+  rejectionReason       String?                    @db.Text
+  reviewComment         String?                    @db.Text
+  reviewedById          String?
+  reviewedAt            DateTime?
+  activatedAt           DateTime?
+  intervention          Intervention               @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  actionDefinition      ActionDefinition?          @relation(fields: [actionDefinitionId], references: [id], onDelete: SetNull)
+  user                  User                       @relation(fields: [userId], references: [id])
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
 
   @@unique([interventionId, actionDefinitionId])
   @@index([userId])
@@ -1793,23 +1867,23 @@ model AppSetting {
 }
 
 model NotificationDelivery {
-  id                  String   @id @default(cuid())
-  eventKey            String
-  recipientUserId     String
-  channel             String
-  status              String
-  sourceModule        String?
-  entityType          String?
-  entityId            String?
-  mailTestActive      Boolean  @default(true)
-  originalTo          String?  @db.Text
-  originalCc          String?  @db.Text
-  originalBcc         String?  @db.Text
-  actualTo            String?  @db.Text
-  error               String?  @db.Text
-  sentAt              DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id              String    @id @default(cuid())
+  eventKey        String
+  recipientUserId String
+  channel         String
+  status          String
+  sourceModule    String?
+  entityType      String?
+  entityId        String?
+  mailTestActive  Boolean   @default(true)
+  originalTo      String?   @db.Text
+  originalCc      String?   @db.Text
+  originalBcc     String?   @db.Text
+  actualTo        String?   @db.Text
+  error           String?   @db.Text
+  sentAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@unique([eventKey, recipientUserId, channel])
   @@index([recipientUserId, createdAt])
@@ -1847,54 +1921,54 @@ model Reflection {
 }
 
 model Approval {
-  id               String          @id @default(cuid())
-  interventionId   String          @unique
-  representativeId String
-  status           ApprovalStatus?
-  comment          String?
-  reflectionKpiHtml      String?  @db.LongText
-  reflectionLearningHtml String?  @db.LongText
-  reflectionGoalHtml     String?  @db.LongText
-  reflectionCompletedAt  DateTime?
+  id                          String          @id @default(cuid())
+  interventionId              String          @unique
+  representativeId            String
+  status                      ApprovalStatus?
+  comment                     String?
+  reflectionKpiHtml           String?         @db.LongText
+  reflectionLearningHtml      String?         @db.LongText
+  reflectionGoalHtml          String?         @db.LongText
+  reflectionCompletedAt       DateTime?
   reflectionCompletedByUserId String?
-  openedAt         DateTime?
-  confirmedAt      DateTime?
-  intervention     Intervention    @relation(fields: [interventionId], references: [id], onDelete: Cascade)
-  representative   User            @relation(fields: [representativeId], references: [id])
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  openedAt                    DateTime?
+  confirmedAt                 DateTime?
+  intervention                Intervention    @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  representative              User            @relation(fields: [representativeId], references: [id])
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
 
   @@index([representativeId, status])
   @@index([reflectionCompletedByUserId])
 }
 
 model HelpRequest {
-  id                   String            @id @default(cuid())
-  interventionId       String?           @unique
+  id                   String              @id @default(cuid())
+  interventionId       String?             @unique
   requesterId          String
   representativeId     String
   responsibleUserId    String?
   subject              String
-  descriptionHtml      String?           @db.LongText
-  descriptionText      String?           @db.Text
+  descriptionHtml      String?             @db.LongText
+  descriptionText      String?             @db.Text
   difficulty           String
   desiredResult        String
   explanation          String?
   urgency              Priority
-  status               HelpRequestStatus @default(OPEN)
+  status               HelpRequestStatus   @default(OPEN)
   firstHandledAt       DateTime?
   firstHandledByUserId String?
   withdrawnAt          DateTime?
   withdrawnByUserId    String?
   followUpType         InterventionType?
   linkedInterventionId String?
-  intervention         Intervention?     @relation(fields: [interventionId], references: [id], onDelete: SetNull)
-  requester            User              @relation("HelpRequester", fields: [requesterId], references: [id])
-  representative       User              @relation("HelpRepresentative", fields: [representativeId], references: [id])
-  responsible          User?             @relation("HelpResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  intervention         Intervention?       @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  requester            User                @relation("HelpRequester", fields: [requesterId], references: [id])
+  representative       User                @relation("HelpRepresentative", fields: [representativeId], references: [id])
+  responsible          User?               @relation("HelpResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
   answers              HelpRequestAnswer[]
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([requesterId])
   @@index([responsibleUserId])
@@ -1905,26 +1979,26 @@ model HelpRequest {
 }
 
 model HelpRequestAnswer {
-  id             String      @id @default(cuid())
-  helpRequestId  String
-  authorId       String
-  bodyHtml       String      @db.LongText
-  bodyText       String      @db.Text
-  closesRequest  Boolean     @default(false)
-  helpRequest    HelpRequest @relation(fields: [helpRequestId], references: [id], onDelete: Cascade)
-  author         User        @relation("HelpAnswerAuthor", fields: [authorId], references: [id])
-  createdAt      DateTime    @default(now())
+  id            String      @id @default(cuid())
+  helpRequestId String
+  authorId      String
+  bodyHtml      String      @db.LongText
+  bodyText      String      @db.Text
+  closesRequest Boolean     @default(false)
+  helpRequest   HelpRequest @relation(fields: [helpRequestId], references: [id], onDelete: Cascade)
+  author        User        @relation("HelpAnswerAuthor", fields: [authorId], references: [id])
+  createdAt     DateTime    @default(now())
 
   @@index([helpRequestId, createdAt])
   @@index([authorId])
 }
 
 model Product {
-  id        String            @id @default(cuid())
-  name      String            @unique
-  sortOrder Int
-  active    Boolean           @default(true)
-  analyses  ProductAnalysis[]
+  id                       String                    @id @default(cuid())
+  name                     String                    @unique
+  sortOrder                Int
+  active                   Boolean                   @default(true)
+  analyses                 ProductAnalysis[]
   actionDefinitionProducts ActionDefinitionProduct[]
 }
 
@@ -1970,33 +2044,33 @@ model ContractArticle {
 }
 
 model ContractCustomer {
-  id               String                  @id @default(cuid())
-  companyName      String
-  contactName      String?
-  email            String?
-  phone            String?
-  address          String?                 @db.Text
-  street           String?
-  houseNumber      String?
-  postalCode       String?
-  city             String?
-  countryCode      Country
-  vatNumber        String?
-  preferredLanguage Language                @default(nl)
-  ownerUserId      String
-  teamIdSnapshot   String?
-  countrySnapshot  Country
-  externalSource   String?
-  externalId       String?
-  lastSyncedAt     DateTime?
-  isDemo           Boolean                 @default(false)
+  id                 String                @id @default(cuid())
+  companyName        String
+  contactName        String?
+  email              String?
+  phone              String?
+  address            String?               @db.Text
+  street             String?
+  houseNumber        String?
+  postalCode         String?
+  city               String?
+  countryCode        Country
+  vatNumber          String?
+  preferredLanguage  Language              @default(nl)
+  ownerUserId        String
+  teamIdSnapshot     String?
+  countrySnapshot    Country
+  externalSource     String?
+  externalId         String?
+  lastSyncedAt       DateTime?
+  isDemo             Boolean               @default(false)
   businessRelationId String?               @unique
-  owner            User                    @relation("ContractCustomerOwner", fields: [ownerUserId], references: [id])
-  teamSnapshot     Team?                   @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
+  owner              User                  @relation("ContractCustomerOwner", fields: [ownerUserId], references: [id])
+  teamSnapshot       Team?                 @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
   businessRelation   BusinessRelation?     @relation(fields: [businessRelationId], references: [id], onDelete: SetNull)
-  calculations     ContractCalculation[]
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  calculations       ContractCalculation[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   @@index([ownerUserId])
   @@index([teamIdSnapshot])
@@ -2032,6 +2106,7 @@ model BusinessRelation {
   commercialHistory        SalesCommercialHistoryDocument[]
   salesAttachments         SalesAttachment[]
   salesDocuments           SalesDocument[]
+  inventoryLocations       InventoryLocation[]
   createdAt                DateTime                           @default(now())
   updatedAt                DateTime                           @updatedAt
 
@@ -2123,21 +2198,21 @@ model BusinessRelationExternalLink {
 }
 
 model SalesAppointment {
-  id                       String                 @id @default(cuid())
+  id                       String                                   @id @default(cuid())
   provider                 ErpIntegrationProvider?
   externalId               String?
   sourceVersion            String?
   nativeStatus             String?
   sourceUpdatedAt          DateTime?
-  businessDate             DateTime               @db.Date
+  businessDate             DateTime                                 @db.Date
   startsAt                 DateTime?
   endsAt                   DateTime?
   timeZone                 String
   sequence                 Int
-  status                   SalesAppointmentStatus @default(PLANNED)
-  origin                   SalesAppointmentOrigin @default(ERP)
-  localRevision            Int                    @default(0)
-  pendingFieldForceEdit    Boolean                @default(false)
+  status                   SalesAppointmentStatus                   @default(PLANNED)
+  origin                   SalesAppointmentOrigin                   @default(ERP)
+  localRevision            Int                                      @default(0)
+  pendingFieldForceEdit    Boolean                                  @default(false)
   relationId               String
   representativeUserId     String
   representativeExternalId String
@@ -2145,10 +2220,10 @@ model SalesAppointment {
   teamExternalId           String?
   country                  Country
   outcomeReasonExternalId  String?
-  outcomeComment           String?                @db.Text
-  relation                 BusinessRelation       @relation(fields: [relationId], references: [id], onDelete: Restrict)
-  representative           User                   @relation("SalesAppointmentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
-  team                     Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  outcomeComment           String?                                  @db.Text
+  relation                 BusinessRelation                         @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  representative           User                                     @relation("SalesAppointmentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  team                     Team?                                    @relation(fields: [teamId], references: [id], onDelete: SetNull)
   changes                  SalesAppointmentChange[]
   preparationState         SalesPreparationState?
   preparationNote          SalesPreparationNote?
@@ -2159,8 +2234,8 @@ model SalesAppointment {
   references               SalesReference[]
   attachments              SalesAttachment[]
   salesDocuments           SalesDocument[]
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
+  createdAt                DateTime                                 @default(now())
+  updatedAt                DateTime                                 @updatedAt
 
   @@unique([provider, externalId])
   @@index([representativeUserId, businessDate, sequence])
@@ -2205,7 +2280,7 @@ model SalesAppointmentChange {
   appointmentId          String
   actorUserId            String
   deviceId               String
-  type                    SalesAppointmentChangeType
+  type                   SalesAppointmentChangeType
   oldValueJson           String                     @db.LongText
   proposedValueJson      String                     @db.LongText
   validationJson         String                     @db.LongText
@@ -2223,47 +2298,47 @@ model SalesAppointmentChange {
 }
 
 model SalesAppointmentOutcomeReason {
-  id               String                 @id @default(cuid())
-  provider         ErpIntegrationProvider
-  externalId       String
-  sourceVersion    String
-  sourceUpdatedAt  DateTime
-  code             String
-  labelNl          String
-  labelFr          String
-  labelDe          String
-  country          Country?
-  active           Boolean                @default(true)
-  requiresComment  Boolean                @default(false)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
+  id              String                 @id @default(cuid())
+  provider        ErpIntegrationProvider
+  externalId      String
+  sourceVersion   String
+  sourceUpdatedAt DateTime
+  code            String
+  labelNl         String
+  labelFr         String
+  labelDe         String
+  country         Country?
+  active          Boolean                @default(true)
+  requiresComment Boolean                @default(false)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@unique([provider, externalId])
   @@index([country, active, code])
 }
 
 model SalesPreparationState {
-  id             String           @id @default(cuid())
-  appointmentId  String           @unique
-  preparedById   String
-  preparedAt     DateTime
-  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  preparedBy     User             @relation("SalesPreparationPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id            String           @id @default(cuid())
+  appointmentId String           @unique
+  preparedById  String
+  preparedAt    DateTime
+  appointment   SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  preparedBy    User             @relation("SalesPreparationPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([preparedById, preparedAt])
 }
 
 model SalesPreparationNote {
-  id             String           @id @default(cuid())
-  appointmentId  String           @unique
-  authorUserId   String
-  content        String           @db.Text
-  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  author         User             @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id            String           @id @default(cuid())
+  appointmentId String           @unique
+  authorUserId  String
+  content       String           @db.Text
+  appointment   SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  author        User             @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([authorUserId, updatedAt])
 }
@@ -2286,25 +2361,25 @@ model SalesPreparationRecommendationFeedback {
 }
 
 model SalesCommercialHistoryDocument {
-  id                       String                 @id @default(cuid())
+  id                       String                       @id @default(cuid())
   provider                 ErpIntegrationProvider
   externalId               String
   sourceVersion            String
   sourceUpdatedAt          DateTime
   documentType             String
   documentNumber           String
-  documentDate             DateTime               @db.Date
+  documentDate             DateTime                     @db.Date
   relationId               String
   representativeExternalId String?
   currency                 String
-  amountExcludingVat       Decimal                @db.Decimal(14, 2)
-  amountIncludingVat       Decimal                @db.Decimal(14, 2)
+  amountExcludingVat       Decimal                      @db.Decimal(14, 2)
+  amountIncludingVat       Decimal                      @db.Decimal(14, 2)
   paymentStatus            String
-  openAmount               Decimal                @db.Decimal(14, 2)
-  relation                 BusinessRelation       @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  openAmount               Decimal                      @db.Decimal(14, 2)
+  relation                 BusinessRelation             @relation(fields: [relationId], references: [id], onDelete: Restrict)
   lines                    SalesCommercialHistoryLine[]
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
 
   @@unique([provider, externalId])
   @@index([relationId, documentDate])
@@ -2312,19 +2387,19 @@ model SalesCommercialHistoryDocument {
 }
 
 model SalesCommercialHistoryLine {
-  id                       String                         @id @default(cuid())
-  documentId               String
-  lineNumber               Int
-  articleExternalId        String
-  articleNumberSnapshot    String
-  descriptionSnapshot      String
-  quantity                 Decimal                        @db.Decimal(14, 3)
-  unitSnapshot             String
-  unitPriceSnapshot        Decimal                        @db.Decimal(14, 4)
-  vatRateSnapshot          Decimal                        @db.Decimal(7, 4)
-  lineAmountExcludingVat   Decimal                        @db.Decimal(14, 2)
-  carrierExternalId        String?
-  document                 SalesCommercialHistoryDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id                     String                         @id @default(cuid())
+  documentId             String
+  lineNumber             Int
+  articleExternalId      String
+  articleNumberSnapshot  String
+  descriptionSnapshot    String
+  quantity               Decimal                        @db.Decimal(14, 3)
+  unitSnapshot           String
+  unitPriceSnapshot      Decimal                        @db.Decimal(14, 4)
+  vatRateSnapshot        Decimal                        @db.Decimal(7, 4)
+  lineAmountExcludingVat Decimal                        @db.Decimal(14, 2)
+  carrierExternalId      String?
+  document               SalesCommercialHistoryDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, lineNumber])
   @@index([articleExternalId])
@@ -2380,20 +2455,20 @@ model SalesArticlePrice {
 }
 
 model SalesDocumentReason {
-  id              String                  @id @default(cuid())
+  id              String                           @id @default(cuid())
   kind            SalesDocumentReasonKind
   code            String
   labelNl         String
   labelFr         String
   labelDe         String
   country         Country?
-  active          Boolean                 @default(true)
-  requiresComment Boolean                 @default(true)
-  sortOrder       Int                     @default(0)
-  overrideUses    SalesDocument[]         @relation("SalesDocumentOverrideReason")
+  active          Boolean                          @default(true)
+  requiresComment Boolean                          @default(true)
+  sortOrder       Int                              @default(0)
+  overrideUses    SalesDocument[]                  @relation("SalesDocumentOverrideReason")
   unsignedUses    SalesDocumentSignatureEvidence[] @relation("SalesDocumentUnsignedReason")
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  createdAt       DateTime                         @default(now())
+  updatedAt       DateTime                         @updatedAt
 
   @@index([kind, country, active, sortOrder])
   @@index([code])
@@ -2446,45 +2521,45 @@ model SalesDocumentNumberUse {
 }
 
 model SalesDocument {
-  id                     String                       @id @default(cuid())
+  id                     String                          @id @default(cuid())
   appointmentId          String
   relationId             String
   representativeUserId   String
   provider               ErpIntegrationProvider
   documentType           SalesDocumentType
   proposedDocumentType   SalesDocumentType
-  status                 SalesDocumentStatus          @default(QUEUED)
-  deliveryStatus         SalesDocumentDeliveryStatus  @default(PENDING_ERP)
-  documentNumber         String                       @unique
-  numberUseId            String                       @unique
-  businessDate           DateTime                     @db.Date
-  documentDate           DateTime                     @db.Date
+  status                 SalesDocumentStatus             @default(QUEUED)
+  deliveryStatus         SalesDocumentDeliveryStatus     @default(PENDING_ERP)
+  documentNumber         String                          @unique
+  numberUseId            String                          @unique
+  businessDate           DateTime                        @db.Date
+  documentDate           DateTime                        @db.Date
   currency               String
   language               Language
   templateVersion        String
-  customerSnapshotJson   String                       @db.LongText
-  billingSnapshotJson    String?                      @db.LongText
-  renderedDocumentHtml   String                       @db.LongText
-  renderedDocumentSha256 String                       @db.Char(64)
-  contentFingerprint     String                       @db.Char(64)
-  amountExcludingVat     Decimal                      @db.Decimal(16, 4)
-  vatAmount              Decimal                      @db.Decimal(16, 4)
-  amountIncludingVat     Decimal                      @db.Decimal(16, 4)
+  customerSnapshotJson   String                          @db.LongText
+  billingSnapshotJson    String?                         @db.LongText
+  renderedDocumentHtml   String                          @db.LongText
+  renderedDocumentSha256 String                          @db.Char(64)
+  contentFingerprint     String                          @db.Char(64)
+  amountExcludingVat     Decimal                         @db.Decimal(16, 4)
+  vatAmount              Decimal                         @db.Decimal(16, 4)
+  amountIncludingVat     Decimal                         @db.Decimal(16, 4)
   overrideReasonId       String?
-  overrideComment        String?                      @db.Text
-  commandId              String                       @unique
+  overrideComment        String?                         @db.Text
+  commandId              String                          @unique
   externalId             String?
   sourceVersion          String?
   erpAcknowledgedAt      DateTime?
-  appointment            SalesAppointment             @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  relation               BusinessRelation             @relation(fields: [relationId], references: [id], onDelete: Restrict)
-  representative         User                         @relation("SalesDocumentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
-  numberUse              SalesDocumentNumberUse       @relation(fields: [numberUseId], references: [id], onDelete: Restrict)
-  overrideReason         SalesDocumentReason?         @relation("SalesDocumentOverrideReason", fields: [overrideReasonId], references: [id], onDelete: Restrict)
+  appointment            SalesAppointment                @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  relation               BusinessRelation                @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  representative         User                            @relation("SalesDocumentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  numberUse              SalesDocumentNumberUse          @relation(fields: [numberUseId], references: [id], onDelete: Restrict)
+  overrideReason         SalesDocumentReason?            @relation("SalesDocumentOverrideReason", fields: [overrideReasonId], references: [id], onDelete: Restrict)
   lines                  SalesDocumentLine[]
   signatureEvidence      SalesDocumentSignatureEvidence?
-  createdAt              DateTime                     @default(now())
-  updatedAt              DateTime                     @updatedAt
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
 
   @@index([appointmentId, createdAt])
   @@index([relationId, documentDate])
@@ -2494,27 +2569,28 @@ model SalesDocument {
 }
 
 model SalesDocumentLine {
-  id                                String        @id @default(cuid())
-  documentId                        String
-  lineNumber                        Int
-  articleId                         String?
-  articleExternalId                 String
-  articleNumberSnapshot             String
-  descriptionSnapshot               String        @db.Text
-  quantity                          Decimal       @db.Decimal(14, 3)
-  unitSnapshot                      String
-  unitPriceSnapshot                 Decimal       @db.Decimal(14, 4)
-  vatRateSnapshot                   Decimal       @db.Decimal(7, 4)
-  lineAmountExcludingVat            Decimal       @db.Decimal(16, 4)
-  lineVatAmount                     Decimal       @db.Decimal(16, 4)
-  lineAmountIncludingVat            Decimal       @db.Decimal(16, 4)
-  representativeStockQuantitySnapshot Decimal?    @db.Decimal(14, 3)
-  representativeStockImpactQuantity Decimal       @db.Decimal(14, 3)
-  carrierRequired                   Boolean       @default(false)
-  customerCarrierExternalId         String?
-  document                          SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  article                           SalesArticle? @relation(fields: [articleId], references: [id], onDelete: SetNull)
-  createdAt                         DateTime      @default(now())
+  id                                  String              @id @default(cuid())
+  documentId                          String
+  lineNumber                          Int
+  articleId                           String?
+  articleExternalId                   String
+  articleNumberSnapshot               String
+  descriptionSnapshot                 String              @db.Text
+  quantity                            Decimal             @db.Decimal(14, 3)
+  unitSnapshot                        String
+  unitPriceSnapshot                   Decimal             @db.Decimal(14, 4)
+  vatRateSnapshot                     Decimal             @db.Decimal(7, 4)
+  lineAmountExcludingVat              Decimal             @db.Decimal(16, 4)
+  lineVatAmount                       Decimal             @db.Decimal(16, 4)
+  lineAmountIncludingVat              Decimal             @db.Decimal(16, 4)
+  representativeStockQuantitySnapshot Decimal?            @db.Decimal(14, 3)
+  representativeStockImpactQuantity   Decimal             @db.Decimal(14, 3)
+  carrierRequired                     Boolean             @default(false)
+  customerCarrierExternalId           String?
+  document                            SalesDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  article                             SalesArticle?       @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  inventoryMovements                  InventoryMovement[]
+  createdAt                           DateTime            @default(now())
 
   @@unique([documentId, lineNumber])
   @@index([articleExternalId])
@@ -2541,80 +2617,413 @@ model SalesDocumentSignatureEvidence {
   @@index([exceptionReasonId])
 }
 
+model InventoryReason {
+  id                String                      @id @default(cuid())
+  kind              InventoryReasonKind
+  code              String
+  labelNl           String
+  labelFr           String
+  labelDe           String
+  country           Country?
+  active            Boolean                     @default(true)
+  requiresComment   Boolean                     @default(true)
+  sortOrder         Int                         @default(0)
+  archivedLocations InventoryLocation[]         @relation("InventoryLocationArchiveReason")
+  movements         InventoryMovement[]
+  discrepancies     InventoryDiscrepancy[]
+  carrierCountLines InventoryCarrierCountLine[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([kind, country, active, sortOrder])
+  @@index([code])
+}
+
+model InventoryLocation {
+  id                      String                   @id @default(cuid())
+  type                    InventoryLocationType
+  provider                ErpIntegrationProvider?
+  externalId              String?
+  sourceVersion           String?
+  sourceUpdatedAt         DateTime?
+  systemKey               String?                  @unique
+  country                 Country
+  relationId              String?
+  representativeUserId    String?
+  parentId                String?
+  name                    String
+  description             String?                  @db.Text
+  linkedArticleExternalId String?
+  archived                Boolean                  @default(false)
+  archiveReasonId         String?
+  archiveComment          String?                  @db.Text
+  archivedAt              DateTime?
+  commandId               String?                  @unique
+  relation                BusinessRelation?        @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  representative          User?                    @relation("InventoryLocationRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  parent                  InventoryLocation?       @relation("InventoryLocationHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children                InventoryLocation[]      @relation("InventoryLocationHierarchy")
+  archiveReason           InventoryReason?         @relation("InventoryLocationArchiveReason", fields: [archiveReasonId], references: [id], onDelete: Restrict)
+  outgoingMovements       InventoryMovement[]      @relation("InventoryMovementFromLocation")
+  incomingMovements       InventoryMovement[]      @relation("InventoryMovementToLocation")
+  balances                InventoryBalance[]
+  transitReplenishments   InventoryReplenishment[] @relation("InventoryReplenishmentTransitLocation")
+  carrierCounts           InventoryCarrierCount[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([type, country, archived])
+  @@index([relationId, type, archived])
+  @@index([representativeUserId, type, archived])
+  @@index([parentId, type, archived])
+}
+
+model InventoryBalance {
+  id                String            @id @default(cuid())
+  balanceKey        String            @unique
+  locationId        String
+  articleExternalId String
+  unit              String
+  quantity          Decimal           @default(0) @db.Decimal(14, 3)
+  lotNumber         String?
+  expiryDate        DateTime?         @db.Date
+  sourceVersion     String?
+  location          InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([locationId, articleExternalId])
+  @@index([articleExternalId])
+  @@index([expiryDate])
+}
+
+model InventoryMovement {
+  id                         String                     @id @default(cuid())
+  movementKey                String                     @unique
+  type                       InventoryMovementType
+  status                     InventoryMovementStatus    @default(APPLIED)
+  actorUserId                String?
+  fromLocationId             String?
+  toLocationId               String?
+  articleExternalId          String
+  articleNumberSnapshot      String?
+  quantity                   Decimal                    @db.Decimal(14, 3)
+  unit                       String
+  lotNumber                  String?
+  expiryDate                 DateTime?                  @db.Date
+  sourceDocumentLineId       String?
+  replenishmentReceiptLineId String?
+  carrierCountLineId         String?
+  reasonId                   String?
+  reasonComment              String?                    @db.Text
+  commandId                  String?
+  occurredAt                 DateTime
+  actor                      User?                      @relation("InventoryMovementActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  fromLocation               InventoryLocation?         @relation("InventoryMovementFromLocation", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation                 InventoryLocation?         @relation("InventoryMovementToLocation", fields: [toLocationId], references: [id], onDelete: Restrict)
+  sourceDocumentLine         SalesDocumentLine?         @relation(fields: [sourceDocumentLineId], references: [id], onDelete: Restrict)
+  replenishmentReceiptLine   InventoryReceiptLine?      @relation(fields: [replenishmentReceiptLineId], references: [id], onDelete: Restrict)
+  carrierCountLine           InventoryCarrierCountLine? @relation(fields: [carrierCountLineId], references: [id], onDelete: Restrict)
+  reason                     InventoryReason?           @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  createdAt                  DateTime                   @default(now())
+
+  @@index([fromLocationId, occurredAt])
+  @@index([toLocationId, occurredAt])
+  @@index([articleExternalId, occurredAt])
+  @@index([sourceDocumentLineId])
+  @@index([replenishmentReceiptLineId])
+  @@index([carrierCountLineId])
+  @@index([commandId])
+}
+
+model InventoryReplenishment {
+  id                       String                       @id @default(cuid())
+  provider                 ErpIntegrationProvider
+  externalId               String
+  sourceVersion            String
+  sourceUpdatedAt          DateTime
+  shipmentNumber           String?
+  status                   InventoryReplenishmentStatus @default(IN_TRANSIT)
+  country                  Country
+  representativeUserId     String
+  representativeExternalId String
+  transitLocationId        String?
+  shippedAt                DateTime?
+  expectedAt               DateTime?
+  receivedAt               DateTime?
+  representative           User                         @relation("InventoryReplenishmentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  transitLocation          InventoryLocation?           @relation("InventoryReplenishmentTransitLocation", fields: [transitLocationId], references: [id], onDelete: Restrict)
+  lines                    InventoryReplenishmentLine[]
+  receipts                 InventoryReceipt[]
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([representativeUserId, status, expectedAt])
+  @@index([country, status])
+}
+
+model InventoryReplenishmentLine {
+  id                    String                 @id @default(cuid())
+  replenishmentId       String
+  externalId            String
+  articleExternalId     String
+  articleNumberSnapshot String?
+  descriptionSnapshot   String?                @db.Text
+  expectedQuantity      Decimal                @db.Decimal(14, 3)
+  receivedQuantity      Decimal                @default(0) @db.Decimal(14, 3)
+  damagedQuantity       Decimal                @default(0) @db.Decimal(14, 3)
+  unit                  String
+  lotNumber             String?
+  expiryDate            DateTime?              @db.Date
+  replenishment         InventoryReplenishment @relation(fields: [replenishmentId], references: [id], onDelete: Cascade)
+  receiptLines          InventoryReceiptLine[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([replenishmentId, externalId])
+  @@index([articleExternalId])
+}
+
+model InventoryReceipt {
+  id              String                     @id @default(cuid())
+  receiptKey      String                     @unique
+  replenishmentId String
+  actorUserId     String
+  status          InventoryReceiptStatus     @default(SUBMITTED)
+  receivedAt      DateTime
+  comment         String?                    @db.Text
+  commandId       String                     @unique
+  replenishment   InventoryReplenishment     @relation(fields: [replenishmentId], references: [id], onDelete: Restrict)
+  actor           User                       @relation("InventoryReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  lines           InventoryReceiptLine[]
+  evidence        InventoryReceiptEvidence[]
+  discrepancies   InventoryDiscrepancy[]
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([replenishmentId, receivedAt])
+  @@index([actorUserId, receivedAt])
+}
+
+model InventoryReceiptLine {
+  id                    String                      @id @default(cuid())
+  receiptId             String
+  replenishmentLineId   String?
+  articleExternalId     String
+  articleNumberSnapshot String?
+  receivedQuantity      Decimal                     @db.Decimal(14, 3)
+  damagedQuantity       Decimal                     @default(0) @db.Decimal(14, 3)
+  excessQuantity        Decimal                     @default(0) @db.Decimal(14, 3)
+  unit                  String
+  lotNumber             String?
+  expiryDate            DateTime?                   @db.Date
+  receipt               InventoryReceipt            @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  replenishmentLine     InventoryReplenishmentLine? @relation(fields: [replenishmentLineId], references: [id], onDelete: Restrict)
+  movements             InventoryMovement[]
+  discrepancies         InventoryDiscrepancy[]
+  createdAt             DateTime                    @default(now())
+
+  @@index([receiptId])
+  @@index([replenishmentLineId])
+  @@index([articleExternalId])
+}
+
+model InventoryReceiptEvidence {
+  id            String                       @id @default(cuid())
+  receiptId     String
+  type          InventoryReceiptEvidenceType
+  signerName    String?
+  signatureData String?                      @db.LongText
+  storageKey    String?
+  mimeType      String?
+  contentSha256 String?                      @db.Char(64)
+  capturedAt    DateTime
+  receipt       InventoryReceipt             @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  createdAt     DateTime                     @default(now())
+
+  @@index([receiptId, type])
+}
+
+model InventoryDiscrepancy {
+  id                String                   @id @default(cuid())
+  receiptId         String
+  receiptLineId     String?
+  type              InventoryDiscrepancyType
+  articleExternalId String
+  quantity          Decimal                  @db.Decimal(14, 3)
+  unit              String
+  reasonId          String?
+  comment           String?                  @db.Text
+  receipt           InventoryReceipt         @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  receiptLine       InventoryReceiptLine?    @relation(fields: [receiptLineId], references: [id], onDelete: SetNull)
+  reason            InventoryReason?         @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  createdAt         DateTime                 @default(now())
+
+  @@index([receiptId, type])
+  @@index([articleExternalId])
+  @@index([reasonId])
+}
+
+model InventoryConsumablesRequest {
+  id                       String                            @id @default(cuid())
+  requestKey               String                            @unique
+  provider                 ErpIntegrationProvider
+  country                  Country
+  actorUserId              String
+  representativeExternalId String
+  status                   InventoryConsumablesRequestStatus @default(SUBMITTED)
+  businessDate             DateTime                          @db.Date
+  submittedAt              DateTime
+  commandId                String                            @unique
+  externalId               String?
+  sourceVersion            String?
+  erpStatusUpdatedAt       DateTime?
+  comment                  String?                           @db.Text
+  actor                    User                              @relation("InventoryConsumablesRequestActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  lines                    InventoryConsumablesRequestLine[]
+  createdAt                DateTime                          @default(now())
+  updatedAt                DateTime                          @updatedAt
+
+  @@index([actorUserId, businessDate])
+  @@index([provider, externalId])
+  @@index([status, submittedAt])
+}
+
+model InventoryConsumablesRequestLine {
+  id                    String                      @id @default(cuid())
+  requestId             String
+  lineNumber            Int
+  articleExternalId     String
+  articleNumberSnapshot String?
+  descriptionSnapshot   String?                     @db.Text
+  quantity              Decimal                     @db.Decimal(14, 3)
+  unit                  String
+  comment               String?                     @db.Text
+  request               InventoryConsumablesRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                    @default(now())
+
+  @@unique([requestId, lineNumber])
+  @@index([articleExternalId])
+}
+
+model InventoryCarrierCount {
+  id                String                      @id @default(cuid())
+  countKey          String                      @unique
+  carrierLocationId String
+  actorUserId       String
+  status            InventoryCarrierCountStatus @default(SUBMITTED)
+  countedAt         DateTime
+  commandId         String                      @unique
+  comment           String?                     @db.Text
+  carrierLocation   InventoryLocation           @relation(fields: [carrierLocationId], references: [id], onDelete: Restrict)
+  actor             User                        @relation("InventoryCarrierCountActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  lines             InventoryCarrierCountLine[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([carrierLocationId, countedAt])
+  @@index([actorUserId, countedAt])
+}
+
+model InventoryCarrierCountLine {
+  id                    String                @id @default(cuid())
+  countId               String
+  articleExternalId     String
+  articleNumberSnapshot String?
+  systemQuantity        Decimal               @db.Decimal(14, 3)
+  countedQuantity       Decimal               @db.Decimal(14, 3)
+  differenceQuantity    Decimal               @db.Decimal(14, 3)
+  unit                  String
+  lotNumber             String?
+  expiryDate            DateTime?             @db.Date
+  reasonId              String?
+  reasonComment         String?               @db.Text
+  count                 InventoryCarrierCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  reason                InventoryReason?      @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  movements             InventoryMovement[]
+  createdAt             DateTime              @default(now())
+
+  @@index([countId])
+  @@index([articleExternalId])
+  @@index([reasonId])
+}
+
 model SalesVisitReport {
-  id             String                     @id @default(cuid())
-  appointmentId  String                     @unique
-  authorUserId   String
-  html           String                     @db.LongText
-  closedAt       DateTime
-  commandId      String                     @unique
-  externalId     String?
-  sourceVersion  String?
-  appointment    SalesAppointment           @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  author         User                       @relation("SalesVisitReportAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
-  addenda        SalesVisitReportAddendum[]
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
+  id            String                     @id @default(cuid())
+  appointmentId String                     @unique
+  authorUserId  String
+  html          String                     @db.LongText
+  closedAt      DateTime
+  commandId     String                     @unique
+  externalId    String?
+  sourceVersion String?
+  appointment   SalesAppointment           @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  author        User                       @relation("SalesVisitReportAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  addenda       SalesVisitReportAddendum[]
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
 
   @@index([authorUserId, closedAt])
 }
 
 model SalesVisitReportAddendum {
-  id             String           @id @default(cuid())
-  reportId       String
-  authorUserId   String
-  reason         String
-  html           String           @db.LongText
-  commandId      String           @unique
-  createdAt      DateTime         @default(now())
-  report         SalesVisitReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
-  author         User             @relation("SalesVisitReportAddendumAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  id           String           @id @default(cuid())
+  reportId     String
+  authorUserId String
+  reason       String
+  html         String           @db.LongText
+  commandId    String           @unique
+  createdAt    DateTime         @default(now())
+  report       SalesVisitReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+  author       User             @relation("SalesVisitReportAddendumAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
 
   @@index([reportId, createdAt])
   @@index([authorUserId, createdAt])
 }
 
 model SalesLead {
-  id             String           @id @default(cuid())
-  appointmentId  String
-  actorUserId    String
-  title          String
-  description    String?          @db.Text
-  commandId      String           @unique
-  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  actor          User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
-  createdAt      DateTime         @default(now())
+  id            String           @id @default(cuid())
+  appointmentId String
+  actorUserId   String
+  title         String
+  description   String?          @db.Text
+  commandId     String           @unique
+  appointment   SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  actor         User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt     DateTime         @default(now())
 
   @@index([appointmentId, createdAt])
 }
 
 model SalesFollowUp {
-  id             String           @id @default(cuid())
-  appointmentId  String
-  actorUserId    String
-  type           String
-  description    String           @db.Text
-  commandId      String           @unique
-  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  actor          User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
-  createdAt      DateTime         @default(now())
+  id            String           @id @default(cuid())
+  appointmentId String
+  actorUserId   String
+  type          String
+  description   String           @db.Text
+  commandId     String           @unique
+  appointment   SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  actor         User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt     DateTime         @default(now())
 
   @@index([appointmentId, createdAt])
 }
 
 model SalesReference {
-  id             String           @id @default(cuid())
-  appointmentId  String
-  actorUserId    String
-  proposedName   String
-  contactName    String?
-  email          String?
-  phone          String?
-  comment        String?          @db.Text
-  commandId      String           @unique
-  appointment    SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  actor          User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
-  createdAt      DateTime         @default(now())
+  id            String           @id @default(cuid())
+  appointmentId String
+  actorUserId   String
+  proposedName  String
+  contactName   String?
+  email         String?
+  phone         String?
+  comment       String?          @db.Text
+  commandId     String           @unique
+  appointment   SalesAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  actor         User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt     DateTime         @default(now())
 
   @@index([appointmentId, createdAt])
 }
@@ -2634,21 +3043,21 @@ model SalesDayClosure {
 }
 
 model BusinessRelationChange {
-  id                    String           @id @default(cuid())
-  relationId            String
-  actorUserId           String
-  deviceId              String
-  appointmentExternalId String?
-  oldValueJson          String           @db.LongText
-  proposedValueJson     String           @db.LongText
-  validationJson        String           @db.LongText
-  commandId             String           @unique
-  erpAcknowledgedAt     DateTime?
+  id                     String           @id @default(cuid())
+  relationId             String
+  actorUserId            String
+  deviceId               String
+  appointmentExternalId  String?
+  oldValueJson           String           @db.LongText
+  proposedValueJson      String           @db.LongText
+  validationJson         String           @db.LongText
+  commandId              String           @unique
+  erpAcknowledgedAt      DateTime?
   erpAcknowledgementJson String?          @db.LongText
-  relation              BusinessRelation @relation(fields: [relationId], references: [id], onDelete: Restrict)
-  actor                 User             @relation("BusinessRelationChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  relation               BusinessRelation @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  actor                  User             @relation("BusinessRelationChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
 
   @@index([relationId, createdAt])
   @@index([actorUserId, createdAt])
@@ -2657,26 +3066,26 @@ model BusinessRelationChange {
 }
 
 model ContractModelVersion {
-  id                       String                    @id @default(cuid())
+  id                       String                @id @default(cuid())
   code                     String
   label                    String
-  status                   ContractModelStatus       @default(DRAFT)
+  status                   ContractModelStatus   @default(DRAFT)
   sourceFileName           String?
-  sourceFileSha256         String                    @unique
+  sourceFileSha256         String                @unique
   sourceWorkbookVersion    String?
   calculationEngineVersion String
-  notes                    String?                   @db.Text
+  notes                    String?               @db.Text
   activatedAt              DateTime?
   activatedByUserId        String?
   importedByUserId         String?
-  activatedBy              User?                     @relation("ContractModelVersionActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
-  importedBy               User?                     @relation("ContractModelVersionImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+  activatedBy              User?                 @relation("ContractModelVersionActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  importedBy               User?                 @relation("ContractModelVersionImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
   articles                 ContractArticle[]
   termRules                ContractTermRule[]
   calculations             ContractCalculation[]
   importRuns               ContractImportRun[]
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
 
   @@index([status])
   @@index([code])
@@ -2701,38 +3110,38 @@ model ContractTermRule {
 }
 
 model ContractCalculation {
-  id                         String                    @id @default(cuid())
-  calculationNumber          String                    @unique
+  id                         String                      @id @default(cuid())
+  calculationNumber          String                      @unique
   name                       String
-  status                     ContractCalculationStatus @default(DRAFT)
+  status                     ContractCalculationStatus   @default(DRAFT)
   customerId                 String
   ownerUserId                String
   teamIdSnapshot             String?
   countrySnapshot            Country
-  customerLanguage           Language                  @default(nl)
+  customerLanguage           Language                    @default(nl)
   modelVersionId             String
   durationYears              Int
-  discountPercentageSnapshot Decimal                   @db.Decimal(6, 2)
-  subtotal                   Decimal                   @db.Decimal(14, 2)
-  discountAmount             Decimal                   @db.Decimal(14, 2)
-  annualPrice                Decimal                   @db.Decimal(14, 2)
-  totalCost                  Decimal                   @db.Decimal(14, 2)
+  discountPercentageSnapshot Decimal                     @db.Decimal(6, 2)
+  subtotal                   Decimal                     @db.Decimal(14, 2)
+  discountAmount             Decimal                     @db.Decimal(14, 2)
+  annualPrice                Decimal                     @db.Decimal(14, 2)
+  totalCost                  Decimal                     @db.Decimal(14, 2)
   contractLetterTemplateId   String?
   contractLetterLanguage     Language?
   contractLetterGeneratedAt  DateTime?
   signedByName               String?
   signedAt                   DateTime?
   signedPlace                String?
-  signatureData              String?                   @db.LongText
-  customer                   ContractCustomer          @relation(fields: [customerId], references: [id])
-  owner                      User                      @relation("ContractCalculationOwner", fields: [ownerUserId], references: [id])
-  teamSnapshot               Team?                     @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
-  modelVersion               ContractModelVersion      @relation(fields: [modelVersionId], references: [id])
-  contractLetterTemplate     ContractLetterTemplate?    @relation("ContractCalculationLetterTemplate", fields: [contractLetterTemplateId], references: [id], onDelete: SetNull)
+  signatureData              String?                     @db.LongText
+  customer                   ContractCustomer            @relation(fields: [customerId], references: [id])
+  owner                      User                        @relation("ContractCalculationOwner", fields: [ownerUserId], references: [id])
+  teamSnapshot               Team?                       @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
+  modelVersion               ContractModelVersion        @relation(fields: [modelVersionId], references: [id])
+  contractLetterTemplate     ContractLetterTemplate?     @relation("ContractCalculationLetterTemplate", fields: [contractLetterTemplateId], references: [id], onDelete: SetNull)
   generatedDocuments         ContractGeneratedDocument[]
   lines                      ContractCalculationLine[]
-  createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
 
   @@index([customerId])
   @@index([ownerUserId])
@@ -2800,26 +3209,26 @@ model ContractImportRun {
 }
 
 model ContractLetterTemplate {
-  id                    String                       @id @default(cuid())
-  language              Language
-  name                  String
-  version               Int
-  status                ContractLetterTemplateStatus @default(DRAFT)
-  sourceFileName        String
-  sourceFileSha256      String
-  sourceMimeType        String
-  sourceContent         String                       @db.LongText
-  usedParametersJson    String                       @db.LongText
-  validationJson        String                       @db.LongText
-  uploadedByUserId      String
-  activatedByUserId     String?
-  activatedAt           DateTime?
-  uploadedBy            User                         @relation("ContractLetterTemplateUploadedBy", fields: [uploadedByUserId], references: [id])
-  activatedBy           User?                        @relation("ContractLetterTemplateActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
-  calculations          ContractCalculation[]        @relation("ContractCalculationLetterTemplate")
-  generatedDocuments    ContractGeneratedDocument[]
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
+  id                 String                       @id @default(cuid())
+  language           Language
+  name               String
+  version            Int
+  status             ContractLetterTemplateStatus @default(DRAFT)
+  sourceFileName     String
+  sourceFileSha256   String
+  sourceMimeType     String
+  sourceContent      String                       @db.LongText
+  usedParametersJson String                       @db.LongText
+  validationJson     String                       @db.LongText
+  uploadedByUserId   String
+  activatedByUserId  String?
+  activatedAt        DateTime?
+  uploadedBy         User                         @relation("ContractLetterTemplateUploadedBy", fields: [uploadedByUserId], references: [id])
+  activatedBy        User?                        @relation("ContractLetterTemplateActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  calculations       ContractCalculation[]        @relation("ContractCalculationLetterTemplate")
+  generatedDocuments ContractGeneratedDocument[]
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
 
   @@unique([language, version])
   @@index([language, status])
@@ -2884,34 +3293,34 @@ model ErpInboxMessage {
 }
 
 model DeviceRegistration {
-  id                     String                   @id @default(cuid())
-  deviceId               String                   @unique @db.VarChar(128)
+  id                     String                           @id @default(cuid())
+  deviceId               String                           @unique @db.VarChar(128)
   userId                 String
-  activeUserKey          String?                  @unique
+  activeUserKey          String?                          @unique
   platform               DevicePlatform
-  status                 DeviceRegistrationStatus @default(ACTIVE)
+  status                 DeviceRegistrationStatus         @default(ACTIVE)
   deviceLabel            String?
-  operatingSystemVersion String?                  @db.VarChar(64)
-  appVersion             String?                  @db.VarChar(64)
-  registeredAt           DateTime                 @default(now())
-  lastSeenAt             DateTime                 @default(now())
+  operatingSystemVersion String?                          @db.VarChar(64)
+  appVersion             String?                          @db.VarChar(64)
+  registeredAt           DateTime                         @default(now())
+  lastSeenAt             DateTime                         @default(now())
   revokedAt              DateTime?
   revokedByUserId        String?
-  revocationReason       String?                  @db.Text
-  keyVersion             Int                      @default(0)
-  keyFingerprint         String?                  @unique @db.Char(64)
+  revocationReason       String?                          @db.Text
+  keyVersion             Int                              @default(0)
+  keyFingerprint         String?                          @unique @db.Char(64)
   keyProvisionedAt       DateTime?
   keyRevokedAt           DateTime?
-  deviceTokenHash        String?                  @unique @db.Char(64)
+  deviceTokenHash        String?                          @unique @db.Char(64)
   deviceTokenIssuedAt    DateTime?
   deviceTokenRevokedAt   DateTime?
-  user                   User                     @relation("DeviceRegistrationOwner", fields: [userId], references: [id], onDelete: Cascade)
-  revokedBy              User?                    @relation("DeviceRegistrationRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  user                   User                             @relation("DeviceRegistrationOwner", fields: [userId], references: [id], onDelete: Cascade)
+  revokedBy              User?                            @relation("DeviceRegistrationRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
   keyChallenges          DeviceKeyProvisioningChallenge[]
   controlCommands        DeviceControlCommand[]
   loginSessions          UserLoginSession[]
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
+  createdAt              DateTime                         @default(now())
+  updatedAt              DateTime                         @updatedAt
 
   @@index([userId, status])
   @@index([status, lastSeenAt])
@@ -2999,42 +3408,42 @@ model SalesDayFeatureFlag {
 }
 
 model ErpOutboxCommand {
-  id                       String                      @id @default(cuid())
-  provider                 ErpIntegrationProvider
-  commandId                String                      @unique
-  schemaVersion            String
-  commandType              String
-  businessKey              String
-  idempotencyKey           String
-  commandFingerprint       String                      @db.Char(64)
-  issuedAt                 DateTime
-  conflictPriority         String                      @default("FIELDFORCE")
-  contextJson              String                      @db.LongText
-  payloadJson              String                      @db.LongText
-  actorUserId              String
-  representativeExternalId String
-  deviceId                 String
-  country                  Country
-  appointmentExternalId    String?
-  businessDate             DateTime?                   @db.Date
-  status                   ErpOutboxStatus             @default(PENDING)
-  attemptCount             Int                         @default(0)
-  nextAttemptAt            DateTime?
-  lastAttemptAt            DateTime?
-  leaseOwner               String?
-  leaseExpiresAt           DateTime?
-  acknowledgedAt           DateTime?
-  externalEntityId         String?
+  id                        String                      @id @default(cuid())
+  provider                  ErpIntegrationProvider
+  commandId                 String                      @unique
+  schemaVersion             String
+  commandType               String
+  businessKey               String
+  idempotencyKey            String
+  commandFingerprint        String                      @db.Char(64)
+  issuedAt                  DateTime
+  conflictPriority          String                      @default("FIELDFORCE")
+  contextJson               String                      @db.LongText
+  payloadJson               String                      @db.LongText
+  actorUserId               String
+  representativeExternalId  String
+  deviceId                  String
+  country                   Country
+  appointmentExternalId     String?
+  businessDate              DateTime?                   @db.Date
+  status                    ErpOutboxStatus             @default(PENDING)
+  attemptCount              Int                         @default(0)
+  nextAttemptAt             DateTime?
+  lastAttemptAt             DateTime?
+  leaseOwner                String?
+  leaseExpiresAt            DateTime?
+  acknowledgedAt            DateTime?
+  externalEntityId          String?
   acknowledgedSourceVersion String?
-  acknowledgementJson      String?                     @db.LongText
-  lastErrorCode            String?
-  lastErrorMessage         String?                     @db.Text
-  actor                    User                        @relation("ErpOutboxCommandActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  dependencies             ErpOutboxDependency[]       @relation("ErpOutboxDependencyCommand")
-  dependents               ErpOutboxDependency[]       @relation("ErpOutboxDependencyTarget")
-  incidents                ErpReconciliationIncident[]
-  createdAt                DateTime                    @default(now())
-  updatedAt                DateTime                    @updatedAt
+  acknowledgementJson       String?                     @db.LongText
+  lastErrorCode             String?
+  lastErrorMessage          String?                     @db.Text
+  actor                     User                        @relation("ErpOutboxCommandActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  dependencies              ErpOutboxDependency[]       @relation("ErpOutboxDependencyCommand")
+  dependents                ErpOutboxDependency[]       @relation("ErpOutboxDependencyTarget")
+  incidents                 ErpReconciliationIncident[]
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
 
   @@unique([provider, idempotencyKey])
   @@index([status, nextAttemptAt, leaseExpiresAt])
@@ -3056,17 +3465,17 @@ model ErpOutboxDependency {
 }
 
 model ErpReplicaCheckpoint {
-  id                  String                 @id @default(cuid())
-  provider            ErpIntegrationProvider
-  streamKey           String
-  scopeKey            String
-  schemaVersion       String
-  cursor              String                 @db.LongText
-  sourceCheckpoint    String?                @db.LongText
+  id                   String                 @id @default(cuid())
+  provider             ErpIntegrationProvider
+  streamKey            String
+  scopeKey             String
+  schemaVersion        String
+  cursor               String                 @db.LongText
+  sourceCheckpoint     String?                @db.LongText
   lastSuccessfulSyncAt DateTime
-  lastEventOccurredAt DateTime?
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  lastEventOccurredAt  DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   @@unique([provider, streamKey, scopeKey])
   @@index([provider, lastSuccessfulSyncAt])

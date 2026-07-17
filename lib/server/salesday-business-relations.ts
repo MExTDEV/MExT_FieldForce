@@ -10,9 +10,15 @@ import type {
 } from "@/lib/server/integrations/sales-erp/contracts";
 import { SalesErpError } from "@/lib/server/integrations/sales-erp/errors";
 import {
+  applySalesErpCarrierBalance,
+  applySalesErpCustomerLocation,
+  applySalesErpReplenishment,
+} from "@/lib/server/inventory/service";
+import {
   applySalesErpAppointment,
   applySalesErpAppointmentOutcomeReason,
 } from "@/lib/server/salesday-appointments";
+import { applySalesErpArticle } from "@/lib/server/salesday-commercial-documents";
 import { applySalesErpCommercialHistory } from "@/lib/server/salesday-preparation";
 
 type NormalizedContact = {
@@ -187,8 +193,20 @@ export async function applySalesDayReplicaEvent(tx: Prisma.TransactionClient, ev
   if (event.eventType === "appointment-outcome-reason.upserted") {
     return applySalesErpAppointmentOutcomeReason(tx, event.provider, event.payload);
   }
+  if (event.eventType === "article.upserted") {
+    return applySalesErpArticle(tx, event.provider, event.payload);
+  }
   if (event.eventType === "commercial-history.upserted") {
     return applySalesErpCommercialHistory(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "replenishment.upserted") {
+    return applySalesErpReplenishment(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "customer-location.upserted") {
+    return applySalesErpCustomerLocation(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "carrier-balance.upserted") {
+    return applySalesErpCarrierBalance(tx, event.provider, event.payload);
   }
   return { status: "IGNORED_UNOWNED_RESOURCE" as const, eventType: event.eventType };
 }
