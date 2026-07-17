@@ -76,6 +76,9 @@ expectText("lib/server/salesday-commercial-documents.ts", [
   "applySalesErpArticle",
   "assertNoOverlappingSalesArticlePrice",
   "proposeSalesDocumentType",
+  "upsertSalesDocumentReason",
+  "createSalesDocumentNumberBlock",
+  "reconcileSalesDocumentNumberBlock",
   "allocateSalesDocumentNumberInTransaction",
   "signatureEvidence",
   "UNSIGNED_EXCEPTION",
@@ -110,6 +113,7 @@ expectText("prisma/migrations/0053_salesday_commercial_documents/migration.sql",
 expectText("app/api/salesday/appointments/[appointmentId]/documents/route.ts", ["createSalesDocument", "ERP_WRITES"]);
 expectText("app/api/salesday/documents/[documentId]/print/route.ts", ["getSalesDocumentPrintShareDescriptor"]);
 expectText("app/api/salesday/appointments/[appointmentId]/contract-context/route.ts", ["getSalesDayContractContext"]);
+expectText("app/api/salesday/settings/commercial-documents/route.ts", ["upsertSalesDocumentReason", "createSalesDocumentNumberBlock", "reconcileSalesDocumentNumberBlock"]);
 
 const migration = read("prisma/migrations/0053_salesday_commercial_documents/migration.sql").toUpperCase();
 assert.equal(migration.includes("DROP TABLE"), false);

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type ErpIntegrationProvider, type Language } from "@prisma/client";
 
 import { requireContractAccess } from "@/lib/contract/access";
+import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/server/db";
 import {
   buildSalesErpCommand,
@@ -170,6 +171,170 @@ export async function listSalesArticles(input: {
     orderBy: [{ articleNumber: "asc" }, { id: "asc" }],
     take: 50,
   });
+}
+
+export async function listSalesDocumentSettings(actor: MockUser) {
+  requireSalesDaySettings(actor);
+  const [reasons, numberBlocks] = await Promise.all([
+    prisma.salesDocumentReason.findMany({ orderBy: [{ kind: "asc" }, { country: "asc" }, { sortOrder: "asc" }, { code: "asc" }] }),
+    prisma.salesDocumentNumberBlock.findMany({
+      include: { uses: { orderBy: { sequence: "asc" }, take: 20 } },
+      orderBy: [{ country: "asc" }, { documentType: "asc" }, { reservedAt: "desc" }],
+      take: 100,
+    }),
+  ]);
+  return { reasons, numberBlocks };
+}
+
+export async function upsertSalesDocumentReason(input: {
+  actor: MockUser;
+  id?: string;
+  kind: "OVERRIDE" | "UNSIGNED_EXCEPTION";
+  code: string;
+  labelNl: string;
+  labelFr: string;
+  labelDe: string;
+  country?: MockUser["country"] | null;
+  active?: boolean;
+  requiresComment?: boolean;
+  sortOrder?: number;
+}) {
+  requireSalesDaySettings(input.actor);
+  const values = {
+    kind: input.kind,
+    code: required(input.code, "Redencode").toUpperCase(),
+    labelNl: required(input.labelNl, "Nederlandse reden"),
+    labelFr: required(input.labelFr, "Franse reden"),
+    labelDe: required(input.labelDe, "Duitse reden"),
+    country: input.country ?? null,
+    active: input.active ?? true,
+    requiresComment: input.requiresComment ?? true,
+    sortOrder: input.sortOrder ?? 0,
+  };
+  const reason = input.id
+    ? await prisma.salesDocumentReason.update({ where: { id: input.id }, data: values })
+    : await prisma.salesDocumentReason.create({ data: values });
+  await prisma.auditLog.create({
+    data: {
+      userId: input.actor.id,
+      entityType: "SalesDocumentReason",
+      entityId: reason.id,
+      action: "salesday.salesDocument.reason.upsert",
+      newValue: canonicalSalesErpJson(values),
+    },
+  });
+  return reason;
+}
+
+export async function createSalesDocumentNumberBlock(input: {
+  actor: MockUser;
+  provider: SalesErpProvider;
+  country: MockUser["country"];
+  documentType: SalesCommercialDocumentType;
+  prefix?: string;
+  firstSequence: number;
+  lastSequence: number;
+  nextSequence?: number;
+  padding?: number;
+  externalId?: string;
+  sourceVersion?: string;
+  sourceUpdatedAt?: string;
+  expiresAt?: string;
+}) {
+  requireSalesDaySettings(input.actor);
+  const prefix = input.prefix?.trim() ?? "";
+  const padding = input.padding ?? 0;
+  const nextSequence = input.nextSequence ?? input.firstSequence;
+  if (!Number.isInteger(input.firstSequence) || !Number.isInteger(input.lastSequence) || !Number.isInteger(nextSequence)) {
+    invalid("Nummerblokgrenzen moeten gehele getallen zijn.");
+  }
+  if (input.firstSequence < 0 || input.lastSequence < input.firstSequence || nextSequence < input.firstSequence || nextSequence > input.lastSequence) {
+    invalid("Nummerblokgrenzen zijn ongeldig.");
+  }
+  if (!Number.isInteger(padding) || padding < 0 || padding > 20) invalid("Nummerpadding is ongeldig.");
+
+  return prisma.$transaction(async (tx) => {
+    const overlap = await tx.salesDocumentNumberBlock.findFirst({
+      where: {
+        provider: input.provider as ErpIntegrationProvider,
+        country: input.country,
+        documentType: input.documentType,
+        prefix,
+        status: { in: ["ACTIVE", "EXHAUSTED"] },
+        firstSequence: { lte: input.lastSequence },
+        lastSequence: { gte: input.firstSequence },
+      },
+      select: { id: true },
+    });
+    if (overlap) invalid("Dit gereserveerde nummerblok overlapt met een bestaand blok.");
+    const block = await tx.salesDocumentNumberBlock.create({
+      data: {
+        provider: input.provider as ErpIntegrationProvider,
+        country: input.country,
+        documentType: input.documentType,
+        prefix,
+        firstSequence: input.firstSequence,
+        lastSequence: input.lastSequence,
+        nextSequence,
+        padding,
+        externalId: input.externalId?.trim() || null,
+        sourceVersion: input.sourceVersion?.trim() || null,
+        sourceUpdatedAt: input.sourceUpdatedAt ? instant(input.sourceUpdatedAt, "nummerblok-brontijd") : null,
+        expiresAt: input.expiresAt ? instant(input.expiresAt, "nummerblok-eindtijd") : null,
+      },
+    });
+    await audit(tx, input.actor.id, "SalesDocumentNumberBlock", block.id, "salesday.salesDocument.numberBlock.created", {
+      provider: input.provider,
+      country: input.country,
+      documentType: input.documentType,
+      prefix,
+      firstSequence: input.firstSequence,
+      lastSequence: input.lastSequence,
+    });
+    return block;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function reconcileSalesDocumentNumberBlock(input: {
+  actor: MockUser;
+  blockId: string;
+  acceptedNumbers?: string[];
+  skippedNumbers?: string[];
+  voidedNumbers?: string[];
+  now?: Date;
+}) {
+  requireSalesDaySettings(input.actor);
+  const now = input.now ?? new Date();
+  return prisma.$transaction(async (tx) => {
+    const block = await tx.salesDocumentNumberBlock.findUnique({ where: { id: input.blockId }, include: { uses: true } });
+    if (!block) invalid("Nummerblok niet gevonden.");
+    const statusByNumber = new Map<string, "ACCEPTED" | "SKIPPED" | "VOIDED">();
+    for (const number of input.acceptedNumbers ?? []) statusByNumber.set(number, "ACCEPTED");
+    for (const number of input.skippedNumbers ?? []) statusByNumber.set(number, "SKIPPED");
+    for (const number of input.voidedNumbers ?? []) statusByNumber.set(number, "VOIDED");
+    for (const use of block.uses) {
+      const status = statusByNumber.get(use.number);
+      if (!status) continue;
+      await tx.salesDocumentNumberUse.update({
+        where: { id: use.id },
+        data: {
+          status,
+          voidedAt: status === "VOIDED" ? now : use.voidedAt,
+          reconciliationJson: canonicalSalesErpJson({ status, reconciledAt: now.toISOString() }),
+        },
+      });
+    }
+    const updated = await tx.salesDocumentNumberBlock.update({
+      where: { id: block.id },
+      data: { status: "RECONCILED", reconciledAt: now },
+    });
+    await audit(tx, input.actor.id, "SalesDocumentNumberBlock", block.id, "salesday.salesDocument.numberBlock.reconciled", {
+      acceptedNumbers: input.acceptedNumbers ?? [],
+      skippedNumbers: input.skippedNumbers ?? [],
+      voidedNumbers: input.voidedNumbers ?? [],
+    });
+    return updated;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function createSalesDocument(input: DocumentContext & {
@@ -939,6 +1104,10 @@ function escapeHtml(value: string) {
 
 function requireRepresentative(actor: MockUser) {
   if (actor.role !== "REPRESENTATIVE") denied("Managementtoegang tot SalesDay is alleen-lezen.");
+}
+
+function requireSalesDaySettings(actor: MockUser) {
+  if (!can(actor, "salesday.settings.manage")) denied("Je hebt geen recht om SalesDay-documentinstellingen te beheren.");
 }
 
 function denied(message: string): never {
