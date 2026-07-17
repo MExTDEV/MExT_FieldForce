@@ -344,6 +344,36 @@ enum SalesDayFeatureScope {
   USER
 }
 
+enum BusinessRelationType {
+  CUSTOMER
+  PROSPECT
+}
+
+enum BusinessRelationStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum BusinessRelationContactType {
+  PERSON
+  DEPARTMENT
+}
+
+enum BusinessRelationAddressType {
+  LEGAL
+  BILLING
+  DELIVERY
+  VISIT
+}
+
+enum BusinessRelationBillingValidationStatus {
+  NOT_CHECKED
+  PENDING
+  VALID
+  INVALID
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -446,6 +476,7 @@ model User {
   deactivatedSalesDayEmergencyModes SalesDayEmergencyMode[] @relation("SalesDayEmergencyModeDeactivatedBy")
   salesDayFeatureOverrides SalesDayFeatureFlag[] @relation("SalesDayFeatureTargetUser")
   updatedSalesDayFeatureFlags SalesDayFeatureFlag[] @relation("SalesDayFeatureUpdatedBy")
+  ownedBusinessRelations              BusinessRelation[]                   @relation("BusinessRelationOwner")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -581,6 +612,7 @@ model Team {
   contractCustomers ContractCustomer[]
   contractCalculations ContractCalculation[]
   salesDayFeatureFlags SalesDayFeatureFlag[]
+  businessRelations                   BusinessRelation[]
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
@@ -1862,8 +1894,10 @@ model ContractCustomer {
   externalId       String?
   lastSyncedAt     DateTime?
   isDemo           Boolean                 @default(false)
+  businessRelationId String?               @unique
   owner            User                    @relation("ContractCustomerOwner", fields: [ownerUserId], references: [id])
   teamSnapshot     Team?                   @relation(fields: [teamIdSnapshot], references: [id], onDelete: SetNull)
+  businessRelation   BusinessRelation?     @relation(fields: [businessRelationId], references: [id], onDelete: SetNull)
   calculations     ContractCalculation[]
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
@@ -1872,6 +1906,119 @@ model ContractCustomer {
   @@index([teamIdSnapshot])
   @@index([countrySnapshot])
   @@index([companyName])
+}
+
+model BusinessRelation {
+  id                       String                             @id @default(cuid())
+  type                     BusinessRelationType
+  status                   BusinessRelationStatus             @default(ACTIVE)
+  legalName                String
+  displayName              String
+  vatNumber                String?
+  preferredLanguage        Language                           @default(nl)
+  country                  Country
+  ownerUserId              String?
+  teamId                   String?
+  representativeExternalId String?
+  teamExternalId           String?
+  isDemo                   Boolean                            @default(false)
+  localRevision            Int                                @default(0)
+  pendingFieldForceEdit    Boolean                            @default(false)
+  owner                    User?                              @relation("BusinessRelationOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  team                     Team?                              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  contacts                 BusinessRelationContact[]
+  addresses                BusinessRelationAddress[]
+  billingValidation        BusinessRelationBillingValidation?
+  externalLinks            BusinessRelationExternalLink[]
+  contractCustomer         ContractCustomer?
+  createdAt                DateTime                           @default(now())
+  updatedAt                DateTime                           @updatedAt
+
+  @@index([country, status])
+  @@index([ownerUserId, status])
+  @@index([teamId, status])
+  @@index([representativeExternalId, status])
+  @@index([teamExternalId, status])
+  @@index([displayName])
+  @@index([vatNumber])
+}
+
+model BusinessRelationContact {
+  id               String                      @id @default(cuid())
+  relationId       String
+  type             BusinessRelationContactType
+  name             String
+  email            String?
+  phone            String?
+  mobile           String?
+  primary          Boolean                     @default(false)
+  active           Boolean                     @default(true)
+  sourceExternalId String?
+  sourceVersion    String?
+  sourceUpdatedAt  DateTime?
+  relation         BusinessRelation            @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@unique([relationId, sourceExternalId])
+  @@index([relationId, active, primary])
+}
+
+model BusinessRelationAddress {
+  id               String                      @id @default(cuid())
+  relationId       String
+  type             BusinessRelationAddressType
+  street           String
+  houseNumber      String?
+  postalCode       String
+  city             String
+  country          Country
+  primary          Boolean                     @default(false)
+  active           Boolean                     @default(true)
+  sourceExternalId String?
+  sourceVersion    String?
+  sourceUpdatedAt  DateTime?
+  relation         BusinessRelation            @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@unique([relationId, sourceExternalId])
+  @@index([relationId, active, primary])
+  @@index([country, postalCode])
+}
+
+model BusinessRelationBillingValidation {
+  id                         String                                  @id @default(cuid())
+  relationId                 String                                  @unique
+  status                     BusinessRelationBillingValidationStatus @default(NOT_CHECKED)
+  modulo97Valid              Boolean?
+  viesCheckedAt              DateTime?
+  peppolCheckedAt            DateTime?
+  officialLegalName          String?
+  officialBillingAddressJson String?                                 @db.LongText
+  relation                   BusinessRelation                        @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime                                @default(now())
+  updatedAt                  DateTime                                @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+model BusinessRelationExternalLink {
+  id              String                 @id @default(cuid())
+  relationId      String
+  provider        ErpIntegrationProvider
+  externalId      String
+  sourceVersion   String
+  sourceUpdatedAt DateTime
+  lastSyncedAt    DateTime               @default(now())
+  relation        BusinessRelation       @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@unique([relationId, provider])
+  @@index([relationId])
+  @@index([provider, sourceUpdatedAt])
 }
 
 model ContractModelVersion {

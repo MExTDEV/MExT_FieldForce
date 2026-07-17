@@ -449,6 +449,8 @@ Status: `COMPLETE IN SOURCE` (16 July 2026) — the persistent integration-ledge
 
 ## Milestone 2 — Customers, appointments and day execution
 
+Status: `IN PROGRESS` — the shared BusinessRelation/contact/address replica and additive Contract compatibility bridge are implemented in source. Migration `0046` is not deployed; subsequent customer, appointment and day-execution slices remain in progress.
+
 ### Deliverables
 
 - shared relation/contact/address replica and Contract compatibility;

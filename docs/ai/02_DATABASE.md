@@ -654,6 +654,21 @@ Critical rules:
 - flag/runtime mutation and `AuditLog` creation share one transaction;
 - migration `0045` contains no activation rows, runtime seed or business data and is not deployed to the configured production database.
 
+## SalesDay shared business relations
+
+Migration `0046_salesday_business_relations` additively defines the shared customer/prospect root used by SalesDay and Contract.
+
+Critical rules:
+
+- `BusinessRelation` is the canonical customer/prospect identity; SalesDay must not add a separate customer truth;
+- contacts, addresses, billing validation and provider-scoped external links are normalized child records;
+- external identity is unique by `(provider, externalId)` and never guessed from an unknown legacy source;
+- `ContractCustomer.businessRelationId` is an optional unique compatibility bridge;
+- existing Contract rows are backfilled without rewriting calculations, letters or signed evidence;
+- new Contract customers create their shared relation and compatibility projection in one transaction;
+- a pending explicit FieldForce edit is preserved when a competing ERP event arrives;
+- migration `0046` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

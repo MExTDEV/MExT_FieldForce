@@ -366,23 +366,72 @@ async function createContractCustomer(tx: Prisma.TransactionClient, actor: MockU
   if (!customer?.companyName.trim()) badRequest("contract.error.companyRequired");
   const countryCode = (customer.countryCode ?? actor.country) as MockUser["country"];
   if (!canAccessContractCountry(actor, countryCode)) forbidden("contract.error.customerScope");
+  const companyName = customer.companyName.trim();
+  const contactName = customer.contactName?.trim() || null;
+  const email = customer.email?.trim() || null;
+  const phone = customer.phone?.trim() || null;
+  const address = customer.address?.trim() || null;
+  const street = customer.street?.trim() || null;
+  const houseNumber = customer.houseNumber?.trim() || null;
+  const postalCode = customer.postalCode?.trim() || null;
+  const city = customer.city?.trim() || null;
+  const preferredLanguage = customer.preferredLanguage ?? actor.language;
+  const businessRelation = await tx.businessRelation.create({
+    data: {
+      type: "CUSTOMER",
+      status: "ACTIVE",
+      legalName: companyName,
+      displayName: companyName,
+      vatNumber: customer.vatNumber?.trim() || null,
+      preferredLanguage,
+      country: countryCode,
+      ownerUserId: actor.id,
+      teamId: actor.teamId ?? null,
+      billingValidation: { create: { status: "NOT_CHECKED" } },
+      contacts: contactName || email || phone
+        ? {
+            create: {
+              type: "PERSON",
+              name: contactName ?? companyName,
+              email,
+              phone,
+              primary: true,
+            },
+          }
+        : undefined,
+      addresses: address || street || postalCode || city
+        ? {
+            create: {
+              type: "LEGAL",
+              street: street ?? address ?? "",
+              houseNumber,
+              postalCode: postalCode ?? "",
+              city: city ?? "",
+              country: countryCode,
+              primary: true,
+            },
+          }
+        : undefined,
+    },
+  });
   return tx.contractCustomer.create({
     data: {
-      companyName: customer.companyName.trim(),
-      contactName: customer.contactName?.trim() || null,
-      email: customer.email?.trim() || null,
-      phone: customer.phone?.trim() || null,
-      address: customer.address?.trim() || null,
-      street: customer.street?.trim() || null,
-      houseNumber: customer.houseNumber?.trim() || null,
-      postalCode: customer.postalCode?.trim() || null,
-      city: customer.city?.trim() || null,
+      companyName,
+      contactName,
+      email,
+      phone,
+      address,
+      street,
+      houseNumber,
+      postalCode,
+      city,
       countryCode,
       countrySnapshot: countryCode,
       vatNumber: customer.vatNumber?.trim() || null,
-      preferredLanguage: customer.preferredLanguage ?? actor.language,
+      preferredLanguage,
       ownerUserId: actor.id,
       teamIdSnapshot: actor.teamId ?? null,
+      businessRelationId: businessRelation.id,
     },
   });
 }

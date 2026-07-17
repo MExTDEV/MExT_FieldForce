@@ -69,6 +69,7 @@
     "test:salesday-day-gate": "tsx scripts/test-salesday-day-gate.ts",
     "test:salesday-feature-controls": "tsx scripts/test-salesday-feature-controls.ts",
     "test:salesday-pwa-shell": "tsx scripts/test-salesday-pwa-shell.ts",
+    "test:salesday-business-relations": "tsx scripts/test-salesday-business-relations.ts",
     "contract:import-catalog": "tsx scripts/import-contract-catalog.ts",
     "utf8:diagnose": "tsx scripts/diagnose-utf8.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",
