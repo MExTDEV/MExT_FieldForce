@@ -4,7 +4,7 @@
 
 Status: `IMPLEMENTED IN SOURCE — DATABASE DEPLOYMENT PENDING`
 
-This slice implements the persistent ERP integration foundation. The separate encrypted IndexedDB foundation is described in `MILESTONE-1-OFFLINE-STORE.md`; secure device/key provisioning, draft autosave, day −1 blocking, emergency mode, feature flags, notifications and UI remain open.
+This slice implements the persistent ERP integration foundation. Subsequent linked Milestone 1 evidence documents cover the encrypted IndexedDB foundation, secure device/key provisioning, draft autosave, day −1 blocking, emergency mode, feature flags, notifications and the PWA security shell. Production migration and the real BC/NAV adapter remain explicit production gates.
 
 Migration `0040_sales_erp_integration_ledger` is additive and has not been applied to the configured external VPS database.
 

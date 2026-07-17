@@ -411,7 +411,7 @@ Evidence and deliberately unresolved adapter details are recorded in `MILESTONE-
 
 ## Milestone 1 — Platform integration, replica and offline foundation
 
-Status: `IN PROGRESS` — the persistent integration-ledger, encrypted offline-store, personal device-registration, device-security, encrypted draft/autosave, offline-command queue, automatic sync/status and day −1/emergency foundations are implemented in source. Authenticated offline batches can be accepted transactionally into the ERP ledger; see the linked Milestone 1 evidence documents in `README.md`. Production database deployment, PWA/workflow wiring, feature controls and the remaining platform deliverables are still pending.
+Status: `COMPLETE IN SOURCE` (16 July 2026) — the persistent integration-ledger, encrypted offline/PWA foundation, personal device and key lifecycle, encrypted draft/autosave, dependency-aware command queue, automatic sync/status, day −1/emergency gate, server feature controls, production mock guard and neutral notification layer are implemented, wired and validated. See `MILESTONE-1-VALIDATION-2026-07-16.md`. No production database migration, deployment or real ERP adapter was performed; those remain production gates.
 
 ### Deliverables
 

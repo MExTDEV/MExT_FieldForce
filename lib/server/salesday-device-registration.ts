@@ -25,6 +25,10 @@ export type SalesDeviceRegistration = {
   revokedAt: Date | null;
   revokedByUserId: string | null;
   revocationReason: string | null;
+  keyVersion?: number;
+  keyFingerprint?: string | null;
+  keyProvisionedAt?: Date | null;
+  keyRevokedAt?: Date | null;
   userCountry: Country;
   createdAt: Date;
   updatedAt: Date;
@@ -125,6 +129,10 @@ export function toSalesDeviceRegistrationResponse(registration: SalesDeviceRegis
     revokedAt: registration.revokedAt,
     revokedByUserId: registration.revokedByUserId,
     revocationReason: registration.revocationReason,
+    keyVersion: registration.keyVersion ?? 0,
+    keyFingerprint: registration.keyFingerprint ?? null,
+    keyProvisionedAt: registration.keyProvisionedAt ?? null,
+    keyRevokedAt: registration.keyRevokedAt ?? null,
     createdAt: registration.createdAt,
     updatedAt: registration.updatedAt,
   };
@@ -343,6 +351,10 @@ function mapRegistration(record: {
   revokedAt: Date | null;
   revokedByUserId: string | null;
   revocationReason: string | null;
+  keyVersion: number;
+  keyFingerprint: string | null;
+  keyProvisionedAt: Date | null;
+  keyRevokedAt: Date | null;
   user: { country: Country };
   createdAt: Date;
   updatedAt: Date;

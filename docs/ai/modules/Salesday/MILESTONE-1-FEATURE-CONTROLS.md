@@ -19,6 +19,8 @@ An explicit disabled row at a more specific scope overrides a broader enabled ro
 
 The same server decision feeds the client shell, direct SalesDay route state, API command acceptance and authenticated device bootstrap. The client provider defaults every feature to disabled while loading or after an error.
 
+The PWA device runtime is mounted inside the feature provider. For an activated Representative it performs personal registration, non-exportable key provisioning/recovery, encrypted device-token storage, authenticated bootstrap and periodic remote-control processing. Initialization is single-flight to prevent duplicate React mounts from racing two provisioning attempts.
+
 ## Runtime configuration
 
 The server-owned `AppSetting` key `salesday.runtime.v1` selects the provider, controls fictitious seed availability and selects enabled SalesDay notification types.
@@ -45,6 +47,8 @@ When ERP writes are disabled, no pending row is claimed or deleted. Stored comma
 - every flag or runtime change writes its `AuditLog` row in the same Prisma transaction.
 
 Representatives receive only the SalesDay preparation, agenda and stock menu permissions. They do not receive SalesDay Mijn Team or management permissions.
+
+The SalesDay PWA security shell is mounted globally but starts only for a Representative when the server-resolved `SALESDAY` flag is effective. It fails closed while device security is initializing and when replacement or security recovery is required.
 
 ## Notification privacy
 

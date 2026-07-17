@@ -703,5 +703,11 @@
   "salesday.access.disabled": "SalesDay niet geactiveerd",
   "salesday.access.disabledDescription": "SalesDay is niet actief voor je huidige scope. Neem contact op met de backoffice als dit onverwacht is.",
   "salesday.access.inventoryDisabled": "Voorraad niet geactiveerd",
-  "salesday.access.foundationReady": "De beveiligde platform-, toestel-, offline- en synchronisatiefundering is actief. Operationele schermen worden in de volgende mijlpaal aangesloten."
+  "salesday.access.foundationReady": "De beveiligde platform-, toestel-, offline- en synchronisatiefundering is actief. Operationele schermen worden in de volgende mijlpaal aangesloten.",
+  "salesday.device.initializing": "Persoonlijk toestel beveiligen",
+  "salesday.device.initializingDescription": "De toestelbinding, versleutelde sleutelkluis en veilige SalesDay-opstart worden gecontroleerd.",
+  "salesday.device.replacementRequired": "Toestelvervanging vereist",
+  "salesday.device.replacementDescription": "Er is al een ander persoonlijk SalesDay-toestel gekoppeld. Laat dit gecontroleerd intrekken en vervangen.",
+  "salesday.device.error": "Toestelbeveiliging niet gereed",
+  "salesday.device.errorDescription": "SalesDay blijft gesloten omdat de persoonlijke toestelbinding niet veilig kon worden bevestigd. Neem contact op met support."
 }

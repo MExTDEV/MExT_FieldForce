@@ -1,6 +1,6 @@
 # Milestone 1 — Device key and remote-control security
 
-Status: `IMPLEMENTED IN SOURCE — RUNTIME UI, MDM AND PRODUCTION DEPLOYMENT PENDING`
+Status: `IMPLEMENTED AND WIRED IN SOURCE — MDM AND PRODUCTION DEPLOYMENT PENDING`
 
 This slice connects the personal `DeviceRegistration` to a non-exportable local encryption key, the authenticated login session and auditable remote logout/wipe commands.
 
@@ -73,9 +73,9 @@ Typecheck, targeted ESLint and `npx prisma validate` pass. Migration `0043` has 
 
 ## Still open
 
-- PWA screen/bootstrap wiring for challenge, key storage and encrypted token storage;
-- periodic command polling and global logout integration in the running UI;
 - biometric/PIN resume gate;
 - real Android keystore/MDM compliance, remote-lock and wipe exercise;
 - recovery UX for an interrupted provisioning attempt;
 - production deployment and real-device acceptance.
+
+The running PWA shell now creates/reuses the opaque personal device identity, performs challenge/key confirmation as a single-flight operation, stores the device bearer token only in the encrypted device store, executes authenticated bootstrap, polls remote commands and blocks SalesDay on initialization, replacement or security failure.

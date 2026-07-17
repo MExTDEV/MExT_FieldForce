@@ -705,5 +705,11 @@
   "salesday.access.disabled": "SalesDay nicht aktiviert",
   "salesday.access.disabledDescription": "SalesDay ist für Ihren aktuellen Bereich nicht aktiv. Wenden Sie sich an das Backoffice, falls dies unerwartet ist.",
   "salesday.access.inventoryDisabled": "Bestand nicht aktiviert",
-  "salesday.access.foundationReady": "Die sichere Plattform-, Geräte-, Offline- und Synchronisierungsgrundlage ist aktiv. Die operativen Bildschirme werden im nächsten Meilenstein angebunden."
+  "salesday.access.foundationReady": "Die sichere Plattform-, Geräte-, Offline- und Synchronisierungsgrundlage ist aktiv. Die operativen Bildschirme werden im nächsten Meilenstein angebunden.",
+  "salesday.device.initializing": "Persönliches Gerät wird gesichert",
+  "salesday.device.initializingDescription": "Gerätebindung, verschlüsselter Schlüsselspeicher und sicherer SalesDay-Start werden geprüft.",
+  "salesday.device.replacementRequired": "Geräteaustausch erforderlich",
+  "salesday.device.replacementDescription": "Ein anderes persönliches SalesDay-Gerät ist bereits verknüpft. Lassen Sie es kontrolliert widerrufen und ersetzen.",
+  "salesday.device.error": "Gerätesicherheit nicht bereit",
+  "salesday.device.errorDescription": "SalesDay bleibt geschlossen, weil die persönliche Gerätebindung nicht sicher bestätigt werden konnte. Wenden Sie sich an den Support."
 }

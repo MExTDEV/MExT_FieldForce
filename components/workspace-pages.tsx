@@ -38,6 +38,7 @@ import { usePersonalCriteria } from "@/components/personal-criteria-provider";
 import { usePerformance } from "@/components/performance-provider";
 import { useModules } from "@/components/module-provider";
 import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
+import { useSalesDayDeviceRuntime } from "@/components/salesday/device-runtime-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { MyReflectionsPage, MyReportsPage } from "@/components/representative-workflow-pages";
 import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/contact-help-workflows";
@@ -178,6 +179,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user, loading: sessionLoading, error: sessionError } = useSession();
   const { isModuleEnabled } = useModules();
   const salesDayFeatures = useSalesDayFeatures();
+  const salesDayDeviceRuntime = useSalesDayDeviceRuntime();
   const path = segments.join("/");
   const routeModule = moduleForRoute(segments[0] ?? "");
 
@@ -209,6 +211,15 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   }
   if (segments[0] === "salesday" && !salesDayFeatures.isEnabled("SALESDAY")) {
     return <EmptyState title={translate(user.language, "salesday.access.disabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
+  }
+  if (segments[0] === "salesday" && user.role === "REPRESENTATIVE" && salesDayDeviceRuntime.phase === "INITIALIZING") {
+    return <EmptyState title={translate(user.language, "salesday.device.initializing")} description={translate(user.language, "salesday.device.initializingDescription")} />;
+  }
+  if (segments[0] === "salesday" && user.role === "REPRESENTATIVE" && salesDayDeviceRuntime.phase === "REPLACEMENT_REQUIRED") {
+    return <EmptyState title={translate(user.language, "salesday.device.replacementRequired")} description={translate(user.language, "salesday.device.replacementDescription")} />;
+  }
+  if (segments[0] === "salesday" && user.role === "REPRESENTATIVE" && salesDayDeviceRuntime.phase === "ERROR") {
+    return <EmptyState title={translate(user.language, "salesday.device.error")} description={translate(user.language, "salesday.device.errorDescription")} />;
   }
   if (segments[0] === "salesday" && segments[1] === "mijn-voorraad" && !salesDayFeatures.isEnabled("INVENTORY")) {
     return <EmptyState title={translate(user.language, "salesday.access.inventoryDisabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;

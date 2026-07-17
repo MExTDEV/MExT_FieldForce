@@ -705,5 +705,11 @@
   "salesday.access.disabled": "SalesDay non activé",
   "salesday.access.disabledDescription": "SalesDay n’est pas actif pour votre périmètre actuel. Contactez le back-office si cela est inattendu.",
   "salesday.access.inventoryDisabled": "Stock non activé",
-  "salesday.access.foundationReady": "La base sécurisée de la plateforme, des appareils, du mode hors ligne et de la synchronisation est active. Les écrans opérationnels seront connectés lors du prochain jalon."
+  "salesday.access.foundationReady": "La base sécurisée de la plateforme, des appareils, du mode hors ligne et de la synchronisation est active. Les écrans opérationnels seront connectés lors du prochain jalon.",
+  "salesday.device.initializing": "Sécurisation de l’appareil personnel",
+  "salesday.device.initializingDescription": "La liaison de l’appareil, le coffre de clés chiffré et le démarrage sécurisé de SalesDay sont vérifiés.",
+  "salesday.device.replacementRequired": "Remplacement de l’appareil requis",
+  "salesday.device.replacementDescription": "Un autre appareil SalesDay personnel est déjà lié. Faites-le révoquer et remplacer de manière contrôlée.",
+  "salesday.device.error": "Sécurité de l’appareil non prête",
+  "salesday.device.errorDescription": "SalesDay reste fermé car la liaison personnelle de l’appareil n’a pas pu être confirmée en toute sécurité. Contactez le support."
 }

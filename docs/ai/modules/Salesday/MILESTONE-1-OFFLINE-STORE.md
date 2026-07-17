@@ -1,6 +1,6 @@
 # Milestone 1 — Encrypted offline device store
 
-Status: `FOUNDATION IMPLEMENTED IN SOURCE — RUNTIME INTEGRATION PENDING`
+Status: `FOUNDATION IMPLEMENTED AND SECURITY-SHELL INTEGRATED — WORKFLOW FORMS START IN MILESTONE 2`
 
 This slice provides the isolated browser-storage foundation for recoverable SalesDay drafts and later offline commands. MariaDB and the ERP remain the authoritative business-data path; IndexedDB is not a second system of record.
 
@@ -39,11 +39,9 @@ TypeScript and targeted ESLint validation are part of this slice's acceptance ch
 
 This source foundation is not yet a production offline implementation. The following remain mandatory:
 
-- PWA runtime wiring for the key provisioning, session invalidation and remote-control foundation described in `MILESTONE-1-DEVICE-SECURITY.md`;
 - Android/MDM binding and a real remote-wipe exercise;
 - biometric/PIN resume gate;
 - workflow-form wiring for the shared draft/autosave layer described in `MILESTONE-1-DRAFT-AUTOSAVE.md` and the encrypted command queue described in `MILESTONE-1-SYNC-QUEUE.md`;
-- sync status, retry and day −1 blocking UI;
 - a controlled migration or expiry path for any existing local-storage drafts;
 - real-browser IndexedDB, storage-pressure, upgrade, logout and device-loss acceptance tests.
 
