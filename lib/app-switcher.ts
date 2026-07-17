@@ -325,7 +325,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
   },
   {
     key: "salesday",
-    title: "Salesday",
+    title: "SalesDay",
     subtitle: "Agenda. Contact. Sales.",
     icon: CalendarDays,
     enabledPermission: "menu.salesday.enabled",
@@ -333,10 +333,11 @@ export const appSwitcherDomains: DomainDefinition[] = [
     links: [
       { key: "overview", label: "Operationeel overzicht", description: "Dagindicatoren en Power BI-link", href: "/salesday", icon: LayoutDashboard, permission: "menu.salesday.enabled", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "preparation", label: "Mijn voorbereiding", description: "Tijdelijke route", href: "/salesday/mijn-voorbereiding", icon: BookOpenCheck, permission: "menu.salesday.preparation", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
-      { key: "agenda", label: "Mijn Agenda", description: "Tijdelijke route", href: "/salesday/mijn-agenda", icon: CalendarDays, permission: "menu.salesday.agenda", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
+      { key: "agenda", label: "Mijn agenda", description: "Tijdelijke route", href: "/salesday/mijn-agenda", icon: CalendarDays, permission: "menu.salesday.agenda", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "team", label: "Mijn Team", description: "Tijdelijke route", href: "/salesday/mijn-team", icon: UsersRound, permission: "menu.salesday.team", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
-      { key: "stock", label: "Mijn Voorraad", description: "Tijdelijke route", href: "/salesday/mijn-voorraad", icon: Contact, permission: "menu.salesday.stock", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
+      { key: "stock", label: "Mijn voorraad", description: "Tijdelijke route", href: "/salesday/mijn-voorraad", icon: Contact, permission: "menu.salesday.stock", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
       { key: "cash", label: "Kasblad", description: "Kassaldo en ERP-bevestiging", href: "/salesday/cash", icon: ClipboardCheck, permission: "menu.salesday.cash", tone: placeholderTone, isAvailable: withinDomain(canAccessSalesday) },
+      { key: "dayClosure", label: "Dagafsluiting", description: "Eigen werkdag afronden", href: "/salesday/dagafsluiting", icon: ClipboardCheck, permission: "menu.salesday.agenda", tone: placeholderTone, isAvailable: (user) => user.role === "REPRESENTATIVE" && canAccessSalesday(user) },
     ],
   },
   {
@@ -447,6 +448,26 @@ export function getAvailableDomains(
         (link) => link.available && can(user, link.permission)
       ),
     }));
+}
+
+export type AppSwitcherFeatureState = {
+  salesdayEnabled: boolean;
+  inventoryEnabled: boolean;
+};
+
+export function getAvailableDomainsForFeatureState(
+  user: MockUser,
+  modules: AppModuleConfig[],
+  features: AppSwitcherFeatureState,
+): AppSwitcherDomain[] {
+  return getAvailableDomains(user, modules)
+    .filter((domain) => domain.key !== "salesday" || features.salesdayEnabled)
+    .map((domain) => domain.key !== "salesday"
+      ? domain
+      : {
+          ...domain,
+          links: domain.links.filter((link) => link.key !== "stock" || features.inventoryEnabled),
+        });
 }
 
 export function getDomainForPath(pathname: string): AppSwitcherDomainKey {

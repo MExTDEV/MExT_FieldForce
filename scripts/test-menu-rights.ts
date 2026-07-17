@@ -1,4 +1,9 @@
-import { getAvailableDomains } from "../lib/app-switcher";
+import {
+  getAvailableDomains,
+  getAvailableDomainsForFeatureState,
+  getDomainForPath,
+  type AppSwitcherDomainKey,
+} from "../lib/app-switcher";
 import {
   canAccessManagementSection,
   managementSections,
@@ -92,20 +97,65 @@ for (const rule of Object.values(coachingModuleNavigationRules)) {
   );
 }
 
+const expectedManagementDomains: AppSwitcherDomainKey[] = ["coaching", "salesday", "inventory", "pst", "contract", "service"];
+const expectedRepresentativeDomains: AppSwitcherDomainKey[] = ["coaching", "salesday", "inventory", "contract"];
+
 for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER", "SALES_LEADER"] as Role[]) {
   const domains = getAvailableDomains(user(role), modules);
-  expect(domains.length === 5, `${role} moet vijf toegestane hoofditems krijgen.`);
+  const domainKeys = domains.map((domain) => domain.key);
+  for (const requiredDomain of expectedManagementDomains) {
+    expect(domainKeys.includes(requiredDomain), `${role} mist hoofditem ${requiredDomain}.`);
+  }
 }
 
 const representative = user("REPRESENTATIVE");
 const representativeDomains = getAvailableDomains(representative, modules);
-expect(representativeDomains.length === 3, "Een vertegenwoordiger moet standaard Coaching, SalesDay en Contract zien.");
+const representativeDomainKeys = representativeDomains.map((domain) => domain.key);
+for (const requiredDomain of expectedRepresentativeDomains) {
+  expect(representativeDomainKeys.includes(requiredDomain), `Een vertegenwoordiger mist hoofditem ${requiredDomain}.`);
+}
+expect(!representativeDomainKeys.includes("pst"), "Een vertegenwoordiger mag PST niet standaard zien.");
+expect(!representativeDomainKeys.includes("service"), "Een vertegenwoordiger mag Service niet standaard zien.");
 expect(representativeDomains.some((domain) => domain.key === "contract"), "Contract ontbreekt voor de vertegenwoordiger.");
 const representativeSalesDayLinks = representativeDomains.find((domain) => domain.key === "salesday")?.links.map((link) => link.key) ?? [];
 expect(representativeSalesDayLinks.includes("preparation"), "SalesDay-voorbereiding ontbreekt voor de vertegenwoordiger.");
 expect(representativeSalesDayLinks.includes("agenda"), "SalesDay-agenda ontbreekt voor de vertegenwoordiger.");
 expect(representativeSalesDayLinks.includes("stock"), "SalesDay-voorraad ontbreekt voor de vertegenwoordiger.");
+expect(representativeSalesDayLinks.includes("cash"), "SalesDay-kasblad ontbreekt voor de vertegenwoordiger.");
+expect(representativeSalesDayLinks.includes("dayClosure"), "SalesDay-dagafsluiting ontbreekt voor de vertegenwoordiger.");
 expect(!representativeSalesDayLinks.includes("team"), "SalesDay Mijn Team mag niet zichtbaar zijn voor de vertegenwoordiger.");
+const representativeFeatureDomains = getAvailableDomainsForFeatureState(representative, modules, {
+  salesdayEnabled: true,
+  inventoryEnabled: true,
+});
+expect(
+  representativeFeatureDomains.some((domain) => domain.key === "salesday"),
+  "Een actieve SalesDay-feature moet SalesDay in het hoofdmenu tonen."
+);
+expect(
+  representativeFeatureDomains
+    .find((domain) => domain.key === "salesday")
+    ?.links.some((link) => link.key === "stock"),
+  "Een actieve Inventory-feature moet Mijn voorraad onder SalesDay tonen."
+);
+expect(
+  !getAvailableDomainsForFeatureState(representative, modules, {
+    salesdayEnabled: false,
+    inventoryEnabled: true,
+  }).some((domain) => domain.key === "salesday"),
+  "Een uitgeschakelde SalesDay-feature mag SalesDay niet in het hoofdmenu tonen."
+);
+expect(
+  !getAvailableDomainsForFeatureState(representative, modules, {
+    salesdayEnabled: true,
+    inventoryEnabled: false,
+  })
+    .find((domain) => domain.key === "salesday")
+    ?.links.some((link) => link.key === "stock"),
+  "Een uitgeschakelde Inventory-feature mag Mijn voorraad niet onder SalesDay tonen."
+);
+expect(getDomainForPath("/salesday/mijn-voorbereiding") === "salesday", "SalesDay-voorbereiding moet het SalesDay-domein openen.");
+expect(getDomainForPath("/salesday/cash") === "salesday", "Kasblad moet het SalesDay-domein openen.");
 const representativeLinks = representativeDomains.find((domain) => domain.key === "coaching")?.links.map((link) => link.key) ?? [];
 expect(representativeLinks.includes("dashboard"), "Dashboard ontbreekt voor de vertegenwoordiger.");
 expect(representativeLinks.includes("planning"), "Planning ontbreekt voor de vertegenwoordiger.");

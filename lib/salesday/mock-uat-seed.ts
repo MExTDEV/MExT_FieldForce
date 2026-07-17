@@ -1,5 +1,6 @@
 import { salesDayNotificationTypes } from "@/lib/salesday/runtime-configuration";
 import type { SalesErpMockDataset } from "@/lib/server/integrations/sales-erp/fixtures";
+import type { SalesErpCountryCode } from "@/lib/server/integrations/sales-erp/contracts";
 
 export type SalesDayMockUatSeedDatabaseInfo = {
   scheme: string;
@@ -61,9 +62,12 @@ export function buildSalesDayMockUatRuntimeConfiguration() {
 }
 
 export function buildSalesDayMockUatSummary(dataset: SalesErpMockDataset) {
-  const countries = [...new Set(dataset.customers.map((customer) => customer.scope.country))].sort();
+  const countries = Array.from(
+    new Set<SalesErpCountryCode>(dataset.customers.map((customer) => customer.scope.country)),
+  ).sort();
   const appointmentDates = [...new Set(dataset.appointments.map((appointment) => appointment.businessDate))].sort();
   const nonZeroCashBalances = dataset.cashBalances.filter((balance) => Number(balance.balance) !== 0);
+  const requiredCountries: SalesErpCountryCode[] = ["BE", "NL", "DE"];
   return {
     countries,
     appointmentDates,
@@ -80,7 +84,7 @@ export function buildSalesDayMockUatSummary(dataset: SalesErpMockDataset) {
     },
     scenarios: {
       allCustomersAreDemo: dataset.customers.every((customer) => customer.isDemo),
-      coversAllCountries: ["BE", "NL", "DE"].every((country) => countries.includes(country)),
+      coversAllCountries: requiredCountries.every((country) => countries.includes(country)),
       hasTodayAndPreparationAppointments: appointmentDates.length >= 2,
       hasInvalidOrMissingVat: dataset.customers.some(
         (customer) => !customer.vatNumber || customer.billingValidation.status === "INVALID",

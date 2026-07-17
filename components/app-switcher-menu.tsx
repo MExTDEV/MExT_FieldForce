@@ -16,7 +16,7 @@ import { useModules } from "@/components/module-provider";
 import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
 import { roleLabels } from "@/lib/permissions";
 import {
-  getAvailableDomains,
+  getAvailableDomainsForFeatureState,
   getDomainForPath,
   type AppSwitcherDomain,
   type AppSwitcherLink,
@@ -30,14 +30,10 @@ export function AppSwitcherMenu() {
   const authenticatedMode = process.env.NEXT_PUBLIC_AUTH_MODE !== "demo";
   const demoUserSwitcherEnabled =
     !authenticatedMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
-  const availableDomains = useMemo(() => getAvailableDomains(user, modules)
-    .filter((domain) => domain.key !== "salesday" || (!salesDayFeatures.loading && salesDayFeatures.isEnabled("SALESDAY")))
-    .map((domain) => domain.key !== "salesday"
-      ? domain
-      : {
-          ...domain,
-          links: domain.links.filter((link) => link.key !== "stock" || salesDayFeatures.isEnabled("INVENTORY")),
-        }), [modules, salesDayFeatures, user]);
+  const availableDomains = useMemo(() => getAvailableDomainsForFeatureState(user, modules, {
+    salesdayEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("SALESDAY"),
+    inventoryEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("INVENTORY"),
+  }), [modules, salesDayFeatures, user]);
   const [open, setOpen] = useState(false);
   const [selectedDomain, setSelectedDomain] = useState<AppSwitcherDomain["key"]>(() =>
     getDomainForPath(pathname)

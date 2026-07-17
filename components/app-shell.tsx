@@ -42,6 +42,12 @@ import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
 import { SessionFailure } from "@/components/session-state";
 import { AppSwitcherMenu } from "@/components/app-switcher-menu";
+import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
+import {
+  getAvailableDomainsForFeatureState,
+  getDomainForPath,
+  type AppSwitcherDomainKey,
+} from "@/lib/app-switcher";
 import {
   notificationBody,
   notificationTitle,
@@ -132,15 +138,28 @@ function canSeeModuleNav(user: MockUser, code: AppModuleCode) {
   return canAccessCoachingModuleNavigation(user, code);
 }
 
+function isDomainSidebarNavigation(domain: AppSwitcherDomainKey) {
+  return domain === "salesday" || domain === "inventory" || domain === "pst" || domain === "service";
+}
+
+function isNavigationItemActive(pathname: string, href: string) {
+  if (["/dashboard", "/salesday", "/inventory", "/pst", "/service"].includes(href)) {
+    return pathname === href;
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, language, setLanguage, status } = useSession();
-  const { isModuleEnabled } = useModules();
+  const { isModuleEnabled, modules } = useModules();
+  const salesDayFeatures = useSalesDayFeatures();
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [openManagementGroups, setOpenManagementGroups] = useState<Record<string, boolean>>({});
   const visibleManagementSections = getVisibleManagementSections(user);
+  const activeDomainKey = getDomainForPath(pathname);
   const isContractPath = pathname === "/contract" || pathname.startsWith("/contract/");
   const visibleManagementNav = visibleManagementSections.flatMap((section) => {
     const item = manageNav.find((candidate) => candidate.section === section.section);
@@ -157,9 +176,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeDashboard = canAccessDashboard(user);
   const canSeeMyTeam =
     isModuleEnabled("BEGELEIDINGEN") && canAccessMyTeamNavigation(user);
-  const mainNav = isContractPath
-    ? contractNav.filter((item) => !("manageOnly" in item) || !item.manageOnly || ["ADMIN", "SUPER_ADMIN"].includes(user.role))
-    : [...(canSeeDashboard ? [dashboardNav] : []), ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav];
+  const appDomains = useMemo(() => getAvailableDomainsForFeatureState(user, modules, {
+    salesdayEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("SALESDAY"),
+    inventoryEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("INVENTORY"),
+  }), [modules, salesDayFeatures, user]);
+  const activeAppDomain = appDomains.find((domain) => domain.key === activeDomainKey);
+  const domainMainNav = activeAppDomain && isDomainSidebarNavigation(activeDomainKey)
+    ? activeAppDomain.links.map((link) => ({ href: link.href, icon: link.icon, label: link.label }))
+    : null;
+  const mainNav = domainMainNav ?? (isContractPath
+      ? contractNav
+          .filter((item) => !("manageOnly" in item) || !item.manageOnly || ["ADMIN", "SUPER_ADMIN"].includes(user.role))
+          .map((item) => ({ href: item.href, icon: item.icon, label: translate(language, item.key as TranslationKey) }))
+      : [...(canSeeDashboard ? [dashboardNav] : []), ...(canSeeMyTeam ? [myTeamNav] : []), ...activeModuleNav]
+          .map((item) => ({ href: item.href, icon: item.icon, label: translate(language, item.key as TranslationKey) })));
 
   if (pathname === "/login") return <>{children}</>;
   if (status === "loading") {
@@ -214,8 +244,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             key={item.href}
             href={item.href}
             icon={item.icon}
-            label={translate(language, item.key as TranslationKey)}
-            active={pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))}
+            label={item.label}
+            active={isNavigationItemActive(pathname, item.href)}
             collapsed={collapsed}
             onClick={() => setMobileOpen(false)}
           />
@@ -384,7 +414,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur lg:hidden">
         {mainNav.slice(0, 5).map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          const active = isNavigationItemActive(pathname, item.href);
           return (
             <Link
               key={item.href}
@@ -392,7 +422,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={`flex min-w-14 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold ${active ? "bg-brand-50 text-brand-700" : "text-slate-500"}`}
             >
               <Icon className="h-5 w-5" />
-              {translate(language, item.key as TranslationKey)}
+              {item.label}
             </Link>
           );
         })}
