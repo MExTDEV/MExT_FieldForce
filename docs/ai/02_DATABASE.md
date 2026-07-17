@@ -679,6 +679,16 @@ Migration `0047_salesday_customer_operations` additively defines `SalesAppointme
 - no destructive statement or production seed is present;
 - migration `0047` is not deployed to the configured production database.
 
+## SalesDay appointment operations
+
+Migration `0048_salesday_appointment_operations` additively extends `SalesAppointment` with native status, local revision and pending FieldForce-write priority.
+
+- `SalesAppointmentChange` correlates actor/device evidence and old/proposed values with one ERP command;
+- `SalesAppointmentOutcomeReason` caches the multilingual, active and country-scoped ERP reason configuration;
+- own appointment writes and outcomes are persisted with audit and outbox state in a serializable transaction;
+- no destructive statement or production seed is present;
+- migration `0048` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

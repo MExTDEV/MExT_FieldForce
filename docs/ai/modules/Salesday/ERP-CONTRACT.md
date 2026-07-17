@@ -77,6 +77,8 @@ The versioned command set covers:
 
 All commands carry a stable `commandId`, semantic `businessKey`, generated `idempotencyKey`, actor/device/country context and optional command dependencies.
 
+An appointment outcome carries the stable local appointment ID and may omit the external appointment ID while its own-appointment create command is still pending. In that case the outcome depends on the create command; an adapter resolves the acknowledged external identity before submission. Cancellation is represented as an appointment outcome and, like moved/not-completed, uses the ERP reason contract.
+
 ## Idempotency and ordering
 
 The idempotency key is a SHA-256 hash over canonical JSON containing command type, business key, context and payload. Object keys are sorted; array order is preserved. `commandId` and `issuedAt` are excluded so a transport retry remains the same business request.

@@ -387,6 +387,13 @@ enum SalesAppointmentOrigin {
   REPRESENTATIVE
 }
 
+enum SalesAppointmentChangeType {
+  CREATE
+  EDIT
+  DUPLICATE
+  OUTCOME
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -492,6 +499,7 @@ model User {
   ownedBusinessRelations              BusinessRelation[]                   @relation("BusinessRelationOwner")
   salesAppointments                   SalesAppointment[]                    @relation("SalesAppointmentRepresentative")
   businessRelationChanges             BusinessRelationChange[]             @relation("BusinessRelationChangeActor")
+  salesAppointmentChanges             SalesAppointmentChange[]             @relation("SalesAppointmentChangeActor")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -2044,6 +2052,7 @@ model SalesAppointment {
   provider                 ErpIntegrationProvider?
   externalId               String?
   sourceVersion            String?
+  nativeStatus             String?
   sourceUpdatedAt          DateTime?
   businessDate             DateTime               @db.Date
   startsAt                 DateTime?
@@ -2052,6 +2061,8 @@ model SalesAppointment {
   sequence                 Int
   status                   SalesAppointmentStatus @default(PLANNED)
   origin                   SalesAppointmentOrigin @default(ERP)
+  localRevision            Int                    @default(0)
+  pendingFieldForceEdit    Boolean                @default(false)
   relationId               String
   representativeUserId     String
   representativeExternalId String
@@ -2063,6 +2074,7 @@ model SalesAppointment {
   relation                 BusinessRelation       @relation(fields: [relationId], references: [id], onDelete: Restrict)
   representative           User                   @relation("SalesAppointmentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
   team                     Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  changes                  SalesAppointmentChange[]
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 
@@ -2072,6 +2084,48 @@ model SalesAppointment {
   @@index([teamId, businessDate])
   @@index([country, businessDate])
   @@index([status, businessDate])
+}
+
+model SalesAppointmentChange {
+  id                     String                     @id @default(cuid())
+  appointmentId          String
+  actorUserId            String
+  deviceId               String
+  type                    SalesAppointmentChangeType
+  oldValueJson           String                     @db.LongText
+  proposedValueJson      String                     @db.LongText
+  validationJson         String                     @db.LongText
+  commandId              String                     @unique
+  erpAcknowledgedAt      DateTime?
+  erpAcknowledgementJson String?                    @db.LongText
+  appointment            SalesAppointment           @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  actor                  User                       @relation("SalesAppointmentChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  @@index([appointmentId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([erpAcknowledgedAt])
+}
+
+model SalesAppointmentOutcomeReason {
+  id               String                 @id @default(cuid())
+  provider         ErpIntegrationProvider
+  externalId       String
+  sourceVersion    String
+  sourceUpdatedAt  DateTime
+  code             String
+  labelNl          String
+  labelFr          String
+  labelDe          String
+  country          Country?
+  active           Boolean                @default(true)
+  requiresComment  Boolean                @default(false)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([country, active, code])
 }
 
 model BusinessRelationChange {

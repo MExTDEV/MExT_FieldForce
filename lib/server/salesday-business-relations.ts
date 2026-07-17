@@ -9,6 +9,10 @@ import type {
   SalesErpProvider,
 } from "@/lib/server/integrations/sales-erp/contracts";
 import { SalesErpError } from "@/lib/server/integrations/sales-erp/errors";
+import {
+  applySalesErpAppointment,
+  applySalesErpAppointmentOutcomeReason,
+} from "@/lib/server/salesday-appointments";
 
 type NormalizedContact = {
   type: "PERSON" | "DEPARTMENT";
@@ -175,6 +179,12 @@ export async function applySalesErpCustomer(
 export async function applySalesDayReplicaEvent(tx: Prisma.TransactionClient, event: SalesErpEvent) {
   if (event.eventType === "customer.upserted") {
     return applySalesErpCustomer(tx, event.provider, event.payload, new Date(event.occurredAt));
+  }
+  if (event.eventType === "appointment.upserted") {
+    return applySalesErpAppointment(tx, event.provider, event.payload);
+  }
+  if (event.eventType === "appointment-outcome-reason.upserted") {
+    return applySalesErpAppointmentOutcomeReason(tx, event.provider, event.payload);
   }
   return { status: "IGNORED_UNOWNED_RESOURCE" as const, eventType: event.eventType };
 }

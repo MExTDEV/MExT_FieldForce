@@ -329,9 +329,10 @@ export type SalesErpAppointmentUpsertCommand = {
 };
 
 export type SalesErpAppointmentOutcomeCommand = {
-  appointmentExternalId: string;
+  localAppointmentId: string;
+  appointmentExternalId?: string;
   expectedSourceVersion?: string;
-  outcome: "COMPLETED" | "NOT_COMPLETED" | "MOVED";
+  outcome: "COMPLETED" | "NOT_COMPLETED" | "MOVED" | "CANCELLED";
   reasonExternalId?: string;
   comment?: string;
   completedAt: IsoDateTime;

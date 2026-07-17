@@ -480,6 +480,10 @@ Migration `0046_salesday_business_relations` adds `BusinessRelation`, normalized
 
 Migration `0047_salesday_customer_operations` additively adds the appointment access root (`SalesAppointment`) and mutation evidence (`BusinessRelationChange`). Customer mutations recheck the appointment inside a serializable transaction and atomically persist the relation projection, validation evidence, audit record, Contract compatibility update and ordered ERP outbox command. Production deployment is pending.
 
+## SalesDay appointment operations
+
+Migration `0048_salesday_appointment_operations` additively adds appointment local-revision/write-priority fields, `SalesAppointmentChange` evidence and the `SalesAppointmentOutcomeReason` ERP reference replica. Own-today mutations use serializable transactions and ordered outbox dependencies. Production deployment is pending.
+
 # Hulpaanvragen
 
 Help requests are stored in `HelpRequest`.
