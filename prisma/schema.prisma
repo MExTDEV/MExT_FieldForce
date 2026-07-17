@@ -406,6 +406,55 @@ enum SalesAttachmentStatus {
   FAILED
 }
 
+enum SalesArticlePriceType {
+  SALES
+  CONTRACT
+}
+
+enum SalesDocumentType {
+  ORDER
+  ORDER_ALREADY_DELIVERED
+  INVOICE
+}
+
+enum SalesDocumentStatus {
+  QUEUED
+  ACCEPTED
+  REJECTED
+  VOIDED
+}
+
+enum SalesDocumentDeliveryStatus {
+  PENDING_ERP
+  SENT_TO_CUSTOMER
+  FAILED
+}
+
+enum SalesDocumentNumberBlockStatus {
+  ACTIVE
+  EXHAUSTED
+  CANCELLED
+  RECONCILED
+}
+
+enum SalesDocumentNumberUseStatus {
+  ALLOCATED
+  SUBMITTED
+  ACCEPTED
+  VOIDED
+  SKIPPED
+}
+
+enum SalesDocumentReasonKind {
+  OVERRIDE
+  UNSIGNED_EXCEPTION
+}
+
+enum SalesDocumentSignatureStatus {
+  SIGNED
+  UNSIGNED_EXCEPTION
+}
+
 model User {
   id                       String                      @id @default(cuid())
   firstName                String
@@ -522,6 +571,7 @@ model User {
   salesFollowUps                      SalesFollowUp[]
   salesReferences                    SalesReference[]
   salesDayClosures                   SalesDayClosure[]
+  salesDocuments                     SalesDocument[]                    @relation("SalesDocumentRepresentative")
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -1981,6 +2031,7 @@ model BusinessRelation {
   changes                  BusinessRelationChange[]
   commercialHistory        SalesCommercialHistoryDocument[]
   salesAttachments         SalesAttachment[]
+  salesDocuments           SalesDocument[]
   createdAt                DateTime                           @default(now())
   updatedAt                DateTime                           @updatedAt
 
@@ -2107,6 +2158,7 @@ model SalesAppointment {
   followUps                SalesFollowUp[]
   references               SalesReference[]
   attachments              SalesAttachment[]
+  salesDocuments           SalesDocument[]
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 
@@ -2276,6 +2328,217 @@ model SalesCommercialHistoryLine {
 
   @@unique([documentId, lineNumber])
   @@index([articleExternalId])
+}
+
+model SalesArticle {
+  id                     String                 @id @default(cuid())
+  provider               ErpIntegrationProvider
+  externalId             String
+  sourceVersion          String
+  sourceUpdatedAt        DateTime
+  articleNumber          String
+  stemNumber             String?
+  descriptionNl          String                 @db.Text
+  descriptionFr          String                 @db.Text
+  descriptionDe          String                 @db.Text
+  unit                   String
+  vatRate                Decimal                @db.Decimal(7, 4)
+  active                 Boolean                @default(true)
+  carrierBound           Boolean                @default(false)
+  lotTrackingRequired    Boolean                @default(false)
+  expiryTrackingRequired Boolean                @default(false)
+  prices                 SalesArticlePrice[]
+  documentLines          SalesDocumentLine[]
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([articleNumber])
+  @@index([active, carrierBound])
+}
+
+model SalesArticlePrice {
+  id              String                 @id @default(cuid())
+  articleId       String
+  provider        ErpIntegrationProvider
+  externalId      String
+  sourceVersion   String
+  sourceUpdatedAt DateTime
+  country         Country
+  currency        String
+  type            SalesArticlePriceType
+  amount          Decimal                @db.Decimal(14, 4)
+  validFrom       DateTime               @db.Date
+  validUntil      DateTime?              @db.Date
+  article         SalesArticle           @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([articleId, country, type])
+  @@index([country, type, validFrom, validUntil])
+}
+
+model SalesDocumentReason {
+  id              String                  @id @default(cuid())
+  kind            SalesDocumentReasonKind
+  code            String
+  labelNl         String
+  labelFr         String
+  labelDe         String
+  country         Country?
+  active          Boolean                 @default(true)
+  requiresComment Boolean                 @default(true)
+  sortOrder       Int                     @default(0)
+  overrideUses    SalesDocument[]         @relation("SalesDocumentOverrideReason")
+  unsignedUses    SalesDocumentSignatureEvidence[] @relation("SalesDocumentUnsignedReason")
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([kind, country, active, sortOrder])
+  @@index([code])
+}
+
+model SalesDocumentNumberBlock {
+  id              String                         @id @default(cuid())
+  provider        ErpIntegrationProvider
+  externalId      String?
+  country         Country
+  documentType    SalesDocumentType
+  prefix          String                         @default("")
+  firstSequence   Int
+  lastSequence    Int
+  nextSequence    Int
+  padding         Int                            @default(0)
+  status          SalesDocumentNumberBlockStatus @default(ACTIVE)
+  sourceVersion   String?
+  sourceUpdatedAt DateTime?
+  reservedAt      DateTime                       @default(now())
+  expiresAt       DateTime?
+  reconciledAt    DateTime?
+  uses            SalesDocumentNumberUse[]
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+
+  @@index([provider, country, documentType, status])
+  @@index([externalId])
+}
+
+model SalesDocumentNumberUse {
+  id                 String                       @id @default(cuid())
+  blockId            String
+  number             String
+  sequence           Int
+  status             SalesDocumentNumberUseStatus @default(ALLOCATED)
+  allocatedAt        DateTime                     @default(now())
+  submittedAt        DateTime?
+  voidedAt           DateTime?
+  skipReason         String?                      @db.Text
+  reconciliationJson String?                      @db.LongText
+  block              SalesDocumentNumberBlock     @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  document           SalesDocument?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  @@unique([blockId, number])
+  @@unique([blockId, sequence])
+  @@index([status, allocatedAt])
+}
+
+model SalesDocument {
+  id                     String                       @id @default(cuid())
+  appointmentId          String
+  relationId             String
+  representativeUserId   String
+  provider               ErpIntegrationProvider
+  documentType           SalesDocumentType
+  proposedDocumentType   SalesDocumentType
+  status                 SalesDocumentStatus          @default(QUEUED)
+  deliveryStatus         SalesDocumentDeliveryStatus  @default(PENDING_ERP)
+  documentNumber         String                       @unique
+  numberUseId            String                       @unique
+  businessDate           DateTime                     @db.Date
+  documentDate           DateTime                     @db.Date
+  currency               String
+  language               Language
+  templateVersion        String
+  customerSnapshotJson   String                       @db.LongText
+  billingSnapshotJson    String?                      @db.LongText
+  renderedDocumentHtml   String                       @db.LongText
+  renderedDocumentSha256 String                       @db.Char(64)
+  contentFingerprint     String                       @db.Char(64)
+  amountExcludingVat     Decimal                      @db.Decimal(16, 4)
+  vatAmount              Decimal                      @db.Decimal(16, 4)
+  amountIncludingVat     Decimal                      @db.Decimal(16, 4)
+  overrideReasonId       String?
+  overrideComment        String?                      @db.Text
+  commandId              String                       @unique
+  externalId             String?
+  sourceVersion          String?
+  erpAcknowledgedAt      DateTime?
+  appointment            SalesAppointment             @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  relation               BusinessRelation             @relation(fields: [relationId], references: [id], onDelete: Restrict)
+  representative         User                         @relation("SalesDocumentRepresentative", fields: [representativeUserId], references: [id], onDelete: Restrict)
+  numberUse              SalesDocumentNumberUse       @relation(fields: [numberUseId], references: [id], onDelete: Restrict)
+  overrideReason         SalesDocumentReason?         @relation("SalesDocumentOverrideReason", fields: [overrideReasonId], references: [id], onDelete: Restrict)
+  lines                  SalesDocumentLine[]
+  signatureEvidence      SalesDocumentSignatureEvidence?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+
+  @@index([appointmentId, createdAt])
+  @@index([relationId, documentDate])
+  @@index([representativeUserId, businessDate])
+  @@index([status, createdAt])
+  @@index([deliveryStatus, createdAt])
+}
+
+model SalesDocumentLine {
+  id                                String        @id @default(cuid())
+  documentId                        String
+  lineNumber                        Int
+  articleId                         String?
+  articleExternalId                 String
+  articleNumberSnapshot             String
+  descriptionSnapshot               String        @db.Text
+  quantity                          Decimal       @db.Decimal(14, 3)
+  unitSnapshot                      String
+  unitPriceSnapshot                 Decimal       @db.Decimal(14, 4)
+  vatRateSnapshot                   Decimal       @db.Decimal(7, 4)
+  lineAmountExcludingVat            Decimal       @db.Decimal(16, 4)
+  lineVatAmount                     Decimal       @db.Decimal(16, 4)
+  lineAmountIncludingVat            Decimal       @db.Decimal(16, 4)
+  representativeStockQuantitySnapshot Decimal?    @db.Decimal(14, 3)
+  representativeStockImpactQuantity Decimal       @db.Decimal(14, 3)
+  carrierRequired                   Boolean       @default(false)
+  customerCarrierExternalId         String?
+  document                          SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  article                           SalesArticle? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  createdAt                         DateTime      @default(now())
+
+  @@unique([documentId, lineNumber])
+  @@index([articleExternalId])
+  @@index([customerCarrierExternalId])
+}
+
+model SalesDocumentSignatureEvidence {
+  id                   String                       @id @default(cuid())
+  documentId           String                       @unique
+  status               SalesDocumentSignatureStatus
+  signedByName         String?
+  signedAt             DateTime
+  signatureData        String?                      @db.LongText
+  signatureSha256      String?                      @db.Char(64)
+  exceptionReasonId    String?
+  exceptionComment     String?                      @db.Text
+  documentSha256       String                       @db.Char(64)
+  signatureContextJson String                       @db.LongText
+  document             SalesDocument                @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  exceptionReason      SalesDocumentReason?         @relation("SalesDocumentUnsignedReason", fields: [exceptionReasonId], references: [id], onDelete: Restrict)
+  createdAt            DateTime                     @default(now())
+
+  @@index([status, signedAt])
+  @@index([exceptionReasonId])
 }
 
 model SalesVisitReport {

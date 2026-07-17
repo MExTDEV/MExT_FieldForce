@@ -396,6 +396,7 @@ export type SalesErpSalesDocumentLineCommand = {
   unitSnapshot: string;
   unitPriceSnapshot: DecimalString;
   vatRateSnapshot: DecimalString;
+  representativeStockImpactQuantity: DecimalString;
   customerCarrierExternalId?: string;
 };
 
@@ -413,8 +414,10 @@ export type SalesErpSalesDocumentCommand = {
   localDocumentId: string;
   documentType: "ORDER" | "ORDER_ALREADY_DELIVERED" | "INVOICE";
   reservedDocumentNumber: string;
-  customerExternalId: string;
-  appointmentExternalId: string;
+  customerExternalId?: string;
+  localRelationId?: string;
+  appointmentExternalId?: string;
+  localAppointmentId?: string;
   documentDate: IsoDate;
   language: SalesErpLanguageCode;
   currency: SalesErpCurrencyCode;
