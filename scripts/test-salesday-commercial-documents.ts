@@ -42,6 +42,7 @@ const command = buildSalesErpCommand({
     documentDate: "2026-07-17",
     language: "nl",
     currency: "EUR",
+    paymentMethodExternalId: "mock-payment-cash-be",
     proposedDocumentType: "ORDER",
     overrideReasonCode: "CUSTOMER_REQUEST",
     overrideComment: "Klant vraagt levering zonder factuur ter plaatse.",
@@ -88,11 +89,15 @@ expectText("lib/server/salesday-commercial-documents.ts", [
   "STANDARD_ANDROID_PRINT_SHARE",
   "REPLACEABLE_BOUNDARY",
   "requireContractAccess",
+  "resolveSalesPaymentMethod",
+  "createDocumentCashEntryInTransaction",
+  "paymentMethodExternalId",
   "Serializable",
 ]);
 expectText("lib/server/integrations/sales-erp/contracts.ts", [
   "localRelationId?: string",
   "localAppointmentId?: string",
+  "paymentMethodExternalId?: string",
   "representativeStockImpactQuantity",
 ]);
 expectText("prisma/schema.prisma", [

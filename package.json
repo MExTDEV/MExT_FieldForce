@@ -67,6 +67,7 @@
     "test:salesday-sync-queue": "tsx scripts/test-salesday-sync-queue.ts && tsx scripts/test-salesday-sync-queue-concurrency.ts",
     "test:salesday-sync-runtime": "tsx scripts/test-salesday-sync-runtime.ts",
     "test:salesday-day-gate": "tsx scripts/test-salesday-day-gate.ts",
+    "test:salesday-cash-gate": "tsx scripts/test-salesday-cash-gate.ts",
     "test:salesday-feature-controls": "tsx scripts/test-salesday-feature-controls.ts",
     "test:salesday-pwa-shell": "tsx scripts/test-salesday-pwa-shell.ts",
     "test:salesday-business-relations": "tsx scripts/test-salesday-business-relations.ts",

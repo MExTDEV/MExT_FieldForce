@@ -138,3 +138,13 @@ Milestone 4 persists Inventory source records locally but keeps the ERP/backoffi
 - `customer-location.upsert` is emitted for create, edit and archive of customer locations, sublocations and carriers. Archiving carries the FieldForce reason code.
 - `carrier-count.submit` is emitted for optional physical customer-carrier counts. Lines include theoretical quantity, counted quantity and reason code when a discrepancy exists.
 - Direct delivery SalesDay documents create local Inventory movements in the same transaction as the document source record and ERP outbox command. Ordinary Orders may carry an intended carrier but do not increase customer-carrier stock until ERP delivery confirmation.
+
+## Cash and payment ownership
+
+Milestone 5 keeps payment methods and cash-balance clearing ERP-owned.
+
+- `paymentMethods` are replicated from the ERP and determine whether a SalesDay document has cash impact.
+- `sales-document.create` may include `paymentMethodExternalId`; FieldForce stores the selected ERP method but does not invent payment types.
+- Only payment methods with `affectsCashBalance = true` create local cash entries, and ordinary `ORDER` documents do not affect the Representative cash balance.
+- `cashBalances` are the ERP/backoffice-confirmed Representative balances. They are the normal source for clearing the weekly exact-zero cash gate.
+- FieldForce does not emit a deposit-confirmation or manual cash-override command. A Representative can see the cash sheet and sync/support while blocked, but unblocking requires a replicated ERP/backoffice confirmation.

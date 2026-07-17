@@ -151,6 +151,7 @@ async function main() {
     reason: "NONE",
     serverOpenPreviousCommandCount: 0,
     oldestServerOpenBusinessDate: null,
+    cashBlock: null,
     emergency: null,
   };
   const localBlocked = combineSalesDayDayGate(normalServer, { openBusinessDates: ["2026-07-16", "2026-07-17"] });
@@ -164,6 +165,22 @@ async function main() {
     oldestServerOpenBusinessDate: "2026-07-16",
   }, { openBusinessDates: [] });
   assert.equal(serverBlocked.mode, "BLOCKED");
+  assert.equal(serverBlocked.reason, "DAY_MINUS_ONE_PENDING");
+  const cashBlocked = combineSalesDayDayGate({
+    ...normalServer,
+    mode: "BLOCKED",
+    reason: "CASH_BALANCE_NOT_ZERO",
+    cashBlock: {
+      firstEffectiveBusinessDate: "2026-07-20",
+      currency: "EUR",
+      confirmedBalance: "125.0000",
+      lastDepositConfirmedAt: null,
+      missingCashBalance: false,
+    },
+  }, { openBusinessDates: ["2026-07-16"] });
+  assert.equal(cashBlocked.mode, "BLOCKED");
+  assert.equal(cashBlocked.reason, "CASH_BALANCE_NOT_ZERO");
+  assert.equal(cashBlocked.localOpenPreviousCommandCount, 1);
   const emergencyGate = combineSalesDayDayGate({
     ...normalServer,
     mode: "EMERGENCY",
@@ -177,6 +194,7 @@ async function main() {
   }, { openBusinessDates: ["2026-07-16"] });
   assert.equal(emergencyGate.mode, "EMERGENCY");
 
+  assert.equal(isSalesDayOperationalPathAllowedWhileBlocked("/salesday/cash"), true);
   assert.equal(isSalesDayOperationalPathAllowedWhileBlocked("/salesday/sync"), true);
   assert.equal(isSalesDayOperationalPathAllowedWhileBlocked("/salesday/support/incident"), true);
   assert.equal(isSalesDayOperationalPathAllowedWhileBlocked("/salesday/mijn-agenda"), false);
@@ -198,12 +216,15 @@ async function main() {
   assert(migration.includes("SUPER_ADMIN"));
   assert(gateSource.includes("status: { not: ErpOutboxStatus.ACCEPTED }"));
   assert(gateSource.includes("actorUserId: input.actor.id"));
+  assert(gateSource.includes("getSalesDayCashBlock"));
+  assert(gateSource.includes("CASH_BALANCE_NOT_ZERO"));
   assert(emergencySource.includes("Prisma.TransactionIsolationLevel.Serializable"));
   assert(emergencySource.includes("salesday.emergency.activate"));
   assert(emergencySource.includes("salesday.emergency.deactivate"));
   assert(gateRouteSource.includes("requireAuthenticatedUserContext"));
   assert(emergencyRouteSource.includes("activateSalesDayEmergencyMode"));
   assert(noticeSource.includes('role="alert"'));
+  assert(noticeSource.includes('href="/salesday/cash"'));
   assert(noticeSource.includes('href="/salesday/sync"'));
   const dictionaries = ["nl", "fr", "de"].map((language) => JSON.parse(
     readFileSync(`locales/${language}.json`, "utf8"),

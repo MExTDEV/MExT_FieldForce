@@ -25,6 +25,8 @@ async function main() {
   const capabilities = await adapter.getCapabilities();
   assert.equal(capabilities.provider, "MOCK");
   assert(capabilities.supportedBootstrapResources.includes("customers"));
+  assert(capabilities.supportedBootstrapResources.includes("cashBalances"));
+  assert(capabilities.supportedBootstrapResources.includes("paymentMethods"));
   assert(capabilities.supportedCommands.includes("sales-document.create"));
 
   const belgianCustomers = await adapter.getBootstrapPage({
@@ -53,6 +55,21 @@ async function main() {
   });
   assert.equal(outcomeReasonsPage2.items[0].code, "OTHER");
   assert.equal(outcomeReasonsPage2.nextCursor, undefined);
+
+  const paymentMethods = await adapter.getBootstrapPage({
+    resource: "paymentMethods",
+    country: "BE",
+    representativeExternalId: "mock-rep-be-001",
+    effectiveTeamExternalIds: [],
+  });
+  assert.equal(paymentMethods.items.some((method) => method.affectsCashBalance), true);
+  const cashBalances = await adapter.getBootstrapPage({
+    resource: "cashBalances",
+    country: "BE",
+    representativeExternalId: "mock-rep-be-001",
+    effectiveTeamExternalIds: [],
+  });
+  assert.equal(Number(cashBalances.items[0].balance), 0);
 
   const firstEventPage = await adapter.getEvents({ limit: 1 });
   assert.equal(firstEventPage.events[0].messageId, "mock-event-customer-be-001");

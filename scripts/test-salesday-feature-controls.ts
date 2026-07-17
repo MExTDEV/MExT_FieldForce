@@ -102,6 +102,8 @@ assert.equal(roleTemplates.SUPER_ADMIN.permissions["salesday.settings.manage"], 
 assert.equal(roleTemplates.ADMIN.permissions["salesday.settings.manage"], false);
 assert.equal(roleTemplates.REPRESENTATIVE.permissions["menu.salesday.enabled"], true);
 assert.equal(roleTemplates.REPRESENTATIVE.permissions["menu.salesday.team"], false);
+assert.equal(roleTemplates.REPRESENTATIVE.permissions["menu.salesday.cash"], true);
+assert.equal(fieldForcePermissionKeys.includes("menu.salesday.cash"), true);
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");
 const migration = readFileSync("prisma/migrations/0045_salesday_feature_controls/migration.sql", "utf8");

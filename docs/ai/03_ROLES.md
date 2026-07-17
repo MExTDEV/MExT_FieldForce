@@ -331,13 +331,15 @@ These roles do not create or edit a Representative's appointments, customers, sa
 
 Beheer, warehouse, integration monitoring and emergency-mode actions require separate explicit permissions. Admin or Super Admin status does not itself create an ordinary operational action on behalf of a Representative.
 
+The weekly SalesDay cash block has no Admin or Super Admin manual bypass. The normal unblock path is an ERP/backoffice replicated cash-balance confirmation with exact zero balance.
+
 Personal SalesDay device registration is limited to the Representative for the own user. Device revocation requires the explicit `salesday.manage` permission and effective country scope. This permission defaults to Super Admin only; it remains configurable through the existing role grants and user overrides. It does not permit acting in the Representative's operational workflow.
 
 Activating or stopping ERP-outage emergency mode requires the separate `salesday.emergencyMode.manage` permission. It defaults to Super Admin only and does not grant any ordinary Representative action. Every activation and early stop requires a reason and is audited.
 
 Managing global/country/team/user activation or the server-owned ERP runtime requires `salesday.settings.manage`. Reading technical integration incidents requires `salesday.integration.monitor`. Both default to Super Admin only, remain configurable through role grants and user overrides, and do not grant Representative operational actions.
 
-Representatives receive SalesDay preparation, agenda and stock menu rights, but effective visibility still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
+Representatives receive SalesDay preparation, agenda, stock and cash menu rights, but effective visibility still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
 
 Shared Inventory uses separate permissions from SalesDay management:
 

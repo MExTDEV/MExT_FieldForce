@@ -587,6 +587,10 @@ Status: `IMPLEMENTED IN SOURCE` by migration `0054_shared_inventory`, shared ser
 
 ## Milestone 5 — Cash and weekly access control
 
+Status: `IMPLEMENTED IN SOURCE` on 17 July 2026.
+
+Source implementation is documented in `MILESTONE-5-CASH-WEEKLY-GATE.md`. The implementation uses migration `0055_salesday_cash_weekly_gate`, ERP-owned payment methods/cash balances, cash-only `SalesCashEntry` records, the existing SalesDay day gate and `menu.salesday.cash`.
+
 ### Deliverables
 
 - ERP payment-method replica;

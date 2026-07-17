@@ -726,6 +726,18 @@ Migration `0054_shared_inventory` additively defines the shared Inventory persis
 - no destructive statement or production seed is present;
 - migration `0054` is not deployed to the configured production database.
 
+## SalesDay cash and weekly gate
+
+Migration `0055_salesday_cash_weekly_gate` additively defines the SalesDay cash persistence used for weekly access control.
+
+- `SalesPaymentMethod` stores ERP-owned payment methods, country scope and whether a method affects the cash balance;
+- `SalesCashBalance` stores the ERP/backoffice-confirmed Representative cash balance per provider, Representative external ID and currency;
+- `SalesCashEntry` stores immutable cash evidence from cash SalesDay documents and ERP/backoffice balance confirmations;
+- `SalesDocument.paymentMethodId` and `SalesDocument.paymentMethodExternalId` link documents to the selected ERP payment method;
+- the weekly gate derives from confirmed balances and first effective workday policy; it does not introduce a manual FieldForce override state;
+- no destructive statement or production seed is present;
+- migration `0055` is not deployed to the configured production database.
+
 # Contactmomenten
 
 Contactmomenten gebruiken het bestaande `Intervention`-model met

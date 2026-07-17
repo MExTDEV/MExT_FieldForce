@@ -5,7 +5,8 @@
 Status:
 
 - shared BusinessRelation/Article bridges: `DESIGNED — NOT APPLIED`;
-- ERP integration ledger: `IMPLEMENTED IN PRISMA + MIGRATION 0040 — DATABASE DEPLOYMENT PENDING`.
+- ERP integration ledger: `IMPLEMENTED IN PRISMA + MIGRATION 0040 — DATABASE DEPLOYMENT PENDING`;
+- cash/payment replicas and weekly gate evidence: `IMPLEMENTED IN PRISMA + MIGRATION 0055 — DATABASE DEPLOYMENT PENDING`.
 
 The shared relation/article models below remain proposed logical names. The integration-ledger subset is now implemented as `ErpInboxMessage`, `ErpOutboxCommand`, `ErpOutboxDependency`, `ErpReplicaCheckpoint` and `ErpReconciliationIncident`. No production data has been migrated.
 
@@ -79,7 +80,7 @@ Introduce:
 
 ## ERP replica models
 
-Later migrations should add dedicated replica aggregates for:
+Migrations should add dedicated replica aggregates for:
 
 - appointments with business date, UTC times, timezone, sequence, canonical/native status and relation/Representative/team scope;
 - commercial-history documents and immutable lines;
@@ -89,6 +90,8 @@ Later migrations should add dedicated replica aggregates for:
 - customer locations/sublocations/carriers and carrier article balances.
 
 Store the canonical status used by FieldForce plus the native status/code needed for diagnostics. Do not add competing lifecycle fields to an existing aggregate merely to avoid mapping.
+
+Milestone 5 implements the cash/payment subset as `SalesPaymentMethod`, `SalesCashBalance`, `SalesCashEntry` and the Sales document payment-method link. ERP/backoffice confirmation remains the source for clearing the weekly exact-zero cash gate; FieldForce does not store a manual override state.
 
 ## Integration ledger
 
