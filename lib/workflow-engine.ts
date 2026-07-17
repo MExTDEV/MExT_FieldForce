@@ -32,6 +32,7 @@ export type CoachingWorkflowInput = {
   notifyRepresentative?: boolean;
   subject?: CoachingParticipant;
   internalNotes?: string;
+  preparationReferenceCoachingId?: string;
   focusNames: string[];
   scores: WorkflowScore[];
   actionPoints: Omit<WorkflowActionPoint, "id" | "status">[];
@@ -662,6 +663,7 @@ export function saveCoaching(
     lastSyncedAt: previous?.lastSyncedAt,
     syncError: undefined,
     internalNotes: input.internalNotes ?? previous?.internalNotes,
+    preparationReferenceCoachingId: input.preparationReferenceCoachingId ?? previous?.preparationReferenceCoachingId,
     sentForApprovalAt: previous?.sentForApprovalAt,
     sentForApprovalById: previous?.sentForApprovalById,
     approvedByRepAt: previous?.approvedByRepAt,

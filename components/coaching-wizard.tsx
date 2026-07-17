@@ -25,8 +25,13 @@ import { usePerformance } from "@/components/performance-provider";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
 import { useWorkflow } from "@/components/workflow-provider";
-import { coachingsForRepresentative, latestHistoricalCoaching } from "@/lib/performance-data";
-import { getPerformanceWheelData, type PerformanceWheelCriterion } from "@/lib/performance/performance-wheel";
+import {
+  buildPreparationPdfSections,
+  type PreparationReferenceDetail,
+  type PreparationReferenceResponse,
+  type PreparationScoreGroup,
+  type PreparationScoreRow,
+} from "@/lib/coaching/preparation-reference";
 import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
 import { canCreateCoachingIntervention } from "@/lib/permissions";
 import { translate } from "@/lib/i18n";
@@ -35,8 +40,8 @@ import {
   representativeLevelBadgeClass,
   representativeLevelLabels,
 } from "@/lib/representative-levels";
-import { offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
-import type { CoachingFrameworkFocus, CoachingParticipant, Representative, ScoreValue } from "@/lib/types";
+import { clearLocalDraft, loadLocalDraft, offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
+import type { CoachingFrameworkFocus, CoachingParticipant, Language, Representative, ScoreValue } from "@/lib/types";
 
 type ScoreCriterion = {
   key: string;
@@ -49,6 +54,7 @@ type ScoreCriterion = {
 };
 
 type Draft = {
+  actorId: string;
   id?: string;
   representativeId: string;
   ownerId: string;
@@ -60,6 +66,7 @@ type Draft = {
   notifyCoachedTeamLeaders: boolean;
   notifyExecutorTeamLeaders: boolean;
   deviationReason: string;
+  preparationReferenceCoachingId?: string;
   focusNames: string[];
   scores: Record<string, ScoreValue>;
   actions: EditableActionPoint[];
@@ -87,6 +94,7 @@ export function CoachingWizard() {
   const existing = editId ? state.interventions.find((item) => item.id === editId && item.status === "gepland") : undefined;
   const [step, setStep] = useState<WizardStep>("representative");
   const [draft, setDraft] = useState<Draft>({
+    actorId: user.id,
     representativeId: "",
     ownerId: user.id,
     plannedDate: new Date().toISOString().slice(0, 10),
@@ -97,6 +105,7 @@ export function CoachingWizard() {
     notifyCoachedTeamLeaders: false,
     notifyExecutorTeamLeaders: false,
     deviationReason: "",
+    preparationReferenceCoachingId: undefined,
     focusNames: [],
     scores: {},
     actions: [],
@@ -123,7 +132,18 @@ export function CoachingWizard() {
         if (!response.ok) throw new Error(payload.error ?? "Begeleidbare personen konden niet worden geladen.");
         if (!active) return;
         setParticipants(payload.participants ?? []);
-        setDraft((current) => ({ ...current, representativeId: current.representativeId || payload.participants?.[0]?.id || "" }));
+        setDraft((current) => {
+          const representativeId = payload.participants?.some((participant) => participant.id === current.representativeId)
+            ? current.representativeId
+            : payload.participants?.[0]?.id || "";
+          return {
+            ...current,
+            representativeId,
+            preparationReferenceCoachingId: representativeId === current.representativeId
+              ? current.preparationReferenceCoachingId
+              : undefined,
+          };
+        });
       })
       .catch((cause) => active && setError(cause instanceof Error ? cause.message : "Begeleidbare personen konden niet worden geladen."));
     return () => { active = false; };
@@ -132,6 +152,7 @@ export function CoachingWizard() {
   useEffect(() => {
     if (!existing || loadedId === existing.id) return;
     setDraft({
+      actorId: user.id,
       id: existing.id,
       representativeId: existing.representativeId,
       ownerId: existing.ownerId,
@@ -143,12 +164,25 @@ export function CoachingWizard() {
       notifyCoachedTeamLeaders: existing.notifyCoachedTeamLeaders ?? false,
       notifyExecutorTeamLeaders: existing.notifyExecutorTeamLeaders ?? false,
       deviationReason: existing.deviationReason ?? "",
+      preparationReferenceCoachingId: existing.preparationReferenceCoachingId,
       focusNames: existing.focusNames,
       scores: {},
       actions: [],
     });
     setLoadedId(existing.id);
-  }, [existing, loadedId]);
+  }, [existing, loadedId, user.id]);
+
+  useEffect(() => {
+    if (editId || helpRequestId) return;
+    const recovered = loadLocalDraft<Draft>(offlineStorageKeys.draftIntervention);
+    if (!recovered || recovered.actorId !== user.id) return;
+    setDraft((current) => ({
+      ...current,
+      ...recovered,
+      actorId: user.id,
+      id: undefined,
+    }));
+  }, [editId, helpRequestId, user.id]);
 
   useEffect(() => {
     if (!sourceHelpRequest) return;
@@ -226,6 +260,7 @@ export function CoachingWizard() {
       teamDeviation,
       countryDeviation,
       deviationReason: draft.deviationReason,
+      preparationReferenceCoachingId: draft.preparationReferenceCoachingId,
       subject: selectedParticipant,
       focusNames: draft.focusNames,
       scores: [],
@@ -252,11 +287,13 @@ export function CoachingWizard() {
       if (helpRequestId) {
         const intervention = await scheduleHelpRequestCoaching(helpRequestId, user.id, workflowInput());
         setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+        clearLocalDraft(offlineStorageKeys.draftIntervention);
         router.push(`/begeleidingen/${intervention.id}`);
         return;
       }
       await saveCoachingStatus(workflowInput(), "gepland");
       setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+      clearLocalDraft(offlineStorageKeys.draftIntervention);
       router.push("/begeleidingen");
     } catch (scheduleError) {
       setError(scheduleError instanceof Error ? scheduleError.message : "De begeleiding kon niet worden ingepland.");
@@ -344,7 +381,13 @@ export function CoachingWizard() {
             ownerId={draft.ownerId}
             onSelect={(representativeId) => {
               if (sourceHelpRequest) return;
-              setDraft((current) => ({ ...current, representativeId }));
+              setDraft((current) => ({
+                ...current,
+                representativeId,
+                preparationReferenceCoachingId: representativeId === current.representativeId
+                  ? current.preparationReferenceCoachingId
+                  : undefined,
+              }));
             }}
             plannedDate={draft.plannedDate}
             startTime={draft.startTime}
@@ -364,7 +407,17 @@ export function CoachingWizard() {
         {step === "focus" && representative && (
           <FocusStep selected={draft.focusNames} onToggle={(name) => setDraft((current) => ({ ...current, focusNames: current.focusNames.includes(name) ? current.focusNames.filter((item) => item !== name) : [...current.focusNames, name] }))} />
         )}
-        {step === "preparation" && representative && <PreparationStep representative={representative} />}
+        {step === "preparation" && representative && (
+          <PreparationStep
+            representative={representative}
+            currentInterventionId={draft.id}
+            selectedReferenceId={draft.preparationReferenceCoachingId}
+            onReferenceChange={(preparationReferenceCoachingId) => setDraft((current) => ({
+              ...current,
+              preparationReferenceCoachingId,
+            }))}
+          />
+        )}
         {step === "summary" && representative && (
           <SummaryStep
             representative={representative}
@@ -682,42 +735,95 @@ function participantAsRepresentative(person: CoachingParticipant): Representativ
   return { id: person.id, firstName: person.firstName, lastName: person.lastName, initials: person.initials, country: person.country, team: person.team, teamId: person.teamId, level: "Vertegenwoordiger", levelColor: "bg-brand-100 text-brand-800", lastCoaching: "Nog niet", openActions: 0, email: "", phone: "", kpis: [] };
 }
 
-function PreparationStep({ representative }: { representative: Representative }) {
-  const { language } = useSession();
+function PreparationStep({
+  representative,
+  currentInterventionId,
+  selectedReferenceId,
+  onReferenceChange,
+}: {
+  representative: Representative;
+  currentInterventionId?: string;
+  selectedReferenceId?: string;
+  onReferenceChange: (id?: string) => void;
+}) {
+  const { language, user } = useSession();
   const { dataset: performanceDataset } = usePerformance();
-  const previousActions = performanceDataset.historicalActionPoints.filter((item) => item.representativeId === representative.id);
-  const coachings = useMemo(() => coachingsForRepresentative(performanceDataset, representative.id), [performanceDataset, representative.id]);
-  const latestCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
-  const previousWheelData = latestCoaching
-    ? getPerformanceWheelData(representative.id, latestCoaching.id, "kapstok", undefined, coachings)
-    : undefined;
-  const wheelRef = useRef<HTMLDivElement>(null);
+  const openActions = performanceDataset.historicalActionPoints.filter((item) =>
+    item.representativeId === representative.id &&
+    !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(item.status)
+  );
+  const selectedWheelRef = useRef<HTMLDivElement>(null);
+  const latestWheelRef = useRef<HTMLDivElement>(null);
+  const onReferenceChangeRef = useRef(onReferenceChange);
+  const [referenceData, setReferenceData] = useState<PreparationReferenceResponse>();
+  const [loadingReferences, setLoadingReferences] = useState(true);
+  const [referenceError, setReferenceError] = useState<string>();
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string>();
   const [activeTab, setActiveTab] = useState<"algemeen" | "prestatiecirkel" | "scoretabellen">("algemeen");
+  const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+  const selected = referenceData?.selected;
+  const latest = referenceData?.latest;
+  const selectedHasCircle = Boolean(selected?.history.criterionScores.some((row) => row.scored !== false));
+  const latestHasCircle = Boolean(latest?.history.criterionScores.some((row) => row.scored !== false));
+
+  useEffect(() => {
+    onReferenceChangeRef.current = onReferenceChange;
+  }, [onReferenceChange]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      actorId: user.id,
+      representativeId: representative.id,
+    });
+    if (currentInterventionId) params.set("currentId", currentInterventionId);
+    if (selectedReferenceId) params.set("referenceId", selectedReferenceId);
+    setLoadingReferences(true);
+    setReferenceError(undefined);
+    fetch(`/api/workflows/coaching/preparation-references?${params.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json() as PreparationReferenceResponse & { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? translate(language, "coaching.preparation.loadError"));
+        setReferenceData(payload);
+        if (payload.selectedId !== selectedReferenceId) {
+          onReferenceChangeRef.current(payload.selectedId);
+        }
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setReferenceData(undefined);
+        setReferenceError(error instanceof Error ? error.message : translate(language, "coaching.preparation.loadError"));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingReferences(false);
+      });
+    return () => controller.abort();
+  }, [currentInterventionId, language, representative.id, selectedReferenceId, user.id]);
 
   async function handlePreparationExport() {
     setExportError(undefined);
-    if (!latestCoaching || !previousWheelData) {
-      setExportError("Er is nog geen vorige prestatiecirkel beschikbaar om te exporteren.");
-      return;
-    }
-    const svgElement = wheelRef.current?.querySelector("svg");
-    if (!svgElement) {
-      setExportError("De prestatiecirkel kon niet gevonden worden voor de PDF-export.");
-      return;
-    }
     try {
       setIsExporting(true);
+      const pdfSections = buildPreparationPdfSections(selected, latest).map((section) => {
+        const svgElement = section.detail.id === selected?.id
+          ? selectedWheelRef.current?.querySelector("svg")
+          : latestWheelRef.current?.querySelector("svg");
+        const hasCircle = section.detail.history.criterionScores.some((row) => row.scored !== false);
+        if (hasCircle && !svgElement) throw new Error(t("coaching.preparation.exportWheelError"));
+        return { ...section, svgElement: svgElement ?? undefined };
+      });
       await exportPreparationPdf({
         representative,
-        previousActions,
-        latestCoaching,
-        wheelData: previousWheelData,
-        svgElement,
+        openActions,
+        language,
+        sections: pdfSections,
       });
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : "De voorbereiding kon niet geëxporteerd worden.");
+      setExportError(error instanceof Error ? error.message : t("coaching.preparation.exportError"));
     } finally {
       setIsExporting(false);
     }
@@ -728,13 +834,43 @@ function PreparationStep({ representative }: { representative: Representative })
       <div className="flex flex-wrap items-start justify-between gap-3">
         <StepHeading
           icon={ClipboardCheck}
-          title="Voorbereiding vertegenwoordiger"
+          title={t("coaching.preparation.title")}
           description={translate(language, "coaching.preparation.previousScoresDescription").replace("{name}", representative.firstName)}
         />
-        <button type="button" onClick={handlePreparationExport} disabled={isExporting} className="btn-secondary whitespace-nowrap">
+        <button
+          type="button"
+          onClick={handlePreparationExport}
+          disabled={isExporting || loadingReferences || Boolean(referenceError)}
+          className="btn-secondary whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+        >
           <Save className="h-4 w-4" />
-          {isExporting ? "PDF wordt aangemaakt..." : "Voorbereiding exporteren"}
+          {isExporting ? t("coaching.preparation.exporting") : t("coaching.preparation.export")}
         </button>
+      </div>
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
+        <label htmlFor="preparation-reference" className="block text-sm font-bold text-slate-950">
+          {t("coaching.preparation.referenceLabel")}
+        </label>
+        <p className="mt-1 text-xs text-slate-500">{t("coaching.preparation.referenceHelp")}</p>
+        <select
+          id="preparation-reference"
+          className="field mt-3"
+          value={selectedReferenceId ?? referenceData?.selectedId ?? ""}
+          disabled={loadingReferences || !referenceData?.options.length}
+          onChange={(event) => onReferenceChange(event.target.value || undefined)}
+        >
+          {!referenceData?.options.length && <option value="">{t("coaching.preparation.noHistory")}</option>}
+          {referenceData?.options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {formatIsoDate(option.date, language)} — {option.ownerName}{option.isLatest ? ` — ${t("coaching.preparation.latest")}` : ""}
+            </option>
+          ))}
+        </select>
+        {loadingReferences && <p className="mt-2 text-xs font-medium text-slate-400">{t("coaching.preparation.loading")}</p>}
+        {referenceError && <p role="alert" className="mt-2 text-sm font-semibold text-rose-700">{referenceError}</p>}
+        {!loadingReferences && !referenceError && !referenceData?.options.length && (
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{t("coaching.preparation.noHistory")}</p>
+        )}
       </div>
       <div className="mt-6 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
         {[
@@ -757,8 +893,12 @@ function PreparationStep({ representative }: { representative: Representative })
       <div className={activeTab === "algemeen" ? "mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" : "hidden"}>
         <SummaryCard label="Niveau" value={representative.level} detail="Huidig ontwikkelniveau" />
         <SummaryCard label="Team" value={representative.team} detail={representative.country} />
-        <SummaryCard label="Laatste begeleiding" value={representative.lastCoaching} detail="Meest recente coachingmoment" />
-        <SummaryCard label="Open actiepunten" value={`${representative.openActions}`} detail="Actief in opvolging" />
+        <SummaryCard
+          label={t("coaching.preparation.selectedCoaching")}
+          value={selected ? formatIsoDate(selected.date, language) : "-"}
+          detail={selected ? `${selected.ownerName}${selected.isLatest ? ` · ${t("coaching.preparation.latest")}` : ""}` : t("coaching.preparation.noHistoryShort")}
+        />
+        <SummaryCard label={t("coaching.preparation.openActions")} value={`${openActions.length}`} detail={t("coaching.preparation.activeFollowUp")} />
       </div>
       <div className={activeTab === "algemeen" ? "mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4" : "hidden"}>
         {representative.kpis.map((kpi) => (
@@ -776,11 +916,11 @@ function PreparationStep({ representative }: { representative: Representative })
         <div className="flex items-start gap-3">
           <Target className="mt-0.5 h-5 w-5 text-amber-700" />
           <div>
-            <p className="font-bold text-amber-950">Vorige actiepunten</p>
+            <p className="font-bold text-amber-950">{t("coaching.preparation.openActions")}</p>
             <p className="mt-1 text-sm text-amber-800">
-              {previousActions.length
-                ? previousActions.map((item) => item.title).join(" · ")
-                : "Geen open actiepunten uit een vorige begeleiding."}
+              {openActions.length
+                ? openActions.map((item) => item.title).join(" · ")
+                : t("coaching.preparation.noOpenActions")}
             </p>
           </div>
         </div>
@@ -791,74 +931,96 @@ function PreparationStep({ representative }: { representative: Representative })
             <h3 className="text-lg font-bold text-slate-950">{activeTab === "prestatiecirkel" ? "Prestatiecirkel" : "Scoretabellen"}</h3>
             <p className="mt-1 text-sm text-slate-500">
               {activeTab === "prestatiecirkel"
-                ? "Huidige meting tegenover de vorige begeleiding, inclusief vergelijkingskleuren en legenda."
-                : "Huidige scores, vorige scores, verschillen en kleurcodering."}
+                ? t("coaching.preparation.performanceDescription")
+                : t("coaching.preparation.scoresDescription")}
             </p>
           </div>
-          {latestCoaching && <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-700">{formatIsoDate(latestCoaching.date)}</span>}
-        </div>
-        {previousWheelData && latestCoaching ? (
-          <div className="mt-5 space-y-5">
-            <div ref={wheelRef} className={activeTab === "prestatiecirkel" ? "mx-auto max-w-4xl" : "hidden"}>
-              <PerformanceWheel
-                representativeId={representative.id}
-                currentInterventionId={latestCoaching.id}
-                comparisonInterventionId={previousWheelData.comparisonInterventionId}
-                type="kapstok"
-                coachings={coachings}
-              />
-              <p className="mt-3 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
-                <Info className="h-4 w-4 text-brand-700" />
-                Hoe verder een score naar buiten ligt, hoe sterker de prestatie.
-              </p>
+          {selected && (
+            <div className="text-right text-xs text-slate-500">
+              <p className="font-bold text-brand-700">{formatIsoDate(selected.date, language)}</p>
+              <p>{selected.ownerName}{selected.isLatest ? ` · ${t("coaching.preparation.latest")}` : ""}</p>
             </div>
-            {activeTab === "scoretabellen" && <PreparationScoreOverview criteria={previousWheelData.criteria} coachingDate={latestCoaching.date} />}
+          )}
+        </div>
+        {selected ? (
+          <div className="mt-5 space-y-5">
+            <div ref={selectedWheelRef} className={activeTab === "prestatiecirkel" ? "mx-auto max-w-4xl" : "hidden"}>
+              {selectedHasCircle ? (
+                <>
+                  <PerformanceWheel
+                    representativeId={representative.id}
+                    currentInterventionId={selected.id}
+                    type="kapstok"
+                    coachings={[selected.history]}
+                  />
+                  <p className="mt-3 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
+                    <Info className="h-4 w-4 text-brand-700" />
+                    {t("coaching.preparation.wheelHelp")}
+                  </p>
+                </>
+              ) : (
+                <EmptyState title={t("coaching.preparation.noWheel")} description={t("coaching.preparation.noWheelDescription")} />
+              )}
+            </div>
+            {activeTab === "scoretabellen" && (
+              <PreparationScoreOverview groups={selected.scoreGroups} language={language} emptyMessage={t("coaching.preparation.noScores")} />
+            )}
           </div>
         ) : (
-          <EmptyState title="Nog geen vorige prestatiecirkel beschikbaar." description="Zodra er een afgeronde begeleiding is, verschijnt hier de vorige prestatiecirkel met scoredetails." />
-        )}
-        {exportError && (
-          <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
-            {exportError}
-          </div>
+          <EmptyState title={t("coaching.preparation.noHistory")} description={t("coaching.preparation.noHistoryDescription")} />
         )}
       </section>
+      {latest && latest.id !== selected?.id && latestHasCircle && (
+        <div className="pointer-events-none fixed left-[-10000px] top-0 w-[900px] opacity-0" aria-hidden="true">
+          <div ref={latestWheelRef}>
+            <PerformanceWheel
+              representativeId={representative.id}
+              currentInterventionId={latest.id}
+              type="kapstok"
+              coachings={[latest.history]}
+            />
+          </div>
+        </div>
+      )}
+      {exportError && (
+        <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
+          {exportError}
+        </div>
+      )}
     </div>
   );
 }
 
 function PreparationScoreOverview({
-  criteria,
-  coachingDate,
+  groups,
+  language,
+  emptyMessage,
 }: {
-  criteria: PerformanceWheelCriterion[];
-  coachingDate: string;
+  groups: PreparationScoreGroup[];
+  language: Language;
+  emptyMessage: string;
 }) {
-  const groups = criteria.reduce<Array<{ category: string; rows: PerformanceWheelCriterion[] }>>((result, row) => {
-    const group = result.find((item) => item.category === row.category);
-    if (group) group.rows.push(row);
-    else result.push({ category: row.category, rows: [row] });
-    return result;
-  }, []);
+  if (!groups.length) return <EmptyState title={emptyMessage} description={translate(language, "coaching.preparation.noScoresDescription")} />;
 
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       {groups.map((group) => (
-        <section key={group.category} className="rounded-xl border border-slate-200 bg-slate-50/70">
+        <section key={group.id} className="rounded-xl border border-slate-200 bg-slate-50/70">
           <div className="border-b border-slate-200 px-3.5 py-2.5">
-            <h4 className="text-sm font-bold text-brand-800">{group.category}</h4>
+            <h4 className="text-sm font-bold text-brand-800">{preparationGroupTitle(group, language)}</h4>
           </div>
           <div className="divide-y divide-slate-200/80">
             {group.rows.map((row) => (
               <div key={row.id} className="grid gap-2 px-3.5 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-brand-700">{preparationRowCategory(row, language)}</p>
                   <p className="break-words text-xs font-semibold leading-4 text-slate-700">{row.criterion}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">{formatIsoDate(coachingDate)}</p>
+                  {row.comment && <p className="mt-1 break-words text-[11px] leading-4 text-slate-500">{row.comment}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px] sm:justify-end">
-                  <span className="whitespace-nowrap text-slate-500">Categorie: {row.category}</span>
-                  <span className="whitespace-nowrap rounded-full bg-white px-2 py-0.5 font-bold text-slate-700 ring-1 ring-slate-200">Score: {formatScore(row.currentTen)}</span>
-                  <span className="whitespace-nowrap text-slate-400">Opmerking: -</span>
+                  <span className="whitespace-nowrap rounded-full bg-white px-2 py-0.5 font-bold text-slate-700 ring-1 ring-slate-200">
+                    {translate(language, "coaching.preparation.score")}: {formatPreparationScore(row, language)}
+                  </span>
                 </div>
               </div>
             ))}
@@ -871,16 +1033,18 @@ function PreparationScoreOverview({
 
 async function exportPreparationPdf({
   representative,
-  previousActions,
-  latestCoaching,
-  wheelData,
-  svgElement,
+  openActions,
+  language,
+  sections,
 }: {
   representative: Representative;
-  previousActions: { title: string }[];
-  latestCoaching: ReturnType<typeof latestHistoricalCoaching> extends infer T ? NonNullable<T> : never;
-  wheelData: NonNullable<ReturnType<typeof getPerformanceWheelData>>;
-  svgElement: SVGSVGElement;
+  openActions: { title: string }[];
+  language: Language;
+  sections: Array<{
+    kind: "selected" | "latest" | "combined";
+    detail: PreparationReferenceDetail;
+    svgElement?: SVGSVGElement;
+  }>;
 }) {
   const [{ jsPDF }] = await Promise.all([
     import("jspdf"),
@@ -888,14 +1052,16 @@ async function exportPreparationPdf({
   ]);
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const exportDate = new Date();
-  const exportDateLabel = exportDate.toLocaleDateString("nl-BE", { day: "2-digit", month: "long", year: "numeric" });
+  const locale = localeForLanguage(language);
+  const exportDateLabel = exportDate.toLocaleDateString(locale, { day: "2-digit", month: "long", year: "numeric" });
   const representativeName = `${representative.firstName} ${representative.lastName}`;
+  const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
 
-  drawPreparationHeader(pdf, representativeName, exportDateLabel);
+  drawPreparationHeader(pdf, representativeName, exportDateLabel, t("coaching.preparation.pdfExportDate"));
   pdf.setTextColor("#003B83");
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(22);
-  pdf.text("Voorbereiding begeleiding", 14, 34);
+  pdf.text(t("coaching.preparation.pdfTitle"), 14, 34);
 
   pdf.setFontSize(12);
   pdf.setTextColor("#172033");
@@ -903,70 +1069,106 @@ async function exportPreparationPdf({
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9.5);
   pdf.setTextColor("#64748B");
-  pdf.text(`Team: ${representative.team} · Niveau: ${representative.level}`, 14, 49);
-  pdf.text(`Vorige begeleiding: ${formatIsoDate(latestCoaching.date)}`, 14, 55);
+  pdf.text(`${t("coaching.preparation.pdfTeam")}: ${representative.team} · ${t("coaching.preparation.pdfLevel")}: ${representative.level}`, 14, 49);
+  pdf.text(
+    sections[0]
+      ? `${t("coaching.preparation.selectedCoaching")}: ${formatIsoDate(sections[0].detail.date, language)} · ${sections[0].detail.ownerName}`
+      : t("coaching.preparation.noHistory"),
+    14,
+    55
+  );
 
   let y = 68;
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(11);
   pdf.setTextColor("#003B83");
-  pdf.text("KPI-snapshot", 14, y);
+  pdf.text(t("coaching.preparation.pdfKpis"), 14, y);
   y += 5;
   representative.kpis.forEach((kpi, index) => {
     const x = 14 + (index % 2) * 91;
     const rowY = y + Math.floor(index / 2) * 27;
-    drawPreparationCard(pdf, x, rowY, 86, 22, kpi.label, `${kpi.value}`, `Doel: ${kpi.target} · Trend: ${kpi.trend > 0 ? "+" : ""}${kpi.trend}`);
+    drawPreparationCard(pdf, x, rowY, 86, 22, kpi.label, `${kpi.value}`, `${t("coaching.preparation.pdfTarget")}: ${kpi.target} · ${t("coaching.preparation.pdfTrend")}: ${kpi.trend > 0 ? "+" : ""}${kpi.trend}`);
   });
 
   y += Math.ceil(representative.kpis.length / 2) * 27 + 7;
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(11);
   pdf.setTextColor("#003B83");
-  pdf.text("Vorige actiepunten", 14, y);
+  pdf.text(t("coaching.preparation.openActions"), 14, y);
   y += 5;
-  const actionLines = previousActions.length
-    ? previousActions.flatMap((action) => pdf.splitTextToSize(`- ${action.title}`, 176))
-    : ["Geen open actiepunten uit een vorige begeleiding."];
+  const actionLines = openActions.length
+    ? openActions.flatMap((action) => pdf.splitTextToSize(`- ${action.title}`, 176))
+    : [t("coaching.preparation.noOpenActions")];
   drawPreparationBox(pdf, 14, y, 182, Math.max(22, actionLines.length * 5 + 9));
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
   pdf.setTextColor("#334155");
   pdf.text(actionLines, 19, y + 8);
 
-  pdf.addPage();
-  drawPreparationHeader(pdf, representativeName, exportDateLabel);
-  pdf.setFont("helvetica", "bold");
-  pdf.setTextColor("#003B83");
-  pdf.setFontSize(18);
-  pdf.text("Vorige prestatiecirkel", 14, 34);
-  pdf.setFont("helvetica", "normal");
-  pdf.setTextColor("#64748B");
-  pdf.setFontSize(9.5);
-  pdf.text("Overzicht van de scores tijdens het vorige coachingmoment.", 14, 41);
+  if (!sections.length) {
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9.5);
+    pdf.setTextColor("#64748B");
+    pdf.text(t("coaching.preparation.pdfNoHistory"), 14, Math.min(275, y + Math.max(24, actionLines.length * 5 + 12)));
+  }
 
-  const svgClone = svgElement.cloneNode(true) as SVGSVGElement;
-  svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  svgClone.setAttribute("width", "1000");
-  svgClone.setAttribute("height", "1000");
-  await pdf.svg(svgClone, { x: 18, y: 48, width: 174, height: 174 });
+  for (const section of sections) {
+    const sectionTitle = preparationPdfSectionTitle(section.kind, section.detail.date, language);
+    pdf.addPage();
+    drawPreparationHeader(pdf, representativeName, exportDateLabel, t("coaching.preparation.pdfExportDate"));
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor("#003B83");
+    pdf.setFontSize(18);
+    pdf.text(sectionTitle, 14, 34);
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor("#64748B");
+    pdf.setFontSize(9.5);
+    pdf.text(`${t("coaching.preparation.coach")}: ${section.detail.ownerName}`, 14, 41);
 
-  const average = wheelData.criteria.reduce((sum, row) => sum + row.currentTen, 0) / Math.max(1, wheelData.criteria.length);
-  drawPreparationCard(pdf, 62, 229, 86, 26, "Gemiddelde score", formatScore(average), `Begeleiding ${formatIsoDate(latestCoaching.date)}`);
+    if (section.svgElement) {
+      const svgClone = section.svgElement.cloneNode(true) as SVGSVGElement;
+      svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      svgClone.setAttribute("width", "1000");
+      svgClone.setAttribute("height", "1000");
+      await pdf.svg(svgClone, { x: 23, y: 48, width: 164, height: 164 });
+    } else {
+      pdf.setFontSize(10);
+      pdf.setTextColor("#64748B");
+      pdf.text(t("coaching.preparation.noWheel"), 14, 58);
+    }
 
-  pdf.addPage();
-  drawPreparationHeader(pdf, representativeName, exportDateLabel);
-  drawPreparationScoreTable(pdf, wheelData.criteria, latestCoaching.date);
+    if (section.detail.scoreGroups.length) {
+      drawPreparationScoreTables(pdf, {
+        groups: section.detail.scoreGroups,
+        sectionTitle,
+        ownerName: section.detail.ownerName,
+        representativeName,
+        exportDateLabel,
+        language,
+      });
+    } else {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9.5);
+      pdf.setTextColor("#64748B");
+      pdf.text(t("coaching.preparation.noScores"), 14, section.svgElement ? 225 : 68);
+    }
+  }
 
   const filename = `FieldForce_voorbereiding_${slugify(representativeName)}_${exportDate.toISOString().slice(0, 10)}.pdf`;
   const output = pdf.output("arraybuffer");
   const signature = new TextDecoder().decode(new Uint8Array(output, 0, 4));
   if (signature !== "%PDF" || output.byteLength < 1_000) {
-    throw new Error("De gegenereerde PDF is ongeldig.");
+    throw new Error(t("coaching.preparation.invalidPdf"));
   }
   pdf.save(filename);
 }
 
-function drawPreparationHeader(pdf: import("jspdf").jsPDF, representativeName: string, exportDate: string) {
+function drawPreparationHeader(
+  pdf: import("jspdf").jsPDF,
+  representativeName: string,
+  exportDate: string,
+  exportDateLabel: string
+) {
   pdf.setFillColor("#003B83");
   pdf.rect(0, 0, 210, 18, "F");
   pdf.setTextColor("#FFFFFF");
@@ -976,7 +1178,7 @@ function drawPreparationHeader(pdf: import("jspdf").jsPDF, representativeName: s
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
   pdf.text("Grow. Coach. Perform.", 105, 11, { align: "center" });
-  pdf.text(`${representativeName} · Exportdatum: ${exportDate}`, 196, 11, { align: "right" });
+  pdf.text(`${representativeName} · ${exportDateLabel}: ${exportDate}`, 196, 11, { align: "right" });
 }
 
 function drawPreparationCard(pdf: import("jspdf").jsPDF, x: number, y: number, width: number, height: number, label: string, value: string, detail: string) {
@@ -1000,65 +1202,151 @@ function drawPreparationBox(pdf: import("jspdf").jsPDF, x: number, y: number, wi
   pdf.roundedRect(x, y, width, height, 3, 3, "FD");
 }
 
-function drawPreparationScoreTable(pdf: import("jspdf").jsPDF, rows: PerformanceWheelCriterion[], coachingDate: string) {
-  let y = 34;
-  pdf.setFont("helvetica", "bold");
-  pdf.setTextColor("#003B83");
-  pdf.setFontSize(17);
-  pdf.text("Gedetailleerde scoretabel", 14, y);
-  y += 10;
-
-  const drawTableHeader = () => {
+function drawPreparationScoreTables(
+  pdf: import("jspdf").jsPDF,
+  input: {
+    groups: PreparationScoreGroup[];
+    sectionTitle: string;
+    ownerName: string;
+    representativeName: string;
+    exportDateLabel: string;
+    language: Language;
+  }
+) {
+  const t = (key: Parameters<typeof translate>[1]) => translate(input.language, key);
+  let y = 0;
+  const startPage = (groupTitle?: string) => {
+    pdf.addPage();
+    drawPreparationHeader(pdf, input.representativeName, input.exportDateLabel, t("coaching.preparation.pdfExportDate"));
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor("#003B83");
+    pdf.setFontSize(15);
+    pdf.text(`${input.sectionTitle} · ${t("coaching.preparation.scoreTables")}`, 14, 32);
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor("#64748B");
+    pdf.setFontSize(8.5);
+    pdf.text(`${t("coaching.preparation.coach")}: ${input.ownerName}`, 14, 39);
+    y = 46;
     pdf.setFillColor("#EFF6FF");
     pdf.setDrawColor("#DCE3EC");
     pdf.roundedRect(14, y, 182, 9, 2, 2, "FD");
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7.2);
     pdf.setTextColor("#003B83");
-    pdf.text("CRITERIUM", 18, y + 6);
-    pdf.text("FASE", 92, y + 6);
-    pdf.text("SCORE", 137, y + 6, { align: "center" });
-    pdf.text("OPMERKING", 157, y + 6);
-    pdf.text("DATUM", 188, y + 6, { align: "right" });
+    pdf.text(t("coaching.preparation.pdfCriterion").toUpperCase(), 18, y + 6);
+    pdf.text(t("coaching.preparation.pdfPhase").toUpperCase(), 76, y + 6);
+    pdf.text(t("coaching.preparation.pdfScore").toUpperCase(), 118, y + 6, { align: "center" });
+    pdf.text(t("coaching.preparation.pdfComment").toUpperCase(), 130, y + 6);
     y += 11;
+    if (groupTitle) drawPreparationGroupHeader(pdf, groupTitle, () => y, (value) => { y = value; });
   };
 
-  drawTableHeader();
-  for (const row of rows) {
-    const criterionLines = pdf.splitTextToSize(row.criterion, 68);
-    const categoryLines = pdf.splitTextToSize(row.category, 38);
-    const height = Math.max(9, criterionLines.length * 4.2, categoryLines.length * 4.2) + 4;
-    if (y + height > 274) {
-      pdf.addPage();
-      y = 34;
-      drawTableHeader();
+  for (const group of input.groups) {
+    const groupTitle = preparationGroupTitle(group, input.language);
+    if (!y || y > 248) startPage();
+    drawPreparationGroupHeader(pdf, groupTitle, () => y, (value) => { y = value; });
+    for (const row of group.rows) {
+      const criterionLines = pdf.splitTextToSize(row.criterion, 52) as string[];
+      const categoryLines = pdf.splitTextToSize(preparationRowCategory(row, input.language), 32) as string[];
+      const commentLines = pdf.splitTextToSize(row.comment || "-", 62) as string[];
+      const totalLines = Math.max(criterionLines.length, categoryLines.length, commentLines.length, 1);
+      let offset = 0;
+      while (offset < totalLines) {
+        let availableLines = Math.floor((272 - y - 4) / 4.1);
+        if (availableLines < 2) {
+          startPage(groupTitle);
+          availableLines = Math.floor((272 - y - 4) / 4.1);
+        }
+        const lineCount = Math.min(totalLines - offset, availableLines);
+        const height = Math.max(10, lineCount * 4.1 + 4);
+        const criterionChunk = criterionLines.slice(offset, offset + lineCount);
+        const categoryChunk = categoryLines.slice(offset, offset + lineCount);
+        const commentChunk = commentLines.slice(offset, offset + lineCount);
+        pdf.setDrawColor("#E8EDF3");
+        pdf.line(14, y - 2, 196, y - 2);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.8);
+        pdf.setTextColor("#172033");
+        pdf.text(criterionChunk.length ? criterionChunk : [""], 18, y + 3);
+        pdf.setTextColor("#64748B");
+        pdf.text(categoryChunk.length ? categoryChunk : [""], 76, y + 3);
+        if (offset === 0) {
+          pdf.setFont("helvetica", "bold");
+          pdf.setTextColor("#172033");
+          pdf.text(formatPreparationScore(row, input.language), 118, y + 3, { align: "center" });
+        }
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor("#64748B");
+        pdf.text(commentChunk.length ? commentChunk : [""], 130, y + 3);
+        y += height;
+        offset += lineCount;
+        if (offset < totalLines) startPage(groupTitle);
+      }
     }
-    pdf.setDrawColor("#E8EDF3");
-    pdf.line(14, y - 2, 196, y - 2);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7.8);
-    pdf.setTextColor("#172033");
-    pdf.text(criterionLines, 18, y + 3);
-    pdf.setTextColor("#64748B");
-    pdf.text(categoryLines, 92, y + 3);
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor("#172033");
-    pdf.text(formatScore(row.currentTen), 137, y + 3, { align: "center" });
-    pdf.setFont("helvetica", "normal");
-    pdf.setTextColor("#64748B");
-    pdf.text("-", 157, y + 3);
-    pdf.text(formatIsoDate(coachingDate), 188, y + 3, { align: "right" });
-    y += height;
   }
 }
 
-function formatScore(value: number) {
-  return value.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
+function drawPreparationGroupHeader(
+  pdf: import("jspdf").jsPDF,
+  title: string,
+  getY: () => number,
+  setY: (value: number) => void
+) {
+  const y = getY();
+  const titleLines = pdf.splitTextToSize(title, 172) as string[];
+  const height = Math.max(8, titleLines.length * 3.7 + 4);
+  pdf.setFillColor("#F8FAFC");
+  pdf.setTextColor("#003B83");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(8.2);
+  pdf.rect(14, y, 182, height, "F");
+  pdf.text(titleLines, 18, y + 5.5);
+  setY(y + height + 2);
 }
 
-function formatIsoDate(value?: string) {
+function preparationGroupTitle(group: PreparationScoreGroup, language: Language) {
+  if (group.kind === "general") return translate(language, "coaching.preparation.generalScores");
+  if (group.kind === "personality") return translate(language, "coaching.preparation.personalityScores");
+  if (group.kind === "appointment") {
+    return translate(language, "coaching.preparation.appointment")
+      .replace("{number}", String(group.sequence ?? 1))
+      .replace("{customer}", group.title);
+  }
+  return group.title;
+}
+
+function preparationPdfSectionTitle(
+  kind: "selected" | "latest" | "combined",
+  date: string,
+  language: Language
+) {
+  const key = kind === "combined"
+    ? "coaching.preparation.pdfCombinedSection"
+    : kind === "latest"
+      ? "coaching.preparation.pdfLatestSection"
+      : "coaching.preparation.pdfSelectedSection";
+  return translate(language, key).replace("{date}", formatIsoDate(date, language));
+}
+
+function formatPreparationScore(row: PreparationScoreRow, language: Language) {
+  if (row.notApplicable) return translate(language, "coaching.preparation.notApplicable");
+  if (row.score === undefined) return "-";
+  return row.score <= 5 ? `${row.score} / 5` : `${row.score}%`;
+}
+
+function preparationRowCategory(row: PreparationScoreRow, language: Language) {
+  if (row.category === "Dossier:Algemeen") return translate(language, "coaching.preparation.generalScores");
+  if (row.category === "Dossier:Persoonlijkheid") return translate(language, "coaching.preparation.personalityScores");
+  return row.category;
+}
+
+function localeForLanguage(language: Language) {
+  return language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+}
+
+function formatIsoDate(value?: string, language: Language = "nl") {
   if (!value) return "-";
-  return new Date(`${value}T00:00:00`).toLocaleDateString("nl-BE", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(`${value}T00:00:00`).toLocaleDateString(localeForLanguage(language), { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function slugify(value: string) {

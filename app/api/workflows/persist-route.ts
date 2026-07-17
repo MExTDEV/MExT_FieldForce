@@ -38,6 +38,7 @@ import {
   resolveCoachingApprovalConfirmedRecipients,
 } from "@/lib/coaching/approval-notifications";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
+import { historicalStatuses } from "@/lib/server/coaching-historical-comparison";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -66,6 +67,7 @@ export async function persistWorkflowPatch(
     }
     if (selectedPatch.interventions?.length) {
       await requireExistingCoachingsMutable(actor, selectedPatch.interventions);
+      await requireValidPreparationReferences(actor, selectedPatch.interventions);
     }
     if (selectedPatch.contactMoments?.length) {
       await requireExistingContactMomentsMutable(actor, selectedPatch.contactMoments);
@@ -537,12 +539,62 @@ async function requireExistingCoachingsMutable(
   }
 }
 
+async function requireValidPreparationReferences(
+  actor: Awaited<ReturnType<typeof requireAuthenticatedUser>>,
+  incoming: NonNullable<WorkflowPersistencePatch["interventions"]>
+) {
+  const referenced = incoming.filter((item) => item.preparationReferenceCoachingId);
+  if (!referenced.length) return;
+  const referenceIds = [...new Set(referenced.map((item) => item.preparationReferenceCoachingId!))];
+  const rows = await prisma.intervention.findMany({
+    where: {
+      AND: [
+        buildVisibleCoachingWhere(actor),
+        {
+          id: { in: referenceIds },
+          type: "BEGELEIDING",
+          deletedAt: null,
+          status: { in: historicalStatuses },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      representativeId: true,
+      representative: { select: { representativeId: true } },
+      plannedAt: true,
+      completedAt: true,
+      finalizedAt: true,
+      updatedAt: true,
+    },
+  });
+  if (rows.length !== referenceIds.length) {
+    forbidden("De gekozen referentiebegeleiding is niet toegankelijk of niet volledig uitgevoerd.");
+  }
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const today = new Date().toISOString().slice(0, 10);
+  for (const item of referenced) {
+    const row = byId.get(item.preparationReferenceCoachingId!);
+    const rowRepresentativeIds = [row?.representativeId, row?.representative.representativeId].filter(Boolean);
+    const rowDate = (row?.completedAt ?? row?.finalizedAt ?? row?.plannedAt ?? row?.updatedAt)?.toISOString().slice(0, 10);
+    if (
+      !row ||
+      row.id === item.id ||
+      !rowRepresentativeIds.includes(item.representativeId) ||
+      !rowDate ||
+      rowDate > today
+    ) {
+      forbidden("De gekozen referentiebegeleiding hoort niet bij dezelfde begeleide persoon.");
+    }
+  }
+}
+
 async function writeCoachingChangeLogs(
   actorId: string,
   interventions: NonNullable<WorkflowPersistencePatch["interventions"]>,
   before: Map<string, Record<string, unknown>>
 ) {
-  const tracked = ["status", "representativeId", "ownerId", "plannedDate", "startTime", "endTime", "notifyRepresentative", "deletedAt"] as const;
+  const tracked = ["status", "representativeId", "ownerId", "plannedDate", "startTime", "endTime", "notifyRepresentative", "preparationReferenceCoachingId", "deletedAt"] as const;
   const rows = interventions.flatMap((item) => {
     const old = before.get(item.id) ?? {};
     return tracked.flatMap((field) => {

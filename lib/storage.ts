@@ -20,4 +20,9 @@ export function loadLocalDraft<T>(key: string): T | null {
   }
 }
 
+export function clearLocalDraft(key: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(key);
+}
+
 // A future offline phase can move this layer to IndexedDB without changing the database source of truth.

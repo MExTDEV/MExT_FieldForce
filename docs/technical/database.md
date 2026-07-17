@@ -367,6 +367,24 @@ addition to `AppSetting.updatedById`.
 
 Deployment must run `npm run db:migrate:deploy` before code using these fields
 is started.
+# Coaching preparation references
+
+Migration `0041_coaching_preparation_reference` adds the nullable
+`Intervention.preparationReferenceCoachingId` foreign key to `Intervention.id`.
+
+The relation stores the completed Begeleiding explicitly selected in step 3 of
+the planning wizard. It uses `ON DELETE SET NULL`, has a dedicated lookup index
+and requires no legacy backfill. Reads fall back to the newest eligible
+completed Begeleiding only when the stored value is null. API reads and workflow
+writes independently validate same-person ownership, final lifecycle and
+effective Coaching visibility scope.
+
+Historical preparation rendering reuses stored score labels, categories,
+comments, appointment row order and immutable criterion snapshots. It must not
+recalculate historical labels or order from current criterion configuration.
+
+---
+
 # Contactmomenten
 
 Contactmomenten are stored as `Intervention` rows with

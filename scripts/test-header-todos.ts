@@ -118,7 +118,11 @@ const representativePendingTodos = buildHeaderTodoItems({
 });
 assert.equal(representativePendingTodos.length, 1);
 assert.equal(representativePendingTodos[0].todoKind, "approval");
-assert.equal(representativePendingTodos[0].href, "/begeleidingen/pending-own");
+assert.equal(
+  representativePendingTodos[0].href,
+  "/mijn-verslagen",
+  "Een akkoord-ToDo moet de vertegenwoordiger eerst naar de afgeschermde reflectieflow sturen."
+);
 
 const otherRepresentativePendingTodos = buildHeaderTodoItems({
   currentUser: otherRepresentative,

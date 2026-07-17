@@ -326,7 +326,7 @@ function ApprovalReflectionGate({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-4">
       <Link href="/mijn-verslagen" className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700">
         <ArrowLeft className="h-4 w-4" /> {t("action.previous")}
       </Link>
@@ -334,8 +334,9 @@ function ApprovalReflectionGate({
         eyebrow={t("approvalReflection.eyebrow")}
         title={title}
         description={t("approvalReflection.introduction")}
+        compact
       />
-      <section className="card space-y-6 p-5 sm:p-7">
+      <section className="card space-y-4 p-4 sm:p-5">
         <RichTextEditor
           label={t("approvalReflection.question.kpi")}
           value={answers.reflectionKpiHtml}
@@ -344,6 +345,7 @@ function ApprovalReflectionGate({
           helpText={errors.reflectionKpiHtml ? t("approvalReflection.required") : t("contactHelp.form.richTextHelp")}
           required
           disabled={saving}
+          minHeightClass="min-h-24"
           toolbarLabels={toolbarLabels}
         />
         <RichTextEditor
@@ -354,6 +356,7 @@ function ApprovalReflectionGate({
           helpText={errors.reflectionLearningHtml ? t("approvalReflection.required") : t("contactHelp.form.richTextHelp")}
           required
           disabled={saving}
+          minHeightClass="min-h-24"
           toolbarLabels={toolbarLabels}
         />
         <RichTextEditor
@@ -364,6 +367,7 @@ function ApprovalReflectionGate({
           helpText={errors.reflectionGoalHtml ? t("approvalReflection.required") : t("contactHelp.form.richTextHelp")}
           required
           disabled={saving}
+          minHeightClass="min-h-24"
           toolbarLabels={toolbarLabels}
         />
         {saveError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{saveError}</div>}
@@ -392,54 +396,89 @@ function ReportDetail({
   const { representatives } = useRepresentatives();
   const representative = representatives.find((item) => item.id === intervention.representativeId);
   const valid = choice === "gelezen_akkoord" || comment.trim().length >= 3;
+  const dateLocale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+  const previousScore = (value: string) => t("representativeReport.previousScore").replace("{score}", value);
+  const appointmentTitle = (number: number, customer: string) => t("representativeReport.appointment")
+    .replace("{number}", String(number))
+    .replace("{customer}", customer);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Link href="/mijn-verslagen" className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700">
-        <ArrowLeft className="h-4 w-4" /> Terug naar verslagen
+        <ArrowLeft className="h-4 w-4" /> {t("representativeReport.back")}
       </Link>
-      <PageHeader eyebrow="Coachingsverslag" title={intervention.title} description={`${representative?.team ?? ""} · ${new Date(intervention.updatedAt).toLocaleDateString("nl-BE")}`} />
+      <PageHeader eyebrow={t("representativeReport.eyebrow")} title={intervention.title} description={`${representative?.team ?? ""} · ${new Date(intervention.updatedAt).toLocaleDateString(dateLocale)}`} compact />
 
-      <section className="card p-5 sm:p-7">
+      <section className="card p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-950">Scores</h2>
+          <h2 className="text-lg font-bold text-slate-950">{t("representativeReport.scores")}</h2>
           <StatusBadge status={intervention.status} />
         </div>
-        <div className="mt-5 space-y-3">
-          {intervention.scores.map((score) => (
-            <div key={score.criterion} className="grid gap-2 rounded-xl border border-slate-100 p-4 sm:grid-cols-[1fr_100px_100px] sm:items-center">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{score.focus}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{score.criterion}</p>
-              </div>
-              <p className="text-xs text-slate-500">Vorige: <strong>{score.previousScore}%</strong></p>
-              <p className="text-lg font-bold text-slate-950">{score.value === "NVT" ? "NVT" : `${score.value}%`}</p>
-            </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {(intervention.dossier?.generalScores.length ?? 0) > 0 && (
+            <CompactScoreGroup title={t("representativeReport.generalScores")} scores={intervention.dossier!.generalScores.map((score) => ({
+              key: score.criterion,
+              label: score.criterion,
+              value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
+              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+            }))} />
+          )}
+          {(intervention.dossier?.personalityScores.length ?? 0) > 0 && (
+            <CompactScoreGroup title={t("representativeReport.personalityScores")} scores={intervention.dossier!.personalityScores.map((score) => ({
+              key: score.criterion,
+              label: score.criterion,
+              value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
+              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+            }))} />
+          )}
+          {intervention.scores.length > 0 && (
+            <CompactScoreGroup title={t("representativeReport.coachingCriteria")} scores={intervention.scores.map((score) => ({
+              key: `${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`,
+              label: score.criterion,
+              context: score.focus,
+              value: score.value === "NVT" ? t("representativeReport.notApplicable") : `${score.value}%`,
+              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore}%`),
+            }))} />
+          )}
+          {(intervention.appointments ?? []).filter((appointment) => !appointment.isDeleted).map((appointment, index) => (
+            <CompactScoreGroup
+              key={appointment.id}
+              title={appointmentTitle(index + 1, appointment.customer || t("representativeReport.unnamedAppointment"))}
+              scores={appointment.scores.map((score) => ({
+                key: score.criterion,
+                label: score.criterion,
+                value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
+                previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+              }))}
+            />
           ))}
+          {!intervention.dossier?.generalScores.length && !intervention.dossier?.personalityScores.length && intervention.scores.length === 0 && !(intervention.appointments ?? []).some((appointment) => !appointment.isDeleted && appointment.scores.length > 0) && (
+            <p className="text-sm text-slate-500">{t("representativeReport.noScores")}</p>
+          )}
         </div>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="card p-5 sm:p-7">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="card p-4 sm:p-5">
           <div className="flex items-center gap-3">
             <Target className="h-5 w-5 text-brand-700" />
-            <h2 className="font-bold text-slate-950">Actiepunten</h2>
+            <h2 className="font-bold text-slate-950">{t("representativeReport.actionPoints")}</h2>
           </div>
-          <div className="mt-5 space-y-3">
+          <div className="mt-3 space-y-2">
             {intervention.actionPoints.length ? intervention.actionPoints.map((action) => (
-              <div key={action.id} className="rounded-xl bg-slate-50 p-4">
+              <div key={action.id} className="rounded-xl bg-slate-50 px-3 py-2.5">
                 <p className="font-semibold text-slate-900">{action.title}</p>
-                <p className="mt-1 text-xs text-slate-500">{action.type} · tegen {action.due || "geen datum"}</p>
+                <p className="mt-1 text-xs text-slate-500">{action.type} · {t("representativeReport.due")} {action.due || t("representativeReport.noDate")}</p>
               </div>
-            )) : <p className="text-sm text-slate-500">Geen actiepunten toegevoegd.</p>}
+            )) : <p className="text-sm text-slate-500">{t("representativeReport.noActionPoints")}</p>}
           </div>
         </section>
-        <section className="card p-5 sm:p-7">
+        <section className="card p-4 sm:p-5">
           <div className="flex items-center gap-3">
             <MessageSquareText className="h-5 w-5 text-brand-700" />
             <h2 className="font-bold text-slate-950">{t("approvalReflection.sectionTitle")}</h2>
           </div>
-          <div className="mt-5 space-y-5 text-sm">
+          <div className="mt-3 space-y-3 text-sm">
             <ReflectionAnswer label={t("approvalReflection.question.kpi")} value={approval.reflectionKpiHtml} />
             <ReflectionAnswer label={t("approvalReflection.question.learning")} value={approval.reflectionLearningHtml} />
             <ReflectionAnswer label={t("approvalReflection.question.goal")} value={approval.reflectionGoalHtml} />
@@ -447,34 +486,34 @@ function ReportDetail({
         </section>
       </div>
 
-      <section className="card p-5 sm:p-7">
-        <h2 className="font-bold text-slate-950">Bevestig het verslag</h2>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      <section className="card p-4 sm:p-5">
+        <h2 className="font-bold text-slate-950">{t("representativeReport.confirmTitle")}</h2>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <ChoiceButton
             active={choice === "gelezen_akkoord"}
-            label="Gelezen en akkoord"
+            label={t("representativeReport.agree")}
             onClick={() => setChoice("gelezen_akkoord")}
           />
           <ChoiceButton
             active={choice === "gelezen_niet_akkoord"}
-            label="Gelezen maar niet akkoord"
+            label={t("representativeReport.disagree")}
             onClick={() => setChoice("gelezen_niet_akkoord")}
           />
         </div>
         {choice === "gelezen_niet_akkoord" && (
-          <label className="mt-5 block">
-            <span className="text-sm font-bold text-slate-900">Waarom ben je niet akkoord?</span>
+          <label className="mt-4 block">
+            <span className="text-sm font-bold text-slate-900">{t("representativeReport.disagreementReason")}</span>
             <textarea
-              rows={4}
+              rows={3}
               value={comment}
               onChange={(event) => setComment(event.target.value)}
               className="mt-2 w-full rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
-              placeholder="Commentaar is verplicht bij niet akkoord..."
+              placeholder={t("representativeReport.disagreementPlaceholder")}
             />
           </label>
         )}
-        <button type="button" disabled={!valid} onClick={() => onConfirm(choice, comment)} className="btn-primary mt-6">
-          <CheckCircle2 className="h-4 w-4" /> Bevestigen en afsluiten
+        <button type="button" disabled={!valid} onClick={() => onConfirm(choice, comment)} className="btn-primary mt-4">
+          <CheckCircle2 className="h-4 w-4" /> {t("representativeReport.confirmAndClose")}
         </button>
       </section>
     </div>
@@ -486,7 +525,7 @@ function ChoiceButton({ active, label, onClick }: { active: boolean; label: stri
     <button
       type="button"
       onClick={onClick}
-      className={`min-h-16 rounded-2xl border px-5 text-left text-sm font-bold transition ${
+      className={`min-h-12 rounded-xl border px-4 text-left text-sm font-bold transition ${
         active ? "border-brand-700 bg-brand-50 text-brand-800 ring-4 ring-brand-50" : "border-slate-200 text-slate-600 hover:border-brand-200"
       }`}
     >
@@ -499,7 +538,34 @@ function ReflectionAnswer({ label, value }: { label: string; value?: string }) {
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p>
-      <RichTextRenderer value={value} className="mt-2 rounded-xl bg-slate-50 p-3 leading-6 text-slate-700" />
+      <RichTextRenderer value={value} className="mt-1 rounded-xl bg-slate-50 px-3 py-2.5 leading-5 text-slate-700" />
+    </div>
+  );
+}
+
+function CompactScoreGroup({
+  title,
+  scores,
+}: {
+  title: string;
+  scores: Array<{ key: string; label: string; context?: string; value: string; previous?: string }>;
+}) {
+  if (scores.length === 0) return null;
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200">
+      <h3 className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900">{title}</h3>
+      <div className="divide-y divide-slate-100">
+        {scores.map((score) => (
+          <div key={score.key} className="flex items-center gap-3 px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              {score.context && <p className="truncate text-[11px] font-bold uppercase tracking-wider text-brand-700">{score.context}</p>}
+              <p className="truncate text-sm font-semibold text-slate-800" title={score.label}>{score.label}</p>
+              {score.previous && <p className="text-xs text-slate-500">{score.previous}</p>}
+            </div>
+            <span className="shrink-0 rounded-lg bg-brand-50 px-2.5 py-1 text-sm font-bold text-brand-900">{score.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

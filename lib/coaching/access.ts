@@ -2,6 +2,11 @@ import { canRoleEditCoachingForm } from "@/lib/coaching/form-access";
 import type { CoachingIntervention, MockUser } from "@/lib/types";
 import { canOpenCoachingDetail, localDateKey } from "@/lib/coaching/visibility";
 
+const representativeApprovalStatuses = new Set([
+  "wacht_op_akkoord",
+  "verzonden_ter_akkoord",
+]);
+
 export function canManageCoaching(
   currentUser: MockUser,
   intervention: CoachingIntervention
@@ -23,8 +28,11 @@ export function canEditFutureCoachingPlanning(
 export function coachingOpenHref(
   currentUser: MockUser,
   intervention: CoachingIntervention,
-  today = localDateKey()
+  today = localDateKey(),
+  approvalId?: string
 ) {
+  const approvalHref = representativeApprovalHref(currentUser, intervention, approvalId);
+  if (approvalHref) return approvalHref;
   if (canEditFutureCoachingPlanning(currentUser, intervention, today)) {
     return `/begeleidingen/nieuw?id=${encodeURIComponent(intervention.id)}`;
   }
@@ -32,4 +40,20 @@ export function coachingOpenHref(
     return `/begeleidingen/${intervention.id}`;
   }
   return undefined;
+}
+
+export function representativeApprovalHref(
+  currentUser: MockUser,
+  intervention: CoachingIntervention,
+  approvalId?: string
+) {
+  if (
+    currentUser.role !== "REPRESENTATIVE" ||
+    !representativeApprovalStatuses.has(intervention.status)
+  ) {
+    return undefined;
+  }
+  return approvalId
+    ? `/mijn-verslagen/${encodeURIComponent(approvalId)}`
+    : "/mijn-verslagen";
 }

@@ -632,6 +632,7 @@ export type CoachingIntervention = {
   administrativelyClosedById?: string;
   administrativeCloseReason?: string;
   copiedFromInterventionId?: string;
+  preparationReferenceCoachingId?: string;
   historicAccessSettings?: string;
   deletedAt?: string;
   outlookEventId?: string;

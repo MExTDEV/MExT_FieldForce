@@ -872,6 +872,7 @@ model Intervention {
   administrativelyClosedById String?
   administrativeCloseReason String?              @db.Text
   copiedFromInterventionId String?
+  preparationReferenceCoachingId String?
   historicAccessSettings String?                 @db.LongText
   sentForApprovalAt    DateTime?
   sentForApprovalById  String?
@@ -900,6 +901,8 @@ model Intervention {
   trainingParticipants TrainingParticipant[]
   coachingActions      CoachingAction[]
   coachingChangeLogs   CoachingChangeLog[]
+  preparationReferenceCoaching Intervention?     @relation("PreparationReferenceCoaching", fields: [preparationReferenceCoachingId], references: [id], onDelete: SetNull)
+  preparationReferencedBy       Intervention[]    @relation("PreparationReferenceCoaching")
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 
@@ -914,6 +917,7 @@ model Intervention {
   @@index([executionDeadlineAt])
   @@index([performerAccessExpiresAt])
   @@index([copiedFromInterventionId])
+  @@index([preparationReferenceCoachingId])
 }
 
 enum OutlookSyncStatus {

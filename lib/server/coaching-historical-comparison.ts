@@ -20,7 +20,7 @@ import {
 import type { HistoricalCoaching, PerformanceDimension } from "@/lib/performance-data";
 import type { MockUser, Status } from "@/lib/types";
 
-const historicalStatuses: InterventionStatus[] = [
+export const historicalStatuses: InterventionStatus[] = [
   "AKKOORD_DOOR_VERTEGENWOORDIGER",
   "AFGESLOTEN",
   "GEFINALISEERD",
@@ -28,26 +28,30 @@ const historicalStatuses: InterventionStatus[] = [
   "VOLTOOID",
 ];
 
-type HistoricalIntervention = Prisma.InterventionGetPayload<{
-  include: {
-    owner: { select: { firstName: true; lastName: true } };
-    representative: { select: { representativeId: true } };
-    focuses: { include: { focus: true } };
-    scores: {
-      include: {
-        criterion: { include: { focus: true } };
-        personalCriterion: true;
-      };
-    };
-    coachingDetail: {
-      include: {
-        appointments: {
-          where: { deletedAt: null };
-          include: { scoreRows: true };
-        };
-      };
-    };
-  };
+export const historicalInterventionInclude = {
+  owner: { select: { firstName: true, lastName: true } },
+  representative: { select: { representativeId: true } },
+  focuses: { include: { focus: true } },
+  criterionSnapshots: true,
+  scores: {
+    include: {
+      criterion: { include: { focus: true } },
+      personalCriterion: true,
+      criterionSnapshot: true,
+    },
+  },
+  coachingDetail: {
+    include: {
+      appointments: {
+        where: { deletedAt: null },
+        include: { scoreRows: true },
+      },
+    },
+  },
+} as const satisfies Prisma.InterventionInclude;
+
+export type HistoricalIntervention = Prisma.InterventionGetPayload<{
+  include: typeof historicalInterventionInclude;
 }>;
 
 export async function loadHistoricalScoreComparison(input: {
@@ -83,25 +87,7 @@ export async function loadHistoricalScoreComparison(input: {
         },
       ],
     },
-    include: {
-      owner: { select: { firstName: true, lastName: true } },
-      representative: { select: { representativeId: true } },
-      focuses: { include: { focus: true } },
-      scores: {
-        include: {
-          criterion: { include: { focus: true } },
-          personalCriterion: true,
-        },
-      },
-      coachingDetail: {
-        include: {
-          appointments: {
-            where: { deletedAt: null },
-            include: { scoreRows: true },
-          },
-        },
-      },
-    },
+    include: historicalInterventionInclude,
     orderBy: [{ plannedAt: "desc" }, { completedAt: "desc" }, { updatedAt: "desc" }],
   });
 
@@ -177,7 +163,7 @@ function buildScoreReferences(row: HistoricalIntervention): HistoricalScoreRefer
   }));
 }
 
-function toHistoricalCoaching(row: HistoricalIntervention): HistoricalCoaching {
+export function toHistoricalCoaching(row: HistoricalIntervention): HistoricalCoaching {
   const scoreRows = row.scores.flatMap((score) =>
     score.score === null || score.notApplicable ? [] : [{ ...score, score: score.score }]
   );

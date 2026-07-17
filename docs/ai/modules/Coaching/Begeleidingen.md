@@ -74,6 +74,11 @@ scores and approval actions remain blocked for the coached person while the
 required answers are incomplete; this is enforced both in the UI and
 server-side.
 
+Every representative entry point, including Begeleidingen, Planning, dashboard
+tasks and a direct Begeleiding URL, must lead into this same reflection-first
+approval flow. Masked report data must not be rendered through an empty default
+dossier, because that would incorrectly present unavailable scores as `N.v.t.`.
+
 Managers and other authorised viewers see a read-only section "Reflectie van de
 vertegenwoordiger" in the Begeleiding report. If the answers are missing or
 partially present, the section shows the available answers and clearly marks
@@ -161,6 +166,43 @@ When prior notification is disabled:
 - the coached Representative does not see the planned record;
 - no personal todo or notification exposes it before the documented stage;
 - it becomes visible at Pending Approval.
+
+---
+
+# Preparation Reference
+
+Step 3 of the planning wizard contains a selector for the historical
+Begeleiding used during preparation.
+
+Rules:
+
+- only fully completed, non-cancelled, non-deleted Begeleidingen of the same
+  coached person are eligible;
+- the current and future record are excluded;
+- options are newest first and the newest eligible record is the default;
+- date, coach and a newest-record indicator identify each option;
+- selecting another record immediately updates the Performance Circle and all
+  non-empty historical score phases;
+- stored score labels, categories, comments and snapshot order remain
+  authoritative after configuration changes;
+- current open Action Points remain based on their live lifecycle status;
+- the chosen id is stored on the planned Begeleiding and restored after save,
+  refresh, reopening and planning changes;
+- legacy records without a stored id fall back to the newest eligible record.
+
+The metadata list is loaded separately from full score details. At most the
+selected record and newest record are loaded with their score data. The server
+enforces create permission, effective Coaching scope, same-person ownership and
+completed lifecycle both when reading and saving. A manipulated id from another
+person or scope is rejected.
+
+The preparation PDF retains the existing representative and preparation-date
+header. It renders the selected reference and newest completed Begeleiding as
+separate chapters with date, coach, vector Performance Circle and historical
+score tables. Equal ids produce one combined chapter. Tables repeat their
+headers across pages and split long comments without leaving the printable
+area. Missing circles, tables or all history use local empty states and do not
+block planning or export.
 
 ---
 

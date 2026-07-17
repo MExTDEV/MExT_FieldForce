@@ -28,6 +28,7 @@
     "test:coaching-groups": "tsx scripts/test-coaching-scope-groups.ts",
     "test:coaching-visibility": "tsx scripts/test-coaching-visibility.ts",
     "test:coaching-historical-comparison": "tsx scripts/test-coaching-historical-comparison.ts",
+    "test:coaching-preparation-reference": "tsx scripts/test-coaching-preparation-reference.ts",
     "test:coaching-schedule-refresh": "tsx scripts/test-coaching-schedule-refresh.ts",
     "test:coaching-action-persistence": "tsx scripts/test-coaching-action-persistence.ts",
     "test:coaching-empty-remarks": "tsx scripts/test-coaching-empty-remarks.ts",

@@ -329,6 +329,22 @@ Snapshots:
 - Later changes to criterion text, scope links, sort order, country or team do not change existing snapshots.
 - Existing historical coachings and scores are preserved.
 
+Preparation references:
+
+- migration `0041_coaching_preparation_reference` adds nullable
+  `Intervention.preparationReferenceCoachingId` as a self-relation to the
+  selected completed Begeleiding;
+- `ON DELETE SET NULL` preserves the planned record when a referenced record is
+  administratively removed;
+- existing records require no backfill and resolve the newest eligible
+  completed Begeleiding at read time;
+- the write path verifies same coached person, completed lifecycle, past date
+  and effective actor scope before accepting the relation;
+- preparation score tables read stored `Score.category`, `Score.label`,
+  `Score.comment`, `CoachingAppointmentScore.sortOrder` and
+  `CoachingCriterionSnapshot.sortOrder`; current configuration is not used to
+  rewrite historical output.
+
 ---
 
 ## Action Points

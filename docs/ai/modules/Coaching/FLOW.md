@@ -137,6 +137,25 @@ Preparation may show:
 - customer or appointment preparation data;
 - relevant history.
 
+For a newly planned Begeleiding, step 3 lets the authorised planner select one
+fully completed earlier Begeleiding of the same coached person as the
+preparation reference. The newest eligible record is selected by default. The
+selection is stored on the new Begeleiding, survives reopening and falls back
+to the newest eligible record only for legacy records without a stored
+reference.
+
+The selector excludes the current, planned, incomplete, cancelled, deleted,
+future and other-person records. Both the read route and the save path enforce
+the existing Coaching permission and effective scope. Historical circles,
+criteria, labels, ordering, scores and comments use stored snapshot data rather
+than current configuration.
+
+The preparation PDF contains the selected reference and the newest fully
+completed Begeleiding as separate chapters. When both ids are equal, one
+combined chapter is rendered. Missing historical data never blocks planning or
+causes export failure. Current open Action Points remain based on their live
+status and do not change when an older reference is selected.
+
 Preparation does not create a second Begeleiding record.
 
 Future Begeleidingen open in planning or preparation mode.

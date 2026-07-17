@@ -291,7 +291,8 @@ export function PlanningCalendar() {
         const participantName = item.subject
           ? `${item.subject.firstName} ${item.subject.lastName}`
           : representativeName(representatives, item.representativeId);
-        const href = coachingOpenHref(user, item, today);
+        const approvalId = workflow.state.approvals.find((approval) => approval.interventionId === item.id)?.id;
+        const href = coachingOpenHref(user, item, today, approvalId);
         const hour = hourFromTime(item.startTime) ?? deterministicHour(item.id);
         const duration = durationFromTimes(item.startTime, item.endTime);
         return {

@@ -125,6 +125,7 @@ import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
   coachingOpenHref,
+  representativeApprovalHref,
 } from "@/lib/coaching/access";
 import {
   buildCoachingScopeGroups,
@@ -2147,6 +2148,7 @@ function CoachingDetail({ id }: { id: string }) {
   const workflowApi = useWorkflow();
   const historical = coachingById(performanceDataset, id);
   const workflow = workflowApi.visibleInterventions(user).find((item) => item.id === id);
+  const approval = workflowApi.state.approvals.find((item) => item.interventionId === workflow?.id);
   const representativeId = historical?.representativeId ?? workflow?.representativeId;
   const representative = representatives.find((item) => item.id === representativeId) ?? (workflow?.subject ? coachingSubjectAsRepresentative(workflow.subject) : undefined);
 
@@ -2155,6 +2157,10 @@ function CoachingDetail({ id }: { id: string }) {
   }
 
   if (workflow) {
+    const approvalHref = representativeApprovalHref(user, workflow, approval?.id);
+    if (approvalHref) {
+      return <CoachingApprovalRedirect href={approvalHref} />;
+    }
     if (!canOpenCoachingDetail(user, workflow)) {
       return <EmptyState title="Begeleiding niet beschikbaar" description="Deze begeleiding is nog niet openbaar voor jouw rol of status." />;
     }
@@ -2206,6 +2212,16 @@ function CoachingDetail({ id }: { id: string }) {
       </section>
     </div>
   );
+}
+
+function CoachingApprovalRedirect({ href }: { href: string }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace(href);
+  }, [href, router]);
+
+  return <EmptyState title="Akkoordflow openen" description="De verplichte reflectievragen worden geopend voordat het verslag zichtbaar wordt." />;
 }
 
 function CoachingPlanningRedirect({ id }: { id: string }) {
@@ -3485,7 +3501,7 @@ type InterventionListRow = CoachingScopeGroupItem & {
 
 function InterventionList({ kind }: { kind: string }) {
   const { user, managedUsers } = useSession();
-  const { visibleInterventions } = useWorkflow();
+  const { state, visibleInterventions } = useWorkflow();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
   const labels: Record<string, { title: string; description: string; icon: typeof ClipboardCheck }> = {
@@ -3537,7 +3553,8 @@ function InterventionList({ kind }: { kind: string }) {
         : item.subject
           ? `${item.subject.firstName} ${item.subject.lastName}`
           : "Onbekend";
-      const openHref = coachingOpenHref(user, item, todayKey);
+      const approvalId = state.approvals.find((approval) => approval.interventionId === item.id)?.id;
+      const openHref = coachingOpenHref(user, item, todayKey, approvalId);
       const editPlanningHref = canEditFutureCoachingPlanning(user, item, todayKey)
         ? `/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`
         : undefined;

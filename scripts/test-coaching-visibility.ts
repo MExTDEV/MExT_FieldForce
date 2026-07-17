@@ -85,6 +85,21 @@ assert.equal(
   "Een verrassingsbegeleiding wordt pas zichtbaar na verzending ter akkoord."
 );
 assert.equal(canOpenCoachingDetail(representativeB, sentForApproval[0]), true);
+assert.equal(
+  coachingOpenHref(representativeB, sentForApproval[0], "2026-07-01"),
+  "/mijn-verslagen",
+  "Zonder akkoord-id moet een vertegenwoordiger nog steeds naar de afgeschermde akkoordflow gaan."
+);
+assert.equal(
+  coachingOpenHref(representativeB, sentForApproval[0], "2026-07-01", "approval-1"),
+  "/mijn-verslagen/approval-1",
+  "Een openstaande begeleiding moet rechtstreeks naar de verplichte reflectie- en akkoordflow gaan."
+);
+assert.equal(
+  coachingOpenHref(leaderA, sentForApproval[0], "2026-07-01", "approval-1"),
+  "/begeleidingen/coaching-today",
+  "De managementweergave blijft het gewone begeleidingsdossier gebruiken."
+);
 
 assert.equal(canEditFutureCoachingPlanning(leaderA, notified[0], "2026-06-30"), true);
 assert.equal(canManageCoaching(representativeB, notified[0]), false);
