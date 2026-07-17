@@ -8,7 +8,7 @@ const appointment = salesErpMockDataset.appointments[0];
 const normalized = normalizeSalesErpAppointment(appointment);
 
 assert.equal(normalized.providerExternalId, appointment.externalId);
-assert.equal(normalized.businessDate.toISOString(), "2026-07-20T00:00:00.000Z");
+assert.equal(normalized.businessDate.toISOString(), `${appointment.businessDate}T00:00:00.000Z`);
 assert.equal(normalized.sequence, 1);
 assert.equal(normalized.status, "PLANNED");
 assert.equal(normalized.customerExternalId, salesErpMockDataset.customers[0].externalId);

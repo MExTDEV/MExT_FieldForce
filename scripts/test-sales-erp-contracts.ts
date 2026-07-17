@@ -36,6 +36,7 @@ async function main() {
     effectiveTeamExternalIds: [],
   });
   assert.deepEqual(belgianCustomers.items.map((item) => item.externalId), ["mock-customer-be-001"]);
+  assert.equal(belgianCustomers.nextCursor, "bootstrap-customers:1");
   assert.equal(belgianCustomers.generatedAt, fixedNow.toISOString());
 
   const outcomeReasonsPage1 = await adapter.getBootstrapPage({
@@ -54,7 +55,7 @@ async function main() {
     cursor: outcomeReasonsPage1.nextCursor,
   });
   assert.equal(outcomeReasonsPage2.items[0].code, "OTHER");
-  assert.equal(outcomeReasonsPage2.nextCursor, undefined);
+  assert.equal(typeof outcomeReasonsPage2.nextCursor, "string");
 
   const paymentMethods = await adapter.getBootstrapPage({
     resource: "paymentMethods",
@@ -174,6 +175,9 @@ async function main() {
 
   assert.equal(salesErpMockDataset.customers.every((customer) => customer.isDemo), true);
   assert.deepEqual(new Set(salesErpMockDataset.customers.map((customer) => customer.scope.country)), new Set(["BE", "NL", "DE"]));
+  assert(salesErpMockDataset.appointments.some((appointment) => appointment.businessDate === "2026-07-17"));
+  assert(salesErpMockDataset.appointments.some((appointment) => appointment.businessDate === "2026-07-20"));
+  assert(salesErpMockDataset.cashBalances.some((balance) => Number(balance.balance) > 0));
 
   console.log("Sales ERP-contracten: scope, cursors, mockdata, idempotency, dependencies en reconciliatie gevalideerd.");
 }
