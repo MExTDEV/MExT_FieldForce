@@ -146,6 +146,8 @@ import {
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import {
   coachingReportIssues,
+  parseCoachingReportDraft,
+  serializeCoachingReportDraft,
   type CoachingReportIssue,
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
@@ -2407,7 +2409,11 @@ function CoachingDossierDetail({
     try {
       const stored = window.localStorage.getItem(draftStorageKey);
       if (!stored) return;
-      const draft = JSON.parse(stored) as CoachingWorkflowItem;
+      const draft = parseCoachingReportDraft<CoachingWorkflowItem>(stored);
+      if (!draft) {
+        window.localStorage.removeItem(draftStorageKey);
+        return;
+      }
       if (draft.id === intervention.id && draft.updatedAt >= intervention.updatedAt) {
         setLocal(draft);
       }
@@ -2487,7 +2493,7 @@ function CoachingDossierDetail({
     setSaveStatus("saving");
     setAutosaveError(undefined);
     try {
-      window.localStorage.setItem(draftStorageKey, JSON.stringify(local));
+      window.localStorage.setItem(draftStorageKey, serializeCoachingReportDraft(local));
     } catch {
       // Autosave remains available even when browser storage is unavailable.
     }

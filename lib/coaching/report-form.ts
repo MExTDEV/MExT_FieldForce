@@ -25,6 +25,17 @@ export type CoachingReportValidationInput = {
   actionPoints: WorkflowActionPoint[];
 };
 
+const COACHING_REPORT_DRAFT_VERSION = 2;
+
+type CoachingReportDraft = {
+  dossier?: CoachingDossier;
+};
+
+type CoachingReportDraftEnvelope<T> = {
+  version: typeof COACHING_REPORT_DRAFT_VERSION;
+  report: T;
+};
+
 export function coachingReportIssues(input: CoachingReportValidationInput): CoachingReportIssue[] {
   const issues: CoachingReportIssue[] = [];
 
@@ -76,4 +87,43 @@ export function missingScores(scores: CoachingSimpleScore[]) {
 
 export function firstIssueForStep(issues: CoachingReportIssue[], step: CoachingReportStepId) {
   return issues.find((issue) => issue.step === step);
+}
+
+export function serializeCoachingReportDraft<T extends CoachingReportDraft>(report: T) {
+  const envelope: CoachingReportDraftEnvelope<T> = {
+    version: COACHING_REPORT_DRAFT_VERSION,
+    report,
+  };
+  return JSON.stringify(envelope);
+}
+
+export function parseCoachingReportDraft<T extends CoachingReportDraft>(stored: string): T | undefined {
+  const parsed: unknown = JSON.parse(stored);
+  if (!isRecord(parsed)) return undefined;
+
+  if (parsed.version === COACHING_REPORT_DRAFT_VERSION && isRecord(parsed.report)) {
+    return parsed.report as T;
+  }
+
+  return clearLegacyDefaultNvtSelections(parsed as T);
+}
+
+function clearLegacyDefaultNvtSelections<T extends CoachingReportDraft>(report: T): T {
+  if (!report.dossier) return report;
+  return {
+    ...report,
+    dossier: {
+      ...report.dossier,
+      generalScores: clearLegacyScoreSelections(report.dossier.generalScores),
+      personalityScores: clearLegacyScoreSelections(report.dossier.personalityScores),
+    },
+  };
+}
+
+function clearLegacyScoreSelections(scores: CoachingSimpleScore[]) {
+  return scores.map((score) => score.score === "nvt" ? { ...score, score: null } : score);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
