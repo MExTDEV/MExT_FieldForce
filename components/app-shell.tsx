@@ -42,9 +42,8 @@ import { translate, type TranslationKey } from "@/lib/i18n";
 import { useSession } from "@/components/session-provider";
 import { SessionFailure } from "@/components/session-state";
 import { AppSwitcherMenu } from "@/components/app-switcher-menu";
-import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
 import {
-  getAvailableDomainsForFeatureState,
+  getAvailableDomains,
   getDomainForPath,
   type AppSwitcherDomainKey,
 } from "@/lib/app-switcher";
@@ -153,7 +152,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, language, setLanguage, status } = useSession();
   const { isModuleEnabled, modules } = useModules();
-  const salesDayFeatures = useSalesDayFeatures();
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -176,10 +174,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const canSeeDashboard = canAccessDashboard(user);
   const canSeeMyTeam =
     isModuleEnabled("BEGELEIDINGEN") && canAccessMyTeamNavigation(user);
-  const appDomains = useMemo(() => getAvailableDomainsForFeatureState(user, modules, {
-    salesdayEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("SALESDAY"),
-    inventoryEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("INVENTORY"),
-  }), [modules, salesDayFeatures, user]);
+  const appDomains = useMemo(() => getAvailableDomains(user, modules), [modules, user]);
   const activeAppDomain = appDomains.find((domain) => domain.key === activeDomainKey);
   const domainMainNav = activeAppDomain && isDomainSidebarNavigation(activeDomainKey)
     ? activeAppDomain.links.map((link) => ({ href: link.href, icon: link.icon, label: link.label }))

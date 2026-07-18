@@ -13,10 +13,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/components/session-provider";
 import { useModules } from "@/components/module-provider";
-import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
 import { roleLabels } from "@/lib/permissions";
 import {
-  getAvailableDomainsForFeatureState,
+  getAvailableDomains,
+  getDomainLandingHref,
   getDomainForPath,
   type AppSwitcherDomain,
   type AppSwitcherLink,
@@ -26,14 +26,10 @@ export function AppSwitcherMenu() {
   const pathname = usePathname();
   const { user, users, setUserId } = useSession();
   const { modules } = useModules();
-  const salesDayFeatures = useSalesDayFeatures();
   const authenticatedMode = process.env.NEXT_PUBLIC_AUTH_MODE !== "demo";
   const demoUserSwitcherEnabled =
     !authenticatedMode && process.env.NEXT_PUBLIC_ENABLE_DEMO_USER_SWITCHER !== "false";
-  const availableDomains = useMemo(() => getAvailableDomainsForFeatureState(user, modules, {
-    salesdayEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("SALESDAY"),
-    inventoryEnabled: !salesDayFeatures.loading && salesDayFeatures.isEnabled("INVENTORY"),
-  }), [modules, salesDayFeatures, user]);
+  const availableDomains = useMemo(() => getAvailableDomains(user, modules), [modules, user]);
   const [open, setOpen] = useState(false);
   const [selectedDomain, setSelectedDomain] = useState<AppSwitcherDomain["key"]>(() =>
     getDomainForPath(pathname)
@@ -113,11 +109,15 @@ export function AppSwitcherMenu() {
                   const Icon = domain.icon;
                   const active = domain.key === activeDomain?.key;
                   return (
-                    <button
+                    <Link
                       key={domain.key}
-                      type="button"
+                      href={getDomainLandingHref(domain)}
                       onMouseEnter={() => setSelectedDomain(domain.key)}
-                      onClick={() => setSelectedDomain(domain.key)}
+                      onFocus={() => setSelectedDomain(domain.key)}
+                      onClick={() => {
+                        setSelectedDomain(domain.key);
+                        setOpen(false);
+                      }}
                       className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${
                         active
                           ? "bg-white text-brand-800 shadow-sm ring-1 ring-slate-200"
@@ -131,7 +131,7 @@ export function AppSwitcherMenu() {
                         <p className="text-sm font-semibold">{domain.title}</p>
                         <p className="truncate text-[11px] text-slate-500">{domain.subtitle}</p>
                       </div>
-                    </button>
+                    </Link>
                   );
                 })}
               </div>

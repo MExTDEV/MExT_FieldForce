@@ -1,6 +1,6 @@
 import {
   getAvailableDomains,
-  getAvailableDomainsForFeatureState,
+  getDomainLandingHref,
   getDomainForPath,
   type AppSwitcherDomainKey,
 } from "../lib/app-switcher";
@@ -98,6 +98,14 @@ for (const rule of Object.values(coachingModuleNavigationRules)) {
 }
 
 const expectedManagementDomains: AppSwitcherDomainKey[] = ["coaching", "salesday", "inventory", "pst", "contract", "service"];
+const expectedLandingHrefs: Record<AppSwitcherDomainKey, string> = {
+  coaching: "/dashboard",
+  salesday: "/salesday",
+  inventory: "/inventory/mijn-voorraad",
+  pst: "/pst/dashboard",
+  contract: "/contract",
+  service: "/service/mijn-dag",
+};
 const expectedRepresentativeDomains: AppSwitcherDomainKey[] = ["coaching", "salesday", "inventory", "contract"];
 
 for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER", "SALES_LEADER"] as Role[]) {
@@ -105,6 +113,12 @@ for (const role of ["SUPER_ADMIN", "ADMIN", "COUNTRY_MANAGER", "SALES_MANAGER", 
   const domainKeys = domains.map((domain) => domain.key);
   for (const requiredDomain of expectedManagementDomains) {
     expect(domainKeys.includes(requiredDomain), `${role} mist hoofditem ${requiredDomain}.`);
+  }
+  for (const domain of domains) {
+    expect(
+      getDomainLandingHref(domain) === expectedLandingHrefs[domain.key],
+      `${role} opent niet op de standaardpagina van ${domain.title}.`
+    );
   }
 }
 
@@ -124,36 +138,6 @@ expect(representativeSalesDayLinks.includes("stock"), "SalesDay-voorraad ontbree
 expect(representativeSalesDayLinks.includes("cash"), "SalesDay-kasblad ontbreekt voor de vertegenwoordiger.");
 expect(representativeSalesDayLinks.includes("dayClosure"), "SalesDay-dagafsluiting ontbreekt voor de vertegenwoordiger.");
 expect(!representativeSalesDayLinks.includes("team"), "SalesDay Mijn Team mag niet zichtbaar zijn voor de vertegenwoordiger.");
-const representativeFeatureDomains = getAvailableDomainsForFeatureState(representative, modules, {
-  salesdayEnabled: true,
-  inventoryEnabled: true,
-});
-expect(
-  representativeFeatureDomains.some((domain) => domain.key === "salesday"),
-  "Een actieve SalesDay-feature moet SalesDay in het hoofdmenu tonen."
-);
-expect(
-  representativeFeatureDomains
-    .find((domain) => domain.key === "salesday")
-    ?.links.some((link) => link.key === "stock"),
-  "Een actieve Inventory-feature moet Mijn voorraad onder SalesDay tonen."
-);
-expect(
-  !getAvailableDomainsForFeatureState(representative, modules, {
-    salesdayEnabled: false,
-    inventoryEnabled: true,
-  }).some((domain) => domain.key === "salesday"),
-  "Een uitgeschakelde SalesDay-feature mag SalesDay niet in het hoofdmenu tonen."
-);
-expect(
-  !getAvailableDomainsForFeatureState(representative, modules, {
-    salesdayEnabled: true,
-    inventoryEnabled: false,
-  })
-    .find((domain) => domain.key === "salesday")
-    ?.links.some((link) => link.key === "stock"),
-  "Een uitgeschakelde Inventory-feature mag Mijn voorraad niet onder SalesDay tonen."
-);
 expect(getDomainForPath("/salesday/mijn-voorbereiding") === "salesday", "SalesDay-voorbereiding moet het SalesDay-domein openen.");
 expect(getDomainForPath("/salesday/cash") === "salesday", "Kasblad moet het SalesDay-domein openen.");
 const representativeLinks = representativeDomains.find((domain) => domain.key === "coaching")?.links.map((link) => link.key) ?? [];

@@ -10,4 +10,6 @@ tmp/
 storage/
 *.log
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 prisma/dev.db

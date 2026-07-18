@@ -339,7 +339,7 @@ Activating or stopping ERP-outage emergency mode requires the separate `salesday
 
 Managing global/country/team/user activation, the server-owned ERP runtime or the SalesDay Power BI link requires `salesday.settings.manage`. Reading technical integration incidents and production-readiness state requires `salesday.integration.monitor`. Both default to Super Admin only, remain configurable through role grants and user overrides, and do not grant Representative operational actions.
 
-Representatives receive SalesDay preparation, agenda, stock and cash menu rights, but effective visibility still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
+Representatives receive SalesDay preparation, agenda, stock and cash menu rights. Menu visibility follows those rights; effective page and API use still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
 
 Shared Inventory uses separate permissions from SalesDay management:
 

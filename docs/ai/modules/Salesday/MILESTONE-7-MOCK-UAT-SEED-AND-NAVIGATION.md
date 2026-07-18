@@ -12,7 +12,7 @@ Milestone 7 is a non-production enablement milestone. It makes SalesDay usable f
 - A guarded local seed runner was added for isolated development, demo, test, mock, sandbox or UAT databases.
 - The seed uses existing real FieldForce users with the `REPRESENTATIVE` role; it does not create demo users.
 - The seed applies ERP-originated business records through the SalesDay replica event path instead of inventing a parallel write path.
-- The SalesDay app switcher and blue left navigation now use the same domain definition and server-evaluated SalesDay feature state.
+- The SalesDay app switcher and blue left navigation now use the same permission-filtered domain definition.
 - SalesDay workspace routes for `Mijn voorraad` and `Kasblad` were connected to their existing APIs so the menu items open meaningful screens.
 
 ## Seed safety rules
@@ -74,15 +74,17 @@ The fixture remains provider-neutral and uses the reserved `.invalid` email doma
 
 ## Navigation behaviour
 
-The app switcher menu and the blue left sidebar now use `getAvailableDomainsForFeatureState`.
+The app switcher menu and the blue left sidebar use `getAvailableDomains` so they share the same permission-filtered domain definition.
 
 For the SalesDay domain this means:
 
-- the whole SalesDay domain is hidden while the `SALESDAY` feature is disabled or still unresolved;
-- `Mijn voorraad` is hidden when the `INVENTORY` feature is disabled;
+- SalesDay and its permitted submenu entries remain visible independently of runtime feature activation;
+- opening a SalesDay route still shows the server-evaluated loading or disabled state, and APIs continue to enforce activation and scope;
 - SalesDay routes open the SalesDay domain sidebar instead of falling back to Coaching navigation;
 - representative SalesDay navigation includes overview, preparation, agenda, stock, cash sheet and day closure;
 - team navigation remains permission-driven and is not shown to representatives by default.
+
+Clicking a top-level application in the app switcher navigates immediately to its dashboard or designated domain start page. If that landing link is not available through the user's menu permissions, the first permitted submenu link is used instead.
 
 `Dagafsluiting` is exposed through the existing `menu.salesday.agenda` permission because no separate day-closure menu permission exists yet and the screen belongs to the representative workday/agenda flow.
 

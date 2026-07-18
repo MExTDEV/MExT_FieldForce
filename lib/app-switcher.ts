@@ -62,6 +62,7 @@ export type AppSwitcherDomain = {
   key: AppSwitcherDomainKey;
   title: string;
   subtitle: string;
+  landingHref: string;
   icon: LucideIcon;
   enabledPermission: FieldForcePermissionKey;
   available: boolean;
@@ -96,6 +97,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     key: "coaching",
     title: "Coaching",
     subtitle: "Grow. Coach. Perform.",
+    landingHref: "/dashboard",
     icon: ClipboardCheck,
     enabledPermission: "menu.coaching.enabled",
     isAvailable: (user) => canAccessCoaching(user),
@@ -327,6 +329,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     key: "salesday",
     title: "SalesDay",
     subtitle: "Agenda. Contact. Sales.",
+    landingHref: "/salesday",
     icon: CalendarDays,
     enabledPermission: "menu.salesday.enabled",
     isAvailable: withinDomain(canAccessSalesday),
@@ -344,6 +347,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     key: "inventory",
     title: "Inventory",
     subtitle: "Voorraad. Bevoorrading. Dragers.",
+    landingHref: "/inventory/mijn-voorraad",
     icon: Contact,
     enabledPermission: "menu.inventory.enabled",
     isAvailable: withinDomain(canAccessInventory),
@@ -357,6 +361,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     key: "pst",
     title: "PST",
     subtitle: "Leads. Genehmigung. Contacts.",
+    landingHref: "/pst/dashboard",
     icon: GraduationCap,
     enabledPermission: "menu.pst.enabled",
     isAvailable: withinDomain(canAccessPST),
@@ -372,6 +377,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     key: "contract",
     title: "Contract",
     subtitle: "Calculate. Sign. Deliver.",
+    landingHref: "/contract",
     icon: ClipboardCheck,
     enabledPermission: "menu.contract.enabled",
     isAvailable: withinDomain(canAccessContract),
@@ -388,6 +394,7 @@ export const appSwitcherDomains: DomainDefinition[] = [
     key: "service",
     title: "Service",
     subtitle: "Inspect. Maintain. Protect.",
+    landingHref: "/service/mijn-dag",
     icon: CircleHelp,
     enabledPermission: "menu.service.enabled",
     isAvailable: withinDomain(canAccessService),
@@ -423,6 +430,7 @@ export function getConfigurableMenuDomains(
     key: domain.key,
     title: domain.title,
     subtitle: domain.subtitle,
+    landingHref: domain.landingHref,
     icon: domain.icon,
     enabledPermission: domain.enabledPermission,
     available: domain.isAvailable(user, modules),
@@ -450,24 +458,10 @@ export function getAvailableDomains(
     }));
 }
 
-export type AppSwitcherFeatureState = {
-  salesdayEnabled: boolean;
-  inventoryEnabled: boolean;
-};
-
-export function getAvailableDomainsForFeatureState(
-  user: MockUser,
-  modules: AppModuleConfig[],
-  features: AppSwitcherFeatureState,
-): AppSwitcherDomain[] {
-  return getAvailableDomains(user, modules)
-    .filter((domain) => domain.key !== "salesday" || features.salesdayEnabled)
-    .map((domain) => domain.key !== "salesday"
-      ? domain
-      : {
-          ...domain,
-          links: domain.links.filter((link) => link.key !== "stock" || features.inventoryEnabled),
-        });
+export function getDomainLandingHref(domain: AppSwitcherDomain): string {
+  return domain.links.some((link) => link.href === domain.landingHref)
+    ? domain.landingHref
+    : domain.links[0]?.href ?? domain.landingHref;
 }
 
 export function getDomainForPath(pathname: string): AppSwitcherDomainKey {
