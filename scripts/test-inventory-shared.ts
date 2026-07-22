@@ -82,6 +82,11 @@ expectText("lib/server/salesday-business-relations.ts", [
   "applySalesErpCustomerLocation",
   "applySalesErpCarrierBalance",
 ]);
+expectText("lib/server/inventory/service.ts", [
+  "role: \"REPRESENTATIVE\"",
+  "{ representativeId: replenishment.representativeExternalId }",
+  "{ id: replenishment.representativeExternalId }",
+]);
 expectText("lib/types.ts", [
   "inventory.balance.readOwn",
   "inventory.receipts.acceptOwn",

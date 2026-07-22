@@ -141,7 +141,15 @@ export async function applySalesErpReplenishment(
   replenishment: SalesErpReplenishment,
 ) {
   const prismaProvider = provider as ErpIntegrationProvider;
-  const representative = await tx.user.findUnique({ where: { representativeId: replenishment.representativeExternalId } });
+  const representative = await tx.user.findFirst({
+    where: {
+      role: "REPRESENTATIVE",
+      OR: [
+        { representativeId: replenishment.representativeExternalId },
+        { id: replenishment.representativeExternalId },
+      ],
+    },
+  });
   if (!representative) invalid("ERP-bevoorrading verwijst naar een onbekende vertegenwoordiger.");
 
   const transitLocation = await getOrCreateTransitLocation(tx, {
