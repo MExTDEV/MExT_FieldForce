@@ -83,7 +83,7 @@ CREATE TABLE `SalesDocumentNumberBlock` (
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
-  INDEX `SalesDocumentNumberBlock_provider_country_documentType_status_idx` (`provider`, `country`, `documentType`, `status`),
+  INDEX `SalesDocNumberBlock_provider_country_type_status_idx` (`provider`, `country`, `documentType`, `status`),
   INDEX `SalesDocumentNumberBlock_externalId_idx` (`externalId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

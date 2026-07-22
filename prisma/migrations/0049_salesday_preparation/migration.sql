@@ -37,7 +37,7 @@ CREATE TABLE `SalesPreparationRecommendationFeedback` (
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `SalesPreparationRecommendationFeedback_appointmentId_articleExternalId_key` (`appointmentId`, `articleExternalId`),
+  UNIQUE INDEX `SalesPrepFeedback_appointment_article_key` (`appointmentId`, `articleExternalId`),
   INDEX `SalesPreparationRecommendationFeedback_actorUserId_updatedAt_idx` (`actorUserId`, `updatedAt`),
   CONSTRAINT `SalesPreparationRecommendationFeedback_appointmentId_fkey` FOREIGN KEY (`appointmentId`) REFERENCES `SalesAppointment` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `SalesPreparationRecommendationFeedback_actorUserId_fkey` FOREIGN KEY (`actorUserId`) REFERENCES `User` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE

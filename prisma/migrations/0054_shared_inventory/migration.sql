@@ -91,7 +91,7 @@ CREATE TABLE `InventoryReplenishment` (
   `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `InventoryReplenishment_provider_externalId_key` (`provider`, `externalId`),
-  INDEX `InventoryReplenishment_representativeUserId_status_expectedAt_idx` (`representativeUserId`, `status`, `expectedAt`),
+  INDEX `InventoryReplenishment_rep_status_expectedAt_idx` (`representativeUserId`, `status`, `expectedAt`),
   INDEX `InventoryReplenishment_country_status_idx` (`country`, `status`),
   CONSTRAINT `InventoryReplenishment_representativeUserId_fkey` FOREIGN KEY (`representativeUserId`) REFERENCES `User` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `InventoryReplenishment_transitLocationId_fkey` FOREIGN KEY (`transitLocationId`) REFERENCES `InventoryLocation` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE

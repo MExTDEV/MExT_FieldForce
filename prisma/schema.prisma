@@ -2364,7 +2364,7 @@ model SalesPreparationRecommendationFeedback {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  @@unique([appointmentId, articleExternalId])
+  @@unique([appointmentId, articleExternalId], map: "SalesPrepFeedback_appointment_article_key")
   @@index([actorUserId, updatedAt])
 }
 
@@ -2503,7 +2503,7 @@ model SalesDocumentNumberBlock {
   createdAt       DateTime                       @default(now())
   updatedAt       DateTime                       @updatedAt
 
-  @@index([provider, country, documentType, status])
+  @@index([provider, country, documentType, status], map: "SalesDocNumberBlock_provider_country_type_status_idx")
   @@index([externalId])
 }
 
@@ -2852,7 +2852,7 @@ model InventoryReplenishment {
   updatedAt                DateTime                     @updatedAt
 
   @@unique([provider, externalId])
-  @@index([representativeUserId, status, expectedAt])
+  @@index([representativeUserId, status, expectedAt], map: "InventoryReplenishment_rep_status_expectedAt_idx")
   @@index([country, status])
 }
 
