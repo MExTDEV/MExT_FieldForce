@@ -73,6 +73,12 @@ if (productionCheck) {
   if (deploymentEnv === "production" && process.env.NEXT_PUBLIC_AUTH_MODE === "demo") {
     errors.push("NEXT_PUBLIC_AUTH_MODE mag niet demo zijn in publieke productie.");
   }
+  if (
+    deploymentEnv === "production" &&
+    process.env.SALESDAY_PRODUCTION_MOCK_MODE === "true"
+  ) {
+    warnings.push("SalesDay draait bewust in gecontroleerde productiemockmodus; schakel dit uit v??r echte ERP-acceptatie.");
+  }
   const entraNames = [
     "AUTH_MICROSOFT_ENTRA_ID_ID",
     "AUTH_MICROSOFT_ENTRA_ID_SECRET",

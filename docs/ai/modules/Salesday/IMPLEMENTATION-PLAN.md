@@ -28,7 +28,7 @@ The first activated production SalesDay includes milestones 1 through 5 below.
 
 Milestone 6 reporting is limited to operational indicators and a Power BI link. Embedded Power BI is explicitly optional and later.
 
-Milestone 7 is non-production enablement for mock/UAT data and navigation hardening while the real ERP adapter is pending. It does not authorise production mock data.
+Milestone 7 started as non-production enablement. The approved live system-test extension permits mock data only behind the explicit server-side production-mock switch and separate operator command; this is a test state, not real ERP production acceptance.
 
 ### 3.2 Flags
 
@@ -49,7 +49,7 @@ Flags affect navigation, pages, APIs, bootstrap datasets and background processi
 
 - Development: deterministic mock adapter and repeatable fictitious seed allowed.
 - Test/UAT: mock adapter and later isolated ERP test tenant.
-- Production: real ERP adapter only; mock seed and mock fallback must fail closed.
+- Production: real ERP adapter by default. Controlled live system testing may explicitly enable mock mode; without that switch, mock seed, adapter and fallback remain fail-closed.
 
 ## 4. Target source structure
 
@@ -428,7 +428,7 @@ Status: `COMPLETE IN SOURCE` (16 July 2026) — the persistent integration-ledge
 - centrally audited emergency mode;
 - server-side feature flags by global/country/team/user;
 - neutral lock-screen push notifications;
-- repeatable mock seed blocked in production.
+- repeatable mock seed blocked in production unless controlled live system-test mode is explicitly enabled.
 
 ### Required tests
 
@@ -441,7 +441,7 @@ Status: `COMPLETE IN SOURCE` (16 July 2026) — the persistent integration-ledge
 - device/user mismatch and remote wipe/logout;
 - encrypted-store migration and corrupt local record recovery;
 - day −1 block and emergency-mode audit;
-- production configuration rejects mock adapter/seed.
+- production configuration rejects mock adapter/seed unless controlled live system-test mode is explicitly enabled.
 
 ### Exit criteria
 
@@ -645,20 +645,22 @@ Source implementation is documented in `MILESTONE-6-PRODUCTION-READINESS.md`. Th
 - no open P0/P1 data-loss, scope, idempotency, financial or stock defect;
 - real ERP round trips are proven for every command/event type;
 - emergency mode and rollback are rehearsed;
-- production contains no mock business data.
+- accepted real-ERP production contains no mock business data and has controlled live mock mode disabled.
 
 ## Milestone 7 — Mock/UAT seed and SalesDay navigation
 
 Status: `IMPLEMENTED IN SOURCE — NOT SEEDED ON CURRENT DATABASE` on 17 July 2026.
 
-Source implementation is documented in `MILESTONE-7-MOCK-UAT-SEED-AND-NAVIGATION.md`. The implementation expands the deterministic fictitious fixture, adds a guarded UAT/mock seed runner, keeps production and non-test database names fail-closed, and aligns the app switcher plus blue left sidebar with the SalesDay feature state and domain links.
+Source implementation is documented in `MILESTONE-7-MOCK-UAT-SEED-AND-NAVIGATION.md`. The original isolated UAT runner remains fail-closed. A separate guarded live-system runner requires explicit environment and CLI approval, seeds all active users according to their existing role scope, and does not run during normal deployment.
 
 ### Deliverables
 
 - richer provider-neutral fictitious UAT fixture for BE/NL/DE;
-- guarded seed runner with dry-run mode and production/non-test database refusal;
-- representative mapping to existing active FieldForce users, without demo-user creation;
-- runtime configuration, feature flags and SalesDay/Inventory reference settings for UAT walkthroughs;
+- guarded UAT runner plus separate live-system runner with dry-run mode and double opt-in for production/non-test databases;
+- a distinct SalesDay fixture for every active Representative, without demo-user creation;
+- explicit user feature flags plus Contract and personal Inventory fixtures for every active user;
+- rolling daily appointment dates on every live-system rerun, with a default 30-day window and an explicit `--days=1..90` bound;
+- runtime configuration and SalesDay/Inventory reference settings for walkthroughs;
 - shared app-switcher/sidebar domain helper for feature-aware SalesDay visibility;
 - SalesDay workspace screens for `Mijn voorraad` and `Kasblad`.
 
@@ -674,7 +676,7 @@ Source implementation is documented in `MILESTONE-7-MOCK-UAT-SEED-AND-NAVIGATION
 - current non-test database is refused by dry-run;
 - a synthetic UAT database name passes dry-run validation;
 - SalesDay app switcher and sidebar show the same permitted domain links;
-- no production database is changed and no mock business data is inserted in production.
+- the seed is never executed automatically; live test data is inserted only through the separate double-opt-in operator command.
 
 ## 9. Validation matrix
 
@@ -781,6 +783,6 @@ SalesDay is production-ready only when:
 8. Contract uses the shared relation/article direction without regression or duplicate calculator;
 9. all countries and NL/FR/DE pass acceptance;
 10. personal Android devices pass PWA, encryption, lock, MDM and offline storage tests;
-11. no mock business data or mock adapter can activate in production;
+11. controlled mock mode is disabled and no mock business data or mock adapter can activate in accepted real-ERP production;
 12. documentation, TODO/history and operational runbooks reflect the released behaviour;
 13. rollback/emergency/recovery are rehearsed, not merely documented.

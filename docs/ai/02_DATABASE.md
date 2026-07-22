@@ -654,6 +654,10 @@ Critical rules:
 - flag/runtime mutation and `AuditLog` creation share one transaction;
 - migration `0045` contains no activation rows, runtime seed or business data and is not deployed to the configured production database.
 
+The controlled live-system mock runner is an explicit idempotent operator action, not a migration or configuration seed. It upserts only deterministically identified fictitious SalesDay, Contract and Inventory records, preserves real users and existing non-mock business records, and writes user-level feature flags for active users. Its SalesDay appointment copies use date-specific external IDs for a bounded rolling window so repeated runs update the same daily fictitious records. `deploy:prepare` never invokes it. Normal production remains fail-closed unless `SALESDAY_PRODUCTION_MOCK_MODE=true` is set server-side.
+
+PST and Service have no persistent domain tables in the current schema. The live-system runner must not create proxy tables or reuse Coaching entities for those placeholders.
+
 ## SalesDay shared business relations
 
 Migration `0046_salesday_business_relations` additively defines the shared customer/prospect root used by SalesDay and Contract.

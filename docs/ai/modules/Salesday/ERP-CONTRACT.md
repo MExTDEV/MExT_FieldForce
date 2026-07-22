@@ -112,9 +112,9 @@ Reconciliation receives command IDs and returns known acknowledgements plus unkn
 
 The mock dataset is fully fictitious, deterministic and covers Belgium, the Netherlands and Germany. Email addresses use the reserved `.invalid` domain. Fixtures must remain clearly marked as demo data and must not be generated from production exports.
 
-The factory rejects the `MOCK` provider when the runtime environment is `production`. BC/NAV and Odoo also fail closed until their adapters exist. A production deployment must never fall back to mock data or a different provider.
+The factory rejects the `MOCK` provider when the runtime environment is `production`, unless the server operator explicitly enables controlled live system-test mode through `SALESDAY_PRODUCTION_MOCK_MODE=true`. BC/NAV and Odoo also fail closed until their adapters exist. No environment may automatically fall back to mock data or a different provider.
 
-The Milestone 7 UAT seed runner is a non-production operator tool. It may only target database names that are clearly isolated for development, demo, test, mock, sandbox, local or UAT use. The runner maps fictitious business records to existing active Representative users and refuses ambiguous database names by default. It is not an ERP substitute and must not be used to populate production.
+The Milestone 7 UAT seed runner remains a non-production operator tool. A separate live-system runner may target the controlled live test environment only with the production-mock switch, the non-test-database acknowledgement and the explicit operator command. It preserves real users, creates user-scoped fictitious records, fills a bounded rolling daily SalesDay appointment window and is not an ERP substitute.
 
 ## Real-adapter acceptance gate
 
@@ -156,6 +156,6 @@ Milestone 5 keeps payment methods and cash-balance clearing ERP-owned.
 Milestone 6 adds source-level readiness checks, but the real ERP adapter remains an external acceptance gate.
 
 - Every command and event type in this contract must complete a real test-tenant round trip before production activation.
-- Mock provider and mock seed are forbidden in production.
+- Mock provider and mock seed are forbidden in normal or real-ERP-accepted production; controlled live system-test mode is the sole explicit temporary exception.
 - Reconciliation incidents must be resolved from ERP evidence; FieldForce must not recreate uncertain business transactions with new command identities.
 - The operational dashboard may surface current ledger health, but Power BI remains the official historical reporting and KPI source.

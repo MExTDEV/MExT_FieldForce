@@ -41,7 +41,7 @@ The readiness summary intentionally blocks or marks external gates until evidenc
 
 - SalesDay, Inventory, Offline Commands and ERP Writes must be enabled for the intended pilot scope.
 - Runtime provider must not be `MOCK`.
-- Production cannot activate mock provider/mock seed.
+- Real-ERP-accepted production cannot activate the mock provider/seed; the temporary controlled live system-test mode documented in Milestone 7 must be disabled before acceptance.
 - Open P0/P1-equivalent reconciliation incidents must be zero.
 - Open ERP outbox commands must be explained before cutover.
 - Real ERP end-to-end acceptance is external evidence.
@@ -68,7 +68,7 @@ Alert escalation:
 - Open reconciliation incident: integration owner + backoffice; do not replay blindly.
 - Old open outbox command: inspect dependency and acknowledgement state before retry.
 - Cash block: verify ERP/backoffice deposit acknowledgement; no manual FieldForce override.
-- Mock provider in production: stop activation and correct runtime before any pilot.
+- Mock provider outside the explicitly controlled live system-test mode: stop activation and correct runtime before any real ERP pilot.
 - Device lost: follow device-loss recovery below.
 
 ## Reconciliation procedure
@@ -110,7 +110,7 @@ Cutover rehearsal must prove:
 - feature flags can activate/deactivate by country/team/user;
 - ERP writes can be disabled independently from reads/events;
 - pending outbox/evidence records remain intact during rollback;
-- mock provider/mock data cannot activate in production;
+- mock provider/mock data cannot activate in accepted real-ERP production;
 - Power BI link opens externally without embedded reporting;
 - rollback leaves new tables/columns intact but unused until reconciliation.
 

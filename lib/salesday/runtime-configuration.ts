@@ -16,6 +16,14 @@ export type SalesDayRuntimeConfiguration = {
   enabledNotifications: SalesDayNotificationType[];
 };
 
+export const salesDayProductionMockModeEnvKey = "SALESDAY_PRODUCTION_MOCK_MODE";
+
+export function isSalesDayProductionMockModeEnabled(
+  value: string | undefined = process.env[salesDayProductionMockModeEnvKey],
+) {
+  return value === "true";
+}
+
 export class SalesDayRuntimeConfigurationError extends Error {
   constructor(
     readonly code: "CONFIGURATION_MISSING" | "CONFIGURATION_INVALID" | "PRODUCTION_MOCK_FORBIDDEN",
@@ -45,6 +53,7 @@ export function defaultSalesDayRuntimeConfiguration(
 export function parseSalesDayRuntimeConfiguration(
   value: string | null | undefined,
   runtimeEnvironment: string | undefined = process.env.NODE_ENV,
+  allowProductionMock = isSalesDayProductionMockModeEnabled(),
 ): SalesDayRuntimeConfiguration {
   if (!value) return defaultSalesDayRuntimeConfiguration(runtimeEnvironment);
   let parsed: unknown;
@@ -80,16 +89,18 @@ export function parseSalesDayRuntimeConfiguration(
     mockSeedEnabled: parsed.mockSeedEnabled,
     enabledNotifications: [...new Set(notifications as SalesDayNotificationType[])],
   };
-  assertSalesDayRuntimeConfiguration(configuration, runtimeEnvironment);
+  assertSalesDayRuntimeConfiguration(configuration, runtimeEnvironment, allowProductionMock);
   return configuration;
 }
 
 export function assertSalesDayRuntimeConfiguration(
   configuration: SalesDayRuntimeConfiguration,
   runtimeEnvironment: string | undefined = process.env.NODE_ENV,
+  allowProductionMock = isSalesDayProductionMockModeEnabled(),
 ) {
   if (
     runtimeEnvironment === "production" &&
+    !allowProductionMock &&
     (configuration.provider === "MOCK" || configuration.mockSeedEnabled)
   ) {
     throw new SalesDayRuntimeConfigurationError(
@@ -102,8 +113,9 @@ export function assertSalesDayRuntimeConfiguration(
 
 export function assertSalesDayMockSeedAllowed(
   runtimeEnvironment: string | undefined = process.env.NODE_ENV,
+  allowProductionMock = isSalesDayProductionMockModeEnabled(),
 ) {
-  if (runtimeEnvironment === "production") {
+  if (runtimeEnvironment === "production" && !allowProductionMock) {
     throw new SalesDayRuntimeConfigurationError(
       "PRODUCTION_MOCK_FORBIDDEN",
       "SalesDay mock seed is disabled in production",

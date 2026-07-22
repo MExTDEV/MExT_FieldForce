@@ -584,7 +584,11 @@ The same agreed scenarios are executed in all supported languages.
 
 SalesApp contains only mock/test data and no operational data to migrate.
 
-FieldForce may provide a repeatable development/demo seed with clearly marked fictitious records. Production must reject the mock seed and never fall back to it during an ERP outage.
+FieldForce provides repeatable seeds with clearly marked fictitious records. Normal production must reject the mock provider and mock seed and must never fall back to them during an ERP outage. A live environment that is intentionally used as a controlled system-test environment may enable the mock provider only through the server-side `SALESDAY_PRODUCTION_MOCK_MODE=true` switch and the separate explicit live-system-mock command. The switch is never inferred from database content and must be disabled before real ERP acceptance.
+
+The live system seed preserves all real users, enables SalesDay/Inventory feature flags explicitly for every active user, gives every active Representative a separate rolling daily SalesDay fixture, and creates Contract and personal Inventory fixtures for every active user. The default SalesDay appointment window is 30 calendar days from the resolved business date and can be bounded with `--days=1..90`. Management roles continue to use their documented read-only team/country scope; the seed does not let them act as a Representative.
+
+PST and Service currently have placeholder navigation only and no owned persistent domain model. Their behaviour may not be invented by the system seed; they require separate approved module definitions before meaningful mock records can exist.
 
 Real FieldForce users must be preserved.
 

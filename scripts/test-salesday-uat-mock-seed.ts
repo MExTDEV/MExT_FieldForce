@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 
 import {
   assertSalesDayMockUatSeedAllowed,
+  buildSalesDayMockUatDatasetForRepresentatives,
+  copySalesDayMockUatAppointmentsToBusinessDates,
+  moveSalesDayMockUatAppointmentsToBusinessDate,
   buildSalesDayMockUatRuntimeConfiguration,
   buildSalesDayMockUatSummary,
   isSalesDayMockUatDatabaseNameAllowed,
@@ -47,6 +50,33 @@ assert.throws(() => assertSalesDayMockUatSeedAllowed({
   databaseUrl: "mysql://user:secret@localhost/MExT_FieldForce_UAT",
   nodeEnv: "production",
 }), /forbidden in production/);
+assert.doesNotThrow(() => assertSalesDayMockUatSeedAllowed({
+  databaseUrl: "mysql://user:secret@localhost/MExT_FieldForce",
+  nodeEnv: "production",
+  allowNonTestDatabase: true,
+  allowProductionMock: true,
+}));
+
+const expanded = moveSalesDayMockUatAppointmentsToBusinessDate(
+  buildSalesDayMockUatDatasetForRepresentatives(salesErpMockDataset, [
+    { id: "user-be-admin", representativeExternalId: "rep-be-live", country: "BE", teamExternalId: "team-be-live" },
+    { id: "user-nl-rep", representativeExternalId: "rep-nl-live", country: "NL", teamExternalId: "team-nl-live" },
+  ]),
+  "2026-07-22",
+);
+assert.equal(expanded.customers.length, 8);
+assert.equal(expanded.appointments.length, 10);
+assert.equal(new Set(expanded.customers.map((item) => item.externalId)).size, 8);
+assert(expanded.customers.every((item) => ["rep-be-live", "rep-nl-live"].includes(item.scope.representativeExternalId ?? "")));
+assert.deepEqual([...new Set(expanded.appointments.map((item) => item.businessDate))].sort(), ["2026-07-22", "2026-07-23"]);
+
+const dailyExpanded = copySalesDayMockUatAppointmentsToBusinessDates(expanded, ["2026-07-22", "2026-07-23", "2026-07-24"]);
+assert.equal(dailyExpanded.customers.length, expanded.customers.length);
+assert.equal(dailyExpanded.appointments.length, expanded.appointments.length * 3);
+assert.deepEqual([...new Set(dailyExpanded.appointments.map((item) => item.businessDate))].sort(), ["2026-07-22", "2026-07-23", "2026-07-24"]);
+assert.equal(new Set(dailyExpanded.appointments.map((item) => item.externalId)).size, dailyExpanded.appointments.length);
+assert(dailyExpanded.appointments.every((item) => item.startsAt?.startsWith(`${item.businessDate}T`)));
+
 assert.throws(() => assertSalesDayMockUatSeedAllowed({
   databaseUrl: "mysql://user:secret@localhost/MExT_FieldForce",
   nodeEnv: "development",
@@ -57,6 +87,16 @@ assert(seedScript.includes("applySalesDayReplicaEvent"));
 assert(seedScript.includes("role: \"REPRESENTATIVE\""));
 assert(seedScript.includes("--include-blockers"));
 assert(seedScript.includes("SalesDay mock/UAT seed requires one active real Representative per country"));
+
+const liveSeedScript = readFileSync("scripts/seed-live-system-mock.ts", "utf8");
+assert(liveSeedScript.includes("where: { active: true }"));
+assert(liveSeedScript.includes("seedRuntimeAndFeatureFlags(tx, users)"));
+assert(liveSeedScript.includes("seedInventoryForUsers(tx, users, businessDate)"));
+assert(liveSeedScript.includes("seedContractForUsers(tx, users)"));
+assert(liveSeedScript.includes("copySalesDayMockUatAppointmentsToBusinessDates"));
+assert(liveSeedScript.includes("--days="));
+assert(liveSeedScript.includes("scope: \"USER\""));
+assert(liveSeedScript.includes("placeholder-without-persistent-domain-model"));
 
 assert.deepEqual(salesErpMockUatScenario.countries, ["BE", "NL", "DE"]);
 

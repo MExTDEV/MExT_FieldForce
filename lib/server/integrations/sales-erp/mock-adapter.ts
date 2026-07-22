@@ -58,6 +58,7 @@ type MockOutcome = SalesErpCommandAcknowledgement["status"];
 
 export type SalesErpMockAdapterOptions = {
   runtimeEnvironment?: string;
+  allowProductionMock?: boolean;
   now?: () => Date;
   defaultPageSize?: number;
   dataset?: SalesErpMockDataset;
@@ -102,7 +103,7 @@ export class SalesErpMockAdapter implements SalesErpPort {
   private readonly submittedCommands: SalesErpCommand[] = [];
 
   constructor(options: SalesErpMockAdapterOptions = {}) {
-    assertSalesDayMockSeedAllowed(options.runtimeEnvironment);
+    assertSalesDayMockSeedAllowed(options.runtimeEnvironment, options.allowProductionMock);
     this.now = options.now ?? (() => new Date());
     this.defaultPageSize = pageSize(options.defaultPageSize, 100);
     this.dataset = options.dataset ?? salesErpMockDataset;

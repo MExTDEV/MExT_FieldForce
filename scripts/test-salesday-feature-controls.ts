@@ -87,6 +87,17 @@ assert.throws(
   () => new SalesErpMockAdapter({ runtimeEnvironment: "production" }),
   (error: unknown) => error instanceof SalesDayRuntimeConfigurationError,
 );
+assert.equal(
+  parseSalesDayRuntimeConfiguration(JSON.stringify({
+    provider: "MOCK",
+    mockSeedEnabled: true,
+    enabledNotifications: ["SYNC_FAILED"],
+  }), "production", true).provider,
+  "MOCK",
+);
+assert.doesNotThrow(
+  () => new SalesErpMockAdapter({ runtimeEnvironment: "production", allowProductionMock: true }),
+);
 
 const sensitiveValues = ["Geheime Klant", "€ 9.999", "MOCK-INV-0001"];
 for (const language of ["nl", "fr", "de"] as const) {

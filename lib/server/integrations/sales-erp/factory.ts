@@ -2,14 +2,17 @@ import type { SalesErpProvider } from "./contracts";
 import { SalesErpError } from "./errors";
 import { SalesErpMockAdapter, type SalesErpMockAdapterOptions } from "./mock-adapter";
 import type { SalesErpPort } from "./port";
+import { isSalesDayProductionMockModeEnabled } from "@/lib/salesday/runtime-configuration";
 
 export function createSalesErpPort(input: {
   provider: SalesErpProvider;
   runtimeEnvironment?: string;
+  allowProductionMock?: boolean;
   mockOptions?: SalesErpMockAdapterOptions;
 }): SalesErpPort {
   if (input.provider === "MOCK") {
-    if ((input.runtimeEnvironment ?? process.env.NODE_ENV) === "production") {
+    const allowProductionMock = input.allowProductionMock ?? isSalesDayProductionMockModeEnabled();
+    if ((input.runtimeEnvironment ?? process.env.NODE_ENV) === "production" && !allowProductionMock) {
       throw new SalesErpError({
         code: "PROVIDER_UNAVAILABLE",
         message: "The Sales ERP mock provider is disabled in production",
@@ -18,6 +21,7 @@ export function createSalesErpPort(input: {
     return new SalesErpMockAdapter({
       ...input.mockOptions,
       runtimeEnvironment: input.runtimeEnvironment ?? process.env.NODE_ENV,
+      allowProductionMock,
     });
   }
 

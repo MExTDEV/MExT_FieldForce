@@ -107,6 +107,7 @@
     "auth:set-password": "tsx scripts/set-user-password.ts",
     "salesday:uat-plan": "tsx scripts/generate-salesday-uat-plan.ts",
     "salesday:seed:uat-mock": "tsx scripts/seed-salesday-uat-mock.ts",
+    "salesday:seed:live-system-mock": "tsx scripts/seed-live-system-mock.ts --allow-production --allow-non-test-db",
     "deploy:prepare": "npm run env:check:production && npm run db:generate && npm run db:migrate:deploy && npm run db:seed:config && npm run build",
     "start:production": "npm run env:check:production && node server.mjs"
   },

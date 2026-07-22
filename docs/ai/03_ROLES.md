@@ -341,6 +341,8 @@ Managing global/country/team/user activation, the server-owned ERP runtime or th
 
 Representatives receive SalesDay preparation, agenda, stock and cash menu rights. Menu visibility follows those rights; effective page and API use still requires the server-resolved global and country/team/user activation. Representatives never receive SalesDay Mijn Team by default.
 
+The controlled live-system seed activates SalesDay/Inventory for every active user so each role can exercise its existing permitted view. It creates own operational SalesDay fixtures only for Representatives; management, Admin and Super Admin continue to see seeded Representative data through the read-only scope above. Test data never grants Representative actions to another role.
+
 Shared Inventory uses separate permissions from SalesDay management:
 
 - `inventory.balance.readOwn` permits the Representative to read own Representative/vehicle stock;
