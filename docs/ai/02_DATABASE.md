@@ -451,6 +451,30 @@ Role and user permission storage:
 - Missing `UserPermission` rows mean inheritance from `RolePermission`.
 - Migration `0021_normalize_user_permission_overrides` removes historical user rows that duplicated their role defaults while preserving real deviations.
 - Role updates remove obsolete inherited snapshots and keep explicit user overrides intact.
+
+## Impersonation sessions and security events
+
+Migration `0056_user_impersonation` adds the platform-owned impersonation
+ledger.
+
+- `ImpersonationSession` binds one effective target to the real
+  `UserLoginSession`, stores the real and effective user IDs, reason, start,
+  expiry, end reason, target country/team snapshot, IP address and user-agent.
+- The maximum active duration is one hour. Missing rights, target deactivation
+  or expiry end the session at the next authenticated backend check.
+- `ImpersonationEvent` records `IMPERSONATION_STARTED`,
+  `IMPERSONATION_STOPPED`, `IMPERSONATION_EXPIRED` and
+  `IMPERSONATION_DENIED` independently from the business audit log.
+- `AuditLog.userId` remains the real actor during impersonation;
+  `effectiveUserId` and `impersonationSessionId` identify the effective user
+  and session. IP address and user-agent are stored when a request context is
+  available.
+- Logout closes every still-active impersonation belonging to that login
+  session. A closed or expired record is never restored.
+
+The same migration registers `users.impersonate` and
+`audit.impersonation.read` in the existing permission tables; there is no
+parallel permission model.
 ---
 
 # Sales Manager Role

@@ -11,6 +11,7 @@ import {
   firstEffectiveWorkdayOfWeek,
   weekRange,
 } from "@/lib/salesday/cash";
+import { isSalesDayManagementRole, scopedSalesDayRepresentativeUserWhere } from "@/lib/server/salesday-scope";
 import type { Country, MockUser } from "@/lib/types";
 
 export type SalesDayCashBlock = {
@@ -233,8 +234,14 @@ export async function getSalesDayCashSheet(input: {
   provider: SalesErpProvider;
   businessDate?: string;
 }) {
-  requireRepresentative(input.actor);
-  const businessDate = input.businessDate ?? await resolveFirstEffectiveBusinessDate(input.actor);
+  if (input.actor.role !== "REPRESENTATIVE" && !isSalesDayManagementRole(input.actor)) {
+    denied("Je hebt geen recht om het kasblad te bekijken.");
+  }
+  const businessDate = input.businessDate ?? (
+    input.actor.role === "REPRESENTATIVE"
+      ? await resolveFirstEffectiveBusinessDate(input.actor)
+      : countryBusinessDate(input.actor)
+  );
   const methods = await prisma.salesPaymentMethod.findMany({
     where: {
       provider: input.provider as ErpIntegrationProvider,
@@ -244,17 +251,42 @@ export async function getSalesDayCashSheet(input: {
     orderBy: [{ affectsCashBalance: "desc" }, { code: "asc" }],
   });
   const balances = await prisma.salesCashBalance.findMany({
-    where: { representativeUserId: input.actor.id },
+    where: input.actor.role === "REPRESENTATIVE"
+      ? { representativeUserId: input.actor.id }
+      : { representative: { is: scopedSalesDayRepresentativeUserWhere(input.actor) } },
+    include: { representative: { select: { id: true, firstName: true, lastName: true, country: true } } },
     orderBy: [{ currency: "asc" }, { updatedAt: "desc" }],
   });
   const entries = await prisma.salesCashEntry.findMany({
-    where: { representativeUserId: input.actor.id, OR: [{ businessDate: null }, { businessDate: dateOnly(businessDate) }] },
-    include: { salesDocument: { select: { documentNumber: true, documentType: true } }, paymentMethod: true },
+    where: {
+      ...(input.actor.role === "REPRESENTATIVE"
+        ? { representativeUserId: input.actor.id }
+        : { representative: { is: scopedSalesDayRepresentativeUserWhere(input.actor) } }),
+      OR: [{ businessDate: null }, { businessDate: dateOnly(businessDate) }],
+    },
+    include: {
+      representative: { select: { id: true, firstName: true, lastName: true, country: true } },
+      salesDocument: { select: { documentNumber: true, documentType: true } },
+      paymentMethod: true,
+    },
     orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
     take: 100,
   });
-  const block = await getSalesDayCashBlock({ actor: input.actor, businessDate });
-  return { businessDate, firstEffectiveBusinessDate: await resolveFirstEffectiveBusinessDate(input.actor, businessDate), block, methods, balances, entries };
+  const block = input.actor.role === "REPRESENTATIVE"
+    ? await getSalesDayCashBlock({ actor: input.actor, businessDate })
+    : null;
+  return {
+    businessDate,
+    firstEffectiveBusinessDate: input.actor.role === "REPRESENTATIVE"
+      ? await resolveFirstEffectiveBusinessDate(input.actor, businessDate)
+      : businessDate,
+    block,
+    readOnly: input.actor.role !== "REPRESENTATIVE",
+    scope: input.actor.role === "REPRESENTATIVE" ? "OWN" as const : "MANAGEMENT" as const,
+    methods,
+    balances,
+    entries,
+  };
 }
 
 export async function resolveFirstEffectiveBusinessDate(actor: MockUser, businessDate?: string) {
@@ -296,6 +328,15 @@ function countryTimeZone(country: Country) {
   return "Europe/Brussels";
 }
 
+function countryBusinessDate(actor: MockUser) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: countryTimeZone(actor.country),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function decimal(value: string | Prisma.Decimal, label: string) {
   try {
     const parsed = new Prisma.Decimal(value);
@@ -308,12 +349,6 @@ function decimal(value: string | Prisma.Decimal, label: string) {
 
 function dateOnly(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
-}
-
-function requireRepresentative(actor: MockUser) {
-  if (actor.role !== "REPRESENTATIVE") {
-    denied("Je hebt geen recht om het kasblad te bekijken.");
-  }
 }
 
 function denied(message: string): never {

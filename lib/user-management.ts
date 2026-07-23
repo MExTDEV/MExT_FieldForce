@@ -59,6 +59,8 @@ export const fieldForceBasePermissionGroups: {
       { key: "usersDeactivate", label: "Gebruikers deactiveren" },
       { key: "usersRolesEdit", label: "Rollen wijzigen" },
       { key: "usersPermissionsEdit", label: "Rechten wijzigen" },
+      { key: "users.impersonate", label: "Gebruikers impersonaten" },
+      { key: "audit.impersonation.read", label: "Impersonatiehistoriek bekijken" },
     ],
   },
   {
@@ -292,6 +294,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "performanceScoresView",
       "performanceScoresExport",
       "usersView",
+      "users.impersonate",
       "reportingOwn",
       "reportingTeam",
       "reportingExport",
@@ -330,6 +333,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "performanceScoresView",
       "performanceScoresExport",
       "usersView",
+      "users.impersonate",
       "reportingOwn",
       "reportingTeam",
       "reportingExport",
@@ -357,6 +361,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "performanceScoresView",
       "performanceScoresExport",
       "usersView",
+      "users.impersonate",
+      "audit.impersonation.read",
       "reportingOwn",
       "reportingTeam",
       "reportingAll",
@@ -370,7 +376,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "kpisCreate",
       "kpisManage",
       "kpiTargetsManage",
-      ...internalMenuPermissions
+      ...internalMenuPermissions,
+      "menu.coaching.log"
     ),
   },
   ADMIN: {
@@ -394,6 +401,8 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "usersDeactivate",
       "usersRolesEdit",
       "usersPermissionsEdit",
+      "users.impersonate",
+      "audit.impersonation.read",
       "reportingOwn",
       "reportingTeam",
       "reportingExport",

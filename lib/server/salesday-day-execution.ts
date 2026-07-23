@@ -14,18 +14,41 @@ import {
 } from "@/lib/server/integrations/sales-erp";
 import { salesDayBusinessDate } from "@/lib/server/salesday-customer-access";
 import { assertSalesDayServerDayAccess } from "@/lib/server/salesday-day-access";
+import { isSalesDayManagementRole, scopedSalesDayRepresentativeUserWhere } from "@/lib/server/salesday-scope";
 import type { MockUser } from "@/lib/types";
 
 type DayContext = { actor: MockUser; loginSessionId: string | null; deviceId: string; provider: SalesErpProvider; now?: Date };
 type MutableAppointment = Prisma.SalesAppointmentGetPayload<{ include: { visitReport: true } }>;
 
 export async function getSalesDayAgenda(input: Omit<DayContext, "provider">) {
-  requireRepresentative(input.actor);
   const businessDate = salesDayBusinessDate(input.actor, input.now);
-  const gate = await assertSalesDayServerDayAccess({ ...input, businessDate });
+  if (input.actor.role === "REPRESENTATIVE") {
+    const gate = await assertSalesDayServerDayAccess({ ...input, businessDate });
+    const appointments = await findSalesDayAgendaAppointments({
+      businessDate,
+      where: { representativeUserId: input.actor.id },
+    });
+    const closure = await prisma.salesDayClosure.findUnique({
+      where: { representativeUserId_businessDate: { representativeUserId: input.actor.id, businessDate: dateOnly(businessDate) } },
+    });
+    return { businessDate, gate, readOnly: false, scope: "OWN" as const, appointments, closure };
+  }
+  if (!isSalesDayManagementRole(input.actor)) denied("Je hebt geen toegang tot SalesDay-agenda.");
+  const appointments = await findSalesDayAgendaAppointments({
+    businessDate,
+    where: { representative: { is: scopedSalesDayRepresentativeUserWhere(input.actor) } },
+  });
+  return { businessDate, gate: null, readOnly: true, scope: "MANAGEMENT" as const, appointments, closure: null };
+}
+
+async function findSalesDayAgendaAppointments(input: {
+  businessDate: string;
+  where: Prisma.SalesAppointmentWhereInput;
+}) {
   const appointments = await prisma.salesAppointment.findMany({
-    where: { representativeUserId: input.actor.id, businessDate: dateOnly(businessDate) },
+    where: { ...input.where, businessDate: dateOnly(input.businessDate) },
     include: {
+      representative: { select: { id: true, firstName: true, lastName: true, country: true, team: { select: { id: true, name: true } } } },
       relation: { include: { contacts: { where: { active: true } }, addresses: { where: { active: true } }, billingValidation: true } },
       visitReport: { include: { addenda: { orderBy: { createdAt: "asc" } } } },
       leads: { orderBy: { createdAt: "asc" } },
@@ -34,10 +57,7 @@ export async function getSalesDayAgenda(input: Omit<DayContext, "provider">) {
     },
     orderBy: [{ sequence: "asc" }, { startsAt: "asc" }, { id: "asc" }],
   });
-  const closure = await prisma.salesDayClosure.findUnique({
-    where: { representativeUserId_businessDate: { representativeUserId: input.actor.id, businessDate: dateOnly(businessDate) } },
-  });
-  return { businessDate, gate, appointments, closure };
+  return appointments;
 }
 
 export async function createSalesVisitReport(input: DayContext & { appointmentId: string; html: string }) {

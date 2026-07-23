@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/mail-test";
 import type { AppNotificationType } from "@/lib/notifications";
 import type { Language } from "@/lib/types";
+import { getCurrentImpersonationMailContext } from "@/lib/server/impersonation";
 
 export type OutboundMail = {
   recipientUserId: string;
@@ -31,6 +32,7 @@ export type OutboundMail = {
   fromEmail?: string;
   fromName?: string;
   replyToEmail?: string;
+  impersonation?: { sessionId: string; actorName: string; effectiveUserName: string } | null;
 };
 
 export type MailTransport = Pick<Transporter, "sendMail">;
@@ -53,14 +55,15 @@ export type MailSettingsTestInput = {
 };
 
 export async function sendFieldForceMail(input: OutboundMail) {
-  const [settings, mailTestActive, mailTestRecipient] = await Promise.all([
+  const [settings, mailTestActive, mailTestRecipient, impersonation] = await Promise.all([
     getMailRuntimeSettings(),
     isMailTestActive(),
     getMailTestRecipient(),
+    getCurrentImpersonationMailContext(),
   ]);
   const transporter = nodemailer.createTransport(buildSmtpTransportOptions(settings));
   return sendFieldForceMailWithTransport({
-    input,
+    input: { ...input, impersonation },
     mailTestActive,
     mailTestRecipient,
     settings,
@@ -74,7 +77,7 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
   if (!settings.smtp.enabled || !settings.ready) {
     return { status: "skipped" as const, reason: `Mail niet geconfigureerd: ${settings.missing.join(", ") || "onbekend"}` };
   }
-  const [recipient, actor, mailTestActive, mailTestRecipient] = await Promise.all([
+  const [recipient, actor, mailTestActive, mailTestRecipient, impersonation] = await Promise.all([
     prisma.user.findUnique({
       where: { id: input.recipientUserId },
       select: { email: true, language: true },
@@ -87,6 +90,7 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
       : Promise.resolve(null),
     isMailTestActive(),
     getMailTestRecipient(),
+    getCurrentImpersonationMailContext(),
   ]);
   if (!recipient?.email) {
     return { status: "skipped" as const, reason: "Ontvanger heeft geen e-mailadres." };
@@ -110,6 +114,7 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
       html: template.html,
       replyToEmail: actor?.email,
       context: input.context,
+      impersonation,
     },
     mailTestActive,
     mailTestRecipient,
@@ -220,7 +225,10 @@ export function buildMailMessage(
   const replyToEmail = routed.mailTestActive
     ? undefined
     : input.replyToEmail || settings.smtp.defaultReplyToEmail || undefined;
-  const warning = routed.testWarning;
+  const impersonationWarning = routed.mailTestActive && input.impersonation
+    ? `IMPERSONATING was actief. Echte gebruiker: ${input.impersonation.actorName}. Geïmpersoneerde gebruiker: ${input.impersonation.effectiveUserName}. Sessie: ${input.impersonation.sessionId}.`
+    : undefined;
+  const warning = [routed.testWarning, impersonationWarning].filter(Boolean).join("\n");
   const effectiveRecipients = [
     ...routed.envelope.to,
     ...routed.envelope.cc,

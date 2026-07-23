@@ -16,6 +16,7 @@ import type {
 import { canonicalSalesErpJson } from "@/lib/server/integrations/sales-erp";
 import { SalesErpError } from "@/lib/server/integrations/sales-erp/errors";
 import { assertSalesDayServerDayAccess } from "@/lib/server/salesday-day-access";
+import { isSalesDayManagementRole, scopedSalesDayRepresentativeUserWhere } from "@/lib/server/salesday-scope";
 import type { MockUser } from "@/lib/types";
 
 const preparationSettingKey = "salesday.preparation.v1";
@@ -115,23 +116,30 @@ export async function getSalesPreparationOverview(input: {
   deviceId: string;
   now?: Date;
 }) {
-  requireRepresentative(input.actor);
   const window = await getSalesPreparationWindow(input.actor, input.now);
-  const gate = await assertSalesDayServerDayAccess({
-    actor: input.actor,
-    loginSessionId: input.loginSessionId,
-    deviceId: input.deviceId,
-    businessDate: window.businessDate,
-    now: input.now,
-  });
+  const gate = input.actor.role === "REPRESENTATIVE"
+    ? await assertSalesDayServerDayAccess({
+        actor: input.actor,
+        loginSessionId: input.loginSessionId,
+        deviceId: input.deviceId,
+        businessDate: window.businessDate,
+        now: input.now,
+      })
+    : null;
+  if (input.actor.role !== "REPRESENTATIVE" && !isSalesDayManagementRole(input.actor)) {
+    denied("Je hebt geen toegang tot SalesDay-voorbereiding.");
+  }
   if (!window.visible) return { ...window, gate, appointments: [] };
   const appointments = await prisma.salesAppointment.findMany({
     where: {
-      representativeUserId: input.actor.id,
+      ...(input.actor.role === "REPRESENTATIVE"
+        ? { representativeUserId: input.actor.id }
+        : { representative: { is: scopedSalesDayRepresentativeUserWhere(input.actor) } }),
       businessDate: dateOnly(window.businessDate),
       status: { not: "CANCELLED" },
     },
     include: {
+      representative: { select: { id: true, firstName: true, lastName: true, country: true, team: { select: { id: true, name: true } } } },
       relation: {
         include: {
           contacts: { where: { active: true }, orderBy: [{ primary: "desc" }, { name: "asc" }] },
@@ -152,10 +160,12 @@ export async function getSalesPreparationOverview(input: {
         orderBy: { documentDate: "asc" },
       })
     : [];
-  const historyByRelation = Map.groupBy(history, (document) => document.relationId);
+  const historyByRelation = groupByRelationId(history);
   return {
     ...window,
     gate,
+    readOnly: input.actor.role !== "REPRESENTATIVE",
+    scope: input.actor.role === "REPRESENTATIVE" ? "OWN" as const : "MANAGEMENT" as const,
     appointments: appointments.map((appointment) => {
       const recommendations = buildPreparationRecommendations({
         appointmentBusinessDate: window.businessDate,
@@ -172,6 +182,16 @@ export async function getSalesPreparationOverview(input: {
       };
     }),
   };
+}
+
+function groupByRelationId<T extends { relationId: string }>(items: T[]) {
+  const result = new Map<string, T[]>();
+  for (const item of items) {
+    const group = result.get(item.relationId);
+    if (group) group.push(item);
+    else result.set(item.relationId, [item]);
+  }
+  return result;
 }
 
 export async function updateSalesPreparation(input: {

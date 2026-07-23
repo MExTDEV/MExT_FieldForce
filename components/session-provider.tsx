@@ -7,7 +7,7 @@ import {
   managedUserToMockUser,
   normalizeManagedUser,
 } from "@/lib/user-management";
-import type { Language, ManagedUser, MockUser } from "@/lib/types";
+import type { ImpersonationStatus, Language, ManagedUser, MockUser } from "@/lib/types";
 
 type SessionContextValue = {
   user: MockUser;
@@ -17,9 +17,11 @@ type SessionContextValue = {
   loading: boolean;
   status: "loading" | "authenticated" | "unauthenticated" | "error";
   error: string | null;
+  impersonation: ImpersonationStatus;
   retry: () => void;
   setUserId: (id: string) => void;
   setLanguage: (language: Language) => void;
+  stopImpersonating: () => Promise<void>;
   createManagedUser: (draft: ManagedUser, newTeamName?: string) => Promise<ManagedUser>;
   updateManagedUser: (id: string, draft: ManagedUser) => Promise<ManagedUser>;
   deleteManagedUser: (id: string, confirmation: string) => Promise<void>;
@@ -52,6 +54,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [authTimedOut, setAuthTimedOut] = useState(false);
+  const [impersonation, setImpersonation] = useState<ImpersonationStatus>({ active: false });
 
   useEffect(() => {
     if (!authenticatedMode || authStatus !== "loading") {
@@ -121,6 +124,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         );
         const mePayload = (await meResponse.json()) as {
           user?: ManagedUser;
+          impersonation?: ImpersonationStatus;
           error?: string;
         };
         if (meResponse.status === 401 || meResponse.status === 403) {
@@ -132,8 +136,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         }
 
         const currentProfile = normalizeManagedUser(mePayload.user);
-        const authenticatedUserId =
-          authSession?.user?.databaseUserId ?? currentProfile.id;
+        const authenticatedUserId = currentProfile.id;
+        if (!cancelled) setImpersonation(mePayload.impersonation ?? { active: false });
         if (authenticatedMode) {
           if (cancelled) return;
           setManagedUsers([currentProfile]);
@@ -257,6 +261,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setManagedUsers(next);
   }
 
+  async function stopImpersonating() {
+    const response = await fetch("/api/impersonation/stop", { method: "POST" });
+    const payload = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(payload.error ?? "Impersonating kon niet worden gestopt.");
+    window.location.assign("/dashboard");
+  }
+
   async function createManagedUser(draft: ManagedUser, newTeamName?: string) {
     const response = await fetch("/api/users", {
       method: "POST",
@@ -314,6 +325,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     loading,
     status,
     error,
+    impersonation,
     retry: () => {
       setError(null);
       setAuthTimedOut(false);
@@ -322,6 +334,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     },
     setUserId: switchUser,
     setLanguage,
+    stopImpersonating,
     createManagedUser,
     updateManagedUser,
     deleteManagedUser,

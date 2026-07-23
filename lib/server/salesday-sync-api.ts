@@ -3,6 +3,7 @@ import { SalesErpError } from "@/lib/server/integrations/sales-erp";
 import { SalesDayDayAccessError } from "@/lib/server/salesday-day-access";
 import { SalesDayEmergencyModeError } from "@/lib/server/salesday-emergency-mode";
 import { SalesDayFeatureError } from "@/lib/server/salesday-feature-flags";
+import { SalesDayRuntimeConfigurationError } from "@/lib/salesday/runtime-configuration";
 
 export function rethrowSalesDaySyncError(error: unknown): never {
   if (error instanceof SalesDayFeatureError) {
@@ -24,6 +25,7 @@ export function rethrowSalesDaySyncError(error: unknown): never {
           : 400;
     throw new ApiRequestError(error.message, status);
   }
+  if (error instanceof SalesDayRuntimeConfigurationError) throw new ApiRequestError(error.message, 500);
   if (!(error instanceof SalesErpError)) throw error;
   const status = error.code === "PERMISSION_REVOKED"
     ? 403

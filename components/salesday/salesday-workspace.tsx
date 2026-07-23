@@ -13,6 +13,13 @@ type AgendaAppointment = {
   sequence: number;
   status?: string;
   relation?: { displayName?: string | null } | null;
+  representative?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    country: string;
+    team?: { name?: string | null } | null;
+  } | null;
 };
 type PreparationAppointment = AgendaAppointment & { appointment?: AgendaAppointment };
 type TeamMember = {
@@ -36,8 +43,8 @@ type CashSheet = {
   firstEffectiveBusinessDate?: string;
   block?: { confirmedBalance?: string | null; currency?: string | null; missingCashBalance?: boolean } | null;
   methods?: Array<{ id: string; code: string; labelNl: string; affectsCashBalance: boolean }>;
-  balances?: Array<{ id: string; currency: string; confirmedBalance: string; lastDepositConfirmedAt?: string | null }>;
-  entries?: Array<{ id: string; type: string; amount: string; currency: string; occurredAt: string; comment?: string | null }>;
+  balances?: Array<{ id: string; currency: string; confirmedBalance: string; lastDepositConfirmedAt?: string | null; representative?: AgendaAppointment["representative"] }>;
+  entries?: Array<{ id: string; type: string; amount: string; currency: string; occurredAt: string; comment?: string | null; representative?: AgendaAppointment["representative"] }>;
 };
 type InventoryLocation = {
   id: string;
@@ -259,38 +266,79 @@ function DashboardMetric({ label, value, detail, tone = "default" }: { label: st
 function AgendaSummary({ appointments, appointmentId, language }: { appointments: AgendaAppointment[]; appointmentId?: string; language: SalesDayWorkspaceLanguage }) {
   const t = (key: TranslationKey) => translate(language, key);
   if (!appointments.length) return <EmptyState title={t("salesday.appointments.emptyTitle")} description={t("salesday.appointments.emptyDescription")} />;
+  const grouped = groupAppointmentsByRepresentative(appointments);
+  if (grouped.length > 1 || grouped[0]?.representative) {
+    return (
+      <div className="grid gap-4">
+        {grouped.map((group) => (
+          <section key={group.key} className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
+              <div>
+                <h2 className="font-semibold text-slate-950">{representativeName(group.representative, t("salesday.appointments.customerFallback"))}</h2>
+                <p className="text-sm text-slate-500">{group.representative?.team?.name ?? group.representative?.country ?? ""}</p>
+              </div>
+              <StatusBadge status="open" label={`${group.items.length} ${t("salesday.dashboard.appointments").toLowerCase()}`} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {group.items.map((appointment) => (
+                <AgendaAppointmentCard key={appointment.id} appointment={appointment} appointmentId={appointmentId} language={language} />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="grid gap-3">
-      {appointments.map((appointment) => (
-        <article key={appointment.id} id={appointment.id === appointmentId ? "appointment" : undefined} className="card p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">#{appointment.sequence}</p>
-              <h2 className="font-semibold text-slate-900">{appointment.relation?.displayName ?? t("salesday.appointments.customerFallback")}</h2>
-            </div>
-            <StatusBadge status={appointment.status?.toLowerCase() ?? "open"} label={appointment.status ?? t("salesday.appointments.planned")} />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link className="btn-secondary min-h-10" href={`/salesday/documenten/${appointment.id}`}>{t("salesday.appointments.documents")}</Link>
-          </div>
-        </article>
-      ))}
+      {appointments.map((appointment) => <AgendaAppointmentCard key={appointment.id} appointment={appointment} appointmentId={appointmentId} language={language} />)}
     </div>
   );
 }
 
 function PreparationSummary({ preparations, language }: { preparations: PreparationAppointment[]; language: SalesDayWorkspaceLanguage }) {
   const t = (key: TranslationKey) => translate(language, key);
+  const grouped = groupAppointmentsByRepresentative(preparations);
   return preparations.length ? (
-    <div className="grid gap-3">
-      {preparations.map((item) => (
-        <article key={item.appointment?.id ?? item.id} className="card p-4">
-          <h2 className="font-semibold">{item.appointment?.relation?.displayName ?? t("salesday.appointments.customerFallback")}</h2>
-          <p className="mt-1 text-sm text-slate-600">{t("salesday.preparation.description")}</p>
-        </article>
+    <div className="grid gap-4">
+      {grouped.map((group) => (
+        <section key={group.key} className="space-y-2">
+          {group.representative && (
+            <div className="border-b border-slate-200 pb-2">
+              <h2 className="font-semibold text-slate-950">{representativeName(group.representative, t("salesday.appointments.customerFallback"))}</h2>
+              <p className="text-sm text-slate-500">{group.representative.team?.name ?? group.representative.country}</p>
+            </div>
+          )}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {group.items.map((item) => (
+              <article key={item.appointment?.id ?? item.id} className="card p-4">
+                <h3 className="font-semibold">{item.appointment?.relation?.displayName ?? item.relation?.displayName ?? t("salesday.appointments.customerFallback")}</h3>
+                <p className="mt-1 text-sm text-slate-600">{t("salesday.preparation.description")}</p>
+              </article>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   ) : <EmptyState title={t("salesday.preparation.emptyTitle")} description={t("salesday.preparation.emptyDescription")} />;
+}
+
+function AgendaAppointmentCard({ appointment, appointmentId, language }: { appointment: AgendaAppointment; appointmentId?: string; language: SalesDayWorkspaceLanguage }) {
+  const t = (key: TranslationKey) => translate(language, key);
+  return (
+    <article id={appointment.id === appointmentId ? "appointment" : undefined} className="card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">#{appointment.sequence}</p>
+          <h3 className="font-semibold text-slate-900">{appointment.relation?.displayName ?? t("salesday.appointments.customerFallback")}</h3>
+        </div>
+        <StatusBadge status={appointment.status?.toLowerCase() ?? "open"} label={appointment.status ?? t("salesday.appointments.planned")} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link className="btn-secondary min-h-10" href={`/salesday/documenten/${appointment.id}`}>{t("salesday.appointments.documents")}</Link>
+      </div>
+    </article>
+  );
 }
 
 function TeamSummary({ members, language }: { members: TeamMember[]; language: SalesDayWorkspaceLanguage }) {
@@ -331,9 +379,23 @@ function CashSummary({ cashSheet, language }: { cashSheet: CashJsonPayload; lang
 
       <div className="grid gap-3 md:grid-cols-3">
         <DashboardMetric label={t("salesday.cash.workday")} value={cashSheet.businessDate ?? "-"} detail={`${t("salesday.cash.firstWorkday")}: ${cashSheet.firstEffectiveBusinessDate ?? "-"}`} />
-        <DashboardMetric label={t("salesday.cash.balances")} value={balances.length} detail={balances.map((balance) => `${balance.confirmedBalance} ${balance.currency}`).join(" | ") || t("salesday.cash.noBalance")} tone={cashSheet.block ? "warning" : "default"} />
+        <DashboardMetric label={t("salesday.cash.balances")} value={balances.length} detail={balances.length ? t("salesday.cash.balances").toLowerCase() : t("salesday.cash.noBalance")} tone={cashSheet.block ? "warning" : "default"} />
         <DashboardMetric label={t("salesday.cash.paymentMethods")} value={methods.length} detail={`${methods.filter((method) => method.affectsCashBalance).length} ${t("salesday.cash.cashImpact")}`} />
       </div>
+
+      {balances.length > 0 && (
+        <section className="card p-4">
+          <h2 className="font-semibold text-slate-950">{t("salesday.cash.balances")}</h2>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {balances.map((balance) => (
+              <div key={balance.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                <p className="font-semibold text-slate-900">{representativeName(balance.representative, t("salesday.appointments.customerFallback"))}</p>
+                <p className="mt-1 text-slate-600">{balance.confirmedBalance} {balance.currency}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card p-4">
         <h2 className="font-semibold text-slate-950">{t("salesday.cash.latestEntries")}</h2>
@@ -343,7 +405,9 @@ function CashSummary({ cashSheet, language }: { cashSheet: CashJsonPayload; lang
               <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <div>
                   <p className="font-semibold text-slate-900">{entry.type.replaceAll("_", " ")}</p>
-                  <p className="text-xs text-slate-500">{formatDateTime(entry.occurredAt, language)} {entry.comment ? `- ${entry.comment}` : ""}</p>
+                  <p className="text-xs text-slate-500">
+                    {[representativeName(entry.representative, ""), formatDateTime(entry.occurredAt, language), entry.comment].filter(Boolean).join(" - ")}
+                  </p>
                 </div>
                 <span className="font-bold text-slate-950">{entry.amount} {entry.currency}</span>
               </div>
@@ -355,6 +419,22 @@ function CashSummary({ cashSheet, language }: { cashSheet: CashJsonPayload; lang
       </section>
     </div>
   );
+}
+
+function groupAppointmentsByRepresentative<T extends AgendaAppointment>(appointments: T[]) {
+  const groups = new Map<string, { key: string; representative: AgendaAppointment["representative"]; items: T[] }>();
+  for (const appointment of appointments) {
+    const key = appointment.representative?.id ?? "own";
+    const group = groups.get(key);
+    if (group) group.items.push(appointment);
+    else groups.set(key, { key, representative: appointment.representative ?? null, items: [appointment] });
+  }
+  return [...groups.values()];
+}
+
+function representativeName(representative: AgendaAppointment["representative"], fallback: string) {
+  if (!representative) return fallback;
+  return `${representative.firstName} ${representative.lastName}`.trim() || fallback;
 }
 
 function StockSummary({ locations, language }: { locations: InventoryLocation[]; language: SalesDayWorkspaceLanguage }) {

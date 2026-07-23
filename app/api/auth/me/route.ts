@@ -1,13 +1,18 @@
 import { handleApi } from "@/lib/server/api";
-import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
+import { requireAuthenticatedUserContext } from "@/lib/server/authenticated-user";
+import { getImpersonationStatus } from "@/lib/server/impersonation";
 import { listManagedUsers } from "@/lib/server/users";
 import { normalizeManagedUser, roleTemplates } from "@/lib/user-management";
 
 export async function GET() {
   return handleApi("api/auth/me:get", async () => {
-    const actor = await requireAuthenticatedUser();
+    const context = await requireAuthenticatedUserContext();
+    const actor = context.actor;
+    const impersonation = context.loginSessionDatabaseId
+      ? await getImpersonationStatus(context.loginSessionDatabaseId)
+      : { active: false } as const;
     const managedUser = (await listManagedUsers()).find((user) => user.id === actor.id);
-    if (managedUser) return { user: managedUser };
+    if (managedUser) return { user: managedUser, impersonation };
     const [firstName, ...lastNameParts] = actor.name.split(" ");
     const user = normalizeManagedUser({
       id: actor.id,
@@ -29,6 +34,6 @@ export async function GET() {
       permissions: { ...roleTemplates[actor.role].permissions, ...actor.permissions },
       representativeId: actor.representativeId,
     });
-    return { user };
+    return { user, impersonation };
   }, "De huidige gebruiker kon niet worden geladen.");
 }

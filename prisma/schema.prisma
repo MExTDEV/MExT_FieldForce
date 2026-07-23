@@ -18,6 +18,23 @@ enum Role {
   SUPER_ADMIN
 }
 
+enum ImpersonationEndReason {
+  MANUAL
+  LOGOUT
+  EXPIRED
+  PERMISSION_REVOKED
+  TARGET_DEACTIVATED
+  ADMINISTRATIVE
+  REPLACED
+}
+
+enum ImpersonationEventType {
+  IMPERSONATION_STARTED
+  IMPERSONATION_STOPPED
+  IMPERSONATION_EXPIRED
+  IMPERSONATION_DENIED
+}
+
 enum Country {
   BE
   NL
@@ -589,6 +606,10 @@ model User {
   permissions                         UserPermission[]
   loginAliases                        UserLoginAlias[]
   loginSessions                       UserLoginSession[]
+  impersonationSessionsAsActor        ImpersonationSession[]                @relation("ImpersonationActor")
+  impersonationSessionsAsTarget       ImpersonationSession[]                @relation("ImpersonationTarget")
+  impersonationEventsAsActor          ImpersonationEvent[]                  @relation("ImpersonationEventActor")
+  impersonationEventsAsTarget         ImpersonationEvent[]                  @relation("ImpersonationEventTarget")
   trainingParticipants                TrainingParticipant[]
   actionAssignments                   ActionPointAssignment[]
   closedActionAssignments             ActionPointAssignment[]                  @relation("ClosedActionPointAssignments")
@@ -759,6 +780,7 @@ model UserLoginSession {
   deviceRegistrationId String?
   user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   deviceRegistration   DeviceRegistration? @relation(fields: [deviceRegistrationId], references: [id], onDelete: SetNull)
+  impersonationSessions ImpersonationSession[]
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -766,6 +788,56 @@ model UserLoginSession {
   @@index([userId, provider])
   @@index([userId, lastActivityAt])
   @@index([deviceRegistrationId, logoutAt])
+}
+
+model ImpersonationSession {
+  id                 String                  @id @default(cuid())
+  loginSessionId     String
+  actorUserId        String
+  impersonatedUserId String
+  reasonType         String                  @db.VarChar(64)
+  reasonText         String?                 @db.Text
+  startedAt          DateTime                @default(now())
+  expiresAt          DateTime
+  endedAt            DateTime?
+  endReason           ImpersonationEndReason?
+  targetCountry      Country
+  targetTeamId       String?
+  targetTeamName     String?
+  ipAddress          String?                 @db.VarChar(191)
+  userAgent          String?                 @db.Text
+  loginSession       UserLoginSession        @relation(fields: [loginSessionId], references: [id], onDelete: Cascade)
+  actor              User                    @relation("ImpersonationActor", fields: [actorUserId], references: [id])
+  impersonatedUser   User                    @relation("ImpersonationTarget", fields: [impersonatedUserId], references: [id])
+  events             ImpersonationEvent[]
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([loginSessionId, endedAt, expiresAt])
+  @@index([actorUserId, startedAt])
+  @@index([impersonatedUserId, startedAt])
+  @@index([targetCountry, startedAt])
+  @@index([targetTeamId, startedAt])
+}
+
+model ImpersonationEvent {
+  id                 String                 @id @default(cuid())
+  sessionId          String?
+  actorUserId        String
+  impersonatedUserId String?
+  type               ImpersonationEventType
+  reason             String?                @db.Text
+  ipAddress          String?                @db.VarChar(191)
+  userAgent          String?                @db.Text
+  createdAt          DateTime               @default(now())
+  session            ImpersonationSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  actor              User                   @relation("ImpersonationEventActor", fields: [actorUserId], references: [id])
+  impersonatedUser   User?                  @relation("ImpersonationEventTarget", fields: [impersonatedUserId], references: [id])
+
+  @@index([sessionId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([impersonatedUserId, createdAt])
+  @@index([type, createdAt])
 }
 
 model Team {
@@ -3603,6 +3675,10 @@ model ErpReconciliationIncident {
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String
+  effectiveUserId String?
+  impersonationSessionId String?
+  ipAddress  String?  @db.VarChar(191)
+  userAgent  String?  @db.Text
   entityType String
   entityId   String
   action     String
@@ -3613,6 +3689,8 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([effectiveUserId, createdAt])
+  @@index([impersonationSessionId, createdAt])
 }
 
 model AppModule {

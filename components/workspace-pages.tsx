@@ -51,6 +51,7 @@ import { TrainingWorkflowPage } from "@/components/training-workflows";
 import { ReportingDashboard } from "@/components/reporting-dashboard";
 import { SmartDashboardPanel, SmartTeamHeatmap } from "@/components/smart-coaching-dashboard";
 import { ActivityHistoryCard } from "@/components/activity-history-card";
+import { ImpersonationHistory } from "@/components/impersonation-history";
 import { PerformanceEvolution } from "@/components/performance-evolution";
 import { PerformanceWheel } from "@/components/charts/PerformanceWheel";
 import { UsersManagementPage } from "@/components/user-management";
@@ -5696,7 +5697,7 @@ function Management({ section, settingsPage }: { section?: string; settingsPage?
 }
 
 function ManagementLog() {
-  const { user } = useSession();
+  const { user, language, managedUsers } = useSession();
 
   return (
     <div className="space-y-6">
@@ -5706,6 +5707,7 @@ function ManagementLog() {
         description="Actiehistoriek binnen je toegelaten scope, met dezelfde filters en paginatie als de vroegere dashboardweergave."
       />
       <ActivityHistoryCard user={user} />
+      {can(user, "audit.impersonation.read") && <ImpersonationHistory language={language} users={managedUsers} />}
     </div>
   );
 }

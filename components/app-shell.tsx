@@ -150,7 +150,7 @@ function isNavigationItemActive(pathname: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, language, setLanguage, status } = useSession();
+  const { user, language, setLanguage, status, impersonation, stopImpersonating } = useSession();
   const { isModuleEnabled, modules } = useModules();
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -332,7 +332,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <ServiceWorkerRegistration />
-      <aside className={`fixed inset-y-0 left-0 z-40 hidden bg-brand-900 transition-all duration-200 lg:flex lg:flex-col ${collapsed ? "w-[76px]" : "w-64"}`}>
+      {impersonation.active && impersonation.impersonatedUser && (
+        <div className="fixed inset-x-0 top-0 z-[70] flex min-h-14 items-center justify-between gap-3 border-b border-amber-300 bg-amber-100 px-4 py-2 text-amber-950 shadow-lg sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <ShieldCheck className="h-5 w-5 shrink-0" />
+            <p className="min-w-0 truncate text-sm font-bold">
+              {translate(language, "impersonation.banner.prefix")} {impersonation.impersonatedUser.firstName} {impersonation.impersonatedUser.lastName}
+              <span className="hidden font-semibold sm:inline"> — {translate(language, `impersonation.role.${impersonation.impersonatedUser.role}` as TranslationKey)}{impersonation.impersonatedUser.teamName ? ` — ${impersonation.impersonatedUser.teamName}` : ""}</span>
+            </p>
+          </div>
+          <button type="button" className="shrink-0 rounded-lg bg-amber-950 px-3 py-2 text-xs font-bold text-white hover:bg-amber-900" onClick={() => void stopImpersonating()}>
+            {translate(language, "impersonation.stop")}
+          </button>
+        </div>
+      )}
+      <aside className={`fixed bottom-0 left-0 z-40 hidden bg-brand-900 transition-all duration-200 lg:flex lg:flex-col ${impersonation.active ? "top-14" : "top-0"} ${collapsed ? "w-[76px]" : "w-64"}`}>
         {navigation}
       </aside>
 
@@ -348,7 +362,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <div className={`transition-all duration-200 ${collapsed ? "lg:pl-[76px]" : "lg:pl-64"}`}>
+      <div className={`transition-all duration-200 ${impersonation.active ? "pt-14" : ""} ${collapsed ? "lg:pl-[76px]" : "lg:pl-64"}`}>
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-6">
           <div className="flex items-center gap-3">
             <button className="rounded-xl border border-slate-200 p-2.5 text-slate-600 lg:hidden" onClick={() => setMobileOpen(true)}>

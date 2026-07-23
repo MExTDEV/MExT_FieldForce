@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/server/db";
+import { auth, authMode } from "@/auth";
+import { headers } from "next/headers";
 
 export type AuditInput = {
   actorId?: string | null;
@@ -10,12 +12,19 @@ export type AuditInput = {
 };
 
 export async function writeAuditLog(input: AuditInput) {
+  let impersonating = false;
   try {
-    const userId = await resolveAuditUserId(input.actorId);
+    const impersonation = await resolveAuditIdentity();
+    impersonating = Boolean(impersonation?.sessionId);
+    const userId = impersonation?.actorUserId ?? await resolveAuditUserId(input.actorId);
     if (!userId) return;
     await prisma.auditLog.create({
       data: {
         userId,
+        effectiveUserId: impersonation?.effectiveUserId ?? null,
+        impersonationSessionId: impersonation?.sessionId ?? null,
+        ipAddress: impersonation?.ipAddress ?? null,
+        userAgent: impersonation?.userAgent ?? null,
         entityType: input.entityType,
         entityId: input.entityId,
         action: input.action,
@@ -25,6 +34,35 @@ export async function writeAuditLog(input: AuditInput) {
     });
   } catch (error) {
     console.error("[audit]", error);
+    if (impersonating) throw error;
+  }
+}
+
+async function resolveAuditIdentity() {
+  if (authMode === "demo") return null;
+  const session = await auth();
+  const loginSessionId = session?.user?.loginSessionId;
+  const actorUserId = session?.user?.databaseUserId;
+  if (!loginSessionId || !actorUserId) return null;
+  const login = await prisma.userLoginSession.findUnique({ where: { sessionId: loginSessionId }, select: { id: true } });
+  if (!login) return null;
+  const impersonation = await prisma.impersonationSession.findFirst({ where: { loginSessionId: login.id, endedAt: null, expiresAt: { gt: new Date() } }, orderBy: { startedAt: "desc" }, select: { id: true, impersonatedUserId: true } });
+  const metadata = await currentRequestMetadata();
+  return impersonation
+    ? { actorUserId, effectiveUserId: impersonation.impersonatedUserId, sessionId: impersonation.id, ...metadata }
+    : { actorUserId, effectiveUserId: actorUserId, sessionId: null, ...metadata };
+}
+
+async function currentRequestMetadata() {
+  try {
+    const requestHeaders = await headers();
+    const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
+    return {
+      ipAddress: (forwardedFor || requestHeaders.get("cf-connecting-ip") || requestHeaders.get("x-real-ip"))?.slice(0, 191) || null,
+      userAgent: requestHeaders.get("user-agent")?.slice(0, 2000) || null,
+    };
+  } catch {
+    return { ipAddress: null, userAgent: null };
   }
 }
 

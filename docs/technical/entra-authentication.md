@@ -115,6 +115,24 @@ NEXT_PUBLIC_AUTH_MODE="demo"
 Demo mode keeps the development user switcher. It must not be used on a public
 production environment.
 
+## Impersonation and the authenticated identity
+
+Impersonation never changes `User.entraId`, Microsoft tokens or the Auth.js
+database user ID. The real Auth.js login remains linked to a validated
+`UserLoginSession`; a separate database record supplies the effective
+FieldForce user for at most one hour.
+
+Start and stop are same-origin POST requests. No impersonation token or target
+ID is stored in a URL or browser storage. Every backend authentication check
+revalidates the real user's `users.impersonate` right and the target's active
+state. Logout closes the impersonation before the login session is considered
+finished.
+
+MAIL TEST continues to replace all provider recipients. When mail is generated
+during impersonation, the MAIL TEST warning additionally identifies both the
+real and effective user and the impersonation session. Personal notifications
+of the effective user remain read-only during impersonation.
+
 ## 6. Production verification
 
 1. Run `npm run deploy:prepare`.

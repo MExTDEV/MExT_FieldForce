@@ -100,6 +100,23 @@ async function main() {
   assert.equal(message.replyTo, undefined);
   assert.equal(result.routed.mailTestActive, true);
 
+  const impersonatedMessage = buildMailMessage(
+    {
+      ...input,
+      impersonation: {
+        sessionId: "imp-session-1",
+        actorName: "Jochen Admin",
+        effectiveUserName: "Sophie Dubois",
+      },
+    },
+    result.routed,
+    settings
+  );
+  assert.match(String(impersonatedMessage.text), /IMPERSONATING was actief/);
+  assert.match(String(impersonatedMessage.text), /Jochen Admin/);
+  assert.match(String(impersonatedMessage.text), /Sophie Dubois/);
+  assert.match(String(impersonatedMessage.html), /imp-session-1/);
+
   const replyMessage = buildMailMessage(
     { ...input, replyToEmail: "verkoopleider@mext.be" },
     result.routed,

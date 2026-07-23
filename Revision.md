@@ -2,7 +2,7 @@
 
 ## Documentinformatie
 
-- Laatste update: 18 juli 2026
+- Laatste update: 22 juli 2026
 - Uitgevoerde door: Codex
 - Repository: `C:\Users\jand\Documents\Codex\FieldForce`
 - Branch: `main`
@@ -13,6 +13,19 @@
 - Databasecontext: Prisma 6.9.0 met MariaDB/MySQL; uitsluitend schema- en codeanalyse, geen muterende databaseacties
 - Geteste omgeving: Lokale repository; codeanalyse, veilige statische/technische controles en beperkte read-only UI-controle op de bestaande lokale sessie
 - Niet-beschikbare onderdelen: Volledige authenticated UI-matrix per rol, echte Microsoft Entra-tenant, Outlook/Graph, SMTP-aflevering, productieomgeving, representatieve productiedata en fysieke desktop/tablet/mobiele apparaten
+
+## Wijziging 22 juli 2026 — Veilige gebruikersimpersonatie
+
+- **Module:** gedeeld platform / authenticatie / gebruikersbeheer / audit.
+- **Locatie:** gebruikersfiche, applicatieshell, Beheer > Log en `/api/impersonation/*`.
+- **Type wijziging:** FUNCTIONEEL, RECHTEN, SECURITY, DATABASE, API, E-MAIL, NOTIFICATIE, I18N en TEST.
+- **Functionele impact:** bevoegde gebruikers kunnen een toegelaten actieve gebruiker tijdelijk als effectieve context gebruiken en via de permanente waarschuwing direct terugkeren. Historiek is filterbaar op periode, actor, doel, land, team, status en reden.
+- **Technische impact:** de gedeelde authenticatiecontext resolveert een databasegebonden effectieve gebruiker zonder Auth.js of Entra-identiteit te vervangen. Start, stop, timeout, rechtenintrekking, targetdeactivatie en logout zijn centraal afgehandeld.
+- **Beveiligingsimpact:** `users.impersonate` en `audit.impersonation.read` gebruiken de bestaande rolrechten en overrides. De centrale policy blokkeert self-targeting, inactieve gebruikers, hogere beveiligingsniveaus en doelen buiten land/team/user-scope. Persoonlijke notificaties kunnen tijdens impersonation niet als gelezen worden gemarkeerd.
+- **Auditimpact:** sessies en geweigerde pogingen hebben een apart eventledger; mutatie-audit bewaart real actor, effective user, impersonation session, IP en user-agent waar beschikbaar. MAIL TEST blijft alle echte ontvangers blokkeren en vermeldt beide identiteiten.
+- **Databasewijzigingen:** Prisma-modellen `ImpersonationSession` en `ImpersonationEvent`, aanvullende `AuditLog`-velden en migratie `0056_user_impersonation`.
+- **Uitgevoerde tests:** `npx prisma validate`, `npm run typecheck`, gerichte ESLint, `npm run test:impersonation`, `npm run test:mail-service`, `npm run test:menu-rights` en `npm run test:auth-session` geslaagd. Prisma Client generation werd geprobeerd maar de bestaande Windows dev-server hield `query_engine-windows.dll.node` vergrendeld (`EPERM`); de server is conform repositoryregels niet gestopt.
+- **Niet uitgevoerd:** geen browsermatige rolmatrix, geen echte mailaflevering, geen database-migratie op de lokale of productie-MariaDB en geen productiebuild.
 
 ## Legenda
 

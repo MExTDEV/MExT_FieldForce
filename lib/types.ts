@@ -55,6 +55,8 @@ export type FieldForcePermissionKey =
   | "usersDeactivate"
   | "usersRolesEdit"
   | "usersPermissionsEdit"
+  | "users.impersonate"
+  | "audit.impersonation.read"
   | "reportingOwn"
   | "reportingTeam"
   | "reportingAll"
@@ -378,6 +380,33 @@ export type UserLoginSessionPage = {
     total: number;
     totalPages: number;
   };
+};
+
+export type ImpersonationStatus = {
+  active: boolean;
+  sessionId?: string;
+  startedAt?: string;
+  expiresAt?: string;
+  reasonType?: string;
+  reasonText?: string;
+  realUser?: Pick<ManagedUser, "id" | "firstName" | "lastName" | "role">;
+  impersonatedUser?: Pick<ManagedUser, "id" | "firstName" | "lastName" | "role" | "country" | "teamId" | "teamName" | "avatarUrl">;
+};
+
+export type ImpersonationHistoryRecord = {
+  id: string;
+  actorName: string;
+  impersonatedUserName: string;
+  country: Country;
+  teamName: string;
+  reasonType: string;
+  reasonText?: string | null;
+  startedAt: string;
+  endedAt?: string | null;
+  expiresAt: string;
+  endReason?: string | null;
+  durationSeconds: number;
+  ipAddress?: string | null;
 };
 
 export type Representative = {

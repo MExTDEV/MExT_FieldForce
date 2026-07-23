@@ -374,6 +374,39 @@ Every new main menu item requires:
 - translations;
 - documentation.
 
+---
+
+# User Impersonation
+
+`users.impersonate` permits a user to start a short-lived, server-side bound
+impersonation session. It defaults to Sales Manager, Country Manager, Group
+Manager, Admin and Super Admin. It does not default to Representative, Service
+Operator or Verkoopleider. Admin and Super Admin can configure the right
+through the existing role-permission management and user overrides.
+
+Target selection and session start use the same central policy:
+
+- only active users are candidates;
+- self-impersonation is forbidden;
+- only Super Admin may target a higher security level;
+- Country Manager is limited to the own country;
+- Sales Manager is limited to assigned countries;
+- Admin is limited to effective assigned countries;
+- a Verkoopleider who receives an explicit override remains limited to the own
+  team;
+- Group Manager and Super Admin may target users across countries;
+- effective user permissions and scope replace, and are never merged with, the
+  real actor's functional permissions.
+
+`audit.impersonation.read` is separate and defaults to Group Manager, Admin
+and Super Admin. Historical queries remain limited to the reader's effective
+country scope, except for Group Manager and Super Admin.
+
+During impersonation the real user remains the audit actor. The effective user
+drives navigation, permissions, module access and data scope. Personal
+notifications of the effective user cannot be marked as read. Removing the
+right, deactivating the target, logout or session expiry terminates the session.
+
 Representatives must not see `Mijn Team`.
 
 Beheer subitems require explicit section permissions.

@@ -197,6 +197,21 @@ Manual profile-photo sync may return sanitized, non-persistent diagnostic lines
 for the clicked run only. These diagnostics must not include tokens, secrets or
 raw Microsoft Graph response bodies.
 
+## User impersonation
+
+User impersonation is a platform capability, not a domain-owned role switch. An
+active `ImpersonationSession` is server-side bound to the real
+`UserLoginSession`. The Auth.js identity and Microsoft Entra link remain
+unchanged. Shared authentication resolves the impersonated user as the
+effective user for menus, permissions, scope and data access, while retaining
+the real user as security actor.
+
+The platform owns the reusable target policy, one-hour maximum session,
+start/stop/expiry events, permanent warning banner, audit enrichment and cache
+reset through a full navigation after start or stop. Domains must consume the
+shared authenticated context and must not introduce target IDs in URLs, local
+storage or domain-specific impersonation switches.
+
 ---
 
 # Documentation Ownership

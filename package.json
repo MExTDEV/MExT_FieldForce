@@ -85,6 +85,7 @@
     "utf8:diagnose": "tsx scripts/diagnose-utf8.ts",
     "test:coaching-db": "tsx scripts/test-coaching-database.ts",
     "test:auth-session": "tsx scripts/test-auth-session.ts",
+    "test:impersonation": "tsx scripts/test-impersonation.ts",
     "test:login-history": "tsx scripts/test-login-history.ts",
     "test:kpi-settings": "tsx scripts/test-kpi-settings.ts",
     "profile-photos:sync": "tsx scripts/sync-profile-photos.ts",

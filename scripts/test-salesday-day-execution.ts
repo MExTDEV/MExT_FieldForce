@@ -12,6 +12,9 @@ const expectText = (relative: string, patterns: string[]) => {
 expectText("lib/server/salesday-day-execution.ts", [
   "getSalesDayAgenda",
   "orderBy: \[\{ sequence",
+  "isSalesDayManagementRole",
+  "scopedSalesDayRepresentativeUserWhere",
+  "readOnly: true",
   "withMutableDayAppointment",
   "Elke afspraak moet eerst een definitieve uitkomst hebben",
   "Elke uitgevoerde afspraak vereist een definitief bezoekverslag",

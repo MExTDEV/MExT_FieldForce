@@ -15,6 +15,8 @@ import type {
   Role,
 } from "@/lib/types";
 import { canExecutePeerCoaching, canRolePlanPeerCoaching } from "@/lib/coaching/peer-execution";
+import { bindImpersonationAuditContext } from "@/lib/server/impersonation-audit-context";
+import { headers } from "next/headers";
 
 export function actorCountryWhere(user: MockUser) {
   if (["GROUP_MANAGER", "SUPER_ADMIN"].includes(user.role)) return {};
@@ -44,12 +46,56 @@ export async function requireAuthenticatedUser(
 
 export async function requireAuthenticatedUserContext(
   requestedActorId?: string | null
-): Promise<{ actor: MockUser; loginSessionId: string | null }> {
+): Promise<AuthenticatedUserContext> {
   if (authMode === "demo") {
     if (!requestedActorId) unauthorized("Geen actieve demogebruiker ontvangen.");
     const demoUser = await findActiveUser(requestedActorId);
     if (!demoUser) unauthorized("Actieve demogebruiker niet gevonden.");
-    return { actor: demoUser, loginSessionId: null };
+    bindImpersonationAuditContext(null);
+    return { actor: demoUser, realActor: demoUser, loginSessionId: null, impersonationSessionId: null, loginSessionDatabaseId: null };
+  }
+
+  const identity = await requireAuthenticatedRealUserContext();
+  const impersonation = await resolveActiveImpersonation(identity.realActor, identity.loginSessionDatabaseId);
+  await bindAuditContext(identity.realActor.id, impersonation?.effectiveUser.id, impersonation?.sessionId);
+  return {
+    actor: impersonation?.effectiveUser ?? identity.realActor,
+    realActor: identity.realActor,
+    loginSessionId: identity.loginSessionId,
+    impersonationSessionId: impersonation?.sessionId ?? null,
+    loginSessionDatabaseId: identity.loginSessionDatabaseId,
+  };
+}
+
+async function bindAuditContext(actorUserId: string, effectiveUserId?: string, impersonationSessionId?: string) {
+  if (!effectiveUserId || !impersonationSessionId) {
+    bindImpersonationAuditContext(null);
+    return;
+  }
+  let ipAddress: string | null = null;
+  let userAgent: string | null = null;
+  try {
+    const requestHeaders = await headers();
+    const forwardedFor = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
+    ipAddress = (forwardedFor || requestHeaders.get("cf-connecting-ip") || requestHeaders.get("x-real-ip"))?.slice(0, 191) || null;
+    userAgent = requestHeaders.get("user-agent")?.slice(0, 2000) || null;
+  } catch {
+    // Background callers have no HTTP metadata, but identities remain auditable.
+  }
+  bindImpersonationAuditContext({ actorUserId, effectiveUserId, impersonationSessionId, ipAddress, userAgent });
+}
+
+export type AuthenticatedUserContext = {
+  actor: MockUser;
+  realActor: MockUser;
+  loginSessionId: string | null;
+  impersonationSessionId: string | null;
+  loginSessionDatabaseId: string | null;
+};
+
+export async function requireAuthenticatedRealUserContext() {
+  if (authMode === "demo") {
+    unauthorized("Impersonating is niet beschikbaar in demomodus.");
   }
 
   const session = await auth();
@@ -69,7 +115,54 @@ export async function requireAuthenticatedUserContext(
   if (!activeLoginSession) unauthorized("Deze login-sessie is verlopen of op afstand afgemeld.");
   const user = await findActiveUser(databaseUserId);
   if (!user) unauthorized("De aangemelde gebruiker is niet actief in FieldForce.");
-  return { actor: user, loginSessionId };
+  return {
+    realActor: user,
+    loginSessionId,
+    loginSessionDatabaseId: activeLoginSession.id,
+  };
+}
+
+async function resolveActiveImpersonation(realActor: MockUser, loginSessionDatabaseId: string) {
+  const active = await prisma.impersonationSession.findFirst({
+    where: { loginSessionId: loginSessionDatabaseId, endedAt: null },
+    orderBy: { startedAt: "desc" },
+    select: { id: true, expiresAt: true, impersonatedUserId: true },
+  });
+  if (!active) return null;
+  const now = new Date();
+  if (active.expiresAt <= now) {
+    await endInvalidImpersonation(active.id, realActor.id, active.impersonatedUserId, "EXPIRED", "IMPERSONATION_EXPIRED", "Maximale sessieduur bereikt.");
+    return null;
+  }
+  const effectiveUser = await findActiveUser(active.impersonatedUserId);
+  if (!effectiveUser) {
+    await endInvalidImpersonation(active.id, realActor.id, active.impersonatedUserId, "TARGET_DEACTIVATED", "IMPERSONATION_STOPPED", "Doelgebruiker is niet langer actief.");
+    return null;
+  }
+  const { canImpersonateUser } = await import("@/lib/server/impersonation");
+  const decision = canImpersonateUser(realActor, effectiveUser);
+  if (!decision.allowed) {
+    await endInvalidImpersonation(active.id, realActor.id, active.impersonatedUserId, "PERMISSION_REVOKED", "IMPERSONATION_STOPPED", decision.reason);
+    return null;
+  }
+  return { sessionId: active.id, effectiveUser };
+}
+
+async function endInvalidImpersonation(
+  sessionId: string,
+  actorUserId: string,
+  impersonatedUserId: string,
+  endReason: "EXPIRED" | "TARGET_DEACTIVATED" | "PERMISSION_REVOKED",
+  eventType: "IMPERSONATION_EXPIRED" | "IMPERSONATION_STOPPED",
+  reason: string,
+) {
+  const endedAt = new Date();
+  await prisma.$transaction(async (tx) => {
+    const result = await tx.impersonationSession.updateMany({ where: { id: sessionId, endedAt: null }, data: { endedAt, endReason } });
+    if (result.count) {
+      await tx.impersonationEvent.create({ data: { sessionId, actorUserId, impersonatedUserId, type: eventType, reason } });
+    }
+  });
 }
 
 export async function requireAuthenticatedRead() {
@@ -173,7 +266,7 @@ export async function requireCoachingOwnerScope(actor: MockUser, ownerIds: strin
   if (!allowed) forbidden("De begeleider valt buiten je toegestane scope.");
 }
 
-async function findActiveUser(id: string): Promise<MockUser | undefined> {
+export async function findActiveUser(id: string): Promise<MockUser | undefined> {
   const user = await prisma.user.findFirst({
     where: {
       active: true,

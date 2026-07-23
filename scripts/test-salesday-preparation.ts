@@ -53,6 +53,10 @@ for (const model of [
 }
 assert.equal(/\bDROP\s+(TABLE|COLUMN|INDEX)\b/i.test(migration), false);
 assert(service.includes("assertSalesDayServerDayAccess"));
+assert(service.includes("isSalesDayManagementRole"));
+assert(service.includes("scopedSalesDayRepresentativeUserWhere"));
+assert(service.includes("groupByRelationId"));
+assert.equal(service.includes("Map.groupBy"), false);
 assert(service.includes('orderBy: [{ sequence: "asc" }'));
 assert(service.includes("salesday.preparation.configuration.set"));
 assert(service.includes("salesday.preparation.updated"));

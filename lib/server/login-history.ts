@@ -140,16 +140,37 @@ export async function closeLoginSession(sessionId: string) {
   const now = new Date();
   const session = await prisma.userLoginSession.findUnique({
     where: { sessionId },
-    select: { loginAt: true, logoutAt: true },
+    select: { id: true, userId: true, loginAt: true, logoutAt: true },
   });
   if (!session || session.logoutAt) return false;
-  await prisma.userLoginSession.update({
-    where: { sessionId },
-    data: {
-      logoutAt: now,
-      lastActivityAt: now,
-      durationSeconds: durationBetween(session.loginAt, now),
-    },
+  await prisma.$transaction(async (tx) => {
+    const activeImpersonations = await tx.impersonationSession.findMany({
+      where: { loginSessionId: session.id, endedAt: null },
+      select: { id: true, impersonatedUserId: true },
+    });
+    await tx.userLoginSession.update({
+      where: { sessionId },
+      data: {
+        logoutAt: now,
+        lastActivityAt: now,
+        durationSeconds: durationBetween(session.loginAt, now),
+      },
+    });
+    if (activeImpersonations.length) {
+      await tx.impersonationSession.updateMany({
+        where: { id: { in: activeImpersonations.map((item) => item.id) }, endedAt: null },
+        data: { endedAt: now, endReason: "LOGOUT" },
+      });
+      await tx.impersonationEvent.createMany({
+        data: activeImpersonations.map((item) => ({
+          sessionId: item.id,
+          actorUserId: session.userId,
+          impersonatedUserId: item.impersonatedUserId,
+          type: "IMPERSONATION_STOPPED" as const,
+          reason: "LOGOUT",
+        })),
+      });
+    }
   });
   console.info("[auth:login-audit] Sessie afgemeld.", { sessionId });
   return true;

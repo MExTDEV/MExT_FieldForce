@@ -22,7 +22,8 @@ import {
   menuPermissionKeys,
   type AppSwitcherDomain,
 } from "@/lib/app-switcher";
-import { canAccessUserManagement, roleLabels } from "@/lib/permissions";
+import { can, canAccessUserManagement, roleLabels } from "@/lib/permissions";
+import { translate } from "@/lib/i18n";
 import {
   createEmptyManagedUser,
   fieldForceBasePermissionKeys,
@@ -74,6 +75,7 @@ export function UsersManagementPage() {
     updateManagedUser,
     deleteManagedUser,
     retry,
+    language,
   } = useSession();
   const [mode, setMode] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<string>();
@@ -93,6 +95,23 @@ export function UsersManagementPage() {
   >([]);
   const [rolesError, setRolesError] = useState<string>();
   const [deleteTarget, setDeleteTarget] = useState<ManagedUser>();
+  const [impersonationTarget, setImpersonationTarget] = useState<ManagedUser>();
+  const [impersonationCandidateIds, setImpersonationCandidateIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!can(user, "users.impersonate")) {
+      setImpersonationCandidateIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/impersonation/candidates", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { users?: { id: string }[] };
+        if (response.ok && !cancelled) setImpersonationCandidateIds(new Set((payload.users ?? []).map((item) => item.id)));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [user]);
 
   const visibleUsers = useMemo(
     () => visibleManagedUsers(user, managedUsers),
@@ -318,6 +337,9 @@ export function UsersManagementPage() {
           onDelete={selectedUser && user.role === "SUPER_ADMIN" && selectedUser.id !== user.id
             ? () => setDeleteTarget(selectedUser)
             : undefined}
+          onImpersonate={selectedUser && impersonationCandidateIds.has(selectedUser.id)
+            ? () => setImpersonationTarget(selectedUser)
+            : undefined}
         />
         {deleteTarget && (
           <DeleteUserDialog
@@ -325,6 +347,13 @@ export function UsersManagementPage() {
             saving={saving}
             onCancel={() => setDeleteTarget(undefined)}
             onDelete={(confirmation) => void permanentlyDeleteSelected(confirmation)}
+          />
+        )}
+        {impersonationTarget && (
+          <ImpersonationDialog
+            target={impersonationTarget}
+            language={language}
+            onCancel={() => setImpersonationTarget(undefined)}
           />
         )}
       </>
@@ -644,6 +673,7 @@ function UserForm({
   onCancel,
   onSave,
   onDelete,
+  onImpersonate,
 }: {
   actor: ReturnType<typeof useSession>["user"];
   mode: Exclude<ViewMode, "list">;
@@ -663,6 +693,7 @@ function UserForm({
   onCancel: () => void;
   onSave: () => void;
   onDelete?: () => void;
+  onImpersonate?: () => void;
 }) {
   const { modules } = useModules();
   const [showTeamCreator, setShowTeamCreator] = useState(false);
@@ -819,6 +850,11 @@ function UserForm({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onImpersonate && (
+            <button type="button" className="btn-secondary border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" onClick={onImpersonate} disabled={saving}>
+              <ShieldCheck className="h-4 w-4" /> {translate(actor.language, "impersonation.action")}
+            </button>
+          )}
           {onDelete && (
             <button type="button" className="btn-secondary text-rose-700" onClick={onDelete} disabled={saving}>
               <X className="h-4 w-4" /> Permanent verwijderen
@@ -1332,6 +1368,71 @@ function UserForm({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ImpersonationDialog({ target, language, onCancel }: {
+  target: ManagedUser;
+  language: ManagedUser["language"];
+  onCancel: () => void;
+}) {
+  const [reasonType, setReasonType] = useState("USER_SUPPORT");
+  const [reasonText, setReasonText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const name = `${target.firstName} ${target.lastName}`.trim();
+
+  async function start() {
+    try {
+      setBusy(true);
+      setError(undefined);
+      const response = await fetch("/api/impersonation/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: target.id, reasonType, reasonText }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? translate(language, "impersonation.error.start"));
+      window.location.assign("/dashboard");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : translate(language, "impersonation.error.start"));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="impersonation-title">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-900"><ShieldCheck className="h-5 w-5" /></div>
+          <div>
+            <h2 id="impersonation-title" className="text-xl font-bold text-slate-950">{translate(language, "impersonation.confirm.title").replace("{name}", name)}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{translate(language, "impersonation.confirm.message").replaceAll("{name}", name)}</p>
+          </div>
+        </div>
+        <label className="mt-5 block">
+          <span className="label">{translate(language, "impersonation.reason")}</span>
+          <select className="field" value={reasonType} onChange={(event) => setReasonType(event.target.value)}>
+            {(["USER_SUPPORT", "REPRODUCE_ERROR", "CHECK_PERMISSIONS", "FUNCTIONAL_TEST", "OTHER"] as const).map((reason) => (
+              <option key={reason} value={reason}>{translate(language, `impersonation.reason.${reason}` as Parameters<typeof translate>[1])}</option>
+            ))}
+          </select>
+        </label>
+        {(reasonType === "OTHER" || reasonText) && (
+          <label className="mt-3 block">
+            <span className="label">{translate(language, "impersonation.reason.details")}</span>
+            <textarea className="field min-h-24" maxLength={1000} value={reasonText} onChange={(event) => setReasonText(event.target.value)} />
+          </label>
+        )}
+        {error && <p className="mt-3 text-sm font-semibold text-rose-700">{error}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={busy}>{translate(language, "impersonation.cancel")}</button>
+          <button type="button" className="btn-primary" onClick={() => void start()} disabled={busy || (reasonType === "OTHER" && !reasonText.trim())}>
+            {busy ? translate(language, "impersonation.starting") : translate(language, "impersonation.start")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

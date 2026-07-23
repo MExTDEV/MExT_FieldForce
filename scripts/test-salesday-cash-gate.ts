@@ -96,6 +96,9 @@ expectText("prisma/migrations/0055_salesday_cash_weekly_gate/migration.sql", [
 expectText("lib/server/salesday-cash.ts", [
   "applySalesErpPaymentMethod",
   "applySalesErpCashBalance",
+  "isSalesDayManagementRole",
+  "scopedSalesDayRepresentativeUserWhere",
+  "readOnly: input.actor.role !== \"REPRESENTATIVE\"",
   "DOCUMENT_CASH_PAYMENT",
   "ERP_DEPOSIT_CONFIRMATION",
   "confirmedBalance.eq(0)",

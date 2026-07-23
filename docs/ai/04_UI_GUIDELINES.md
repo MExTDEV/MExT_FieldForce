@@ -258,6 +258,22 @@ Rules:
 
 Secondary actions should be visually less dominant.
 
+## Impersonation state
+
+The user detail screen may show `Gebruiker impersonaten` only when the backend
+candidate policy permits that exact target. Starting requires a confirmation
+dialog and a reason; `Andere` requires free text.
+
+While impersonation is active, a compact amber security bar is fixed above the
+entire application on desktop and mobile. It names the effective user, role and
+team and always exposes `Terug naar mijn account`. The shell reserves vertical
+space so the bar does not cover the sticky header or page content. The bar is
+above application modals and the sidebar.
+
+Beheer > Log shows the impersonation ledger only with
+`audit.impersonation.read`, with period, actor, target, country, team, status
+and reason filters.
+
 Examples:
 
 - Fiche
