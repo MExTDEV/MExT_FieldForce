@@ -7,7 +7,6 @@ import {
   ArrowRight,
   BookOpenCheck,
   CalendarCheck,
-  CalendarDays,
   Check,
   CheckCircle2,
   AlertTriangle,
@@ -115,6 +114,12 @@ import {
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
 import {
+  actionPointHref,
+  buildRepresentativeActivities,
+  isOpenRepresentativeActionPoint,
+  type RepresentativeActivity,
+} from "@/lib/representative-activity";
+import {
   buildHistoricalScoreLookup,
   historicalScoreKey,
   type HistoricalComparisonResponse,
@@ -125,7 +130,7 @@ import {
   canShowPlannedCoachingIndicator,
   type MyTeamMember,
 } from "@/lib/my-team";
-import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
+import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, MockUser, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
 import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
@@ -1628,30 +1633,10 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
             </section>
           )}
           <section className={`grid gap-5 ${showActionPoints ? "xl:grid-cols-[1.3fr_1fr]" : ""}`}>
-            {showActionPoints && (
-              <div className="card overflow-hidden">
-                <SectionTitle title="Open actiepunten" subtitle="Concrete afspraken in opvolging" link="/actiepunten" />
-                {performanceDataset.historicalActionPoints
-                  .filter((action) =>
-                    action.representativeId === representative.id &&
-                    !["behaald", "niet_behaald"].includes(action.status)
-                  )
-                  .slice(0, 3)
-                  .map((action) => (
-                  <div key={action.id} className="border-t border-slate-100 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div><p className="font-semibold text-slate-900">{action.title}</p><p className="mt-1 text-xs text-slate-500">Tegen {formatShortDate(action.due)}</p></div>
-                      <StatusBadge status={action.status} />
-                    </div>
-                    <div className="mt-4 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-brand-700" style={{ width: `${action.progress}%` }} /></div>
-                  </div>
-                ))}
-              </div>
+            {showActionPoints && <RepresentativeOpenActionPointsPanel representative={representative} />}
+            {(showCoachings || showActionPoints || visibleSections.has("contactMoments") || visibleSections.has("helpRequests") || visibleSections.has("retrainings") || visibleSections.has("salesTrainings") || visibleSections.has("evaluations")) && (
+              <RepresentativeActivityFeed representativeId={representative.id} visibleSections={visibleSections} />
             )}
-            {showCoachings && <div className="card p-5">
-              <h2 className="font-bold text-slate-900">Laatste activiteit</h2>
-              <p className="mt-4 flex items-center gap-3 text-sm text-slate-600"><CalendarDays className="h-4 w-4 text-brand-700" /> Laatste begeleiding: {formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>
-            </div>}
           </section>
         </>
       )}
@@ -2139,6 +2124,254 @@ function RepresentativeEvaluationsPanel({ representativeId }: { representativeId
       )}
     </div>
   );
+}
+
+type RepresentativeOpenAction = {
+  id: string;
+  concreteActionPointId: string;
+  title: string;
+  due?: string;
+  status: string;
+  progress?: number;
+};
+
+function RepresentativeOpenActionPointsPanel({ representative }: { representative: Representative }) {
+  const { user } = useSession();
+  const workflowApi = useWorkflow();
+  const { dataset, refresh: refreshPerformance } = usePerformance();
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
+  const [closingId, setClosingId] = useState<string>();
+  const [error, setError] = useState<string>();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+
+  const actions = useMemo(() => {
+    const workflowActions = workflowApi.visibleInterventions(user)
+      .filter((item) => item.representativeId === representative.id)
+      .flatMap((item) => item.actionPoints.map((action) => ({
+        id: action.id,
+        concreteActionPointId: action.id.includes(":") ? action.id.split(":")[0] : action.id,
+        title: plainTextSummary(action.title),
+        due: action.due,
+        status: action.status,
+        progress: undefined,
+      })));
+    const historicalActions = dataset.historicalActionPoints
+      .filter((item) => item.representativeId === representative.id)
+      .map((action) => ({
+        id: action.id,
+        concreteActionPointId: action.id,
+        title: plainTextSummary(action.title),
+        due: action.due,
+        status: action.status,
+        progress: action.progress,
+      }));
+    const unique = new Map<string, RepresentativeOpenAction>();
+    for (const action of [...workflowActions, ...historicalActions]) {
+      const existing = unique.get(action.concreteActionPointId);
+      if (!existing) {
+        unique.set(action.concreteActionPointId, action);
+      } else if (existing.progress === undefined && action.progress !== undefined) {
+        unique.set(action.concreteActionPointId, { ...existing, progress: action.progress });
+      }
+    }
+    return [...unique.values()]
+      .filter((action) => isOpenRepresentativeActionPoint(action.status) && !closedIds.has(action.concreteActionPointId))
+      .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
+  }, [closedIds, dataset.historicalActionPoints, representative.id, user, workflowApi]);
+
+  const canClose = canCloseConcreteActionPoint(user) &&
+    can(user, "menu.coaching.actionPoints") &&
+    canAccessRepresentative(user, representative);
+
+  async function closeAction(action: RepresentativeOpenAction) {
+    if (!canClose || closingId) return;
+    setClosingId(action.concreteActionPointId);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/action-points/" + encodeURIComponent(action.concreteActionPointId) + "/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: user.id, representativeId: representative.id }),
+      });
+      const payload = await response.json() as { actionPoint?: { actionPointId: string }; error?: string };
+      if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? t("myTeam.profile.actionPoints.closeError"));
+      setClosedIds((current) => new Set(current).add(action.concreteActionPointId));
+      void Promise.all([workflowApi.refresh(), refreshPerformance()]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("myTeam.profile.actionPoints.closeError"));
+    } finally {
+      setClosingId(undefined);
+    }
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <SectionTitle title={t("myTeam.profile.overview.openActionPoints")} subtitle={t("myTeam.profile.overview.openActionPointsSubtitle")} link="/actiepunten" linkLabel={t("myTeam.profile.overview.all")} />
+      {error && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{error}</p>}
+      <div className="divide-y divide-slate-100">
+        {actions.slice(0, 8).map((action) => (
+          <div key={action.concreteActionPointId} className="flex min-w-0 items-center gap-2 px-4 py-2.5 transition hover:bg-slate-50 sm:gap-3 sm:px-5">
+            <Link
+              href={actionPointHref(representative.id, action.concreteActionPointId)}
+              className="group min-w-0 flex-1 rounded-lg py-1 outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 group-hover:text-brand-800">{action.title}</p>
+                <span className="shrink-0 text-xs text-slate-500">{t("myTeam.profile.overview.due").replace("{date}", action.due ? formatShortDate(action.due) : t("myTeam.profile.overview.noDueDate"))}</span>
+                <StatusBadge status={action.status} />
+              </div>
+              {action.progress !== undefined && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="h-1.5 min-w-20 flex-1 rounded-full bg-slate-100" aria-label={String(action.progress) + "%"}>
+                    <div className="h-1.5 rounded-full bg-brand-700" style={{ width: Math.max(0, Math.min(100, action.progress)) + "%" }} />
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-500">{action.progress}%</span>
+                </div>
+              )}
+            </Link>
+            {canClose && (
+              <button
+                type="button"
+                className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-wait disabled:opacity-50"
+                onClick={() => void closeAction(action)}
+                disabled={closingId !== undefined}
+                aria-label={t("myTeam.profile.overview.closeActionPoint") + ": " + action.title}
+              >
+                {closingId === action.concreteActionPointId ? <LoaderCircle className="h-4 w-4 animate-spin" /> : t("myTeam.profile.overview.closeActionPoint")}
+              </button>
+            )}
+            <Link href={actionPointHref(representative.id, action.concreteActionPointId)} aria-label={t("myTeam.profile.overview.openActionPoint")} className="shrink-0 rounded-lg p-1 text-slate-300 transition hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+        ))}
+        {actions.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{t("myTeam.profile.overview.noOpenActionPoints")}</p>}
+      </div>
+    </div>
+  );
+}
+
+function RepresentativeActivityFeed({ representativeId, visibleSections }: { representativeId: string; visibleSections: Set<FicheSectionId> }) {
+  const { user } = useSession();
+  const workflowApi = useWorkflow();
+  const { dataset } = usePerformance();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+  const [evaluations, setEvaluations] = useState<StarterEvaluationProfileItem[]>([]);
+  const [evaluationsLoading, setEvaluationsLoading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(10);
+
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [representativeId]);
+
+  useEffect(() => {
+    if (!visibleSections.has("evaluations")) {
+      setEvaluations([]);
+      return;
+    }
+    const controller = new AbortController();
+    setEvaluationsLoading(true);
+    fetch("/api/starter-evaluations/profile?actorId=" + encodeURIComponent(user.id) + "&representativeId=" + encodeURIComponent(representativeId), {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json() as { evaluations?: StarterEvaluationProfileItem[] };
+        if (!response.ok) throw new Error("Evaluaties konden niet worden geladen.");
+        setEvaluations(payload.evaluations ?? []);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setEvaluations([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEvaluationsLoading(false);
+      });
+    return () => controller.abort();
+  }, [representativeId, user.id, visibleSections]);
+
+  const activities = useMemo(() => buildRepresentativeActivities({
+    representativeId,
+    coachings: visibleSections.has("coachings") ? dataset.historicalCoachings : [],
+    workflowCoachings: visibleSections.has("coachings") ? workflowApi.visibleInterventions(user) : [],
+    historicalActionPoints: visibleSections.has("actionPoints") ? dataset.historicalActionPoints : [],
+    contactMoments: visibleSections.has("contactMoments") ? workflowApi.visibleContactMoments(user) : [],
+    historicalContactMoments: visibleSections.has("contactMoments") ? dataset.historicalContactMoments : [],
+    helpRequests: visibleSections.has("helpRequests") ? workflowApi.visibleHelpRequests(user) : [],
+    retrainings: visibleSections.has("retrainings") ? workflowApi.visibleRetrainings(user) : [],
+    salesTrainings: visibleSections.has("salesTrainings") ? workflowApi.visibleSalesTrainings(user) : [],
+    evaluations: evaluations
+      .filter((evaluation) => Boolean(evaluation.evaluationDate))
+      .map((evaluation) => ({
+        id: evaluation.id,
+        date: evaluation.evaluationDate,
+        title: evaluation.moment ? t(starterEvaluationMomentKey(evaluation.moment)) : t("myTeam.profile.evaluations.manual"),
+        status: evaluation.status,
+        targetUrl: evaluation.href,
+      })),
+  }), [dataset, evaluations, representativeId, t, user, visibleSections, workflowApi]);
+
+  const displayedActivities = activities.slice(0, visibleCount);
+  return (
+    <div className="card overflow-hidden">
+      <SectionTitle title={t("myTeam.profile.overview.latestActivity")} subtitle={t("myTeam.profile.overview.latestActivitySubtitle")} />
+      <div className="divide-y divide-slate-100">
+        {displayedActivities.map((activity) => <RepresentativeActivityRow key={activity.id} activity={activity} language={user.language} t={t} />)}
+        {!displayedActivities.length && !evaluationsLoading && <p className="p-6 text-center text-sm text-slate-500">{t("myTeam.profile.overview.noActivity")}</p>}
+        {evaluationsLoading && !displayedActivities.length && <p className="p-4 text-center text-xs text-slate-500">{t("myTeam.profile.evaluations.loading")}</p>}
+      </div>
+      {activities.length > visibleCount && (
+        <div className="border-t border-slate-100 p-3 text-center">
+          <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setVisibleCount((current) => current + 10)}>
+            {t("myTeam.profile.overview.moreActivity")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RepresentativeActivityRow({ activity, language, t }: { activity: RepresentativeActivity; language: MockUser["language"]; t: (key: TranslationKey) => string }) {
+  return (
+    <Link href={activity.targetUrl} className="group flex min-w-0 items-center gap-3 px-4 py-2.5 transition hover:bg-slate-50 focus-visible:bg-brand-50 sm:px-5">
+      <RepresentativeActivityIcon type={activity.type} />
+      <time dateTime={activity.date} className="w-20 shrink-0 text-xs font-semibold text-slate-500 sm:w-24">{formatRepresentativeActivityDate(activity.date, language)}</time>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{representativeActivityTypeLabel(activity.type, t)}</p>
+        <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-brand-800">{activity.title}</p>
+      </div>
+      {activity.status && <StatusBadge status={activity.status} />}
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-brand-700" />
+    </Link>
+  );
+}
+
+function RepresentativeActivityIcon({ type }: { type: RepresentativeActivity["type"] }) {
+  const Icon = type === "coaching" ? ClipboardCheck
+    : type === "actionPoint" ? Target
+      : type === "contactMoment" ? Contact
+        : type === "helpRequest" ? CircleHelp
+          : type === "evaluation" ? CheckCircle2
+            : type === "retraining" ? GraduationCap
+              : Sparkles;
+  return <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700"><Icon className="h-4 w-4" /></span>;
+}
+
+function representativeActivityTypeLabel(type: RepresentativeActivity["type"], t: (key: TranslationKey) => string) {
+  const keys: Record<RepresentativeActivity["type"], TranslationKey> = {
+    coaching: "myTeam.profile.activity.coaching",
+    actionPoint: "myTeam.profile.activity.actionPoint",
+    contactMoment: "myTeam.profile.activity.contactMoment",
+    helpRequest: "myTeam.profile.activity.helpRequest",
+    evaluation: "myTeam.profile.activity.evaluation",
+    retraining: "myTeam.profile.activity.retraining",
+    salesTraining: "myTeam.profile.activity.salesTraining",
+  };
+  return t(keys[type]);
+}
+
+function formatRepresentativeActivityDate(value: string, language: MockUser["language"]) {
+  const locale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+  return new Date(value).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function RepresentativeActionPointsPanel({ representativeId }: { representativeId: string }) {
@@ -4489,6 +4722,18 @@ function ScopedActionPoints() {
     void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : "Actiepunten konden niet worden geladen."));
   }, [allowed, refresh]);
 
+  useEffect(() => {
+    if (!allowed || typeof window === "undefined") return;
+    const requestedId = new URLSearchParams(window.location.search).get("actionPointId");
+    if (!requestedId) return;
+    const match = actionPointItems.find((item) =>
+      item.concreteActionPointId === requestedId ||
+      item.id === requestedId ||
+      item.id.startsWith("workflow:" + requestedId + ":")
+    );
+    if (match) setDetailAction(match);
+  }, [actionPointItems, allowed]);
+
   if (!allowed) {
     return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("actionPoints.noManageRights")} />;
   }
@@ -5883,6 +6128,6 @@ function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" |
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
 }
 
-function SectionTitle({ title, subtitle, link }: { title: string; subtitle: string; link?: string }) {
-  return <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div>{link && <Link href={link} className="flex items-center gap-1 text-sm font-semibold text-brand-700">Alles <ArrowRight className="h-4 w-4" /></Link>}</div>;
+function SectionTitle({ title, subtitle, link, linkLabel = "Alles" }: { title: string; subtitle: string; link?: string; linkLabel?: string }) {
+  return <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div>{link && <Link href={link} className="flex items-center gap-1 text-sm font-semibold text-brand-700">{linkLabel} <ArrowRight className="h-4 w-4" /></Link>}</div>;
 }

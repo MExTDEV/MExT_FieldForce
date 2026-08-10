@@ -21,6 +21,7 @@
     "test:modules": "tsx scripts/test-modules.ts",
     "test:data-access": "tsx scripts/test-data-access.ts",
     "test:fiche-visibility": "tsx scripts/test-my-team-fiche-visibility.ts",
+    "test:representative-activity": "tsx scripts/test-representative-activity.ts",
     "test:my-team-planned": "tsx scripts/test-my-team-planned-indicator.ts",
     "test:action-points-overview": "tsx scripts/test-action-points-overview.ts",
     "test:action-point-close": "tsx scripts/test-action-point-close-lifecycle.ts",

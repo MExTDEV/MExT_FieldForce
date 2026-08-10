@@ -99,6 +99,16 @@ The employee fiche tab order is:
 11. Sales Trainingen
 12. Tijdlijn
 
+The Overzicht tab contains:
+
+- a compact list of open concrete Action Points with deadline, status and progress where available;
+- an individual Action Point link that opens the scoped Action Point detail;
+- a close action only for users with the existing actionPointsClose permission and effective Action Point scope;
+- a chronologically descending activity feed across visible Coaching, Action Point, Contactmoment, Hulpaanvraag, Tussentijdse Evaluatie, Retraining and Salestraining records;
+- an initial limited activity page with a Meer tonen action for additional locally available entries.
+
+The overview reuses the existing Action Point close endpoint. Server-side scope, audit logging, idempotency and notification behaviour remain owned by the Action Point lifecycle.
+
 Productanalyse is not a FieldForce profile module and must not appear in this menu.
 
 The fiche header shows the person's team, country, role/level, e-mail and phone when available. Contact links use semantic `mailto:` and `tel:` links and must not be repeated in the body.
