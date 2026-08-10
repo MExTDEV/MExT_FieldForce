@@ -61,7 +61,6 @@ import { SettingsManagement } from "@/components/settings-management";
 import { SessionFailure } from "@/components/session-state";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { RichTextRenderer } from "@/components/rich-text-renderer";
-import { branding } from "@/config/branding";
 import {
   can,
   canAccessRepresentative,
@@ -833,7 +832,8 @@ function groupStarterEvaluationCandidates(candidates: StarterEvaluationCandidate
 }
 
 function Dashboard() {
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { isModuleEnabled, modules } = useModules();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
@@ -983,36 +983,36 @@ function Dashboard() {
   const approvalCount = awaitingApproval.length;
   const attentionRequiredCount = attentionSections.todo.length;
   const metrics = [
-    coachingEnabled && user.role === "REPRESENTATIVE" && { label: "Mijn Begeleidingen", value: scopedInterventions.length, icon: ClipboardCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
-    coachingEnabled && { label: "Geplande begeleidingen", value: scopedInterventions.filter((item) => item.status === "gepland").length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
-    actionPointsEnabled && { label: "Open actiepunten", value: openActionCount, icon: Target, tone: "bg-amber-50 text-amber-700", href: "/actiepunten" },
-    contactsEnabled && { label: "Open contactmomenten", value: scopedContacts.filter((item) => item.status !== "afgesloten").length, icon: Phone, tone: "bg-sky-50 text-sky-700", href: "/contactmomenten" },
-    contactsEnabled && { label: "Wachtend op VT-input", value: scopedContacts.filter((item) => item.status === "wacht_op_vt_input").length, icon: Contact, tone: "bg-violet-50 text-violet-700", href: "/contactmomenten" },
-    helpEnabled && { label: "Nieuwe hulpaanvragen", value: scopedHelpRequests.filter((item) => newHelpRequestStatuses.has(item.status)).length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/hulpaanvragen" },
-    helpEnabled && { label: "Zonder vervolgactie", value: scopedHelpRequests.filter((item) => !item.followUpType && untreatedHelpRequestStatuses.has(item.status) && !handledHelpRequestStatuses.has(item.status)).length, icon: Clock3, tone: "bg-amber-50 text-amber-700", href: "/hulpaanvragen" },
-    coachingEnabled && { label: "Verslagen wachtend op akkoord", value: approvalCount, icon: ClipboardCheck, tone: "bg-fuchsia-50 text-fuchsia-700", href: user.role === "REPRESENTATIVE" && actionPointsEnabled ? "/mijn-verslagen" : "/begeleidingen" },
-    retrainingEnabled && { label: "Geplande retrainingen", value: scopedRetrainings.filter((item) => item.status === "gepland").length, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700", href: "/retrainingen" },
-    salesTrainingEnabled && { label: "Geplande sales trainingen", value: scopedSalesTrainings.filter((item) => item.status === "gepland").length, icon: Sparkles, tone: "bg-cyan-50 text-cyan-700", href: "/sales-trainingen" },
-    (retrainingEnabled || salesTrainingEnabled) && { label: "Openstaande trainingen", value: [...scopedRetrainings, ...scopedSalesTrainings].filter((item) => !["afgerond", "geannuleerd"].includes(item.status)).length, icon: BookOpenCheck, tone: "bg-blue-50 text-blue-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
-    (retrainingEnabled || salesTrainingEnabled) && { label: "Trainingen zonder opvolgactie", value: scopedRetrainings.filter((item) => item.actionPoints.length === 0).length + scopedSalesTrainings.filter((item) => !item.followUpAction.trim()).length, icon: Target, tone: "bg-amber-50 text-amber-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
-    attentionEnabled && { label: "Aandacht vereist", value: attentionRequiredCount, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/taken-vandaag" },
+    coachingEnabled && user.role === "REPRESENTATIVE" && { label: t("coaching.dashboard.myCoachings"), value: scopedInterventions.length, icon: ClipboardCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
+    coachingEnabled && { label: t("coaching.dashboard.plannedCoachings"), value: scopedInterventions.filter((item) => item.status === "gepland").length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
+    actionPointsEnabled && { label: t("coaching.dashboard.openActions"), value: openActionCount, icon: Target, tone: "bg-amber-50 text-amber-700", href: "/actiepunten" },
+    contactsEnabled && { label: t("coaching.dashboard.openContacts"), value: scopedContacts.filter((item) => item.status !== "afgesloten").length, icon: Phone, tone: "bg-sky-50 text-sky-700", href: "/contactmomenten" },
+    contactsEnabled && { label: t("coaching.dashboard.waitingVtInput"), value: scopedContacts.filter((item) => item.status === "wacht_op_vt_input").length, icon: Contact, tone: "bg-violet-50 text-violet-700", href: "/contactmomenten" },
+    helpEnabled && { label: t("coaching.dashboard.newHelpRequests"), value: scopedHelpRequests.filter((item) => newHelpRequestStatuses.has(item.status)).length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/hulpaanvragen" },
+    helpEnabled && { label: t("coaching.dashboard.noFollowUp"), value: scopedHelpRequests.filter((item) => !item.followUpType && untreatedHelpRequestStatuses.has(item.status) && !handledHelpRequestStatuses.has(item.status)).length, icon: Clock3, tone: "bg-amber-50 text-amber-700", href: "/hulpaanvragen" },
+    coachingEnabled && { label: t("coaching.dashboard.waitingApproval"), value: approvalCount, icon: ClipboardCheck, tone: "bg-fuchsia-50 text-fuchsia-700", href: user.role === "REPRESENTATIVE" && actionPointsEnabled ? "/mijn-verslagen" : "/begeleidingen" },
+    retrainingEnabled && { label: t("coaching.dashboard.plannedRetrainings"), value: scopedRetrainings.filter((item) => item.status === "gepland").length, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700", href: "/retrainingen" },
+    salesTrainingEnabled && { label: t("coaching.dashboard.plannedSalesTrainings"), value: scopedSalesTrainings.filter((item) => item.status === "gepland").length, icon: Sparkles, tone: "bg-cyan-50 text-cyan-700", href: "/sales-trainingen" },
+    (retrainingEnabled || salesTrainingEnabled) && { label: t("coaching.dashboard.openTrainings"), value: [...scopedRetrainings, ...scopedSalesTrainings].filter((item) => !["afgerond", "geannuleerd"].includes(item.status)).length, icon: BookOpenCheck, tone: "bg-blue-50 text-blue-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
+    (retrainingEnabled || salesTrainingEnabled) && { label: t("coaching.dashboard.trainingWithoutFollowUp"), value: scopedRetrainings.filter((item) => item.actionPoints.length === 0).length + scopedSalesTrainings.filter((item) => !item.followUpAction.trim()).length, icon: Target, tone: "bg-amber-50 text-amber-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
+    attentionEnabled && { label: t("coaching.dashboard.attentionRequired"), value: attentionRequiredCount, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/taken-vandaag" },
   ].filter(Boolean) as { label: string; value: number; icon: typeof CalendarCheck; tone: string; href: string }[];
 
   return (
     <div className="space-y-4">
       <PageHeader
-        eyebrow={branding.fullAppName}
-        title={`Welkom terug in ${branding.appName}`}
-        description={`${user.name.split(" ")[0]}, hier zie je wat vandaag aandacht vraagt en welke coachingmomenten eraan komen.`}
+        eyebrow={t("coaching.dashboard.eyebrow")}
+        title={t("coaching.dashboard.welcome")}
+        description={t("coaching.dashboard.description").replace("{name}", user.name.split(" ")[0])}
         compact
         actions={coachingEnabled && can(user, "intervention:create") ? (
           <Link href="/begeleidingen/nieuw" className="btn-primary py-2">
-            <Plus className="h-4 w-4" /> Nieuwe begeleiding
+            <Plus className="h-4 w-4" /> {t("coaching.dashboard.newCoaching")}
           </Link>
         ) : undefined}
       />
 
-      {attentionEnabled && <DashboardAttentionCard sections={attentionSections} />}
+      {attentionEnabled && <DashboardAttentionCard sections={attentionSections} t={t} />}
 
       {actionPointsEnabled && <SmartDashboardPanel result={smartResult} personal={user.role === "REPRESENTATIVE"} />}
 
@@ -1042,7 +1042,7 @@ function Dashboard() {
 
       <section className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         {planningEnabled && <div className="card overflow-hidden">
-          <SectionTitle title="Eerstvolgende momenten" subtitle="Planning voor je huidige scope" link="/planning" />
+          <SectionTitle title={t("coaching.dashboard.nextMoments")} subtitle={t("coaching.dashboard.nextMomentsDescription")} link="/planning" />
           <div className="divide-y divide-slate-100">
             {upcomingMoments.map((item) => (
               <div key={item.id} className="flex items-center gap-4 px-5 py-4">
@@ -1062,7 +1062,7 @@ function Dashboard() {
 
         {teamDashboardAllowed && actionPointsEnabled && (
           <div className="card overflow-hidden">
-            <SectionTitle title="Team in beeld" subtitle={`${teamDashboardRepresentatives.length} vertegenwoordigers zichtbaar`} link="/vertegenwoordigers" />
+            <SectionTitle title={t("coaching.dashboard.teamInView")} subtitle={t("coaching.dashboard.visibleRepresentatives").replace("{count}", String(teamDashboardRepresentatives.length))} link="/vertegenwoordigers" />
             <div className="space-y-1 p-3">
               {teamDashboardRepresentatives.slice(0, 5).map((representative) => (
                 <Link key={representative.id} href={`/vertegenwoordigers/${representative.id}`} className="flex items-center gap-3 rounded-xl p-3 transition hover:bg-slate-50">
@@ -1090,22 +1090,22 @@ const attentionIcons: Record<DashboardAttentionItem["type"], typeof ClipboardChe
   hulpaanvraag: CircleHelp,
 };
 
-function DashboardAttentionCard({ sections, link = "/taken-vandaag" }: { sections: DashboardAttentionSections; link?: string | null }) {
+function DashboardAttentionCard({ sections, link = "/taken-vandaag", t }: { sections: DashboardAttentionSections; link?: string | null; t: (key: TranslationKey) => string }) {
   return (
     <section className="card overflow-hidden">
-      <SectionTitle title="Vandaag vraagt aandacht" subtitle="Uit te voeren en uitgevoerd vandaag binnen je toegelaten scope" link={link ?? undefined} />
+      <SectionTitle title={t("coaching.dashboard.attentionTitle")} subtitle={t("coaching.dashboard.attentionDescription")} link={link ?? undefined} />
       <div className="grid gap-0 lg:grid-cols-2">
         <DashboardAttentionColumn
-          title="Uit te voeren"
+          title={t("coaching.dashboard.toDo")}
           count={sections.todo.length}
           items={sections.todo}
-          emptyMessage="Er staat vandaag niets meer open in jouw scope."
+          emptyMessage={t("coaching.dashboard.emptyToDo")}
         />
         <DashboardAttentionColumn
-          title="Uitgevoerd"
+          title={t("coaching.dashboard.done")}
           count={sections.done.length}
           items={sections.done}
-          emptyMessage="Er is vandaag nog niets uitgevoerd binnen jouw scope."
+          emptyMessage={t("coaching.dashboard.emptyDone")}
           done
         />
       </div>
@@ -1146,12 +1146,21 @@ function DashboardAttentionColumn({
 }
 
 function DashboardAttentionRow({ item }: { item: DashboardAttentionItem }) {
+  const { language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
+  const typeLabel = {
+    begeleiding: t("coaching.list.coachings"),
+    contactmoment: t("contactHelp.contact.pageTitle"),
+    retraining: t("coaching.training.retraining"),
+    sales_training: t("coaching.training.salesTraining"),
+    hulpaanvraag: t("contactHelp.help.pageTitle"),
+  }[item.type];
   const Icon = attentionIcons[item.type];
   const content = (
     <>
       <div className="flex w-20 shrink-0 items-center gap-2 text-xs font-bold text-slate-500">
         <Clock3 className="h-3.5 w-3.5" />
-        <span className="truncate">{item.timeLabel}</span>
+        <span className="truncate">{item.timeLabel === "Hele dag" ? t("coaching.dashboard.allDay") : item.timeLabel}</span>
       </div>
       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
         <Icon className="h-4 w-4" />
@@ -1159,7 +1168,7 @@ function DashboardAttentionRow({ item }: { item: DashboardAttentionItem }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-slate-950">{item.title}</p>
         <p className="mt-0.5 truncate text-xs text-slate-500">
-          {item.typeLabel} · {item.subtitle}{item.owner ? ` · ${item.owner}` : ""}
+          {typeLabel} · {item.subtitle}{item.owner ? ` · ${item.owner}` : ""}
         </p>
       </div>
       <StatusBadge status={item.status} />
@@ -2154,7 +2163,8 @@ function RepresentativeActionPointsPanel({ representativeId }: { representativeI
 }
 
 function CoachingDetail({ id }: { id: string }) {
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { coachingFramework } = useConfiguration();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
@@ -2166,7 +2176,7 @@ function CoachingDetail({ id }: { id: string }) {
   const representative = representatives.find((item) => item.id === representativeId) ?? (workflow?.subject ? coachingSubjectAsRepresentative(workflow.subject) : undefined);
 
   if (!representative || (!workflow && !canAccessRepresentative(user, representative))) {
-    return <EmptyState title="Begeleiding niet gevonden" description="Deze begeleiding bestaat niet of valt buiten jouw huidige scope." />;
+    return <EmptyState title={t("coaching.detail.notFound")} description={t("coaching.detail.notFoundDescription")} />;
   }
 
   if (workflow) {
@@ -2175,7 +2185,7 @@ function CoachingDetail({ id }: { id: string }) {
       return <CoachingApprovalRedirect href={approvalHref} />;
     }
     if (!canOpenCoachingDetail(user, workflow)) {
-      return <EmptyState title="Begeleiding niet beschikbaar" description="Deze begeleiding is nog niet openbaar voor jouw rol of status." />;
+      return <EmptyState title={t("coaching.detail.unavailable")} description={t("coaching.detail.unavailableDescription")} />;
     }
     if (canEditFutureCoachingPlanning(user, workflow)) {
       return <CoachingPlanningRedirect id={workflow.id} />;
@@ -2186,7 +2196,7 @@ function CoachingDetail({ id }: { id: string }) {
   const history = coachingsForRepresentative(performanceDataset, representative.id);
   const selected = historical ?? (workflow ? workflowCoachingAsHistory(workflow, coachingFramework, managedUsers, history.at(-1)) : undefined);
   if (!selected) {
-    return <EmptyState title="Geen scores beschikbaar" description="Voor deze begeleiding zijn nog geen prestatiescores bewaard." />;
+    return <EmptyState title={t("coaching.detail.noScores")} description={t("coaching.detail.noScoresDescription")} />;
   }
   const coachings = historical
     ? history
@@ -2195,11 +2205,11 @@ function CoachingDetail({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← Terug naar begeleidingen</Link>
+        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← {t("coaching.report.back")}</Link>
         <StatusBadge status={historical?.status ?? "afgesloten"} />
       </div>
       <PageHeader
-        eyebrow="Begeleiding"
+        eyebrow={t("coaching.report.coachingType")}
         title={`${representative.firstName} ${representative.lastName}`}
         description={`${formatShortDate(selected.date)} · ${selected.ownerName} · ${selected.focusNames.join(", ")}`}
       />
@@ -2210,7 +2220,7 @@ function CoachingDetail({ id }: { id: string }) {
         compact
       />
       <section className="card overflow-hidden">
-        <SectionTitle title="Scores per criterium" subtitle="Detail van de geselecteerde begeleiding" />
+        <SectionTitle title={t("coaching.detail.scores")} subtitle={t("coaching.detail.scoresDescription")} />
         <div className="grid gap-3 p-5 md:grid-cols-2">
           {selected.criterionScores.map((score) => (
             <div key={`${score.focus}-${score.criterion}`} className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -2229,22 +2239,26 @@ function CoachingDetail({ id }: { id: string }) {
 
 function CoachingApprovalRedirect({ href }: { href: string }) {
   const router = useRouter();
+  const { language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
 
   useEffect(() => {
     router.replace(href);
   }, [href, router]);
 
-  return <EmptyState title="Akkoordflow openen" description="De verplichte reflectievragen worden geopend voordat het verslag zichtbaar wordt." />;
+  return <EmptyState title={t("coaching.report.approvalOpening")} description={t("coaching.report.approvalOpeningDescription")} />;
 }
 
 function CoachingPlanningRedirect({ id }: { id: string }) {
   const router = useRouter();
+  const { language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
 
   useEffect(() => {
     router.replace(`/begeleidingen/nieuw?id=${encodeURIComponent(id)}`);
   }, [id, router]);
 
-  return <EmptyState title="Planning openen" description="Deze toekomstige begeleiding wordt geopend in de planning- en voorbereidingsflow." />;
+  return <EmptyState title={t("coaching.report.planningOpening")} description={t("coaching.report.planningOpeningDescription")} />;
 }
 
 type WorkflowApi = ReturnType<typeof useWorkflow>;
@@ -2548,12 +2562,12 @@ function CoachingDossierDetail({
       const updated = await workflowApi.transitionCoaching(local.id, action);
       setLocal(updated);
       if (action === "send_for_approval") {
-        setMessage("De begeleiding is verstuurd naar de vertegenwoordiger en is nu definitief vergrendeld.");
+        setMessage(t("coaching.report.transitionSent"));
       } else {
-        setMessage("Je hebt deze begeleiding voor akkoord bevestigd.");
+        setMessage(t("coaching.report.transitionApproved"));
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "De status kon niet worden aangepast.");
+      setMessage(error instanceof Error ? error.message : t("coaching.report.transitionError"));
     } finally {
       setTransitioning(false);
     }
@@ -2591,13 +2605,13 @@ function CoachingDossierDetail({
       }).catch((auditError) => console.error("PDF-export kon niet worden gelogd", auditError));
       setReportMessage({
         type: "success",
-        text: `${result.filename} is aangemaakt (${result.pageCount} pagina's).`,
+        text: `${t("coaching.report.exportSuccess")} (${result.pageCount} ${t("coaching.report.pages")}).`,
       });
     } catch (error) {
       console.error("Professionele PDF-export mislukt", error);
       setReportMessage({
         type: "error",
-        text: "Het professionele PDF-rapport kon niet worden aangemaakt.",
+        text: t("coaching.report.exportError"),
       });
     } finally {
       setIsExportingReport(false);
@@ -2608,11 +2622,11 @@ function CoachingDossierDetail({
     if (["gesloten", "gefinaliseerd", "voltooid"].includes(status)) {
       const newActions = local.actionPoints.filter((action) => action.isNew && action.title.trim());
       if (newActions.length < 1) {
-        setMessage("Voeg minstens één nieuw actiepunt toe voordat je de begeleiding afsluit.");
+        setMessage(t("coaching.report.missingActionPoint"));
         return;
       }
       if (newActions.some((action) => !action.tipsAndTricks?.trim() || !action.priority)) {
-        setMessage("Titel, prioriteit en Tips & Tricks zijn verplicht voor elk nieuw actiepunt.");
+        setMessage(t("coaching.report.missingActionFields"));
         return;
       }
     }
@@ -2637,13 +2651,13 @@ function CoachingDossierDetail({
       setLocal(saved);
       setMessage(
         status === "gefinaliseerd"
-          ? "Begeleiding gefinaliseerd. Scores, opmerkingen en actiepunten zijn zichtbaar voor de vertegenwoordiger."
+          ? t("coaching.report.finalizedMessage")
           : status === "geannuleerd"
-            ? "Begeleiding geannuleerd. De gekoppelde Outlook-afspraak wordt verwijderd."
+            ? t("coaching.report.cancelledMessage")
             : `Begeleiding opgeslagen als ${status.replace("_", " ")}.`
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Begeleiding kon niet worden opgeslagen.");
+      setMessage(error instanceof Error ? error.message : t("coaching.report.persistError"));
     }
   }
 
@@ -2860,9 +2874,9 @@ function CoachingDossierDetail({
 
       {activeStep === 7 && (
       <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
-        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Totale begeleiding</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("coaching.report.totalScore")}</p>
         <p className="mt-1 text-3xl font-black text-brand-950">{formatPercentage(totalCoachingScore)}</p>
-        <p className="mt-1 text-sm text-brand-800">Automatisch berekend uit 80% afspraken en 20% hoofdformulier.</p>
+        <p className="mt-1 text-sm text-brand-800">{t("coaching.report.totalDescription")}</p>
       </section>
       )}
 
@@ -2894,8 +2908,8 @@ function CoachingDossierDetail({
 
       <div id="coaching-step-2" className={activeStep === 2 ? "space-y-5" : "hidden"}>
       <section className="card p-5 sm:p-6">
-        <h2 className="text-lg font-bold text-slate-950">I. Voorbereiding</h2>
-        <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Categorieën</p><p className="mt-1 text-xs text-slate-500">Vooraf gekozen categorieën staan aan. Tijdens de begeleiding kun je altijd categorieën toevoegen.</p><div className="mt-3 flex flex-wrap gap-2">{coachingFramework.map((focus) => { const active = local.focusNames.includes(focus.name); return <button key={focus.name} type="button" disabled={readOnly} onClick={() => setLocal((current) => ({ ...current, focusNames: active ? current.focusNames.filter((name) => name !== focus.name) : [...current.focusNames, focus.name] }))} className={`rounded-full border px-3 py-2 text-xs font-bold ${active ? "border-brand-700 bg-brand-50 text-brand-800" : "border-slate-200 text-slate-500"}`}>{active ? "✓ " : "+ "}{focus.name}</button>; })}</div></div>
+        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.step.preparation")}</h2>
+        <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.categories")}</p><p className="mt-1 text-xs text-slate-500">{t("coaching.report.categoriesDescription")}</p><div className="mt-3 flex flex-wrap gap-2">{coachingFramework.map((focus) => { const active = local.focusNames.includes(focus.name); return <button key={focus.name} type="button" disabled={readOnly} onClick={() => setLocal((current) => ({ ...current, focusNames: active ? current.focusNames.filter((name) => name !== focus.name) : [...current.focusNames, focus.name] }))} className={`rounded-full border px-3 py-2 text-xs font-bold ${active ? "border-brand-700 bg-brand-50 text-brand-800" : "border-slate-200 text-slate-500"}`}>{active ? "✓ " : "+ "}{focus.name}</button>; })}</div></div>
         <div className="mt-4 grid gap-4 md:grid-cols-4">
           {representative.kpis.map((kpi) => <ReadOnlyField key={kpi.label} label={kpi.label} value={`${kpi.value} / doel ${kpi.target}`} />)}
         </div>
@@ -2920,24 +2934,24 @@ function CoachingDossierDetail({
 
       <section id="coaching-step-5" className={activeStep === 5 ? "card p-5 sm:p-6" : "hidden"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-950">Afspraken</h2>
-          {!readOnly && <button type="button" className="btn-secondary" onClick={addAppointment}><Plus className="h-4 w-4" /> Afspraak toevoegen</button>}
+          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.appointments")}</h2>
+          {!readOnly && <button type="button" className="btn-secondary" onClick={addAppointment}><Plus className="h-4 w-4" /> {t("coaching.report.appointmentAdd")}</button>}
         </div>
         <div className="mt-4 space-y-3">
           {appointments.map((appointment, index) => (
             <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Afspraak {index + 1}</p>
-                  <h3 className="mt-1 text-lg font-bold text-slate-950">{appointment.customer || "Nieuwe afspraak"}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{appointment.arrivalTime || "--:--"} - {appointment.departureTime || "--:--"} · Gemiddelde score: {formatAppointmentAverage(appointment)} / 5</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("coaching.report.appointment")} {index + 1}</p>
+                  <h3 className="mt-1 text-lg font-bold text-slate-950">{appointment.customer || t("coaching.report.newAppointment")}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{appointment.arrivalTime || "--:--"} - {appointment.departureTime || "--:--"} · {t("coaching.report.averageScore")}: {formatAppointmentAverage(appointment)} / 5</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId((current) => current === appointment.id ? undefined : appointment.id)}>
-                    {openAppointmentId === appointment.id ? "Sluiten" : "Openen"}
+                    {openAppointmentId === appointment.id ? t("coaching.report.close") : t("coaching.report.open")}
                   </button>
-                  {!readOnly && <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId(appointment.id)}>Wijzigen</button>}
-                  {!readOnly && <button type="button" className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50" onClick={() => removeAppointment(appointment.id)}>Verwijderen</button>}
+                  {!readOnly && <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId(appointment.id)}>{t("coaching.report.edit")}</button>}
+                  {!readOnly && <button type="button" className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50" onClick={() => removeAppointment(appointment.id)}>{t("coaching.report.delete")}</button>}
                 </div>
               </div>
               {openAppointmentId === appointment.id && (
@@ -2957,35 +2971,35 @@ function CoachingDossierDetail({
               </div>
             </div>
           ))}
-          {appointments.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Nog geen afspraken toegevoegd.</p>}
+          {appointments.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("coaching.report.noAppointmentsAdded")}</p>}
         </div>
       </section>
 
       <section id="coaching-step-6" className={activeStep === 6 ? "card p-5 sm:p-6" : "hidden"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-950">Actiepunten</h2>
-          {!readOnly && <button type="button" className="btn-secondary" onClick={addActionPoint}><Plus className="h-4 w-4" /> Actiepunt</button>}
+          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.actionPoints")}</h2>
+          {!readOnly && <button type="button" className="btn-secondary" onClick={addActionPoint}><Plus className="h-4 w-4" /> {t("coaching.report.addActionPoint")}</button>}
         </div>
         <div className="mt-4 grid gap-3">
           {local.actionPoints.map((action, index) => (
             <div id={`coaching-action-${action.id}`} key={action.id} className={`rounded-2xl border p-4 ${action.isNew ? "border-brand-200 bg-brand-50/40" : "border-slate-200 bg-slate-50"}`}>
               <div className="grid gap-3 md:grid-cols-[1fr_150px_150px]">
-                {action.isNew ? <TextField label="Titel *" value={action.title} disabled={readOnly} onChange={(title) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item) }))} /> : <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Actiepunt</p><p className="mt-2 font-bold text-slate-900">{action.title}</p><p className="mt-1 text-sm text-slate-500">{action.description}</p></div>}
-                <ReadOnlyField label="Target" value={action.targetValue === undefined ? "Geen target" : String(action.targetValue)} />
-                {action.isNew ? <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Prioriteit *</span><select disabled={readOnly} className="field" value={action.priority ?? "normaal"} onChange={(event) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, priority: event.target.value as "laag" | "normaal" | "hoog" } : item) }))}><option value="hoog">Hoog</option><option value="normaal">Normaal</option><option value="laag">Laag</option></select></label> : <ReadOnlyField label="Prioriteit" value={action.priority ?? "normaal"} />}
+                {action.isNew ? <TextField label={`${t("coaching.report.title")} *`} value={action.title} disabled={readOnly} onChange={(title) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item) }))} /> : <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("coaching.report.actionPoint")}</p><p className="mt-2 font-bold text-slate-900">{action.title}</p><p className="mt-1 text-sm text-slate-500">{action.description}</p></div>}
+                <ReadOnlyField label={t("coaching.report.target")} value={action.targetValue === undefined ? t("coaching.report.noTarget") : String(action.targetValue)} />
+                {action.isNew ? <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.priority")} *</span><select disabled={readOnly} className="field" value={action.priority ?? "normaal"} onChange={(event) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, priority: event.target.value as "laag" | "normaal" | "hoog" } : item) }))}><option value="hoog">{t("priority.high")}</option><option value="normaal">{t("priority.normal")}</option><option value="laag">{t("priority.low")}</option></select></label> : <ReadOnlyField label={t("coaching.report.priority")} value={action.priority ?? "normaal"} />}
               </div>
-              {!action.isNew && <div className="mt-3 max-w-xs"><TextField label="Behaalde score" type="number" value={action.achievedScore === undefined ? "" : String(action.achievedScore)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, achievedScore: value === "" ? undefined : Number(value) } : item) }))} /></div>}
-              {action.isNew && <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr]"><TextField label="Target (optioneel)" type="number" value={action.targetValue === undefined ? "" : String(action.targetValue)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, targetValue: value === "" ? undefined : Number(value) } : item) }))} /><ActionTipsEditor actionId={action.id} value={action.tipsAndTricks ?? ""} disabled={readOnly} onChange={updateActionTips} /></div>}
+              {!action.isNew && <div className="mt-3 max-w-xs"><TextField label={t("coaching.report.achievedScore")} type="number" value={action.achievedScore === undefined ? "" : String(action.achievedScore)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, achievedScore: value === "" ? undefined : Number(value) } : item) }))} /></div>}
+              {action.isNew && <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr]"><TextField label={t("coaching.report.optionalTarget")} type="number" value={action.targetValue === undefined ? "" : String(action.targetValue)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, targetValue: value === "" ? undefined : Number(value) } : item) }))} /><ActionTipsEditor actionId={action.id} value={action.tipsAndTricks ?? ""} disabled={readOnly} onChange={updateActionTips} /></div>}
             </div>
           ))}
-          {local.actionPoints.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Nog geen actiepunten.</p>}
+          {local.actionPoints.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("coaching.report.noActionPointsAdded")}</p>}
         </div>
       </section>
 
       {activeStep === 7 && <CoachingReportClosingSummary intervention={local} representative={representative} leaderName={reportingUserName(local.ownerId, managedUsers)} totalScore={totalCoachingScore} issues={validationIssues} t={t} onIssue={(issue) => void navigateToIssue(issue)} onStep={(step) => void navigateToStep(step)} />}
       {activeStep === 7 && !readOnly && (
         <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:justify-end">
-          {local.status === "gepland" && <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>Begeleiding verwijderen</button>}
+          {local.status === "gepland" && <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>{t("coaching.report.removeCoaching")}</button>}
           <button type="button" className="btn-secondary" disabled={transitioning} onClick={() => void saveAndStay()}><Save className="h-4 w-4" /> {t("coaching.report.save")}</button>
           <button type="button" className="btn-secondary" disabled={transitioning} onClick={() => void closeReport()}>{t("coaching.report.close")}</button>
           <button type="button" className="btn-primary" disabled={!reportIsValid || transitioning} onClick={() => void finalizeAndSendForApproval()}>{transitioning && <LoaderCircle className="h-4 w-4 animate-spin" />}{transitioning ? t("coaching.report.finalizing") : t("coaching.report.finalizeAndSend")}</button>
@@ -3260,17 +3274,17 @@ function CompletedCoachingSummary({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← Terug naar begeleidingen</Link>
+        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← {t("coaching.report.back")}</Link>
         <div className="flex flex-wrap gap-2">
-          {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={onDownload}><FileDown className="h-4 w-4" /> PDF-rapport</button>}
-          {canManage && !locked && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("send")}>Versturen naar vertegenwoordiger ter akkoord</button>}
-          {isRepresentative && intervention.status === "verzonden_ter_akkoord" && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("approve")}>Voor akkoord bevestigen</button>}
+          {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={onDownload}><FileDown className="h-4 w-4" /> {t("coaching.report.pdfReport")}</button>}
+          {canManage && !locked && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("send")}>{t("coaching.report.sendForApproval")}</button>}
+          {isRepresentative && intervention.status === "verzonden_ter_akkoord" && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("approve")}>{t("coaching.report.approve")}</button>}
           <StatusBadge status={intervention.status} />
         </div>
       </div>
 
       <PageHeader
-        eyebrow="Afgewerkte begeleiding"
+        eyebrow={t("coaching.report.completedEyebrow")}
         title={`${representative.firstName} ${representative.lastName}`}
         description={`${formatShortDate(intervention.plannedDate)} · ${intervention.startTime ?? "--:--"}-${intervention.endTime ?? "--:--"}`}
         compact
@@ -3280,13 +3294,13 @@ function CompletedCoachingSummary({
       {locked && (
         <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm font-semibold text-fuchsia-900">
           {intervention.status === "akkoord_door_vertegenwoordiger"
-            ? `Voor akkoord bevestigd${intervention.approvedByRepAt ? ` op ${formatDateTime(intervention.approvedByRepAt)}` : ""}.`
-            : "Deze begeleiding werd doorgestuurd ter akkoord en kan niet meer aangepast worden."}
+            ? `${t("coaching.report.lockedApproved")}${intervention.approvedByRepAt ? ` ${t("coaching.report.on")} ${formatDateTime(intervention.approvedByRepAt)}` : ""}.`
+            : t("coaching.report.lockedSent")}
         </div>
       )}
       {latestAudit && (
         <p className="text-sm text-slate-500">
-          Laatst aangepast op {formatDateTime(latestAudit.at)} door {latestAudit.userName ?? "een gebruiker"}.
+          {t("coaching.report.lastEditedBy").replace("{date}", formatDateTime(latestAudit.at)).replace("{user}", latestAudit.userName ?? t("coaching.report.aUser"))}
         </p>
       )}
 
@@ -3296,71 +3310,71 @@ function CompletedCoachingSummary({
 
       <section className="grid gap-4 lg:grid-cols-[1fr_220px]">
         <div className="card p-5">
-          <h2 className="text-lg font-bold text-slate-950">Algemene info</h2>
+          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalInfo")}</h2>
           <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SummaryValue label="Vertegenwoordiger" value={`${representative.firstName} ${representative.lastName}`} />
-            <SummaryValue label="Verkoopleider" value={leaderName} />
-            <SummaryValue label="Team" value={representative.team} />
-            <SummaryValue label="Rol / niveau" value={`Vertegenwoordiger · ${representative.level}`} />
-            <SummaryValue label="Datum" value={formatShortDate(intervention.plannedDate)} />
-            <SummaryValue label="Uren" value={`${intervention.startTime ?? "--:--"} – ${intervention.endTime ?? "--:--"}`} />
-            <SummaryValue label="Status" value={<StatusBadge status={intervention.status} />} />
-            <SummaryValue label="Effectieve aankomst / vertrek" value={`${dossier.arrivalTime || "--:--"} – ${dossier.departureTime || "--:--"}`} />
-            <SummaryValue label="Gebied" value={dossier.area || "—"} />
-            <SummaryValue label="Sector" value={dossier.sector || "—"} />
-            <SummaryValue label="Kilometers" value={dossier.kilometers || "—"} />
-            <SummaryValue label="Focus" value={intervention.focusNames.length ? intervention.focusNames.join(", ") : "Geen focus geregistreerd"} />
-            <SummaryValue label="Vooraf verwittigd" value={intervention.notifyRepresentative ? "Ja" : "Nee"} />
+            <SummaryValue label={t("coaching.report.representative")} value={`${representative.firstName} ${representative.lastName}`} />
+            <SummaryValue label={t("coaching.report.coach")} value={leaderName} />
+            <SummaryValue label={t("coaching.report.team")} value={representative.team} />
+            <SummaryValue label={t("coaching.report.roleLevel")} value={`${t("coaching.report.representative")} · ${representative.level}`} />
+            <SummaryValue label={t("coaching.report.date")} value={formatShortDate(intervention.plannedDate)} />
+            <SummaryValue label={t("coaching.report.plannedTime")} value={`${intervention.startTime ?? "--:--"} – ${intervention.endTime ?? "--:--"}`} />
+            <SummaryValue label={t("coaching.reporting.status")} value={<StatusBadge status={intervention.status} />} />
+            <SummaryValue label={t("coaching.report.effectiveArrivalDeparture")} value={`${dossier.arrivalTime || "--:--"} – ${dossier.departureTime || "--:--"}`} />
+            <SummaryValue label={t("coaching.reporting.area")} value={dossier.area || "—"} />
+            <SummaryValue label={t("coaching.reporting.sector")} value={dossier.sector || "—"} />
+            <SummaryValue label={t("coaching.report.kilometers")} value={dossier.kilometers || "—"} />
+            <SummaryValue label={t("coaching.reporting.focus")} value={intervention.focusNames.length ? intervention.focusNames.join(", ") : t("coaching.report.focusNone")} />
+            <SummaryValue label={t("coaching.report.notified")} value={intervention.notifyRepresentative ? t("contactHelp.common.yes") : t("coaching.report.no")} />
           </dl>
         </div>
         <div className="card grid place-items-center p-5 text-center">
           <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, totalScore ?? 0))}%, #e2e8f0 0)` }}>
             <div className="grid h-28 w-28 place-items-center rounded-full bg-white">
-              <div><p className="text-3xl font-black text-brand-950">{formatPercentage(totalScore)}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Prestatie</p></div>
+              <div><p className="text-3xl font-black text-brand-950">{formatPercentage(totalScore)}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.performance")}</p></div>
             </div>
           </div>
         </div>
       </section>
 
       <section id="opmerkingen" className="card scroll-mt-24 p-5">
-        <h2 className="text-lg font-bold text-slate-950">Samenvatting en conclusie</h2>
+        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.summaryConclusion")}</h2>
         <div className="mt-4 space-y-3">
           {generalRemarks.map((remark) => <div key={`${remark.label}:${remark.text}`} className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{remark.label}</p><OptionalCoachingRemark value={remark.text} className="mt-1 text-sm leading-6 text-slate-700" /></div>)}
-          {!isRepresentative && !isBlankRichText(intervention.internalNotes) && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Interne opmerking</p><OptionalCoachingRemark value={intervention.internalNotes} className="mt-1 text-sm leading-6 text-amber-900" /></div>}
+          {!isRepresentative && !isBlankRichText(intervention.internalNotes) && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">{t("coaching.report.internalNote")}</p><OptionalCoachingRemark value={intervention.internalNotes} className="mt-1 text-sm leading-6 text-amber-900" /></div>}
         </div>
       </section>
 
       <section id="scores" className="card scroll-mt-24 p-5">
-        <h2 className="text-lg font-bold text-slate-950">Scores hoofdformulier</h2>
+        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.mainFormScores")}</h2>
         <ReadOnlySimpleScoreTable scores={mainScoreRows} />
-        <h3 className="mt-6 text-base font-bold text-slate-900">Gedetailleerde coachingscriteria</h3>
+        <h3 className="mt-6 text-base font-bold text-slate-900">{t("coaching.report.detailedCriteria")}</h3>
         <ReadOnlyWorkflowScoreTable scores={workflowScoreRows} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div id="actiepunten" className="card scroll-mt-24 p-5">
-          <h2 className="text-lg font-bold text-slate-950">Actiepunten</h2>
+          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.actionPoints")}</h2>
           <div className="mt-4 space-y-2">
             {dedupeById(intervention.actionPoints).map((action) => <div key={action.id} className="rounded-xl bg-slate-50 px-4 py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"} · prioriteit {action.priority ?? "normaal"}</p></div><StatusBadge status={action.status} /></div>{!isBlankRichText(action.description) && <RichTextRenderer value={action.description} className="mt-3 text-sm leading-6 text-slate-600" />}</div>)}
-            {intervention.actionPoints.length === 0 && <p className="text-sm text-slate-500">Geen actiepunten.</p>}
+            {intervention.actionPoints.length === 0 && <p className="text-sm text-slate-500">{t("coaching.report.noActionPointsAdded")}</p>}
           </div>
         </div>
         <div className="card p-5">
-          <h2 className="text-lg font-bold text-slate-950">Afspraken binnen de begeleiding</h2>
+          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.agreementsWithin")}</h2>
           <div className="mt-4 space-y-2">
             {appointments.map((appointment, index) => {
               const expanded = openAppointmentIds.has(appointment.id);
               return <article key={`report-${appointment.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <button type="button" className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-slate-50" onClick={() => toggleAppointment(appointment.id)} aria-expanded={expanded}>
                   <div className="grid h-10 min-w-16 place-items-center rounded-xl bg-brand-50 px-2 text-xs font-bold text-brand-800">{appointment.arrivalTime || "--:--"}</div>
-                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{index + 1}. {appointment.customer || "Onbenoemde afspraak"}</p><p className="mt-1 text-xs capitalize text-slate-500">{appointment.relationType} · {appointment.appointmentType} · {appointment.place || "Geen locatie"}</p></div>
-                  <div className="hidden text-right sm:block"><p className="text-sm font-bold text-brand-800">{formatAppointmentAverage(appointment)} / 5</p><p className="text-xs text-slate-400">gemiddelde</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{index + 1}. {appointment.customer || t("coaching.report.unnamedAppointment")}</p><p className="mt-1 text-xs capitalize text-slate-500">{appointment.relationType} · {appointment.appointmentType} · {appointment.place || t("coaching.report.noLocation")}</p></div>
+                  <div className="hidden text-right sm:block"><p className="text-sm font-bold text-brand-800">{formatAppointmentAverage(appointment)} / 5</p><p className="text-xs text-slate-400">{t("coaching.report.averageScore")}</p></div>
                   <ChevronRight className={`h-5 w-5 shrink-0 text-slate-400 transition ${expanded ? "rotate-90" : ""}`} />
                 </button>
                 {expanded && <AppointmentReadOnlyReport appointment={appointment} />}
               </article>;
             })}
-            {appointments.length === 0 && <p className="text-sm text-slate-500">Geen afspraken geregistreerd.</p>}
+            {appointments.length === 0 && <p className="text-sm text-slate-500">{t("coaching.report.noAppointmentsRegistered")}</p>}
           </div>
         </div>
       </section>
@@ -3368,7 +3382,7 @@ function CompletedCoachingSummary({
       {showHistory && (intervention.auditTrail?.length ?? 0) > 0 && (
         <section className="card p-5">
           <button type="button" className="flex w-full items-center justify-between text-left font-bold text-slate-950" onClick={() => setHistoryOpen((value) => !value)}>
-            Wijzigingshistoriek bekijken <span>{historyOpen ? "−" : "+"}</span>
+            {t("coaching.report.history")} <span>{historyOpen ? "−" : "+"}</span>
           </button>
           {historyOpen && <div className="mt-4 space-y-3">{intervention.auditTrail!.map((entry) => <div key={entry.id} className="border-l-2 border-brand-200 pl-4"><p className="text-sm font-semibold text-slate-800">{entry.summary}</p><p className="text-xs text-slate-500">{formatDateTime(entry.at)} · {entry.userName ?? entry.userId}</p></div>)}</div>}
         </section>
@@ -3377,13 +3391,13 @@ function CompletedCoachingSummary({
       {confirmation && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 className="text-xl font-bold text-slate-950">Bevestiging</h2>
+            <h2 className="text-xl font-bold text-slate-950">{t("coaching.report.confirmation")}</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               {confirmation === "send"
-                ? "Na het versturen kan deze begeleiding niet meer aangepast worden. Wil je doorgaan?"
-                : "Wil je bevestigen dat je deze begeleiding hebt gelezen en voor akkoord bevestigt?"}
+                ? t("coaching.report.sendConfirmation")
+                : t("coaching.report.approveConfirmation")}
             </p>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setConfirmation(undefined)}>Annuleren</button><button type="button" className="btn-primary" onClick={confirmTransition}>Bevestigen</button></div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setConfirmation(undefined)}>{t("coaching.report.cancel")}</button><button type="button" className="btn-primary" onClick={confirmTransition}>{t("coaching.report.confirm")}</button></div>
           </div>
         </div>
       )}
@@ -3982,15 +3996,16 @@ type InterventionListRow = CoachingScopeGroupItem & {
 };
 
 function InterventionList({ kind }: { kind: string }) {
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { state, visibleInterventions } = useWorkflow();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
   const labels: Record<string, { title: string; description: string; icon: typeof ClipboardCheck }> = {
-    begeleidingen: { title: "Begeleidingen", description: "Bereid coaching voor, scoor gericht en volg afspraken op.", icon: ClipboardCheck },
-    contactmomenten: { title: "Contactmomenten", description: "Korte, gestructureerde opvolging tussen begeleidingen.", icon: Phone },
-    retrainingen: { title: "Retrainingen", description: "Gerichte bijscholing gekoppeld aan concrete ontwikkelbehoeften.", icon: GraduationCap },
-    "sales-trainingen": { title: "Sales trainingen", description: "Plan en registreer trainingen voor personen of teams.", icon: Sparkles },
+    begeleidingen: { title: t("coaching.list.coachings"), description: t("coaching.list.coachingsDescription"), icon: ClipboardCheck },
+    contactmomenten: { title: t("coaching.list.contacts"), description: t("coaching.list.contactsDescription"), icon: Phone },
+    retrainingen: { title: t("coaching.list.retrainings"), description: t("coaching.list.retrainingsDescription"), icon: GraduationCap },
+    "sales-trainingen": { title: t("coaching.list.salesTrainings"), description: t("coaching.list.salesTrainingsDescription"), icon: Sparkles },
   };
   const current = labels[kind];
   const Icon = current.icon;
@@ -4022,7 +4037,7 @@ function InterventionList({ kind }: { kind: string }) {
           outlookSyncStatus: undefined,
           syncError: undefined,
           detailHref: `/begeleidingen/${item.id}`,
-          openLabel: "Bekijk verslag",
+          openLabel: t("coaching.list.viewReport"),
           editPlanningHref: undefined,
         };
       })
@@ -4034,21 +4049,21 @@ function InterventionList({ kind }: { kind: string }) {
         ? `${representative.firstName} ${representative.lastName}`
         : item.subject
           ? `${item.subject.firstName} ${item.subject.lastName}`
-          : "Onbekend";
+          : t("coaching.list.unknown");
       const approvalId = state.approvals.find((approval) => approval.interventionId === item.id)?.id;
       const openHref = coachingOpenHref(user, item, todayKey, approvalId);
       const editPlanningHref = canEditFutureCoachingPlanning(user, item, todayKey)
         ? `/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`
         : undefined;
       const openLabel = editPlanningHref
-        ? "Wijzig planning"
+        ? t("coaching.list.editPlanning")
         : completedCoachingStatuses.has(item.status)
-          ? "Bekijk verslag"
+          ? t("coaching.list.viewReport")
           : canManageCoaching(user, item)
-            ? "Open dossier"
+            ? t("coaching.list.openDossier")
             : openHref
-              ? "Bekijk voorbereiding"
-              : "Ingepland";
+              ? t("coaching.list.viewPreparation")
+              : t("coaching.list.scheduled");
       return {
         id: item.id,
         type: "begeleiding",
@@ -4056,7 +4071,7 @@ function InterventionList({ kind }: { kind: string }) {
         representativeId: representative?.id ?? item.subject?.id ?? item.representativeId,
         country: item.country,
         teamId: representative?.teamId ?? item.subject?.teamId ?? item.teamId,
-        team: representative?.team ?? item.subject?.team ?? "Geen team",
+        team: representative?.team ?? item.subject?.team ?? t("coaching.list.noTeam"),
         date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
         owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
@@ -4117,11 +4132,11 @@ function InterventionList({ kind }: { kind: string }) {
                     <MapPin className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="eyebrow">Land</p>
+                    <p className="eyebrow">{t("coaching.list.country")}</p>
                     <h3 className="truncate text-base font-bold text-slate-950">{countryName(country.id)}</h3>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm">
-                    {countCountryItems(country)} {countCountryItems(country) === 1 ? "begeleiding" : "begeleidingen"}
+                    {countCountryItems(country)} {countCountryItems(country) === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
                   </span>
                 </div>
                 <div className="space-y-3">
@@ -4156,7 +4171,7 @@ function InterventionList({ kind }: { kind: string }) {
         <div className="flex flex-wrap items-center gap-2.5 bg-white px-3 py-3 sm:px-4">
           <UsersRound className="h-4 w-4 text-brand-700" />
           <div className="min-w-0 flex-1">
-            <p className="eyebrow">Team</p>
+          <p className="eyebrow">{t("coaching.list.team")}</p>
             <h4 className="truncate text-sm font-bold text-slate-900">{team.name}</h4>
           </div>
           <span className="text-xs font-semibold text-slate-500">
@@ -4240,46 +4255,46 @@ function InterventionList({ kind }: { kind: string }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Interventies"
+        eyebrow={t("coaching.list.eyebrow")}
         title={current.title}
         description={current.description}
-        actions={can(user, "intervention:create") ? <Link href={kind === "begeleidingen" ? "/begeleidingen/nieuw" : "#"} className="btn-primary"><Plus className="h-4 w-4" /> Nieuwe begeleiding</Link> : undefined}
+        actions={can(user, "intervention:create") ? <Link href={kind === "begeleidingen" ? "/begeleidingen/nieuw" : "#"} className="btn-primary"><Plus className="h-4 w-4" /> {t("coaching.list.newCoaching")}</Link> : undefined}
       />
-      <div className="card p-4"><div className="grid gap-3 md:grid-cols-[1fr_180px_180px]"><label className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field pl-10" placeholder="Zoeken..." /></label><select className="field"><option>Alle statussen</option><option>Gepland</option><option>Afgesloten</option></select><select className="field"><option>Komende 30 dagen</option><option>Dit kwartaal</option></select></div></div>
+      <div className="card p-4"><div className="grid gap-3 md:grid-cols-[1fr_180px_180px]"><label className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field pl-10" placeholder={t("coaching.list.search")} /></label><select className="field"><option>{t("coaching.list.allStatuses")}</option><option>{t("coaching.list.planned")}</option><option>{t("coaching.list.closed")}</option></select><select className="field"><option>{t("coaching.list.next30Days")}</option><option>{t("coaching.list.thisQuarter")}</option></select></div></div>
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow mb-1">Vandaag</p>
-            <h2 className="text-xl font-bold text-slate-950">Begeleidingen van vandaag</h2>
-            <p className="mt-1 text-sm text-slate-500">Gesorteerd op beginuur.</p>
+            <p className="eyebrow mb-1">{t("coaching.list.today")}</p>
+            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.todayTitle")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.sortedByStart")}</p>
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{todayRows.length}</span>
         </div>
-        {renderRows(todayRows, "Er zijn vandaag geen begeleidingen gepland.")}
+        {renderRows(todayRows, t("coaching.list.emptyToday"))}
       </section>
 
       <section className="space-y-4 border-t border-slate-200 pt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow mb-1">Toekomst</p>
-            <h2 className="text-xl font-bold text-slate-950">Toekomstige begeleidingen</h2>
-            <p className="mt-1 text-sm text-slate-500">Datum en uur oplopend.</p>
+            <p className="eyebrow mb-1">{t("coaching.list.future")}</p>
+            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.futureTitle")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.sortedByDate")}</p>
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{plannedRows.length}</span>
         </div>
-        {renderRows(plannedRows, "Er zijn momenteel geen toekomstige begeleidingen.")}
+        {renderRows(plannedRows, t("coaching.list.emptyFuture"))}
       </section>
 
       <section className="space-y-4 border-t border-slate-200 pt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow mb-1">Historiek</p>
-            <h2 className="text-xl font-bold text-slate-950">Uitgevoerde begeleidingen</h2>
-            <p className="mt-1 text-sm text-slate-500">Historiek, nieuwste eerst.</p>
+            <p className="eyebrow mb-1">{t("coaching.list.history")}</p>
+            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.completedTitle")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.historyNewest")}</p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{completedRows.length}</span>
         </div>
-        {renderRows(completedRows, "Er zijn nog geen afgesloten begeleidingen.")}
+        {renderRows(completedRows, t("coaching.list.emptyCompleted"))}
       </section>
     </div>
   );
@@ -4355,7 +4370,8 @@ type ActionDefinitionDraft = {
 };
 
 function ScopedActionPoints() {
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { modules } = useModules();
   const { state } = useWorkflow();
   const { dataset: performanceDataset } = usePerformance();
@@ -4474,17 +4490,17 @@ function ScopedActionPoints() {
   }, [allowed, refresh]);
 
   if (!allowed) {
-    return <EmptyState title="Geen toegang" description="Actiepunten zijn niet actief of niet toegestaan voor jouw huidige rechten." />;
+    return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("actionPoints.noManageRights")} />;
   }
 
   return <div className="space-y-6">
     <PageHeader
-      eyebrow="Opvolging"
-      title="Actiepunten"
-      description="Uit te voeren opvolgacties binnen jouw globale, land-, team- of persoonlijke scope."
+      eyebrow={t("actionPoints.pageEyebrow")}
+      title={t("actionPoints.pageTitle")}
+      description={t("actionPoints.pageDescription")}
       actions={canCreateDefinitions ? (
         <button type="button" className="btn-primary" onClick={() => openCreateDialog()}>
-          <Plus className="h-4 w-4" /> Actiepunt toevoegen
+          <Plus className="h-4 w-4" /> {t("actionPoints.add")}
         </button>
       ) : undefined}
     />
@@ -4494,8 +4510,8 @@ function ScopedActionPoints() {
     {showActionPointUserTab && <section className="card p-2">
       <div className="grid gap-2 sm:grid-cols-2">
         {[
-          { id: "actions" as const, label: "Actiepunten", count: filteredActionItems.length },
-          { id: "users" as const, label: "Gebruikers", count: userGroups.length },
+          { id: "actions" as const, label: t("actionPoints.pageTitle"), count: filteredActionItems.length },
+          { id: "users" as const, label: t("actionPoints.usersTab"), count: userGroups.length },
         ].map((tab) => {
           const active = activeActionTab === tab.id;
           return (
@@ -4810,24 +4826,24 @@ function ScopedActionPoints() {
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow mb-1">Uit te voeren</p>
-            <h2 className="text-xl font-bold text-slate-950">Actiepunten</h2>
-            <p className="mt-1 text-sm text-slate-500">{translate(user.language, "actionPoints.groupedByTypeAndUser")}</p>
+            <p className="eyebrow mb-1">{t("status.open")}</p>
+            <h2 className="text-xl font-bold text-slate-950">{t("actionPoints.pageTitle")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("actionPoints.groupedByTypeAndUser")}</p>
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{filteredActionItems.length}</span>
         </div>
-        {renderSearchField("Zoek actiepunt, gebruiker, scope of eigenaar...", actionSearch, setActionSearch)}
-        {renderScopeGroups(actionScopeGroups, "actions", "Geen uit te voeren actiepunten gevonden binnen deze zoekopdracht.")}
+        {renderSearchField(t("actionPoints.searchActions"), actionSearch, setActionSearch)}
+        {renderScopeGroups(actionScopeGroups, "actions", t("actionPoints.emptySearch"))}
         {canManageDefinitions && (
           <div className="pt-2">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="eyebrow mb-1">Beheer</p>
-                <h3 className="text-lg font-bold text-slate-950">Niet-actief of buiten geldigheid</h3>
+                <p className="eyebrow mb-1">{t("actionPoints.pageEyebrow")}</p>
+                <h3 className="text-lg font-bold text-slate-950">{t("actionPoints.inactive")}</h3>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{filteredClosedActionItems.length}</span>
             </div>
-            {renderScopeGroups(closedActionScopeGroups, "closed-actions", "Geen niet-actieve of verlopen actiepunten gevonden.")}
+            {renderScopeGroups(closedActionScopeGroups, "closed-actions", t("actionPoints.emptySearch"))}
           </div>
         )}
       </section>
@@ -4839,14 +4855,14 @@ function ScopedActionPoints() {
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow mb-1">Uit te voeren</p>
-            <h2 className="text-xl font-bold text-slate-950">Gebruikers</h2>
-            <p className="mt-1 text-sm text-slate-500">Alle zichtbare actiepunten gegroepeerd per gebruiker.</p>
+            <p className="eyebrow mb-1">{t("status.open")}</p>
+            <h2 className="text-xl font-bold text-slate-950">{t("actionPoints.usersTab")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("actionPoints.groupedByTypeAndUser")}</p>
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{userGroups.length}</span>
         </div>
-        {renderSearchField("Zoek gebruiker, actiepunt, scope of eigenaar...", userSearch, setUserSearch)}
-        {renderUserGroups(userGroups, "Geen gebruikers met uit te voeren actiepunten gevonden binnen deze zoekopdracht.")}
+        {renderSearchField(t("actionPoints.searchUsers"), userSearch, setUserSearch)}
+        {renderUserGroups(userGroups, t("actionPoints.emptyUsers"))}
       </section>
     );
   }
@@ -5580,7 +5596,8 @@ function MyProfilePage() {
 }
 
 function TodayTasksPage() {
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { isModuleEnabled } = useModules();
   const {
     visibleInterventions,
@@ -5624,35 +5641,35 @@ function TodayTasksPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        eyebrow="Werkdag"
-        title="Taken vandaag"
-        description="Een compacte weergave van wat vandaag in jouw scope aandacht vraagt."
+        eyebrow={t("coaching.dashboard.todayWorkday")}
+        title={t("coaching.dashboard.todayTasks")}
+        description={t("coaching.dashboard.todayTasksDescription")}
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Vandaag gepland</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.scheduledToday")}</p>
           <p className="mt-3 text-3xl font-bold text-slate-950">{todayItemCount}</p>
-          <p className="mt-1 text-sm text-slate-500">Items op {new Date(`${today}T12:00:00`).toLocaleDateString("nl-BE")}</p>
+          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.itemsOn")} {new Date(`${today}T12:00:00`).toLocaleDateString(language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE")}</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Uit te voeren</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.toDo")}</p>
           <p className="mt-3 text-3xl font-bold text-slate-950">{attentionSections.todo.length}</p>
-          <p className="mt-1 text-sm text-slate-500">Nog niet afgeronde items</p>
+          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.notCompletedItems")}</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Uitgevoerd</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.done")}</p>
           <p className="mt-3 text-3xl font-bold text-slate-950">{attentionSections.done.length}</p>
-          <p className="mt-1 text-sm text-slate-500">Afgewerkt of ingediend vandaag</p>
+          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.completedOrSubmitted")}</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Totale scope</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.totalScope")}</p>
           <p className="mt-3 text-3xl font-bold text-slate-950">{todayItemCount}</p>
-          <p className="mt-1 text-sm text-slate-500">Zichtbare items voor vandaag</p>
+          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.visibleItemsToday")}</p>
         </div>
       </div>
 
-      <DashboardAttentionCard sections={attentionSections} link={null} />
+      <DashboardAttentionCard sections={attentionSections} link={null} t={t} />
     </div>
   );
 }

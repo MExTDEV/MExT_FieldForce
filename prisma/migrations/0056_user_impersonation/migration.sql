@@ -63,11 +63,13 @@ ON DUPLICATE KEY UPDATE
   `label` = VALUES(`label`), `group` = VALUES(`group`), `description` = VALUES(`description`), `updatedAt` = CURRENT_TIMESTAMP(3);
 
 INSERT INTO `RolePermission` (`id`, `role`, `permissionId`, `enabled`)
-SELECT CONCAT('rp_imp_', LOWER(`role`)), `role`, 'perm_users_impersonate', TRUE
-FROM (SELECT 'SALES_MANAGER' AS `role` UNION ALL SELECT 'COUNTRY_MANAGER' UNION ALL SELECT 'GROUP_MANAGER' UNION ALL SELECT 'ADMIN' UNION ALL SELECT 'SUPER_ADMIN') defaults
+SELECT CONCAT('rp_imp_', LOWER(defaults.`role`)), defaults.`role`, permission_record.`id`, TRUE
+FROM (SELECT 'SALES_MANAGER' AS `role` UNION ALL SELECT 'COUNTRY_MANAGER' UNION ALL SELECT 'GROUP_MANAGER' UNION ALL SELECT 'ADMIN' UNION ALL SELECT 'SUPER_ADMIN') AS defaults
+JOIN `Permission` AS permission_record ON permission_record.`key` = 'users.impersonate'
 ON DUPLICATE KEY UPDATE `enabled` = VALUES(`enabled`);
 
 INSERT INTO `RolePermission` (`id`, `role`, `permissionId`, `enabled`)
-SELECT CONCAT('rp_audit_imp_', LOWER(`role`)), `role`, 'perm_audit_impersonation_read', TRUE
-FROM (SELECT 'GROUP_MANAGER' AS `role` UNION ALL SELECT 'ADMIN' UNION ALL SELECT 'SUPER_ADMIN') defaults
+SELECT CONCAT('rp_audit_imp_', LOWER(defaults.`role`)), defaults.`role`, permission_record.`id`, TRUE
+FROM (SELECT 'GROUP_MANAGER' AS `role` UNION ALL SELECT 'ADMIN' UNION ALL SELECT 'SUPER_ADMIN') AS defaults
+JOIN `Permission` AS permission_record ON permission_record.`key` = 'audit.impersonation.read'
 ON DUPLICATE KEY UPDATE `enabled` = VALUES(`enabled`);

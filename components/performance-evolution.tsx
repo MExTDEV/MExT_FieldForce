@@ -10,6 +10,8 @@ import {
   type PerformanceWheelType,
 } from "@/lib/performance/performance-wheel";
 import type { HistoricalCoaching } from "@/lib/performance-data";
+import { useSession } from "@/components/session-provider";
+import { translate, type TranslationKey } from "@/lib/i18n";
 
 export function PerformanceEvolution({
   coachings,
@@ -22,6 +24,8 @@ export function PerformanceEvolution({
   initialCoachingId?: string;
   compact?: boolean;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const initialIndex = Math.max(
     0,
     initialCoachingId ? coachings.findIndex((item) => item.id === initialCoachingId) : coachings.length - 1
@@ -59,7 +63,7 @@ export function PerformanceEvolution({
   async function handleExport(preview = false) {
     const svgElement = wheelRef.current?.querySelector<SVGSVGElement>('[data-testid="performance-wheel-svg"]');
     if (!selected || !data || !svgElement) {
-      setExportError("De prestatiecirkel is nog niet klaar om te exporteren.");
+      setExportError(t("coaching.performance.exportReady"));
       return;
     }
 
@@ -70,9 +74,9 @@ export function PerformanceEvolution({
       const { exportPerformancePdf } = await import("@/lib/performance/export-performance-pdf");
       const result = await exportPerformancePdf({
         representativeName,
-        coachingDate: formatDate(selected.date),
-        comparisonDate: data.comparisonDate ? formatDate(data.comparisonDate) : undefined,
-        modeLabel: mode === "kapstok" ? "Kapstok-prestaties" : "Algemene competenties",
+        coachingDate: formatDate(selected.date, language),
+        comparisonDate: data.comparisonDate ? formatDate(data.comparisonDate, language) : undefined,
+        modeLabel: mode === "kapstok" ? t("coaching.performance.framework") : t("coaching.performance.general"),
         data,
         svgElement,
         preview,
@@ -85,19 +89,19 @@ export function PerformanceEvolution({
       }
       setExportSuccess(
         preview
-          ? `PDF-preview geopend (${result.pageCount} pagina's).`
-          : `PDF aangemaakt: ${result.filename} (${result.pageCount} pagina's).`
+          ? t("coaching.performance.previewOpened").replace("{count}", String(result.pageCount))
+          : t("coaching.performance.pdfCreated").replace("{filename}", result.filename).replace("{count}", String(result.pageCount))
       );
     } catch (error) {
       console.error("PDF-export mislukt", error);
-      setExportError("De PDF kon niet worden aangemaakt. Probeer het opnieuw.");
+      setExportError(t("coaching.performance.exportError"));
     } finally {
       setIsExporting(false);
     }
   }
 
   if (!selected || !data) {
-    return <div className="card p-8 text-center text-sm text-slate-500">Nog geen begeleidingsscores beschikbaar.</div>;
+    return <div className="card p-8 text-center text-sm text-slate-500">{t("coaching.performance.noScores")}</div>;
   }
 
   return (
@@ -106,17 +110,17 @@ export function PerformanceEvolution({
         <section className="card p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="eyebrow">Begeleidingsmoment</p>
-              <h2 className="mt-1 text-xl font-bold text-slate-950">{formatDate(selected.date)}</h2>
+              <p className="eyebrow">{t("coaching.performance.moment")}</p>
+              <h2 className="mt-1 text-xl font-bold text-slate-950">{formatDate(selected.date, language)}</h2>
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
                 <span className="flex items-center gap-2"><UserRound className="h-4 w-4" /> {selected.ownerName}</span>
-                <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Begeleiding {selectedIndex + 1} van {coachings.length}</span>
+                <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> {t("coaching.list.coachings")} {selectedIndex + 1} / {coachings.length}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                aria-label="Vorige begeleiding"
+                aria-label={t("coaching.performance.previous")}
                 disabled={selectedIndex === 0}
                 onClick={() => setSelectedIndex((index) => Math.max(0, index - 1))}
                 className="btn-secondary px-3"
@@ -124,18 +128,18 @@ export function PerformanceEvolution({
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <select
-                aria-label="Selecteer begeleiding"
+                aria-label={t("coaching.performance.select")}
                 className="field min-w-52"
                 value={selected.id}
                 onChange={(event) => setSelectedIndex(coachings.findIndex((item) => item.id === event.target.value))}
               >
                 {coachings.map((item, index) => (
-                  <option key={item.id} value={item.id}>{index + 1}. {formatDate(item.date)}</option>
+                  <option key={item.id} value={item.id}>{index + 1}. {formatDate(item.date, language)}</option>
                 ))}
               </select>
               <button
                 type="button"
-                aria-label="Volgende begeleiding"
+                aria-label={t("coaching.performance.next")}
                 disabled={selectedIndex === coachings.length - 1}
                 onClick={() => setSelectedIndex((index) => Math.min(coachings.length - 1, index + 1))}
                 className="btn-secondary px-3"
@@ -145,7 +149,7 @@ export function PerformanceEvolution({
             </div>
           </div>
           <input
-            aria-label="Begeleiding door de tijd"
+            aria-label={t("coaching.performance.timeline")}
             type="range"
             min={0}
             max={Math.max(0, coachings.length - 1)}
@@ -154,8 +158,8 @@ export function PerformanceEvolution({
             className="mt-5 w-full accent-brand-700"
           />
           <div className="mt-2 flex justify-between text-xs text-slate-400">
-            <span>{formatDate(coachings[0].date)}</span>
-            <span>{formatDate(coachings.at(-1)!.date)}</span>
+            <span>{formatDate(coachings[0].date, language)}</span>
+            <span>{formatDate(coachings.at(-1)!.date, language)}</span>
           </div>
         </section>
       )}
@@ -163,34 +167,34 @@ export function PerformanceEvolution({
       <section className="card overflow-hidden">
         <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between sm:p-6">
           <div>
-            <p className="eyebrow">Competentiewiel</p>
+            <p className="eyebrow">{t("coaching.performance.competencyWheel")}</p>
             <h2 className="mt-1 text-xl font-bold text-slate-950">
-              {mode === "kapstok" ? "Kapstok-prestaties" : "Algemene competenties"}
+              {mode === "kapstok" ? t("coaching.performance.framework") : t("coaching.performance.general")}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              {formatDate(selected.date)}
-              {data.comparisonDate ? ` vergeleken met ${formatDate(data.comparisonDate)}` : " · eerste meting"}
+              {formatDate(selected.date, language)}
+              {data.comparisonDate ? ` ${t("coaching.performance.compareWith")} ${formatDate(data.comparisonDate, language)}` : ` · ${t("coaching.performance.firstMeasurement")}`}
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end">
             <label className="text-xs font-semibold text-slate-500">
-              Vergelijk met
+              {t("coaching.performance.compareWith")}
               <select
-                aria-label="Vergelijk met begeleiding"
+                aria-label={t("coaching.performance.compare")}
                 className="field mt-1 min-w-56"
                 value={comparisonId}
                 disabled={selectedIndex === 0}
                 onChange={(event) => setComparisonId(event.target.value)}
               >
-                <option value="auto">{selectedIndex === 0 ? "Geen vorige begeleiding" : "Automatisch vorige begeleiding"}</option>
+                <option value="auto">{selectedIndex === 0 ? t("coaching.performance.noPrevious") : t("coaching.performance.autoPrevious")}</option>
                 {comparisonOptions.map((item) => (
-                  <option key={item.id} value={item.id}>{formatDate(item.date)}</option>
+                  <option key={item.id} value={item.id}>{formatDate(item.date, language)}</option>
                 ))}
               </select>
             </label>
             <div className="flex self-end rounded-xl bg-slate-100 p-1">
-              <ModeButton active={mode === "kapstok"} onClick={() => setMode("kapstok")}>Kapstok</ModeButton>
-              <ModeButton active={mode === "algemeen"} onClick={() => setMode("algemeen")}>Algemeen</ModeButton>
+              <ModeButton active={mode === "kapstok"} onClick={() => setMode("kapstok")}>{t("coaching.performance.framework")}</ModeButton>
+              <ModeButton active={mode === "algemeen"} onClick={() => setMode("algemeen")}>{t("coaching.performance.general")}</ModeButton>
             </div>
             <button
               type="button"
@@ -201,12 +205,12 @@ export function PerformanceEvolution({
               {isExporting ? (
                 <>
                   <LoaderCircle className="h-4 w-4 animate-spin" />
-                  PDF wordt aangemaakt...
+                  {t("coaching.preparation.exporting")}
                 </>
               ) : (
                 <>
                   <FileDown className="h-4 w-4" />
-                  Exporteren naar PDF
+                  {t("coaching.performance.exportPdf")}
                 </>
               )}
             </button>
@@ -217,7 +221,7 @@ export function PerformanceEvolution({
               className="btn-secondary self-end whitespace-nowrap"
             >
               <Play className="h-4 w-4" />
-              PDF bekijken
+              {t("coaching.performance.viewPdf")}
             </button>
           </div>
         </div>
@@ -233,7 +237,7 @@ export function PerformanceEvolution({
             />
             <p className="mt-4 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
               <Info className="h-4 w-4 text-brand-700" />
-              Hoe verder een score naar buiten ligt, hoe sterker de prestatie.
+              {t("coaching.performance.wheelHelp")}
             </p>
           </div>
 
@@ -251,7 +255,7 @@ export function PerformanceEvolution({
         </div>
 
         <div className="border-t border-slate-100 bg-slate-50 px-5 py-4 text-xs text-slate-500 sm:px-6">
-          Categorieën: {data.categories.map((item) => displayCategory(item.name)).join(", ")}
+          {t("coaching.performance.categoriesLabel")}: {data.categories.map((item) => displayCategory(item.name)).join(", ")}
         </div>
       </section>
       {pdfPreviewUrl && (
@@ -259,12 +263,12 @@ export function PerformanceEvolution({
           <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-5">
               <div>
-                <p className="font-bold text-slate-950">Prestatiecirkel · {representativeName}</p>
-                <p className="text-xs text-slate-500">PDF-preview</p>
+                <p className="font-bold text-slate-950">{t("coaching.performance.competencyWheel")} · {representativeName}</p>
+                <p className="text-xs text-slate-500">{t("coaching.performance.pdfPreview")}</p>
               </div>
               <button
                 type="button"
-                aria-label="PDF-preview sluiten"
+                aria-label={t("coaching.performance.closePreview")}
                 onClick={() => {
                   URL.revokeObjectURL(pdfPreviewUrl);
                   setPdfPreviewUrl(undefined);
@@ -275,7 +279,7 @@ export function PerformanceEvolution({
               </button>
             </div>
             <iframe
-              title={`Prestatiecirkel PDF voor ${representativeName}`}
+              title={t("coaching.performance.pdfTitle").replace("{name}", representativeName)}
               src={pdfPreviewUrl}
               className="min-h-0 flex-1 bg-slate-100"
             />
@@ -287,6 +291,8 @@ export function PerformanceEvolution({
 }
 
 function ScoreOverview({ criteria }: { criteria: PerformanceWheelCriterion[] }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const groups = criteria.reduce<Array<{ category: string; rows: PerformanceWheelCriterion[] }>>((result, row) => {
     const group = result.find((item) => item.category === row.category);
     if (group) {
@@ -315,10 +321,10 @@ function ScoreOverview({ criteria }: { criteria: PerformanceWheelCriterion[] }) 
                 </p>
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] sm:justify-end">
                   <span className="whitespace-nowrap text-slate-500">
-                    V: {row.previousTen === undefined ? "-" : formatScore(row.previousTen)}
+                    {t("coaching.performance.previousShort")}: {row.previousTen === undefined ? "-" : formatScore(row.previousTen)}
                   </span>
                   <span className="whitespace-nowrap font-bold text-slate-950">
-                    H: {row.currentScored ? formatScore(row.currentTen) : "niet gescoord"}
+                    {t("coaching.performance.currentShort")}: {row.currentScored ? formatScore(row.currentTen) : t("coaching.performance.notScored")}
                   </span>
                   <DifferenceBadge difference={row.differenceTen} trend={row.trend} />
                   <WheelTrendBadge trend={row.trend} />
@@ -385,8 +391,9 @@ function formatScore(value: number) {
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
 }
 
-function formatDate(value: string) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("nl-BE", {
+function formatDate(value: string, language: "nl" | "fr" | "de") {
+  const locale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+  return new Date(`${value}T12:00:00`).toLocaleDateString(locale, {
     day: "numeric",
     month: "long",
     year: "numeric",

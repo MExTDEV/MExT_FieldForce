@@ -2,6 +2,8 @@
 
 import { Plus, X } from "lucide-react";
 import type { WorkflowActionPoint } from "@/lib/types";
+import { useSession } from "@/components/session-provider";
+import { translate, type TranslationKey } from "@/lib/i18n";
 
 export type EditableActionPoint = Omit<WorkflowActionPoint, "id" | "status">;
 
@@ -20,11 +22,13 @@ export function ActionPointEditor({
   title?: string;
   description?: string;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <div>
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
         <div>
-          <p className="text-sm font-bold text-slate-900">{title}</p>
+          <p className="text-sm font-bold text-slate-900">{title === "Actiepunten" ? t("coaching.actionEditor.title") : title}</p>
           {description && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
         </div>
         <button
@@ -32,7 +36,7 @@ export function ActionPointEditor({
           onClick={() => onChange([...actions, { title: "", type: "vaardigheid", due: "" }])}
           className="btn-secondary self-start border-dashed"
         >
-          <Plus className="h-4 w-4" /> Toevoegen
+          <Plus className="h-4 w-4" /> {t("coaching.actionEditor.add")}
         </button>
       </div>
       <div className="mt-4 space-y-3">
@@ -40,7 +44,7 @@ export function ActionPointEditor({
           <div key={index} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[1fr_170px_160px_44px]">
             <input
               className="field"
-              placeholder="Concrete afspraak"
+              placeholder={t("coaching.actionEditor.placeholder")}
               value={action.title}
               onChange={(event) => onChange(actions.map((item, itemIndex) =>
                 itemIndex === index ? { ...item, title: event.target.value } : item
@@ -55,9 +59,9 @@ export function ActionPointEditor({
                   : item
               ))}
             >
-              <option value="kpi">KPI</option>
-              <option value="vaardigheid">Vaardigheid</option>
-              <option value="gedrag">Gedrag</option>
+              <option value="kpi">{t("coaching.actionEditor.kpi")}</option>
+              <option value="vaardigheid">{t("coaching.actionEditor.skill")}</option>
+              <option value="gedrag">{t("coaching.actionEditor.behaviour")}</option>
             </select>
             <input
               className="field"
@@ -71,7 +75,7 @@ export function ActionPointEditor({
               type="button"
               onClick={() => onChange(actions.filter((_, itemIndex) => itemIndex !== index))}
               className="grid h-11 place-items-center rounded-xl border border-slate-200 text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-              aria-label="Actiepunt verwijderen"
+              aria-label={t("coaching.actionEditor.remove")}
             >
               <X className="h-4 w-4" />
             </button>
@@ -79,7 +83,7 @@ export function ActionPointEditor({
         ))}
         {actions.length === 0 && (
           <p className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
-            Nog geen actiepunten toegevoegd.
+            {t("coaching.actionEditor.empty")}
           </p>
         )}
       </div>

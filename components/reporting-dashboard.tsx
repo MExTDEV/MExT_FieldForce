@@ -37,6 +37,7 @@ import {
 import { canViewTeamDashboard } from "@/lib/permissions";
 import { buildSmartCoaching } from "@/lib/smart-coaching";
 import type { Representative } from "@/lib/types";
+import { translate, type TranslationKey } from "@/lib/i18n";
 
 type ReportSection =
   | "overzicht"
@@ -47,14 +48,14 @@ type ReportSection =
   | "interventies"
   | "kpi-evolutie";
 
-const reportLinks: { section: ReportSection; label: string }[] = [
-  { section: "overzicht", label: "Overzicht" },
-  { section: "verkoopleiders", label: "Verkoopleiders" },
-  { section: "teams", label: "Teams" },
-  { section: "vertegenwoordigers", label: "Vertegenwoordigers" },
-  { section: "actiepunten", label: "Actiepunten" },
-  { section: "interventies", label: "Interventies" },
-  { section: "kpi-evolutie", label: "KPI-evolutie" },
+const reportLinks: { section: ReportSection; key: TranslationKey }[] = [
+  { section: "overzicht", key: "coaching.reporting.overview" },
+  { section: "verkoopleiders", key: "coaching.reporting.leaders" },
+  { section: "teams", key: "coaching.reporting.teams" },
+  { section: "vertegenwoordigers", key: "coaching.reporting.representatives" },
+  { section: "actiepunten", key: "coaching.reporting.actions" },
+  { section: "interventies", key: "coaching.reporting.interventions" },
+  { section: "kpi-evolutie", key: "coaching.reporting.kpiEvolution" },
 ];
 
 const helpRequestHandledStatuses = new Set([
@@ -70,7 +71,8 @@ const helpRequestOpenStatuses = new Set(["open", "nieuw", "in_behandeling"]);
 const helpRequestTerminalStatuses = new Set(["gesloten", "ingetrokken", "afgesloten", "geannuleerd"]);
 
 export function ReportingDashboard({ section = "overzicht" }: { section?: string }) {
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const { state } = useWorkflow();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset, error: performanceError } = usePerformance();
@@ -96,18 +98,18 @@ export function ReportingDashboard({ section = "overzicht" }: { section?: string
     return <PersonalReporting dataset={filtered} representative={scope[0]} />;
   }
   if (!canViewTeamDashboard(user)) {
-    return <EmptyState title="Geen rapporteringstoegang" description="Rapportering is niet beschikbaar voor jouw FieldForce-rol." />;
+    return <EmptyState title={t("coaching.reporting.accessTitle")} description={t("coaching.reporting.accessDescription")} />;
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Management inzicht"
-        title="Rapportering"
-        description="Coachingactiviteit, opvolging, open taken en KPI-evolutie binnen je huidige scope."
+        eyebrow={t("coaching.reporting.managementInsight")}
+        title={t("coaching.reporting.title")}
+        description={t("coaching.reporting.description")}
         actions={(
-          <button type="button" className="btn-secondary" title="Export wordt in een volgende fase toegevoegd">
-            <BarChart3 className="h-4 w-4" /> Export voorbereiden
+          <button type="button" className="btn-secondary" title={t("coaching.reporting.exportTitle")}>
+            <BarChart3 className="h-4 w-4" /> {t("coaching.reporting.exportPreparing")}
           </button>
         )}
       />
@@ -136,6 +138,7 @@ export function ReportingDashboard({ section = "overzicht" }: { section?: string
 }
 
 function ReportNavigation({ active }: { active: ReportSection }) {
+  const { language } = useSession();
   return (
     <nav className="flex gap-2 overflow-x-auto pb-1">
       {reportLinks.map((item) => (
@@ -148,7 +151,7 @@ function ReportNavigation({ active }: { active: ReportSection }) {
               : "border border-slate-200 bg-white text-slate-600 hover:border-brand-200"
           }`}
         >
-          {item.label}
+          {translate(language, item.key)}
         </Link>
       ))}
     </nav>
@@ -167,6 +170,8 @@ function ReportFilterBar({
   userRole: string;
 }) {
   const { managedUsers } = useSession();
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const countries = [...new Set(scope.map((item) => item.country))];
   const teams = [...new Map(
     scope
@@ -183,62 +188,62 @@ function ReportFilterBar({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-brand-700" />
-          <h2 className="text-sm font-bold text-slate-950">Filters</h2>
+          <h2 className="text-sm font-bold text-slate-950">{t("coaching.reporting.filters")}</h2>
         </div>
         <button
           type="button"
           onClick={() => onChange(emptyReportingFilters)}
           className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-brand-700"
         >
-          <X className="h-4 w-4" /> Wissen
+          <X className="h-4 w-4" /> {t("coaching.reporting.clear")}
         </button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        <FilterField label="Van">
+        <FilterField label={t("coaching.reporting.from")}>
           <input type="date" className="field" value={filters.from} onChange={(event) => onChange({ ...filters, from: event.target.value })} />
         </FilterField>
-        <FilterField label="Tot">
+        <FilterField label={t("coaching.reporting.to")}>
           <input type="date" className="field" value={filters.to} onChange={(event) => onChange({ ...filters, to: event.target.value })} />
         </FilterField>
-        <FilterField label="Land">
+        <FilterField label={t("coaching.reporting.country")}>
           <select className="field" value={filters.country} onChange={(event) => onChange({ ...filters, country: event.target.value, teamId: "" })}>
-            <option value="">Alle landen</option>
+            <option value="">{t("coaching.reporting.allCountries")}</option>
             {countries.map((item) => <option key={item}>{item}</option>)}
           </select>
         </FilterField>
-        <FilterField label="Team">
+        <FilterField label={t("coaching.reporting.team")}>
           <select className="field" value={filters.teamId} onChange={(event) => onChange({ ...filters, teamId: event.target.value })}>
-            <option value="">Alle teams</option>
+            <option value="">{t("coaching.reporting.allTeams")}</option>
             {teams.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
         </FilterField>
-        <FilterField label="Verkoopleider">
+        <FilterField label={t("coaching.reporting.leader")}>
           <select className="field" value={filters.leaderId} onChange={(event) => onChange({ ...filters, leaderId: event.target.value })} disabled={userRole === "SALES_LEADER"}>
-            <option value="">Alle verkoopleiders</option>
+            <option value="">{t("coaching.reporting.allLeaders")}</option>
             {leaders.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </FilterField>
-        <FilterField label="Niveau">
+        <FilterField label={t("coaching.reporting.level")}>
           <select className="field" value={filters.level} onChange={(event) => onChange({ ...filters, level: event.target.value })}>
-            <option value="">Alle niveaus</option>
+            <option value="">{t("coaching.reporting.allLevels")}</option>
             {levels.map((item) => <option key={item}>{item}</option>)}
           </select>
         </FilterField>
-        <FilterField label="Interventietype">
+        <FilterField label={t("coaching.reporting.interventionType")}>
           <select className="field" value={filters.interventionType} onChange={(event) => onChange({ ...filters, interventionType: event.target.value })}>
-            <option value="">Alle types</option>
-            <option value="begeleiding">Begeleiding</option>
-            <option value="contactmoment">Contactmoment</option>
-            <option value="retraining">Retraining</option>
-            <option value="sales_training">Sales training</option>
-            <option value="hulpaanvraag">Hulpaanvraag</option>
+            <option value="">{t("coaching.reporting.allTypes")}</option>
+            <option value="begeleiding">{t("coaching.reporting.coaching")}</option>
+            <option value="contactmoment">{t("coaching.reporting.contact")}</option>
+            <option value="retraining">{t("coaching.reporting.retraining")}</option>
+            <option value="sales_training">{t("coaching.reporting.salesTraining")}</option>
+            <option value="hulpaanvraag">{t("coaching.reporting.helpRequest")}</option>
           </select>
         </FilterField>
-        <FilterField label="Status">
+        <FilterField label={t("coaching.reporting.status")}>
           <select className="field" value={filters.status} onChange={(event) => onChange({ ...filters, status: event.target.value })}>
-            <option value="">Alle statussen</option>
+            <option value="">{t("coaching.reporting.allStatuses")}</option>
             {["concept", "gepland", "in_uitvoering", "wacht_op_vt", "wacht_op_akkoord", "afgerond", "afgesloten", "open", "nieuw", "in_behandeling", "begeleiding", "contactmoment", "retraining", "salestraining", "gesloten", "ingetrokken", "vervolgactie_gepland", "behaald", "niet_behaald", "geannuleerd"].map((item) => (
-              <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
+              <option key={item} value={item}>{translate(language, `status.${item}` as TranslationKey)}</option>
             ))}
           </select>
         </FilterField>
@@ -248,20 +253,22 @@ function ReportFilterBar({
 }
 
 function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: ReturnType<typeof useWorkflow>["state"] }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const typeCount = (type: string) => dataset.interventions.filter((item) => item.type === type).length;
   const openActions = dataset.actions.filter((item) => !["behaald", "niet_behaald", "geannuleerd"].includes(item.status));
   const scopedIds = new Set(dataset.representatives.map((item) => item.id));
   const tiles = [
-    { label: "Begeleidingen", value: typeCount("begeleiding"), icon: ClipboardCheck },
-    { label: "Contactmomenten", value: typeCount("contactmoment"), icon: MessageSquareText },
-    { label: "Retrainingen", value: typeCount("retraining"), icon: GraduationCap },
-    { label: "Sales trainingen", value: typeCount("sales_training"), icon: Sparkles },
-    { label: "Hulpaanvragen", value: typeCount("hulpaanvraag"), icon: CircleHelp },
-    { label: "Open actiepunten", value: openActions.length, icon: Target },
-    { label: "Achterstallige actiepunten", value: openActions.filter((item) => isOverdue(item.due, item.status)).length, icon: CircleHelp },
-    { label: "Reflecties niet ingevuld", value: state.reflections.filter((item) => scopedIds.has(item.representativeId) && item.status === "niet_gestart").length, icon: Clock3 },
-    { label: "Wachtend op akkoord", value: dataset.interventions.filter((item) => item.status === "wacht_op_akkoord").length, icon: ClipboardCheck },
-    { label: "Gelezen, niet akkoord", value: dataset.interventions.filter((item) => item.approvalStatus === "gelezen_niet_akkoord").length, icon: CircleHelp },
+    { label: t("coaching.list.coachings"), value: typeCount("begeleiding"), icon: ClipboardCheck },
+    { label: t("contactHelp.contact.pageTitle"), value: typeCount("contactmoment"), icon: MessageSquareText },
+    { label: t("coaching.list.retrainings"), value: typeCount("retraining"), icon: GraduationCap },
+    { label: t("coaching.list.salesTrainings"), value: typeCount("sales_training"), icon: Sparkles },
+    { label: t("contactHelp.help.pageTitle"), value: typeCount("hulpaanvraag"), icon: CircleHelp },
+    { label: t("coaching.reporting.openActions"), value: openActions.length, icon: Target },
+    { label: t("coaching.reporting.overdueActions"), value: openActions.filter((item) => isOverdue(item.due, item.status)).length, icon: CircleHelp },
+    { label: t("coaching.reporting.missingReflections"), value: state.reflections.filter((item) => scopedIds.has(item.representativeId) && item.status === "niet_gestart").length, icon: Clock3 },
+    { label: t("coaching.reporting.waitingApproval"), value: dataset.interventions.filter((item) => item.status === "wacht_op_akkoord").length, icon: ClipboardCheck },
+    { label: t("coaching.reporting.readNotAgreed"), value: dataset.interventions.filter((item) => item.approvalStatus === "gelezen_niet_akkoord").length, icon: CircleHelp },
   ];
   return (
     <>
@@ -281,14 +288,14 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
       </section>
       <div className="grid gap-5 xl:grid-cols-[1.2fr_1fr]">
         <section className="card p-5 sm:p-6">
-          <SectionTitle title="Interventies per type" subtitle="Verdeling binnen de actieve filters" />
+          <SectionTitle title={t("coaching.reporting.interventionsByType")} subtitle={t("coaching.reporting.activeFilterDistribution")} />
           <div className="mt-6 space-y-4">
             {[
-              ["Begeleidingen", typeCount("begeleiding"), "bg-brand-700"],
-              ["Contactmomenten", typeCount("contactmoment"), "bg-sky-500"],
-              ["Retrainingen", typeCount("retraining"), "bg-indigo-500"],
-              ["Sales trainingen", typeCount("sales_training"), "bg-cyan-500"],
-              ["Hulpaanvragen", typeCount("hulpaanvraag"), "bg-amber-500"],
+              [t("coaching.reporting.coaching"), typeCount("begeleiding"), "bg-brand-700"],
+              [t("contactHelp.contact.pageTitle"), typeCount("contactmoment"), "bg-sky-500"],
+              [t("coaching.reporting.retraining"), typeCount("retraining"), "bg-indigo-500"],
+              [t("coaching.reporting.salesTraining"), typeCount("sales_training"), "bg-cyan-500"],
+              [t("coaching.reporting.helpRequest"), typeCount("hulpaanvraag"), "bg-amber-500"],
             ].map(([label, value, tone]) => {
               const numericValue = Number(value);
               const maximum = Math.max(1, dataset.interventions.length);
@@ -302,7 +309,7 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
           </div>
         </section>
         <section className="card p-5 sm:p-6">
-          <SectionTitle title="Aandacht nodig" subtitle="Taken met de hoogste opvolgprioriteit" />
+          <SectionTitle title={t("coaching.reporting.attentionNeeded")} subtitle={t("coaching.reporting.highestPriority")} />
           <div className="mt-5 space-y-3">
             {openActions.filter((item) => isOverdue(item.due, item.status)).slice(0, 5).map((item) => (
               <div key={item.id} className="rounded-xl border border-rose-100 bg-rose-50 p-4">
@@ -310,7 +317,7 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
                 <p className="mt-1 text-xs text-rose-700">{representativeName(dataset, item.representativeId)} · deadline {formatDate(item.due)}</p>
               </div>
             ))}
-            {openActions.filter((item) => isOverdue(item.due, item.status)).length === 0 && <EmptyRow text="Geen achterstallige actiepunten binnen deze filters." />}
+            {openActions.filter((item) => isOverdue(item.due, item.status)).length === 0 && <EmptyRow text={t("coaching.reporting.noOverdueActions")} />}
           </div>
         </section>
       </div>
@@ -319,13 +326,14 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
 }
 
 function LeaderReport({ dataset }: { dataset: ReportingDataset }) {
-  const { managedUsers } = useSession();
+  const { managedUsers, language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const leaders = reportingLeaders(managedUsers).filter((leader) =>
     dataset.representatives.some((representative) => leader.teamIds.includes(representative.teamId))
   );
   return (
-    <ReportTable title="Rapport verkoopleiders" subtitle="Activiteit en opvolging per verantwoordelijke">
-      <thead><TableRowHead labels={["Verkoopleider", "Begeleidingen", "Contact", "Retraining", "Sales training", "Hulp behandeld", "Open acties", "Achterstallig", "Gem. finalisatie", "VT zonder recente begeleiding"]} /></thead>
+    <ReportTable title={t("coaching.reporting.leaderReport")} subtitle={t("coaching.reporting.leaderReportDescription")}>
+      <thead><TableRowHead labels={[t("coaching.reporting.leader"), t("coaching.list.coachings"), t("coaching.reporting.contact"), t("coaching.reporting.retraining"), t("coaching.reporting.salesTraining"), t("coaching.reporting.helpHandled"), t("coaching.reporting.openActions"), t("coaching.reporting.overdue"), t("coaching.reporting.averageFinalization"), t("coaching.reporting.vtNoRecentCoaching")]} /></thead>
       <tbody>
         {leaders.map((leader) => {
           const teamRepresentativeIds = new Set(dataset.representatives.filter((item) => leader.teamIds.includes(item.teamId)).map((item) => item.id));
@@ -352,11 +360,12 @@ function LeaderReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function TeamReport({ dataset }: { dataset: ReportingDataset }) {
-  const { managedUsers } = useSession();
+  const { managedUsers, language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const teams = [...new Map(dataset.representatives.map((item) => [item.teamId, item.team])).entries()];
   return (
-    <ReportTable title="Rapport teams" subtitle="Capaciteit, interventies, opvolging en niveauverdeling">
-      <thead><TableRowHead labels={["Team", "VT's", "Interventies", "Open acties", "Achterstallig", "Hulpaanvragen", "KPI-trend", "Starter", "VT", "Professional", "Expert"]} /></thead>
+    <ReportTable title={t("coaching.reporting.teamReport")} subtitle={t("coaching.reporting.teamReportDescription")}>
+      <thead><TableRowHead labels={[t("coaching.reporting.team"), t("coaching.reporting.representativeCount"), t("coaching.reporting.interventions"), t("coaching.reporting.openActions"), t("coaching.reporting.overdue"), t("coaching.reporting.helpRequest"), t("coaching.reporting.kpiTrend"), t("coaching.reporting.starter"), t("coaching.reporting.vt"), t("coaching.reporting.professional"), t("coaching.reporting.expert")]} /></thead>
       <tbody>
         {teams.map(([teamId, team]) => {
           const reps = dataset.representatives.filter((item) => item.teamId === teamId);
@@ -381,9 +390,11 @@ function TeamReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function RepresentativeReport({ dataset, state }: { dataset: ReportingDataset; state: ReturnType<typeof useWorkflow>["state"] }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
-    <ReportTable title="Rapport vertegenwoordigers" subtitle="Recente coaching, open opvolging en laatste KPI-status">
-      <thead><TableRowHead labels={["Vertegenwoordiger", "Team", "Laatste begeleiding", "Dagen geleden", "Open acties", "Achterstallig", "Lopende hulpvragen", "Laatste KPI snapshot", "Laatst vrijgegeven verslag"]} /></thead>
+    <ReportTable title={t("coaching.reporting.representativeReport")} subtitle={t("coaching.reporting.representativeReportDescription")}>
+      <thead><TableRowHead labels={[t("coaching.reporting.representatives"), t("coaching.reporting.team"), t("coaching.reporting.latestCoaching"), t("coaching.reporting.daysAgo"), t("coaching.reporting.openActions"), t("coaching.reporting.overdue"), t("coaching.reporting.openHelpRequests"), t("coaching.reporting.latestKpi"), t("coaching.reporting.latestReport")]} /></thead>
       <tbody>
         {dataset.representatives.map((representative) => {
           const actions = dataset.actions.filter((item) => item.representativeId === representative.id);
@@ -414,7 +425,8 @@ function RepresentativeReport({ dataset, state }: { dataset: ReportingDataset; s
 }
 
 function ActionReport({ dataset }: { dataset: ReportingDataset }) {
-  const { managedUsers } = useSession();
+  const { managedUsers, language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const [local, setLocal] = useState({ type: "", deadline: "", ownerId: "", representativeId: "" });
   const rows = dataset.actions.filter((item) =>
     (!local.type || item.type === local.type) &&
@@ -426,13 +438,13 @@ function ActionReport({ dataset }: { dataset: ReportingDataset }) {
   return (
     <>
       <LocalFilters>
-        <select className="field" value={local.type} onChange={(event) => setLocal({ ...local, type: event.target.value })}><option value="">Alle types</option><option value="kpi">KPI</option><option value="vaardigheid">Vaardigheid</option><option value="gedrag">Gedrag</option></select>
-        <input className="field" type="date" value={local.deadline} onChange={(event) => setLocal({ ...local, deadline: event.target.value })} title="Deadline tot en met" />
-        <select className="field" value={local.ownerId} onChange={(event) => setLocal({ ...local, ownerId: event.target.value })}><option value="">Alle eigenaars</option>{owners.map((id) => <option key={id} value={id}>{reportingUserName(id, managedUsers)}</option>)}</select>
-        <select className="field" value={local.representativeId} onChange={(event) => setLocal({ ...local, representativeId: event.target.value })}><option value="">Alle vertegenwoordigers</option>{dataset.representatives.map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select>
+        <select className="field" value={local.type} onChange={(event) => setLocal({ ...local, type: event.target.value })}><option value="">{t("coaching.reporting.allTypes")}</option><option value="kpi">KPI</option><option value="vaardigheid">{t("coaching.actionEditor.skill")}</option><option value="gedrag">{t("coaching.actionEditor.behaviour")}</option></select>
+        <input className="field" type="date" value={local.deadline} onChange={(event) => setLocal({ ...local, deadline: event.target.value })} title={t("coaching.reporting.deadlineUntil")} />
+        <select className="field" value={local.ownerId} onChange={(event) => setLocal({ ...local, ownerId: event.target.value })}><option value="">{t("coaching.reporting.owners")}</option>{owners.map((id) => <option key={id} value={id}>{reportingUserName(id, managedUsers)}</option>)}</select>
+        <select className="field" value={local.representativeId} onChange={(event) => setLocal({ ...local, representativeId: event.target.value })}><option value="">{t("coaching.reporting.allRepresentatives")}</option>{dataset.representatives.map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select>
       </LocalFilters>
-      <ReportTable title="Rapport actiepunten" subtitle={`${rows.length} actiepunten binnen de actieve filters`}>
-        <thead><TableRowHead labels={["VT", "Actiepunt", "Type", "Gekoppelde KPI", "Start", "Doel", "Huidig", "Deadline", "Status", "Eigenaar", "Laatste update"]} /></thead>
+      <ReportTable title={t("coaching.reporting.reportActions")} subtitle={`${rows.length} ${t("coaching.reporting.actionsInFilters")}`}>
+        <thead><TableRowHead labels={[t("coaching.reporting.vt"), t("coaching.actionEditor.title"), t("coaching.reporting.typeStatus"), t("coaching.reporting.linkedKpi"), t("coaching.reporting.start"), t("coaching.reporting.goal"), t("coaching.reporting.currentValue"), t("coaching.reporting.deadlineUntil"), t("coaching.reporting.status"), t("coaching.reporting.owner"), t("coaching.reporting.lastUpdate")]} /></thead>
         <tbody>{rows.map((item) => (
           <tr key={`${item.id}-${item.representativeId}`} className="border-t border-slate-100">
             <Cell strong>{representativeName(dataset, item.representativeId)}</Cell><Cell>{item.title}</Cell><Cell>{item.type}</Cell>
@@ -447,10 +459,11 @@ function ActionReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function InterventionReport({ dataset }: { dataset: ReportingDataset }) {
-  const { managedUsers } = useSession();
+  const { managedUsers, language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
-    <ReportTable title="Rapport interventies" subtitle={`${dataset.interventions.length} interventies binnen de actieve filters`}>
-      <thead><TableRowHead labels={["Type", "Status", "VT / deelnemers", "Initiator", "Uitvoerder", "Land", "Team", "Datum", "Actiepunten", "Akkoordstatus"]} /></thead>
+    <ReportTable title={t("coaching.reporting.reportInterventions")} subtitle={`${dataset.interventions.length} ${t("coaching.reporting.interventionsInFilters")}`}>
+      <thead><TableRowHead labels={[t("coaching.reporting.typeStatus"), t("coaching.reporting.status"), t("coaching.reporting.reporterOrParticipants"), t("coaching.reporting.initiator"), t("coaching.reporting.executor"), t("coaching.reporting.country"), t("coaching.reporting.team"), t("coaching.reporting.date"), t("coaching.reporting.actionPointsColumn"), t("coaching.reporting.approvalStatus")]} /></thead>
       <tbody>{dataset.interventions.map((item) => (
         <tr key={item.id} className="border-t border-slate-100">
           <Cell strong>{item.type.replaceAll("_", " ")}</Cell><Cell><StatusBadge status={item.status} /></Cell>
@@ -465,6 +478,8 @@ function InterventionReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function KpiReport({ dataset }: { dataset: ReportingDataset }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const [representativeId, setRepresentativeId] = useState(dataset.representatives[0]?.id ?? "");
   const selectedId = dataset.representatives.some((item) => item.id === representativeId)
     ? representativeId
@@ -474,7 +489,7 @@ function KpiReport({ dataset }: { dataset: ReportingDataset }) {
   return (
     <div className="space-y-5">
       <div className="card flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center">
-        <div><p className="eyebrow">KPI Evolutie</p><h2 className="mt-1 text-lg font-bold text-slate-950">{representative ? `${representative.firstName} ${representative.lastName}` : "Geen vertegenwoordiger"}</h2></div>
+        <div><p className="eyebrow">{t("coaching.reporting.kpiEvolutionTitle")}</p><h2 className="mt-1 text-lg font-bold text-slate-950">{representative ? `${representative.firstName} ${representative.lastName}` : t("coaching.reporting.noRepresentative")}</h2></div>
         <select className="field sm:max-w-72" value={selectedId} onChange={(event) => setRepresentativeId(event.target.value)}>
           {dataset.representatives.map((item) => <option key={item.id} value={item.id}>{item.firstName} {item.lastName} · {item.team}</option>)}
         </select>
@@ -484,9 +499,9 @@ function KpiReport({ dataset }: { dataset: ReportingDataset }) {
           <article key={item.kpi} className="card p-5">
             <div className="flex items-center justify-between"><p className="font-bold text-slate-950">{item.kpi}</p><Trend value={item.trend} /></div>
             <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-              <KpiValue label="Vorige" value={item.previousValue} />
-              <KpiValue label="Huidige" value={item.currentValue} highlight />
-              <KpiValue label="Target" value={item.target} />
+              <KpiValue label={t("coaching.reporting.previous")} value={item.previousValue} />
+              <KpiValue label={t("coaching.reporting.current")} value={item.currentValue} highlight />
+              <KpiValue label={t("coaching.reporting.target")} value={item.target} />
             </div>
             <div className="mt-5"><TrendLabel value={item.trend} /></div>
           </article>
@@ -497,13 +512,15 @@ function KpiReport({ dataset }: { dataset: ReportingDataset }) {
 }
 
 function PersonalReporting({ dataset, representative }: { dataset: ReportingDataset; representative?: Representative }) {
-  if (!representative) return <EmptyRow text="Geen vertegenwoordigersprofiel gekoppeld." />;
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
+  if (!representative) return <EmptyRow text={t("coaching.reporting.noProfile")} />;
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Mijn inzichten" title="Mijn KPI's en actiepunten" description="Je persoonlijke evolutie en open opvolgacties." />
+      <PageHeader eyebrow={t("coaching.reporting.personalInsights")} title={t("coaching.reporting.myKpisActions")} description={t("coaching.reporting.personalDescription")} />
       <KpiReport dataset={dataset} />
-      <ReportTable title="Mijn actiepunten" subtitle="Alleen actiepunten die aan jou gekoppeld zijn">
-        <thead><TableRowHead labels={["Actiepunt", "Type", "KPI", "Deadline", "Status", "Huidige waarde", "Doel"]} /></thead>
+      <ReportTable title={t("coaching.reporting.myActions")} subtitle={t("coaching.reporting.personalActionsOnly")}>
+        <thead><TableRowHead labels={[t("coaching.actionEditor.title"), t("coaching.reporting.typeStatus"), "KPI", t("coaching.reporting.deadlineUntil"), t("coaching.reporting.status"), t("coaching.reporting.currentValue"), t("coaching.reporting.goal")]} /></thead>
         <tbody>{dataset.actions.map((item) => (
           <tr key={item.id} className="border-t border-slate-100">
             <Cell strong>{item.title}</Cell><Cell>{item.type}</Cell><Cell>{item.linkedKpi || "—"}</Cell>

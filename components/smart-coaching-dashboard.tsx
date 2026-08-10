@@ -17,6 +17,9 @@ import type {
   RiskLevel,
   SmartCoachingResult,
 } from "@/lib/smart-coaching";
+import { useSession } from "@/components/session-provider";
+import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n";
 
 export function SmartDashboardPanel({
   result,
@@ -25,20 +28,22 @@ export function SmartDashboardPanel({
   result: SmartCoachingResult;
   personal?: boolean;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   if (personal) {
     const insight = result.insights[0];
     if (!insight) return null;
     return (
       <section id="smart-alerts" className="card overflow-hidden">
         <SmartHeader
-          title="Mijn coachingadvies"
-          description="Automatisch berekend op basis van je KPI's, actiepunten en recente opvolging."
+          title={t("coaching.dashboard.personalAdvice")}
+          description={t("coaching.dashboard.personalAdviceDescription")}
           icon={Sparkles}
         />
         <div className="grid gap-3 p-3.5 lg:grid-cols-[0.8fr_1.4fr]">
           <div className="rounded-xl border border-slate-200 p-3.5">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-950">Persoonlijke status</p>
+              <p className="text-sm font-bold text-slate-950">{t("coaching.dashboard.personalStatus")}</p>
               <RiskBadge risk={insight.risk} />
             </div>
             <ul className="mt-2.5 space-y-1 text-xs leading-4 text-slate-600">
@@ -55,8 +60,8 @@ export function SmartDashboardPanel({
   return (
     <section className="card overflow-hidden">
       <SmartHeader
-        title="Coachingprioriteiten"
-        description="Risico's en opvolging binnen je huidige team- of managementscope."
+        title={t("coaching.dashboard.priorities")}
+        description={t("coaching.dashboard.prioritiesDescription")}
         icon={CircleHelp}
       />
       <div className="grid gap-3 p-3.5 lg:grid-cols-3">
@@ -64,7 +69,7 @@ export function SmartDashboardPanel({
         {priorities.length === 0 && (
           <div className="col-span-full flex items-center gap-3 rounded-xl bg-emerald-50 p-3.5 text-emerald-800">
             <CheckCircle2 className="h-5 w-5" />
-            <div><p className="font-bold">Geen extra prioriteiten</p><p className="text-sm">Er zijn vandaag geen urgente coachingprioriteiten.</p></div>
+            <div><p className="font-bold">{t("coaching.dashboard.noExtraPriorities")}</p><p className="text-sm">{t("coaching.dashboard.noUrgentPriorities")}</p></div>
           </div>
         )}
       </div>
@@ -82,15 +87,17 @@ export function SmartManagementSections({ result }: { result: SmartCoachingResul
 }
 
 export function SmartTeamHeatmap({ result }: { result: SmartCoachingResult }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <section className="card overflow-hidden">
-      <SmartHeader title="Team heatmap" description="Risico, activiteit en opvolging per team." icon={Users} />
+      <SmartHeader title={t("coaching.dashboard.heatmap")} description={t("coaching.dashboard.heatmapDescription")} icon={Users} />
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="bg-slate-50">
-              {["Team", "Risico", "Open acties", "Interventies", "Risico VT's", "Niet akkoord"].map((label) => (
-                <th key={label} className="whitespace-nowrap px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</th>
+              {["coaching.dashboard.columnTeam", "coaching.dashboard.columnRisk", "coaching.dashboard.columnOpenActions", "coaching.dashboard.columnInterventions", "coaching.dashboard.columnRiskEvaluations", "coaching.dashboard.columnNotAgreed"].map((key) => (
+                <th key={key} className="whitespace-nowrap px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">{t(key as TranslationKey)}</th>
               ))}
             </tr>
           </thead>
@@ -113,20 +120,22 @@ export function SmartTeamHeatmap({ result }: { result: SmartCoachingResult }) {
 }
 
 export function SmartReportingSections({ result }: { result: SmartCoachingResult }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
       <section className="card overflow-hidden">
-        <SmartHeader title="Coaching trends" description="Meest voorkomende thema's in de huidige scope." icon={Target} />
+        <SmartHeader title={t("coaching.dashboard.trends")} description={t("coaching.dashboard.trendsDescription")} icon={Target} />
         <div className="grid gap-4 p-5 sm:grid-cols-2">
-          <TrendList title="Werkpunten" items={result.trends.workPoints} />
-          <TrendList title="Focusfasen" items={result.trends.focusPhases} />
-          <TrendList title="Hulpaanvragen" items={result.trends.helpRequests} />
-          <TrendList title="Retrainingen" items={result.trends.retrainings} />
+          <TrendList title={t("coaching.dashboard.workPoints")} items={result.trends.workPoints} />
+          <TrendList title={t("coaching.dashboard.focusPhases")} items={result.trends.focusPhases} />
+          <TrendList title={t("coaching.dashboard.helpRequests")} items={result.trends.helpRequests} />
+          <TrendList title={t("coaching.dashboard.retrainings")} items={result.trends.retrainings} />
         </div>
       </section>
 
       <section id="smart-alerts" className="card overflow-hidden">
-        <SmartHeader title="Management alerts" description="Concrete uitzonderingen die opvolging vragen." icon={Clock3} />
+        <SmartHeader title={t("coaching.dashboard.managementAlerts")} description={t("coaching.dashboard.managementAlertsDescription")} icon={Clock3} />
         <div className="divide-y divide-slate-100">
           {result.alerts.slice(0, 8).map((alert) => (
             <Link key={alert.id} href={alert.href} className="flex items-start gap-3 p-4 transition hover:bg-slate-50">
@@ -138,7 +147,7 @@ export function SmartReportingSections({ result }: { result: SmartCoachingResult
               <ArrowRight className="mt-1 h-4 w-4 text-slate-300" />
             </Link>
           ))}
-          {result.alerts.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Geen actieve management alerts.</p>}
+          {result.alerts.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{t("coaching.dashboard.noManagementAlerts")}</p>}
         </div>
       </section>
     </div>
@@ -146,10 +155,12 @@ export function SmartReportingSections({ result }: { result: SmartCoachingResult
 }
 
 export function RiskBadge({ risk }: { risk: RiskLevel }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const config = {
-    green: { label: "Groen", style: "bg-emerald-100 text-emerald-800" },
-    orange: { label: "Oranje", style: "bg-amber-100 text-amber-800" },
-    red: { label: "Rood", style: "bg-rose-100 text-rose-800" },
+    green: { label: t("coaching.dashboard.riskGreen"), style: "bg-emerald-100 text-emerald-800" },
+    orange: { label: t("coaching.dashboard.riskOrange"), style: "bg-amber-100 text-amber-800" },
+    red: { label: t("coaching.dashboard.riskRed"), style: "bg-rose-100 text-rose-800" },
   }[risk];
   return <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${config.style}`}>{config.label}</span>;
 }
@@ -192,6 +203,8 @@ function RecommendationList({ recommendations }: { recommendations: CoachingReco
 }
 
 function TrendList({ title, items }: { title: string; items: { label: string; count: number }[] }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const maximum = Math.max(1, ...items.map((item) => item.count));
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
@@ -203,7 +216,7 @@ function TrendList({ title, items }: { title: string; items: { label: string; co
             <div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-brand-700" style={{ width: `${Math.max(10, item.count / maximum * 100)}%` }} /></div>
           </div>
         ))}
-        {items.length === 0 && <p className="text-xs text-slate-400">Nog onvoldoende gegevens.</p>}
+        {items.length === 0 && <p className="text-xs text-slate-400">{t("coaching.dashboard.insufficientData")}</p>}
       </div>
     </div>
   );

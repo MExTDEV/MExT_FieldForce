@@ -1,5 +1,10 @@
+"use client";
+
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { useSession } from "@/components/session-provider";
+import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n";
 
 export function PageHeader({
   eyebrow,
@@ -83,9 +88,11 @@ const statusLabels: Record<string, string> = {
 };
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
+  const { language } = useSession();
+  const translated = translate(language, `status.${status}` as TranslationKey);
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[status] ?? statusStyles.concept}`}>
-      {label ?? statusLabels[status] ?? status.replaceAll("_", " ")}
+      {label ?? (translated === `status.${status}` ? statusLabels[status] : translated) ?? status.replaceAll("_", " ")}
     </span>
   );
 }

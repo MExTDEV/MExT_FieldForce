@@ -192,8 +192,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-pulse rounded-lg bg-brand-100" />
-          <h1 className="mt-5 text-lg font-bold text-slate-950">Gebruikerssessie laden</h1>
-          <p className="mt-2 text-sm text-slate-500">Je identiteit en rechten worden veilig gecontroleerd.</p>
+          <h1 className="mt-5 text-lg font-bold text-slate-950">{translate(language, "app.session.loadingTitle")}</h1>
+          <p className="mt-2 text-sm text-slate-500">{translate(language, "app.session.loadingDescription")}</p>
         </div>
       </main>
     );
@@ -258,7 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ))}
         {!isContractPath && groupedManagementNav.length > 0 && (
           <>
-            {!collapsed && <p className="px-3 pb-1 pt-5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Beheer</p>}
+            {!collapsed && <p className="px-3 pb-1 pt-5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">{translate(language, "nav.management")}</p>}
             {groupedManagementNav.map((item) => {
               if ("children" in item) {
                 const active = item.children.some((child) =>
@@ -321,7 +321,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={() => setCollapsed((value) => !value)}
           className="flex h-11 w-full items-center justify-center rounded-xl text-blue-100 transition hover:bg-white/10"
-          aria-label="Sidebar inklappen"
+          aria-label={translate(language, "app.navigation.collapseSidebar")}
         >
           <PanelLeftClose className={`h-5 w-5 transition ${collapsed ? "rotate-180" : ""}`} />
         </button>
@@ -352,7 +352,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button className="absolute inset-0 bg-slate-950/40" onClick={() => setMobileOpen(false)} aria-label="Navigatie sluiten" />
+          <button className="absolute inset-0 bg-slate-950/40" onClick={() => setMobileOpen(false)} aria-label={translate(language, "app.navigation.close")} />
           <aside className="relative flex h-full w-72 flex-col bg-brand-900 shadow-2xl">
             <button className="absolute right-3 top-4 rounded-xl p-2 text-white hover:bg-white/10" onClick={() => setMobileOpen(false)}>
               <X className="h-5 w-5" />
@@ -379,14 +379,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="font-bold text-brand-800">{branding.appName}</span>
             </div>
             <div className="hidden sm:block">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Werkruimte</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{translate(language, "app.workspace")}</p>
               <p className="text-sm font-semibold text-slate-800">{user.country} Sales</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
             <label className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 md:flex">
-              <span className="text-xs font-semibold text-slate-400">Taal</span>
+              <span className="text-xs font-semibold text-slate-400">{translate(language, "app.language")}</span>
               <select
                 value={language}
                 onChange={(event) => setLanguage(event.target.value as "nl" | "fr" | "de")}
@@ -408,10 +408,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>{saveError}</span>
               <span className="flex gap-2">
                 <button type="button" onClick={retrySave} className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">
-                  Opnieuw proberen
+                  {translate(language, "coaching.scores.retry")}
                 </button>
                 <button type="button" onClick={clearSaveError} className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100">
-                  Sluiten
+                  {translate(language, "coaching.report.close")}
                 </button>
               </span>
             </div>

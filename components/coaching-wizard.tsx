@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -35,6 +35,7 @@ import {
 import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
 import { canCreateCoachingIntervention } from "@/lib/permissions";
 import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n";
 import {
   isPeerCoachingRepresentativeLevel,
   representativeLevelBadgeClass,
@@ -86,7 +87,8 @@ export function CoachingWizard() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
   const helpRequestId = searchParams.get("helpRequestId");
-  const { user, managedUsers } = useSession();
+  const { user, managedUsers, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { hydrated, state, saveCoachingStatus, scheduleHelpRequestCoaching } = useWorkflow();
   const { isModuleEnabled } = useModules();
   const { representatives } = useRepresentatives();
@@ -129,7 +131,7 @@ export function CoachingWizard() {
     fetch(`/api/coaching-participants?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { participants?: CoachingParticipant[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Begeleidbare personen konden niet worden geladen.");
+        if (!response.ok) throw new Error(payload.error ?? t("coaching.wizard.noParticipants"));
         if (!active) return;
         setParticipants(payload.participants ?? []);
         setDraft((current) => {
@@ -145,9 +147,9 @@ export function CoachingWizard() {
           };
         });
       })
-      .catch((cause) => active && setError(cause instanceof Error ? cause.message : "Begeleidbare personen konden niet worden geladen."));
+      .catch((cause) => active && setError(cause instanceof Error ? cause.message : t("coaching.wizard.noParticipants")));
     return () => { active = false; };
-  }, [user.id]);
+  }, [t, user.id]);
 
   useEffect(() => {
     if (!existing || loadedId === existing.id) return;
@@ -212,35 +214,35 @@ export function CoachingWizard() {
   }, [draft]);
 
   if (!isModuleEnabled("BEGELEIDINGEN")) {
-    return <EmptyState title="Module niet actief" description="Begeleidingen is momenteel gedeactiveerd in FieldForce." />;
+    return <EmptyState title={t("coaching.wizard.moduleInactive")} description={t("coaching.wizard.moduleInactiveDescription")} />;
   }
 
   if (!canCreateCoachingIntervention(user)) {
-    return <EmptyState title="Geen rechten om een begeleiding te maken" description="Je rol mag geen begeleiding aanmaken." />;
+    return <EmptyState title={t("coaching.wizard.noRights")} description={t("coaching.wizard.noRightsDescription")} />;
   }
 
   if (editId && !hydrated) {
-    return <EmptyState title="Begeleiding laden" description="De bestaande planning wordt opgehaald." />;
+    return <EmptyState title={t("coaching.wizard.loading")} description={t("coaching.wizard.loadingDescription")} />;
   }
 
   if (editMissing) {
-    return <EmptyState title="Begeleiding niet gevonden" description="Deze begeleiding bestaat niet, is niet gepland of valt buiten jouw bewerkingsscope." />;
+    return <EmptyState title={t("coaching.wizard.notFound")} description={t("coaching.wizard.notFoundDescription")} />;
   }
 
   if (editForbidden) {
-    return <EmptyState title="Alleen bekijken" description="Deze geplande begeleiding mag door jouw rol niet worden aangepast." />;
+    return <EmptyState title={t("coaching.wizard.viewOnly")} description={t("coaching.wizard.viewOnlyDescription")} />;
   }
 
   if (helpRequestId && !hydrated) {
-    return <EmptyState title="Hulpaanvraag laden" description="De gekoppelde hulpaanvraag wordt opgehaald." />;
+    return <EmptyState title={t("contactHelp.help.pageTitle")} description={t("coaching.preparation.loading")} />;
   }
 
   if (helpRequestMissing) {
-    return <EmptyState title="Hulpaanvraag niet gevonden" description="Deze hulpaanvraag bestaat niet of valt buiten jouw scope." />;
+    return <EmptyState title={t("contactHelp.help.unavailableTitle")} description={t("contactHelp.help.unavailableDescription")} />;
   }
 
   if (helpRequestHandled) {
-    return <EmptyState title="Hulpaanvraag al behandeld" description="Deze hulpaanvraag heeft al een vervolgactie of is afgesloten." />;
+    return <EmptyState title={t("contactHelp.help.detailUpdatedTitle")} description={t("contactHelp.help.detailUpdatedDescription")} />;
   }
 
   function workflowInput() {
@@ -271,15 +273,15 @@ export function CoachingWizard() {
   async function handleSchedule() {
     setError(undefined);
     if (!draft.representativeId) {
-      setError("Selecteer eerst een persoon.");
+      setError(t("starterEvaluations.manualStart.representativeRequired"));
       return;
     }
     if (requiresDeviationReason && !draft.deviationReason.trim()) {
-      setError("Geef een afwijkingsreden op wanneer uitvoerder en begeleide persoon niet in hetzelfde team of land zitten.");
+      setError(t("coaching.wizard.deviationScheduleError"));
       return;
     }
     if (draft.endTime <= draft.startTime) {
-      setError("Het einduur moet later zijn dan het beginuur.");
+      setError(t("contactHelp.contact.validationPlanning"));
       return;
     }
     try {
@@ -296,7 +298,7 @@ export function CoachingWizard() {
       clearLocalDraft(offlineStorageKeys.draftIntervention);
       router.push("/begeleidingen");
     } catch (scheduleError) {
-      setError(scheduleError instanceof Error ? scheduleError.message : "De begeleiding kon niet worden ingepland.");
+      setError(scheduleError instanceof Error ? scheduleError.message : t("coaching.report.finalizeError"));
     } finally {
       setSaving(false);
     }
@@ -309,15 +311,15 @@ export function CoachingWizard() {
   function goToNextStep() {
     setError(undefined);
     if (step === "representative" && !draft.representativeId) {
-      setError("Selecteer eerst een vertegenwoordiger of verkoopleider.");
+      setError(t("starterEvaluations.manualStart.representativeRequired"));
       return;
     }
     if (step === "representative" && requiresDeviationReason && !draft.deviationReason.trim()) {
-      setError("Geef een afwijkingsreden op voor deze team- of landafwijking.");
+      setError(t("coaching.wizard.deviationStepError"));
       return;
     }
     if (step === "focus" && draft.focusNames.length === 0) {
-      setError("Selecteer minstens één focusfase voordat je verdergaat.");
+      setError(t("coaching.wizard.focusTitle"));
       return;
     }
     const nextStep = wizardSteps[currentStepIndex + 1];
@@ -333,20 +335,26 @@ export function CoachingWizard() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={draft.id ? "Concept verderzetten" : "Nieuwe interventie"}
-        title="Nieuwe begeleiding"
-        description="Bereid het coachingsmoment voor, plan het in en vul de evaluatie later in tijdens de effectieve begeleiding."
+        eyebrow={draft.id ? t("coaching.wizard.continueDraft") : t("coaching.wizard.new")}
+        title={t("coaching.wizard.new")}
+        description={t("coaching.wizard.description")}
         actions={
           <span className="flex items-center gap-2 text-xs font-medium text-slate-400">
             <Save className="h-4 w-4" />
-            {savedAt ? `Lokale autosave om ${savedAt}` : "Autosave voorbereid"}
+            {savedAt ? t("coaching.wizard.autosave").replace("{time}", savedAt) : t("coaching.wizard.autosaveReady")}
           </span>
         }
       />
 
       <div className="card overflow-x-auto p-3">
         <div className="flex min-w-[520px] items-center">
-          {wizardSteps.map(({ id, label }, index) => {
+          {wizardSteps.map(({ id }, index) => {
+            const label = t(({
+              representative: "coaching.wizard.step.representative",
+              focus: "coaching.wizard.step.focus",
+              preparation: "coaching.wizard.step.preparation",
+              summary: "coaching.wizard.step.summary",
+            }[id]) as TranslationKey);
             const number = index + 1;
             const done = index < currentStepIndex;
             const active = id === step;
@@ -398,14 +406,13 @@ export function CoachingWizard() {
             notifyExecutorTeamLeaders={draft.notifyExecutorTeamLeaders}
             deviationReason={draft.deviationReason}
             requiresDeviationReason={requiresDeviationReason}
-            teamDeviation={teamDeviation}
-            countryDeviation={countryDeviation}
             lockedRepresentative={Boolean(sourceHelpRequest)}
             onPlanningChange={(planning) => setDraft((current) => ({ ...current, ...planning }))}
+            language={language}
           />
         )}
         {step === "focus" && representative && (
-          <FocusStep selected={draft.focusNames} onToggle={(name) => setDraft((current) => ({ ...current, focusNames: current.focusNames.includes(name) ? current.focusNames.filter((item) => item !== name) : [...current.focusNames, name] }))} />
+          <FocusStep selected={draft.focusNames} onToggle={(name) => setDraft((current) => ({ ...current, focusNames: current.focusNames.includes(name) ? current.focusNames.filter((item) => item !== name) : [...current.focusNames, name] }))} language={language} />
         )}
         {step === "preparation" && representative && (
           <PreparationStep
@@ -424,13 +431,14 @@ export function CoachingWizard() {
             plannedDate={draft.plannedDate}
             startTime={draft.startTime}
             endTime={draft.endTime}
+            language={language}
           />
         )}
       </div>
 
       <div className="flex flex-col-reverse justify-between gap-3 sm:flex-row">
         <button type="button" onClick={goToPreviousStep} disabled={currentStepIndex === 0} className="btn-secondary">
-          <ArrowLeft className="h-4 w-4" /> Vorige
+          <ArrowLeft className="h-4 w-4" /> {t("coaching.wizard.previous")}
         </button>
         <div className="flex flex-col gap-3 sm:flex-row">
           {currentStepIndex < wizardSteps.length - 1 ? (
@@ -439,15 +447,15 @@ export function CoachingWizard() {
               onClick={goToNextStep}
               className="btn-primary"
             >
-              Volgende
+              {t("coaching.wizard.next")}
             </button>
           ) : (
             <>
               <button type="button" onClick={handleCancel} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50">
-                Annuleren
+                {t("coaching.wizard.cancel")}
               </button>
               <button type="button" onClick={handleSchedule} disabled={saving} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
-                <Save className="h-4 w-4" /> {saving ? "Inplannen..." : "Inplannen"}
+                <Save className="h-4 w-4" /> {saving ? t("coaching.wizard.scheduling") : t("coaching.wizard.schedule")}
               </button>
             </>
           )}
@@ -472,10 +480,9 @@ function RepresentativeStep({
   notifyExecutorTeamLeaders,
   deviationReason,
   requiresDeviationReason,
-  teamDeviation,
-  countryDeviation,
   lockedRepresentative,
   onPlanningChange,
+  language,
 }: {
   available: CoachingParticipant[];
   coaches: ReturnType<typeof useSession>["managedUsers"];
@@ -491,29 +498,29 @@ function RepresentativeStep({
   notifyExecutorTeamLeaders: boolean;
   deviationReason: string;
   requiresDeviationReason: boolean;
-  teamDeviation: boolean;
-  countryDeviation: boolean;
   lockedRepresentative: boolean;
   onPlanningChange: (planning: Partial<Pick<Draft, "plannedDate" | "startTime" | "endTime" | "notifyRepresentative" | "notifyCoachedRepresentative" | "notifyCoachedTeamLeaders" | "notifyExecutorTeamLeaders" | "deviationReason" | "ownerId">>) => void;
+  language: Language;
 }) {
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <div>
-      <StepHeading icon={UserRound} title="Wie ga je begeleiden?" description="Je ziet alleen vertegenwoordigers en verkoopleiders binnen jouw toegestane scope." />
+      <StepHeading icon={UserRound} title={t("coaching.wizard.who")} description={t("coaching.wizard.whoDescription")} />
       <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-5">
         <label>
-          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Datum</span>
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.date")}</span>
           <input type="date" className="field" value={plannedDate} onChange={(event) => onPlanningChange({ plannedDate: event.target.value })} />
         </label>
         <label>
-          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Beginuur</span>
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.wizard.startTime")}</span>
           <input type="time" className="field" value={startTime} onChange={(event) => onPlanningChange({ startTime: event.target.value })} />
         </label>
         <label>
-          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Einduur</span>
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.wizard.endTime")}</span>
           <input type="time" className="field" value={endTime} onChange={(event) => onPlanningChange({ endTime: event.target.value })} />
         </label>
         <label>
-          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Begeleider</span>
+          <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.wizard.coach")}</span>
           <select className="field" value={ownerId} onChange={(event) => onPlanningChange({ ownerId: event.target.value })}>
             {coaches.map((coach) => (
               <option key={coach.id} value={coach.id}>
@@ -527,40 +534,36 @@ function RepresentativeStep({
       <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-3">
         <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
           <input className="mt-1" type="checkbox" checked={notifyCoachedRepresentative || notifyRepresentative} onChange={(event) => onPlanningChange({ notifyCoachedRepresentative: event.target.checked, notifyRepresentative: event.target.checked })} />
-          <span>Begeleide vertegenwoordiger vooraf op de hoogte brengen</span>
+          <span>{t("coaching.wizard.notifyRepresentative")}</span>
         </label>
         <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
           <input className="mt-1" type="checkbox" checked={notifyCoachedTeamLeaders} onChange={(event) => onPlanningChange({ notifyCoachedTeamLeaders: event.target.checked })} />
-          <span>Verkoopleider(s) van de begeleide vertegenwoordiger informeren</span>
+          <span>{t("coaching.wizard.notifyTeamLeaders")}</span>
         </label>
         <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
           <input className="mt-1" type="checkbox" checked={notifyExecutorTeamLeaders} onChange={(event) => onPlanningChange({ notifyExecutorTeamLeaders: event.target.checked })} />
-          <span>Verkoopleider(s) van de uitvoerende Professional/Expert informeren</span>
+          <span>{t("coaching.wizard.notifyExecutorLeaders")}</span>
         </label>
       </div>
       {requiresDeviationReason && (
         <label className="mt-4 block rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-amber-700">
-            Afwijkingsreden verplicht
+            {t("coaching.wizard.deviationRequired")}
           </span>
           <p className="mb-3 text-sm text-amber-800">
-            {teamDeviation && countryDeviation
-              ? "De uitvoerder zit in een ander team en ander land dan de begeleide persoon."
-              : teamDeviation
-                ? "De uitvoerder zit in een ander team dan de begeleide persoon."
-                : "De uitvoerder zit in een ander land dan de begeleide persoon."}
+            {t("coaching.wizard.deviationScheduleError")}
           </p>
           <textarea
             className="field min-h-24"
             value={deviationReason}
             onChange={(event) => onPlanningChange({ deviationReason: event.target.value })}
-            placeholder="Leg kort uit waarom deze afwijkende combinatie gekozen wordt."
+            placeholder={t("coaching.wizard.deviationPlaceholder")}
           />
         </label>
       )}
       {lockedRepresentative && (
         <p className="mt-4 rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800">
-          Deze begeleiding is gekoppeld aan de vertegenwoordiger van de hulpaanvraag.
+          {t("coaching.wizard.linkedRepresentative")}
         </p>
       )}
       <ParticipantTree available={available} selected={selected} onSelect={onSelect} locked={lockedRepresentative} />
@@ -569,6 +572,8 @@ function RepresentativeStep({
 }
 
 function ParticipantTree({ available, selected, onSelect, locked = false }: { available: CoachingParticipant[]; selected: string; onSelect: (id: string) => void; locked?: boolean }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const [collapsedOverride, setCollapsedOverride] = useState<Set<string> | null>(null);
   const [query, setQuery] = useState("");
   const availableTeams = useMemo(() => [...new Set(available.map((item) => item.teamId))], [available]);
@@ -614,19 +619,19 @@ function ParticipantTree({ available, selected, onSelect, locked = false }: { av
   return (
     <div className="mt-6 space-y-3">
       <label className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Vertegenwoordiger zoeken</span>
+        <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.wizard.searchRepresentative")}</span>
         <input
           type="search"
           className="field"
           value={query}
-          placeholder="Typ een naam om de lijst te filteren"
+          placeholder={t("coaching.wizard.searchPlaceholder")}
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
 
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500">
-          Geen begeleidbare gebruiker gevonden.
+          {t("coaching.wizard.noParticipants")}
         </div>
       ) : (
         countries.map((country) => {
@@ -680,7 +685,7 @@ function ParticipantTree({ available, selected, onSelect, locked = false }: { av
                                     {person.firstName} {person.lastName}
                                   </p>
                                   <p className="mt-0.5 text-xs text-slate-500">
-                                    {person.role === "SALES_LEADER" ? "Verkoopleider" : "Vertegenwoordiger"}
+                                    {person.role === "SALES_LEADER" ? t("coaching.wizard.salesLeader") : t("coaching.wizard.representative")}
                                   </p>
                                   {person.role === "REPRESENTATIVE" && person.representativeLevel && (
                                     <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${representativeLevelBadgeClass[person.representativeLevel]}`}>
@@ -874,9 +879,9 @@ function PreparationStep({
       </div>
       <div className="mt-6 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
         {[
-          { key: "algemeen", label: "Algemeen" },
-          { key: "prestatiecirkel", label: "Prestatiecirkel" },
-          { key: "scoretabellen", label: "Scoretabellen" },
+          { key: "algemeen", label: t("coaching.wizard.preparationTab") },
+          { key: "prestatiecirkel", label: t("coaching.wizard.performanceTab") },
+          { key: "scoretabellen", label: t("coaching.wizard.scoresTab") },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -891,8 +896,8 @@ function PreparationStep({
         ))}
       </div>
       <div className={activeTab === "algemeen" ? "mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" : "hidden"}>
-        <SummaryCard label="Niveau" value={representative.level} detail="Huidig ontwikkelniveau" />
-        <SummaryCard label="Team" value={representative.team} detail={representative.country} />
+        <SummaryCard label={t("coaching.wizard.level")} value={representative.level} detail={t("coaching.wizard.currentDevelopmentLevel")} />
+        <SummaryCard label={t("coaching.report.team")} value={representative.team} detail={representative.country} />
         <SummaryCard
           label={t("coaching.preparation.selectedCoaching")}
           value={selected ? formatIsoDate(selected.date, language) : "-"}
@@ -928,7 +933,7 @@ function PreparationStep({
       <section className={activeTab === "algemeen" ? "hidden" : "mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-slate-950">{activeTab === "prestatiecirkel" ? "Prestatiecirkel" : "Scoretabellen"}</h3>
+            <h3 className="text-lg font-bold text-slate-950">{activeTab === "prestatiecirkel" ? t("coaching.wizard.performanceTab") : t("coaching.wizard.scoresTab")}</h3>
             <p className="mt-1 text-sm text-slate-500">
               {activeTab === "prestatiecirkel"
                 ? t("coaching.preparation.performanceDescription")
@@ -1358,11 +1363,12 @@ function slugify(value: string) {
     .toLowerCase();
 }
 
-function FocusStep({ selected, onToggle }: { selected: string[]; onToggle: (name: string) => void }) {
+function FocusStep({ selected, onToggle, language }: { selected: string[]; onToggle: (name: string) => void; language: Language }) {
   const { coachingFramework } = useConfiguration();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <div>
-      <StepHeading icon={Target} title="Kies de focusfasen" description="Niet-geselecteerde fasen blijven uit de criteria, scoreflow en het eindverslag." />
+      <StepHeading icon={Target} title={t("coaching.wizard.focusTitle")} description={t("coaching.wizard.focusDescription")} />
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {coachingFramework.map((focus) => {
           const active = selected.includes(focus.name);
@@ -1406,7 +1412,7 @@ function CriteriaStep({
 }) {
   return (
     <div>
-      <StepHeading icon={ListChecks} title="Geselecteerde criteria" description="Controleer de compacte beoordelingsset voordat je begint te scoren." />
+      <StepHeading icon={ListChecks} title={translate("nl", "coaching.wizard.selectedCriteria")} description={translate("nl", "coaching.wizard.selectedCriteriaDescription")} />
       <div className="mt-6 space-y-4">
         {selectedFocus.map((focus) => {
           const personal = personalCriteria.filter((criterion) => criterion.focusName === focus.name);
@@ -1416,7 +1422,7 @@ function CriteriaStep({
                 <span className={`h-8 w-1.5 rounded-full ${focus.color}`} />
                 <div>
                   <h3 className="font-bold text-slate-900">{focus.name}</h3>
-                  <p className="text-xs text-slate-500">{focus.criteria.length} vaste criteria{personal.length ? ` · ${personal.length} persoonlijk` : ""}</p>
+                  <p className="text-xs text-slate-500">{translate("nl", "coaching.wizard.fixedCriteriaCount").replace("{count}", String(focus.criteria.length))}{personal.length ? ` · ${translate("nl", "coaching.wizard.personalCriteriaCount").replace("{count}", String(personal.length))}` : ""}</p>
                 </div>
               </div>
               <div className="grid gap-2 p-4 sm:grid-cols-2">
@@ -1432,7 +1438,7 @@ function CriteriaStep({
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-700" />
                       <span className="flex-1 font-semibold">{criterion.title}</span>
-                      <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">Persoonlijk</span>
+                      <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{translate("nl", "coaching.wizard.personal")}</span>
                     </div>
                     {criterion.description && <p className="mt-2 pl-6 text-xs leading-5 text-slate-500">{criterion.description}</p>}
                   </div>
@@ -1460,7 +1466,7 @@ function ScoreStep({
   const scoreOptions: ScoreValue[] = [100, 75, 50, 25, 0, "NVT"];
   return (
     <div>
-      <StepHeading icon={ClipboardCheck} title="Score per criterium" description="De vorige score staat naast elk criterium; kies met één tik de huidige score." />
+      <StepHeading icon={ClipboardCheck} title={translate("nl", "coaching.wizard.scoreTitle")} description={translate("nl", "coaching.wizard.scoreDescription")} />
       <div className="mt-6 space-y-4">
         {criteria.map((item) => (
           <div key={item.key} className={`rounded-2xl border p-4 sm:p-5 ${item.kind === "personal" ? "border-brand-100 bg-brand-50/40" : "border-slate-200"}`}>
@@ -1468,13 +1474,13 @@ function ScoreStep({
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{item.focus}</p>
-                  {item.kind === "personal" && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">Persoonlijk</span>}
+                  {item.kind === "personal" && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{translate("nl", "coaching.wizard.personal")}</span>}
                 </div>
                 <p className="mt-1 font-semibold text-slate-900">{item.criterion}</p>
                 {item.description && <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>}
               </div>
               <p className="text-xs text-slate-400">
-                Vorige score: <span className="font-bold text-slate-600">{item.previousScore}%</span>
+                {translate("nl", "coaching.wizard.previousScore")}: <span className="font-bold text-slate-600">{item.previousScore}%</span>
               </p>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -1533,7 +1539,7 @@ function ActionsStep({
 }) {
   return (
     <div>
-      <StepHeading icon={Target} title="Maak afspraken concreet" description="Voeg alleen duidelijke, opvolgbare KPI-, vaardigheids- of gedragsacties toe." />
+      <StepHeading icon={Target} title={translate("nl", "coaching.wizard.actionsTitle")} description={translate("nl", "coaching.wizard.actionsDescription")} />
       <div className="mt-6">
         <ActionPointEditor actions={actions} onChange={onChange} />
       </div>
@@ -1546,23 +1552,26 @@ function SummaryStep({
   plannedDate,
   startTime,
   endTime,
+  language,
 }: {
   representative: Representative;
   plannedDate: string;
   startTime: string;
   endTime: string;
+  language: Language;
 }) {
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <div>
-      <StepHeading icon={CheckCircle2} title="Controleer en plan in" description="De begeleiding wordt ingepland. Evaluatie, scores, criteria en actiepunten vul je later in tijdens de effectieve begeleiding." />
+      <StepHeading icon={CheckCircle2} title={t("coaching.wizard.summaryTitle")} description={t("coaching.wizard.summaryDescription")} />
       <div className="mt-7 grid gap-4 md:grid-cols-2">
-        <SummaryCard label="Vertegenwoordiger" value={`${representative.firstName} ${representative.lastName}`} detail={`${representative.team} · ${representative.country}`} />
-        <SummaryCard label="Datum" value={formatIsoDate(plannedDate)} detail={`${startTime} - ${endTime}`} />
-        <SummaryCard label="Status na inplannen" value="Gepland" detail="Zichtbaar in Planning en Begeleidingen" />
-        <SummaryCard label="Volgende stap" value="Begeleiden" detail="Afspraken, scores en actiepunten worden in het dossier geregistreerd" />
+        <SummaryCard label={t("coaching.wizard.representative")} value={`${representative.firstName} ${representative.lastName}`} detail={`${representative.team} · ${representative.country}`} />
+        <SummaryCard label={t("coaching.report.date")} value={formatIsoDate(plannedDate, language)} detail={`${startTime} - ${endTime}`} />
+        <SummaryCard label={t("coaching.wizard.statusAfterPlanning")} value={t("status.gepland")} detail={t("coaching.wizard.visibleInPlanning")} />
+        <SummaryCard label={t("coaching.wizard.nextStep")} value={t("coaching.wizard.coachNext")} detail={t("coaching.wizard.coachNextDescription")} />
       </div>
       <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-900">
-        <strong>Flow:</strong> Voorbereiden → Inplannen → Begeleiden → Evalueren.
+        <strong>{t("coaching.wizard.flow")}:</strong> {t("coaching.wizard.flowDescription")}
       </div>
     </div>
   );

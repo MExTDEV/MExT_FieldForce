@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,8 +15,9 @@ import { useModules } from "@/components/module-provider";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { useSession } from "@/components/session-provider";
+import { translate, type TranslationKey } from "@/lib/i18n";
 import { useWorkflow } from "@/components/workflow-provider";
-import type { Representative } from "@/lib/types";
+import type { Language, Representative } from "@/lib/types";
 import { dedupeById } from "@/lib/coaching/visibility";
 import { coachingOpenHref } from "@/lib/coaching/access";
 import {
@@ -65,21 +66,6 @@ type OutlookEventResponse = {
 };
 
 const REFERENCE_DATE = new Date();
-const DAY_NAMES = ["ma", "di", "wo", "do", "vr", "za", "zo"];
-const MONTH_NAMES = [
-  "januari",
-  "februari",
-  "maart",
-  "april",
-  "mei",
-  "juni",
-  "juli",
-  "augustus",
-  "september",
-  "oktober",
-  "november",
-  "december",
-];
 const HOURS = Array.from({ length: 11 }, (_, index) => index + 8);
 const CALENDAR_START_HOUR = HOURS[0];
 const CALENDAR_END_HOUR = HOURS[HOURS.length - 1] + 1;
@@ -156,12 +142,16 @@ function addDays(date: Date, amount: number) {
   return result;
 }
 
-function formatLongDate(date: Date) {
-  return `${DAY_NAMES[(date.getDay() + 6) % 7]} ${date.getDate()} ${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
+function localeFor(language: "nl" | "fr" | "de") {
+  return language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
 }
 
-function formatShortDate(date: Date) {
-  return `${date.getDate()} ${MONTH_NAMES[date.getMonth()].slice(0, 3)}`;
+function formatLongDate(date: Date, language: "nl" | "fr" | "de") {
+  return date.toLocaleDateString(localeFor(language), { weekday: "short", day: "numeric", month: "long", year: "numeric" });
+}
+
+function formatShortDate(date: Date, language: "nl" | "fr" | "de") {
+  return date.toLocaleDateString(localeFor(language), { day: "numeric", month: "short" });
 }
 
 function deterministicHour(id: string) {
@@ -246,7 +236,8 @@ function clampCalendarMinute(value: number) {
 }
 
 export function PlanningCalendar() {
-  const { user } = useSession();
+  const { user, language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const workflow = useWorkflow();
   const { isModuleEnabled } = useModules();
   const { representatives } = useRepresentatives();
@@ -269,19 +260,19 @@ export function PlanningCalendar() {
     void fetch(`/api/outlook/events?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json() as { events?: OutlookEventResponse[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Outlook-agenda kon niet worden geladen.");
+        if (!response.ok) throw new Error(payload.error ?? t("coaching.planning.outlookLoading"));
         setOutlookEvents(payload.events ?? []);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setOutlookEvents([]);
-        setOutlookError(error instanceof Error ? error.message : "Outlook-agenda kon niet worden geladen.");
+        setOutlookError(error instanceof Error ? error.message : t("coaching.planning.outlookLoading"));
       })
       .finally(() => {
         if (!controller.signal.aborted) setOutlookLoading(false);
       });
     return () => controller.abort();
-  }, [outlookRange.end, outlookRange.start]);
+  }, [outlookRange.end, outlookRange.start, t]);
 
   const events = useMemo<CalendarEvent[]>(() => {
     const today = dateKey(REFERENCE_DATE);
@@ -297,8 +288,8 @@ export function PlanningCalendar() {
         const duration = durationFromTimes(item.startTime, item.endTime);
         return {
           id: `coaching-${item.id}`,
-          title: "Begeleiding",
-          subtitle: `${participantName} · ${item.ownerId ? "Verkoopleider" : ""}`,
+          title: t("coaching.list.coachings"),
+          subtitle: `${participantName} · ${item.ownerId ? t("coaching.report.coach") : ""}`,
           date: dateKey(parseDate(item.plannedDate ?? item.finalizedAt ?? item.createdAt)),
           hour,
           duration,
@@ -318,7 +309,7 @@ export function PlanningCalendar() {
 
     const contactEvents = isModuleEnabled("CONTACTMOMENTEN") ? workflow.visibleContactMoments(user).map((item) => ({
       id: `contact-${item.id}`,
-      title: item.subject || "Contactmoment",
+      title: item.subject || t("contactHelp.contact.pageTitle"),
       subtitle: representativeName(representatives, item.representativeId),
       date: dateKey(parseDate(item.plannedDate ?? item.createdAt)),
       hour: hourFromTime(item.startTime) ?? deterministicHour(item.id),
@@ -338,7 +329,7 @@ export function PlanningCalendar() {
 
     const retrainingEvents = isModuleEnabled("RETRAININGEN") ? workflow.visibleRetrainings(user).map((item) => ({
       id: `retraining-${item.id}`,
-      title: item.theme || "Retraining",
+      title: item.theme || t("coaching.training.retraining"),
       subtitle: representativeName(representatives, item.representativeId),
       date: dateKey(parseDate(item.date)),
       hour: deterministicHour(item.id),
@@ -356,8 +347,8 @@ export function PlanningCalendar() {
 
     const salesTrainingEvents = isModuleEnabled("SALESTRAININGEN") ? workflow.visibleSalesTrainings(user).map((item) => ({
       id: `sales-training-${item.id}`,
-      title: item.theme || "Sales training",
-      subtitle: `${item.participantIds.length} deelnemers`,
+      title: item.theme || t("coaching.training.salesTraining"),
+      subtitle: `${item.participantIds.length} ${t("coaching.planning.participants")}`,
       date: dateKey(parseDate(item.date)),
       hour: deterministicHour(item.id),
       duration: 1,
@@ -374,7 +365,7 @@ export function PlanningCalendar() {
 
     const helpRequestEvents = isModuleEnabled("HULPAANVRAGEN") ? workflow.visibleHelpRequests(user).map((item) => ({
       id: `help-${item.id}`,
-      title: item.subject || "Hulpaanvraag",
+      title: item.subject || t("contactHelp.help.pageTitle"),
       subtitle: representativeName(representatives, item.representativeId),
       date: dateKey(parseDate(item.createdAt)),
       hour: deterministicHour(item.id),
@@ -404,7 +395,7 @@ export function PlanningCalendar() {
         return {
           id: `outlook-${item.id}`,
           title: item.title,
-          subtitle: item.location ? `Outlook · ${item.location}` : "Outlook · Alleen lezen",
+          subtitle: item.location ? `${t("coaching.planning.outlook")} · ${item.location}` : `${t("coaching.planning.outlook")} · ${t("coaching.planning.readOnly")}`,
           date: dateKey(start),
           hour,
           duration,
@@ -436,17 +427,18 @@ export function PlanningCalendar() {
     isModuleEnabled,
     representatives,
     outlookEvents,
+    t,
   ]);
 
   const periodLabel = useMemo(() => {
-    if (view === "day") return formatLongDate(selectedDate);
+    if (view === "day") return formatLongDate(selectedDate, language);
     if (view === "week") {
       const start = startOfWeek(selectedDate);
       const end = addDays(start, 6);
-      return `${formatShortDate(start)} - ${formatShortDate(end)} ${end.getFullYear()}`;
+      return `${formatShortDate(start, language)} - ${formatShortDate(end, language)} ${end.getFullYear()}`;
     }
-    return `${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
-  }, [selectedDate, view]);
+    return selectedDate.toLocaleDateString(localeFor(language), { month: "long", year: "numeric" });
+  }, [language, selectedDate, view]);
 
   function movePeriod(direction: number) {
     const next = new Date(selectedDate);
@@ -459,15 +451,15 @@ export function PlanningCalendar() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Planning"
-        description="Plan en volg coachingmomenten in een overzichtelijke agenda."
+        title={t("coaching.planning.title")}
+        description={t("coaching.planning.description")}
         actions={
           <Link
             href="/begeleidingen/nieuw"
             className="inline-flex items-center gap-2 rounded-xl bg-[#003B83] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#002f69]"
           >
             <Plus className="h-[18px] w-[18px]" />
-            Nieuw moment
+            {t("coaching.planning.newMoment")}
           </Link>
         }
       />
@@ -480,7 +472,7 @@ export function PlanningCalendar() {
               : "border-blue-100 bg-blue-50 text-blue-800"
           }`}>
             {outlookLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-            {outlookLoading ? "Outlook-agenda laden…" : `${outlookError} Fieldforce-planning blijft beschikbaar.`}
+            {outlookLoading ? t("coaching.planning.outlookLoading") : `${outlookError} ${t("coaching.planning.outlookFallback")}`}
           </div>
         )}
         <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -490,12 +482,12 @@ export function PlanningCalendar() {
               onClick={() => setSelectedDate(new Date(REFERENCE_DATE))}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Vandaag
+              {t("coaching.planning.today")}
             </button>
             <div className="flex overflow-hidden rounded-lg border border-slate-300">
               <button
                 type="button"
-                aria-label="Vorige periode"
+                aria-label={t("coaching.planning.previousPeriod")}
                 onClick={() => movePeriod(-1)}
                 className="p-2 text-slate-600 hover:bg-slate-50"
               >
@@ -503,7 +495,7 @@ export function PlanningCalendar() {
               </button>
               <button
                 type="button"
-                aria-label="Volgende periode"
+                aria-label={t("coaching.planning.nextPeriod")}
                 onClick={() => movePeriod(1)}
                 className="border-l border-slate-300 p-2 text-slate-600 hover:bg-slate-50"
               >
@@ -527,18 +519,19 @@ export function PlanningCalendar() {
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {option === "day" ? "Dag" : option === "week" ? "Week" : "Maand"}
+                {option === "day" ? t("coaching.planning.day") : option === "week" ? t("coaching.planning.week") : t("coaching.planning.month")}
               </button>
             ))}
           </div>
         </div>
 
-        {view === "day" && <DayView date={selectedDate} events={events} />}
-        {view === "week" && <WeekView date={selectedDate} events={events} />}
+        {view === "day" && <DayView date={selectedDate} events={events} language={language} />}
+        {view === "week" && <WeekView date={selectedDate} events={events} language={language} />}
         {view === "month" && (
           <MonthView
             date={selectedDate}
             events={events}
+            language={language}
             onSelectDate={(date) => {
               setSelectedDate(date);
               setView("day");
@@ -550,7 +543,14 @@ export function PlanningCalendar() {
           {Object.entries(EVENT_COLORS).map(([type, color]) => (
             <span key={type} className="inline-flex items-center gap-2">
               <span className={`h-2.5 w-2.5 rounded-sm border-l-4 ${color}`} />
-              {type}
+              {t(({
+                Begeleiding: "coaching.planning.event.coaching",
+                Contactmoment: "coaching.planning.event.contact",
+                Retraining: "coaching.planning.event.retraining",
+                "Sales training": "coaching.planning.event.salesTraining",
+                Hulpaanvraag: "coaching.planning.event.help",
+                Outlook: "coaching.planning.event.outlook",
+              }[type] ?? "coaching.planning.event.coaching") as TranslationKey)}
             </span>
           ))}
         </div>
@@ -559,7 +559,8 @@ export function PlanningCalendar() {
   );
 }
 
-function DayView({ date, events }: { date: Date; events: CalendarEvent[] }) {
+function DayView({ date, events, language }: { date: Date; events: CalendarEvent[]; language: Language }) {
+  const t = (key: TranslationKey) => translate(language, key);
   const dayEvents = layoutOverlappingPlanningItems(events.filter((event) => event.date === dateKey(date)));
 
   return (
@@ -569,7 +570,7 @@ function DayView({ date, events }: { date: Date; events: CalendarEvent[] }) {
           <div className="border-r border-slate-200" />
           <div className="px-4 py-3">
             <p className="text-xs font-semibold uppercase text-[#003B83]">
-              {DAY_NAMES[(date.getDay() + 6) % 7]}
+              {date.toLocaleDateString(localeFor(language), { weekday: "short" })}
             </p>
             <p className="text-xl font-bold text-slate-900">{date.getDate()}</p>
           </div>
@@ -596,7 +597,7 @@ function DayView({ date, events }: { date: Date; events: CalendarEvent[] }) {
             ))}
             {dayEvents.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
-                Geen momenten gepland.
+                {t("coaching.planning.noMoments")}
               </div>
             )}
           </div>
@@ -606,7 +607,7 @@ function DayView({ date, events }: { date: Date; events: CalendarEvent[] }) {
   );
 }
 
-function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
+function WeekView({ date, events, language }: { date: Date; events: CalendarEvent[]; language: Language }) {
   const start = startOfWeek(date);
   const days = Array.from({ length: 7 }, (_, index) => addDays(start, index));
 
@@ -620,7 +621,7 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
             return (
               <div key={dateKey(day)} className="border-r border-slate-200 px-2 py-2 text-center last:border-r-0">
                 <p className="text-[11px] font-semibold uppercase text-slate-500">
-                  {DAY_NAMES[(day.getDay() + 6) % 7]}
+                  {day.toLocaleDateString(localeFor(language), { weekday: "short" })}
                 </p>
                 <span
                   className={`mt-1 inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold ${
@@ -667,10 +668,12 @@ function WeekView({ date, events }: { date: Date; events: CalendarEvent[] }) {
 function MonthView({
   date,
   events,
+  language,
   onSelectDate,
 }: {
   date: Date;
   events: CalendarEvent[];
+  language: Language;
   onSelectDate: (date: Date) => void;
 }) {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -681,9 +684,9 @@ function MonthView({
     <div className="overflow-x-auto">
       <div className="min-w-[760px]">
         <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
-          {DAY_NAMES.map((day) => (
-            <div key={day} className="border-r border-slate-200 px-2 py-2 text-center text-xs font-semibold uppercase text-slate-500 last:border-r-0">
-              {day}
+          {Array.from({ length: 7 }, (_, index) => addDays(new Date(2024, 0, 1), index)).map((day) => (
+            <div key={day.toISOString()} className="border-r border-slate-200 px-2 py-2 text-center text-xs font-semibold uppercase text-slate-500 last:border-r-0">
+              {day.toLocaleDateString(localeFor(language), { weekday: "short" })}
             </div>
           ))}
         </div>
@@ -723,7 +726,7 @@ function MonthView({
                   ))}
                   {dayEvents.length > 3 && (
                     <span className="block px-1 text-[11px] font-semibold text-[#003B83]">
-                      +{dayEvents.length - 3} meer
+                      +{dayEvents.length - 3} {translate(language, "coaching.planning.more")}
                     </span>
                   )}
                 </span>
@@ -745,6 +748,8 @@ function CalendarEventCard({
   style: React.CSSProperties;
   spacious?: boolean;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const content = (
     <>
       <p className="truncate text-[11px] font-bold">
@@ -753,7 +758,7 @@ function CalendarEventCard({
       <p className="truncate text-[10px] opacity-80">{event.subtitle}</p>
       {event.source === "EXTERNAL_CALENDAR" && (
         <span className="mt-1 inline-flex rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-700">
-          Outlook · read-only
+          {t("coaching.planning.outlook")} · {t("coaching.planning.readOnly")}
         </span>
       )}
       {event.syncStatus && <SyncIndicator status={event.syncStatus} error={event.syncError} />}
@@ -761,7 +766,7 @@ function CalendarEventCard({
         <div className="mt-1 flex items-center gap-2">
           <span className="inline-flex items-center gap-1 text-[10px] opacity-75">
             <Clock3 className="h-2.5 w-2.5" />
-            {event.duration} uur
+            {event.duration} {t("coaching.planning.hours")}
           </span>
           {event.source === "FIELD_FORCE" && <StatusBadge status={event.status} />}
         </div>
@@ -770,7 +775,7 @@ function CalendarEventCard({
   );
   const className = `absolute z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 shadow-sm ${event.color}`;
   if (event.source === "EXTERNAL_CALENDAR" || !event.href) {
-    return <div style={style} className={className} title={`${event.title} - externe Outlook-afspraak, alleen lezen`}>{content}</div>;
+    return <div style={style} className={className} title={`${event.title} - ${t("coaching.planning.outlook")} - ${t("coaching.planning.readOnly")}`}>{content}</div>;
   }
   return (
     <Link
@@ -791,11 +796,13 @@ function SyncIndicator({
   status: "NOT_SYNCED" | "SYNCED" | "ERROR";
   error?: string;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const label = status === "SYNCED"
-    ? "Gesynchroniseerd"
+    ? t("coaching.planning.synced")
     : status === "ERROR"
-      ? "Sync-fout"
-      : "Nog niet gesynchroniseerd";
+      ? t("coaching.planning.syncError")
+      : t("coaching.planning.notSynced");
   const tone = status === "SYNCED"
     ? "bg-emerald-100 text-emerald-800"
     : status === "ERROR"
