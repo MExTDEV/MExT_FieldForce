@@ -64,6 +64,7 @@ const initialState: WorkflowState = {
 
 type WorkflowContextValue = {
   hydrated: boolean;
+  refresh: () => Promise<void>;
   saveError: string | null;
   retrySave: () => void;
   clearSaveError: () => void;
@@ -144,49 +145,46 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [failedSave, setFailedSave] = useState<{ endpoint: string; patch: WorkflowPatch } | null>(null);
 
+  const refresh = useCallback(async () => {
+    if (!user.id) return;
+    setHydrated(false);
+    try {
+      const response = await fetch(
+        `/api/workflows?actorId=${encodeURIComponent(user.id)}`,
+        { cache: "no-store" }
+      );
+      const payload = (await response.json()) as {
+        state?: Partial<WorkflowState>;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Workflowgegevens konden niet worden geladen.");
+      }
+      setState(dedupeWorkflowState({
+        interventions: payload.state?.interventions ?? [],
+        reflections: payload.state?.reflections ?? [],
+        approvals: payload.state?.approvals ?? [],
+        contactMoments: payload.state?.contactMoments ?? [],
+        helpRequests: payload.state?.helpRequests ?? [],
+        linkedInterventions: payload.state?.linkedInterventions ?? [],
+        retrainings: payload.state?.retrainings ?? [],
+        salesTrainings: payload.state?.salesTrainings ?? [],
+      }));
+    } catch (error) {
+      console.error("[workflow-provider]", error);
+    } finally {
+      setHydrated(true);
+    }
+  }, [user.id]);
+
   useEffect(() => {
     if (sessionLoading || !user.id) {
       setState(initialState);
       setHydrated(!sessionLoading);
       return;
     }
-    setHydrated(false);
-    let active = true;
-    async function loadWorkflowState() {
-      try {
-        const response = await fetch(
-          `/api/workflows?actorId=${encodeURIComponent(user.id)}`,
-          { cache: "no-store" }
-        );
-        const payload = (await response.json()) as {
-          state?: Partial<WorkflowState>;
-          error?: string;
-        };
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Workflowgegevens konden niet worden geladen.");
-        }
-        if (!active) return;
-        setState(dedupeWorkflowState({
-          interventions: payload.state?.interventions ?? [],
-          reflections: payload.state?.reflections ?? [],
-          approvals: payload.state?.approvals ?? [],
-          contactMoments: payload.state?.contactMoments ?? [],
-          helpRequests: payload.state?.helpRequests ?? [],
-          linkedInterventions: payload.state?.linkedInterventions ?? [],
-          retrainings: payload.state?.retrainings ?? [],
-          salesTrainings: payload.state?.salesTrainings ?? [],
-        }));
-      } catch (error) {
-        console.error("[workflow-provider]", error);
-      } finally {
-        if (active) setHydrated(true);
-      }
-    }
-    loadWorkflowState();
-    return () => {
-      active = false;
-    };
-  }, [sessionLoading, user.id]);
+    void refresh();
+  }, [refresh, sessionLoading, user.id]);
 
   const persistOrThrow = useCallback(async (endpoint: string, patch: WorkflowPatch) => {
     try {
@@ -388,6 +386,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<WorkflowContextValue>(() => ({
     hydrated,
+    refresh,
     saveError,
     retrySave,
     clearSaveError: () => setSaveError(null),
@@ -498,6 +497,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     openReflections,
     pendingApprovals,
     retrySave,
+    refresh,
     representatives,
     saveApprovalReflection,
     saveContactMomentAsync,
