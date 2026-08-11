@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   ArrowLeft,
@@ -21,6 +22,7 @@ import { useWorkflow } from "@/components/workflow-provider";
 import { canAccessRepresentative } from "@/lib/permissions";
 import type { Retraining, SalesTraining, TrainingStatus } from "@/lib/types";
 import { translate, type TranslationKey } from "@/lib/i18n";
+import { isPlanningDateParam } from "@/lib/planning-create-options";
 
 type TrainingKind = "retraining" | "sales_training";
 
@@ -224,6 +226,8 @@ function TrainingSection({
 
 function RetrainingEditor({ record }: { record?: Retraining }) {
   const { user, language } = useSession();
+  const searchParams = useSearchParams();
+  const planningDate = searchParams.get("date");
   const t = (key: TranslationKey) => translate(language, key);
   const { coachingFramework, kpiDefinitions } = useConfiguration();
   const { saveRetraining } = useWorkflow();
@@ -237,7 +241,7 @@ function RetrainingEditor({ record }: { record?: Retraining }) {
     desiredImprovement: record?.desiredImprovement ?? "",
     kpi: record?.kpi ?? "",
     frameworkPhase: record?.frameworkPhase ?? "",
-    date: record?.date ?? new Date().toISOString().slice(0, 10),
+    date: record?.date ?? (isPlanningDateParam(planningDate) ? planningDate! : new Date().toISOString().slice(0, 10)),
     trainer: record?.trainer ?? user.name,
     result: record?.result ?? "",
   });
@@ -337,6 +341,8 @@ function RetrainingEditor({ record }: { record?: Retraining }) {
 
 function SalesTrainingEditor({ record }: { record?: SalesTraining }) {
   const { user, language } = useSession();
+  const searchParams = useSearchParams();
+  const planningDate = searchParams.get("date");
   const t = (key: TranslationKey) => translate(language, key);
   const { coachingFramework, kpiDefinitions } = useConfiguration();
   const { saveSalesTraining } = useWorkflow();
@@ -350,7 +356,7 @@ function SalesTrainingEditor({ record }: { record?: SalesTraining }) {
     participantIds: initialParticipants,
     kpi: record?.kpi ?? "",
     frameworkPhase: record?.frameworkPhase ?? "",
-    date: record?.date ?? new Date().toISOString().slice(0, 10),
+    date: record?.date ?? (isPlanningDateParam(planningDate) ? planningDate! : new Date().toISOString().slice(0, 10)),
     trainer: record?.trainer ?? user.name,
     conclusion: record?.conclusion ?? "",
     followUpAction: record?.followUpAction ?? "",

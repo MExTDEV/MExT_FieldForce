@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -39,6 +39,7 @@ import {
   maxContactMomentPhotoSize,
 } from "@/lib/contact-moment-photo-metadata";
 import { isBlankRichText, sanitizeRichText } from "@/lib/rich-text";
+import { isPlanningDateParam } from "@/lib/planning-create-options";
 import { exportContactMomentPdf, type ContactMomentPdfPhoto } from "@/lib/contact-moment-pdf";
 import type {
   ContactMoment,
@@ -370,6 +371,8 @@ function PendingPhotoPicker({
 
 function NewContactMoment() {
   const { user, language } = useSession();
+  const searchParams = useSearchParams();
+  const planningDate = searchParams.get("date");
   const t = makeT(language);
   const { saveContactMomentAsync } = useWorkflow();
   const { representatives } = useRepresentatives();
@@ -379,7 +382,7 @@ function NewContactMoment() {
   const firstAvailableRepresentativeId = available[0]?.id;
   const [form, setForm] = useState({
     representativeId: firstAvailableRepresentativeId ?? "",
-    plannedDate: "",
+    plannedDate: isPlanningDateParam(planningDate) ? planningDate! : "",
     startTime: "",
     endTime: "",
     subject: "",

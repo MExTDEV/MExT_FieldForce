@@ -78,6 +78,14 @@ Examples:
 - Contactmoment targets follow Contactmoment scope;
 - Hulpaanvraag follow-up is prefilled with the requester.
 
+The Planning `Nieuw moment` action opens a type chooser before routing to an
+owning workflow. The chooser is built from the central active module
+configuration plus the existing navigation and create permissions for each
+module. It must not link to inactive modules or grant broader rights than the
+owning screens already allow. When a calendar date is selected, Planning may
+pass that date as a query parameter so the owning form can prefill its existing
+date field.
+
 ---
 
 # Outlook Integration

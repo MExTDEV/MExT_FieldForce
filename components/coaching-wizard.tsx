@@ -41,6 +41,7 @@ import {
   representativeLevelBadgeClass,
   representativeLevelLabels,
 } from "@/lib/representative-levels";
+import { isPlanningDateParam } from "@/lib/planning-create-options";
 import { clearLocalDraft, loadLocalDraft, offlineStorageKeys, saveLocalDraft } from "@/lib/storage";
 import type { CoachingFrameworkFocus, CoachingParticipant, Language, Representative, ScoreValue } from "@/lib/types";
 
@@ -87,6 +88,7 @@ export function CoachingWizard() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
   const helpRequestId = searchParams.get("helpRequestId");
+  const planningDate = searchParams.get("date");
   const { user, managedUsers, language } = useSession();
   const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { hydrated, state, saveCoachingStatus, scheduleHelpRequestCoaching } = useWorkflow();
@@ -99,7 +101,7 @@ export function CoachingWizard() {
     actorId: user.id,
     representativeId: "",
     ownerId: user.id,
-    plannedDate: new Date().toISOString().slice(0, 10),
+    plannedDate: isPlanningDateParam(planningDate) ? planningDate! : new Date().toISOString().slice(0, 10),
     startTime: "09:00",
     endTime: "11:00",
     notifyRepresentative: false,

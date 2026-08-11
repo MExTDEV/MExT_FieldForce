@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
+  BookOpenCheck,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   Clock3,
+  Contact,
+  GraduationCap,
   LoaderCircle,
   Plus,
   ShieldCheck,
+  Sparkles,
+  X,
 } from "lucide-react";
 
 import { useModules } from "@/components/module-provider";
@@ -20,6 +26,12 @@ import { useWorkflow } from "@/components/workflow-provider";
 import type { Language, Representative } from "@/lib/types";
 import { dedupeById } from "@/lib/coaching/visibility";
 import { coachingOpenHref } from "@/lib/coaching/access";
+import {
+  hasActivePlanningCreateModules,
+  planningCreateOptions,
+  type PlanningCreateOption,
+  type PlanningCreateType,
+} from "@/lib/planning-create-options";
 import {
   createExternalCalendarDedupeKeys,
   isLinkedExternalCalendarItem,
@@ -239,15 +251,39 @@ export function PlanningCalendar() {
   const { user, language } = useSession();
   const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const workflow = useWorkflow();
-  const { isModuleEnabled } = useModules();
+  const { isModuleEnabled, loading: modulesLoading } = useModules();
   const { representatives } = useRepresentatives();
   const [view, setView] = useState<CalendarView>("week");
   const [selectedDate, setSelectedDate] = useState(new Date(REFERENCE_DATE));
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [outlookEvents, setOutlookEvents] = useState<OutlookEventResponse[]>([]);
   const [outlookLoading, setOutlookLoading] = useState(false);
   const [outlookError, setOutlookError] = useState<string>();
+  const firstCreateOptionRef = useRef<HTMLAnchorElement>(null);
 
   const outlookRange = useMemo(() => calendarRange(selectedDate, view), [selectedDate, view]);
+  const selectedDateKey = dateKey(selectedDate);
+  const createOptions = useMemo(() => planningCreateOptions({
+    user,
+    isModuleEnabled,
+    selectedDate: selectedDateKey,
+  }), [isModuleEnabled, selectedDateKey, user]);
+  const hasActiveCreateModules = useMemo(() => hasActivePlanningCreateModules(isModuleEnabled), [isModuleEnabled]);
+
+  useEffect(() => {
+    if (!createDialogOpen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    const timer = window.setTimeout(() => firstCreateOptionRef.current?.focus(), 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCreateDialogOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("keydown", onKeyDown);
+      previous?.focus();
+    };
+  }, [createDialogOpen]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -454,15 +490,26 @@ export function PlanningCalendar() {
         title={t("coaching.planning.title")}
         description={t("coaching.planning.description")}
         actions={
-          <Link
-            href="/begeleidingen/nieuw"
+          <button
+            type="button"
+            onClick={() => setCreateDialogOpen(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-[#003B83] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#002f69]"
           >
             <Plus className="h-[18px] w-[18px]" />
             {t("coaching.planning.newMoment")}
-          </Link>
+          </button>
         }
       />
+      {createDialogOpen && (
+        <PlanningCreateDialog
+          options={createOptions}
+          modulesLoading={modulesLoading}
+          hasActiveCreateModules={hasActiveCreateModules}
+          firstOptionRef={firstCreateOptionRef}
+          t={t}
+          onClose={() => setCreateDialogOpen(false)}
+        />
+      )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {(outlookLoading || outlookError) && (
@@ -557,6 +604,121 @@ export function PlanningCalendar() {
       </section>
     </div>
   );
+}
+
+function PlanningCreateDialog({
+  firstOptionRef,
+  hasActiveCreateModules,
+  modulesLoading,
+  onClose,
+  options,
+  t,
+}: {
+  firstOptionRef: RefObject<HTMLAnchorElement | null>;
+  hasActiveCreateModules: boolean;
+  modulesLoading: boolean;
+  onClose: () => void;
+  options: PlanningCreateOption[];
+  t: (key: TranslationKey) => string;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const emptyTitle = hasActiveCreateModules
+    ? t("coaching.planning.create.noRightsTitle")
+    : t("coaching.planning.create.noModulesTitle");
+  const emptyDescription = hasActiveCreateModules
+    ? t("coaching.planning.create.noRightsDescription")
+    : t("coaching.planning.create.noModulesDescription");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="planning-create-title"
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") return;
+        const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+          "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        );
+        if (!focusable?.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div ref={dialogRef} className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 id="planning-create-title" className="text-lg font-bold text-slate-950">{t("coaching.planning.create.title")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("coaching.planning.create.description")}</p>
+          </div>
+          <button type="button" className="btn-ghost h-9 w-9 p-0" onClick={onClose} aria-label={t("coaching.planning.create.cancel")}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5">
+          {modulesLoading ? (
+            <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+              {t("coaching.planning.create.loading")}
+            </div>
+          ) : options.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+              <p className="font-bold text-slate-900">{emptyTitle}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{emptyDescription}</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {options.map((option, index) => {
+                const Icon = planningCreateIcon(option.type);
+                return (
+                  <Link
+                    key={option.type}
+                    ref={index === 0 ? firstOptionRef : undefined}
+                    href={option.href}
+                    className="group flex min-h-28 items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    onClick={onClose}
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700 transition group-hover:bg-white">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-slate-950">{t(option.titleKey as TranslationKey)}</span>
+                      <span className="mt-1 block text-sm leading-5 text-slate-500">{t(option.descriptionKey as TranslationKey)}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end border-t border-slate-100 px-5 py-4">
+          <button type="button" className="btn-secondary" onClick={onClose}>{t("coaching.planning.create.cancel")}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function planningCreateIcon(type: PlanningCreateType) {
+  const icons = {
+    coaching: BookOpenCheck,
+    contact: Contact,
+    retraining: GraduationCap,
+    salesTraining: Sparkles,
+    helpRequest: CircleHelp,
+    starterEvaluation: ShieldCheck,
+  };
+  return icons[type];
 }
 
 function DayView({ date, events, language }: { date: Date; events: CalendarEvent[]; language: Language }) {

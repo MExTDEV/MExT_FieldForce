@@ -14,6 +14,7 @@
     "test:header-todos": "tsx scripts/test-header-todos.ts",
     "test:notifications": "tsx scripts/test-notifications.ts",
     "test:planning-items": "tsx scripts/test-planning-items.ts",
+    "test:planning-create-options": "tsx scripts/test-planning-create-options.ts",
     "test:smart-coaching": "tsx scripts/test-smart-coaching.ts",
     "test:performance": "tsx scripts/test-performance-data.ts",
     "test:pdf-report": "tsx scripts/test-professional-coaching-pdf.ts",

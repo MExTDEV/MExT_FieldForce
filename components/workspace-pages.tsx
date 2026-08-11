@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -91,6 +91,7 @@ import {
   canStartStarterEvaluation,
   formatStarterEvaluationDateInput,
 } from "@/lib/starter-evaluations";
+import { isPlanningDateParam } from "@/lib/planning-create-options";
 import { representativeLevelBadgeClass } from "@/lib/representative-levels";
 import {
   getFicheTimelineItemTypes,
@@ -352,15 +353,20 @@ type StarterEvaluationProfileItem = {
 
 function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useSession();
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const canStart = canStartStarterEvaluation(user);
+  const startFromPlanning = searchParams.get("new") === "1";
+  const planningDate = searchParams.get("date");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [candidates, setCandidates] = useState<StarterEvaluationCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedRepresentativeId, setSelectedRepresentativeId] = useState("");
-  const [evaluationDate, setEvaluationDate] = useState(() => formatStarterEvaluationDateInput());
+  const [evaluationDate, setEvaluationDate] = useState(() =>
+    isPlanningDateParam(planningDate) ? planningDate! : formatStarterEvaluationDateInput()
+  );
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
@@ -381,6 +387,11 @@ function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
   ];
   const groupedCandidates = useMemo(() => groupStarterEvaluationCandidates(candidates), [candidates]);
   const selectedCandidate = candidates.find((candidate) => candidate.id === selectedRepresentativeId);
+
+  useEffect(() => {
+    if (evaluationId || !startFromPlanning || !canStart) return;
+    setDialogOpen(true);
+  }, [canStart, evaluationId, startFromPlanning]);
 
   useEffect(() => {
     if (!dialogOpen) return;
