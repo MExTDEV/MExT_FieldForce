@@ -459,6 +459,7 @@ export type Status =
   | "wacht_op_vt"
   | "wacht_op_akkoord"
   | "afgesloten"
+  | "niet_uitgevoerd"
   | "geannuleerd";
 
 export type ScoreValue = 100 | 75 | 50 | 25 | 0 | "NVT";

@@ -14,6 +14,7 @@ import {
   mergeCriterionScores,
   normalizePerformanceScore,
 } from "@/lib/performance-data";
+import { calculateOfficialCoachingScore } from "@/lib/coaching/score";
 import type { KpiUnit, Role, Status, WorkflowActionPoint } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
 
@@ -117,7 +118,7 @@ async function loadHistoricalCoachings(
           OR: [
             { completedAt: { not: null } },
             { finalizedAt: { not: null } },
-            { status: { in: ["AFGESLOTEN", "GEFINALISEERD", "GESLOTEN", "VOLTOOID", "VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"] } },
+            { status: { in: ["AFGESLOTEN", "GEFINALISEERD", "GESLOTEN", "VOLTOOID", "NIET_UITGEVOERD", "VERZONDEN_TER_AKKOORD", "AKKOORD_DOOR_VERTEGENWOORDIGER"] } },
           ],
           deletedAt: null,
         },
@@ -184,24 +185,14 @@ async function loadHistoricalCoachings(
         label: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
         score: scoreToPercent(score.score),
       }));
-    const dossierValues = scoreRows
-      .filter((score) => score.category?.startsWith("Dossier:"))
-      .map((score) => scoreToPercent(score.score));
-    const appointmentAverages = (item.coachingDetail?.appointments ?? []).flatMap((appointment) => {
-      const values = appointment.scoreRows
-        .filter((score) => score.score !== null && !score.notApplicable)
-        .map((score) => scoreToPercent(score.score));
-      return values.length ? [average(values)] : [];
+    const overallScore = calculateOfficialCoachingScore({
+      dossierScores: scoreRows
+        .filter((score) => score.category === "Dossier:Algemeen" || score.category === "Dossier:Persoonlijkheid")
+        .map((score) => score.notApplicable ? "NVT" : score.score),
+      appointmentScores: (item.coachingDetail?.appointments ?? []).map((appointment) =>
+        appointment.scoreRows.map((score) => score.notApplicable ? "NVT" : score.score)
+      ),
     });
-    const appointmentScore = appointmentAverages.length ? average(appointmentAverages) : undefined;
-    const dossierScore = dossierValues.length ? average(dossierValues) : undefined;
-    const overallScore = appointmentScore === undefined && dossierScore === undefined
-      ? undefined
-      : appointmentScore === undefined
-        ? dossierScore
-        : dossierScore === undefined
-          ? appointmentScore
-          : (appointmentScore * 0.8) + (dossierScore * 0.2);
 
     return {
       id: item.id,
@@ -462,10 +453,6 @@ function averageByLabel(items: { label: string; score: number }[]) {
     label,
     score: Math.round(values.reduce((sum, value) => sum + value, 0) / values.length),
   }));
-}
-
-function average(values: number[]) {
-  return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 }
 
 function scoreToPercent(score: number | null) {

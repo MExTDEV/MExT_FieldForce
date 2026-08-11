@@ -13,6 +13,7 @@ export const representativeReviewStatuses = new Set([
   "gefinaliseerd",
   "afgesloten",
   "voltooid",
+  "niet_uitgevoerd",
 ]);
 
 export const completedCoachingStatuses = new Set([
@@ -23,6 +24,7 @@ export const completedCoachingStatuses = new Set([
   "wacht_op_akkoord",
   "verzonden_ter_akkoord",
   "akkoord_door_vertegenwoordiger",
+  "niet_uitgevoerd",
 ]);
 
 export function dedupeById<T extends { id: string }>(items: T[]): T[] {
