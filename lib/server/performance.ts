@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/server/db";
 import { resolveKpiTargetFromDefinition } from "@/lib/server/kpi-targets";
 import { columnsExist, tableExists } from "@/lib/server/schema-inspection";
+import { isActionPointCloseReason } from "@/lib/action-points/close-reasons";
 import type {
   HistoricalActionPoint,
   HistoricalCoaching,
@@ -37,6 +38,8 @@ type LegacyActionPointRow = {
   dueDate: Date | null;
   closedAt: Date | null;
   closedByUserId: string | null;
+  closedReason?: string | null;
+  closedReasonExplanation?: string | null;
   updatedAt: Date;
   assignments: {
     id: string;
@@ -44,6 +47,8 @@ type LegacyActionPointRow = {
     status: string;
     closedAt: Date | null;
     closedByUserId: string | null;
+    closedReason?: string | null;
+    closedReasonExplanation?: string | null;
     representative: TargetUserRow;
   }[];
 };
@@ -308,6 +313,8 @@ export function normalizeHistoricalActionPoints(
         status: toActionStatus(assignment.status),
         closedAt: assignment.closedAt,
         closedByUserId: assignment.closedByUserId,
+        closedReason: assignment.closedReason,
+        closedReasonExplanation: assignment.closedReasonExplanation,
       }))
       : [{
         id: action.id,
@@ -315,6 +322,8 @@ export function normalizeHistoricalActionPoints(
         status: toActionStatus(action.status),
         closedAt: action.closedAt,
         closedByUserId: action.closedByUserId,
+        closedReason: action.closedReason,
+        closedReasonExplanation: action.closedReasonExplanation,
       }];
     const due = action.dueDate ? dateOnly(action.dueDate) : "";
     for (const target of targets) {
@@ -333,6 +342,8 @@ export function normalizeHistoricalActionPoints(
         updatedAt: dateOnly(action.updatedAt),
         closedAt: target.closedAt?.toISOString(),
         closedByUserId: target.closedByUserId ?? undefined,
+        closedReason: isActionPointCloseReason(target.closedReason) ? target.closedReason : undefined,
+        closedReasonExplanation: target.closedReasonExplanation ?? undefined,
       });
     }
   }

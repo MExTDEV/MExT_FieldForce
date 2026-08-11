@@ -172,7 +172,7 @@ function drawScorePages(pdf: jsPDF, groups: PdfGroup[]) {
 
   for (const group of groups) {
     const rows = group.rows.map((row) => prepareRow(pdf, row));
-    const fullHeight = 18 + rows.reduce((sum, row) => sum + row.height, 0);
+    const fullHeight = 20 + rows.reduce((sum, row) => sum + row.height, 0);
     if (fullHeight <= CONTENT_BOTTOM - 33 && y + fullHeight > CONTENT_BOTTOM) {
       pdf.addPage();
       y = 33;
@@ -183,7 +183,7 @@ function drawScorePages(pdf: jsPDF, groups: PdfGroup[]) {
     while (rowIndex < rows.length) {
       const available = CONTENT_BOTTOM - y;
       const chunk: PreparedRow[] = [];
-      let chunkHeight = 18;
+      let chunkHeight = 20;
 
       while (
         rowIndex + chunk.length < rows.length &&
@@ -220,7 +220,7 @@ function drawPhaseBlock(
   y: number,
   continuation: boolean
 ) {
-  const cardHeight = 18 + rows.reduce((sum, row) => sum + row.height, 0);
+  const cardHeight = 20 + rows.reduce((sum, row) => sum + row.height, 0);
   pdf.setFillColor("#FFFFFF");
   pdf.setDrawColor(BORDER);
   pdf.roundedRect(MARGIN, y, PAGE_WIDTH - MARGIN * 2, cardHeight, 3, 3, "FD");
@@ -233,23 +233,24 @@ function drawPhaseBlock(
   pdf.setFontSize(10.5);
   pdf.text(`${category}${continuation ? " (vervolg)" : ""}`, MARGIN + 5, y + 6.5);
 
-  const columnY = y + 15.5;
+  const columnY = y + 16.5;
   pdf.setFontSize(7.5);
   pdf.setTextColor(SLATE_400);
   pdf.text("CRITERIUM", MARGIN + 5, columnY);
-  pdf.text("V", 112, columnY, { align: "center" });
-  pdf.text("H", 130, columnY, { align: "center" });
+  pdf.text("VORIG", 112, columnY, { align: "center" });
+  pdf.text("HUIDIG", 130, columnY, { align: "center" });
   pdf.text("VERSCHIL", 151, columnY, { align: "center" });
   pdf.text("TREND", 178, columnY, { align: "center" });
 
-  let rowY = y + 18;
+  let rowY = y + 20;
   rows.forEach((row, index) => {
     if (index > 0) {
       pdf.setDrawColor("#E8EDF3");
       pdf.line(MARGIN + 4, rowY, PAGE_WIDTH - MARGIN - 4, rowY);
     }
 
-    const textY = rowY + 4.6;
+    const criterionHeight = row.criterion.length * 3.8;
+    const textY = rowY + (row.height - criterionHeight) / 2 + 3;
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(SLATE_950);
     pdf.setFontSize(8.2);
@@ -261,29 +262,57 @@ function drawPhaseBlock(
     pdf.setTextColor(SLATE_950);
     pdf.text(row.current, 130, textY, { align: "center" });
 
-    drawBadge(pdf, row.difference, 151, rowY + row.height / 2, row.trend, 18);
-    drawBadge(pdf, trendLabel(row.trend), 178, rowY + row.height / 2, row.trend, 24);
+    drawStatusBadge(pdf, row.difference, 151, rowY + row.height / 2, row.trend, 25, "difference");
+    drawStatusBadge(pdf, trendLabel(row.trend), 178, rowY + row.height / 2, row.trend, 35, "trend");
     rowY += row.height;
   });
 }
 
-function drawBadge(
+function drawStatusBadge(
   pdf: jsPDF,
   label: string,
   centerX: number,
   centerY: number,
   trend: PerformanceTrend,
-  maxWidth: number
+  width: number,
+  kind: "difference" | "trend"
 ) {
   const colors = trendColors(trend);
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(7);
-  const width = Math.min(maxWidth, Math.max(11, pdf.getTextWidth(label) + 6));
+  pdf.setFontSize(kind === "trend" ? 7.2 : 7.5);
   pdf.setFillColor(colors.fill);
   pdf.setDrawColor(colors.border);
-  pdf.roundedRect(centerX - width / 2, centerY - 3.2, width, 6.4, 2.5, 2.5, "FD");
+  pdf.roundedRect(centerX - width / 2, centerY - 3.8, width, 7.6, 2.8, 2.8, "FD");
+  drawTrendIcon(pdf, centerX - width / 2 + 5, centerY, trend);
   pdf.setTextColor(colors.text);
-  pdf.text(label, centerX, centerY + 1, { align: "center" });
+  pdf.text(label, centerX + 3, centerY + 1.1, { align: "center" });
+}
+
+function drawTrendIcon(pdf: jsPDF, centerX: number, centerY: number, trend: PerformanceTrend) {
+  const colors = trendColors(trend);
+  pdf.setDrawColor(colors.text);
+  pdf.setFillColor(colors.text);
+  pdf.setLineWidth(0.55);
+
+  if (trend === "first") {
+    pdf.circle(centerX, centerY, 1.1, "F");
+    return;
+  }
+
+  if (trend === "equal") {
+    pdf.line(centerX - 2, centerY, centerX + 2, centerY);
+    pdf.line(centerX + 2, centerY, centerX + 0.7, centerY - 1.1);
+    pdf.line(centerX + 2, centerY, centerX + 0.7, centerY + 1.1);
+    return;
+  }
+
+  const pointsUp = trend === "better";
+  const startY = pointsUp ? centerY + 2 : centerY - 2;
+  const endY = pointsUp ? centerY - 2 : centerY + 2;
+  const headOffset = pointsUp ? 1.1 : -1.1;
+  pdf.line(centerX, startY, centerX, endY);
+  pdf.line(centerX, endY, centerX - 1.4, endY + headOffset);
+  pdf.line(centerX, endY, centerX + 1.4, endY + headOffset);
 }
 
 function drawHeadersAndFooters(pdf: jsPDF, representativeName: string, exportDate: string) {
@@ -323,7 +352,7 @@ function prepareRow(pdf: jsPDF, row: PerformanceWheelCriterion): PreparedRow {
     current: formatScore(row.currentTen),
     difference: formatDifference(row.differenceTen),
     trend: row.trend,
-    height: Math.max(8, criterion.length * 3.8 + 3.5),
+    height: Math.max(10.5, criterion.length * 3.8 + 4),
   };
 }
 

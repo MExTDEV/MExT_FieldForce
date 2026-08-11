@@ -609,6 +609,7 @@ Rules:
 - do not mix export and edit actions visually
 - show export status where useful
 - preserve the MExT professional styling in generated output
+- performance PDF score tables use explicit `VORIG` and `HUIDIG` columns, fixed-width difference/trend badges and direction icons for quick comparison
 
 ---
 

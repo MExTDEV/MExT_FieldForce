@@ -103,7 +103,8 @@ The Overzicht tab contains:
 
 - a compact list of open concrete Action Points with deadline, status and progress where available;
 - an individual Action Point link that opens the scoped Action Point detail;
-- a close action only for users with the existing actionPointsClose permission and effective Action Point scope;
+- a close action only for users with the existing actionPointsClose permission and effective Action Point scope, using the shared close-reason dialog;
+- closed Action Points with the selected reason, explanation where provided, closing user and closing date/time;
 - a chronologically descending activity feed across visible Coaching, Action Point, Contactmoment, Hulpaanvraag, Tussentijdse Evaluatie, Retraining and Salestraining records;
 - an initial limited activity page with a Meer tonen action for additional locally available entries.
 

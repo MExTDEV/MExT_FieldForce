@@ -127,10 +127,14 @@ import {
 } from "@/lib/coaching/historical-comparison";
 import { translate, type TranslationKey } from "@/lib/i18n";
 import {
+  ACTION_POINT_CLOSE_REASONS,
+  type ActionPointCloseReason,
+} from "@/lib/action-points/close-reasons";
+import {
   canShowPlannedCoachingIndicator,
   type MyTeamMember,
 } from "@/lib/my-team";
-import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, MockUser, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowScore } from "@/lib/types";
+import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, MockUser, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowActionPoint, WorkflowScore } from "@/lib/types";
 import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
@@ -1649,7 +1653,7 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
       )}
       {activeTab === "personalCriteria" && <PersonalCriteriaPanel representative={representative} />}
       {activeTab === "kpis" && <KpiPanel representativeId={representative.id} />}
-      {activeTab === "actionPoints" && <RepresentativeActionPointsPanel representativeId={representative.id} />}
+      {activeTab === "actionPoints" && <RepresentativeActionPointsPanel representative={representative} />}
       {activeTab === "evaluations" && <RepresentativeEvaluationsPanel representativeId={representative.id} />}
       {["coachings", "contactMoments", "retrainings", "salesTrainings", "helpRequests", "timeline"].includes(activeTab) && <TimelinePanel tab={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={timelineItemTypesForTab(activeTab, timelineItemTypes)} />}
     </div>
@@ -2141,6 +2145,7 @@ function RepresentativeOpenActionPointsPanel({ representative }: { representativ
   const { dataset, refresh: refreshPerformance } = usePerformance();
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const [closingId, setClosingId] = useState<string>();
+  const [closeCandidate, setCloseCandidate] = useState<RepresentativeOpenAction>();
   const [error, setError] = useState<string>();
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
 
@@ -2183,7 +2188,7 @@ function RepresentativeOpenActionPointsPanel({ representative }: { representativ
     can(user, "menu.coaching.actionPoints") &&
     canAccessRepresentative(user, representative);
 
-  async function closeAction(action: RepresentativeOpenAction) {
+  async function closeAction(action: RepresentativeOpenAction, closedReason: ActionPointCloseReason, closedReasonExplanation: string) {
     if (!canClose || closingId) return;
     setClosingId(action.concreteActionPointId);
     setError(undefined);
@@ -2191,11 +2196,17 @@ function RepresentativeOpenActionPointsPanel({ representative }: { representativ
       const response = await fetch("/api/action-points/" + encodeURIComponent(action.concreteActionPointId) + "/close", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId: user.id, representativeId: representative.id }),
+        body: JSON.stringify({
+          actorId: user.id,
+          representativeId: representative.id,
+          closedReason,
+          closedReasonExplanation,
+        }),
       });
       const payload = await response.json() as { actionPoint?: { actionPointId: string }; error?: string };
       if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? t("myTeam.profile.actionPoints.closeError"));
       setClosedIds((current) => new Set(current).add(action.concreteActionPointId));
+      setCloseCandidate(undefined);
       void Promise.all([workflowApi.refresh(), refreshPerformance()]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("myTeam.profile.actionPoints.closeError"));
@@ -2233,7 +2244,10 @@ function RepresentativeOpenActionPointsPanel({ representative }: { representativ
               <button
                 type="button"
                 className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-wait disabled:opacity-50"
-                onClick={() => void closeAction(action)}
+                onClick={() => {
+                  setError(undefined);
+                  setCloseCandidate(action);
+                }}
                 disabled={closingId !== undefined}
                 aria-label={t("myTeam.profile.overview.closeActionPoint") + ": " + action.title}
               >
@@ -2247,6 +2261,15 @@ function RepresentativeOpenActionPointsPanel({ representative }: { representativ
         ))}
         {actions.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{t("myTeam.profile.overview.noOpenActionPoints")}</p>}
       </div>
+      {closeCandidate && (
+        <ActionPointCloseDialog
+          itemTitle={closeCandidate.title}
+          error={error}
+          saving={closingId !== undefined}
+          onCancel={() => setCloseCandidate(undefined)}
+          onConfirm={(closedReason, closedReasonExplanation) => void closeAction(closeCandidate, closedReason, closedReasonExplanation)}
+        />
+      )}
     </div>
   );
 }
@@ -2374,23 +2397,169 @@ function formatRepresentativeActivityDate(value: string, language: MockUser["lan
   return new Date(value).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function RepresentativeActionPointsPanel({ representativeId }: { representativeId: string }) {
-  const { user } = useSession();
+function RepresentativeActionPointsPanel({ representative }: { representative: Representative }) {
+  const { user, managedUsers } = useSession();
   const workflowApi = useWorkflow();
   const { dataset } = usePerformance();
+  const [closeCandidate, setCloseCandidate] = useState<WorkflowActionPoint>();
+  const [closingId, setClosingId] = useState<string>();
+  const [closeError, setCloseError] = useState<string>();
+  const [closedOverrides, setClosedOverrides] = useState<Record<string, Pick<WorkflowActionPoint, "status" | "closedAt" | "closedByUserId" | "closedReason" | "closedReasonExplanation">>>({});
   const workflowActions = workflowApi.visibleInterventions(user)
-    .filter((item) => item.representativeId === representativeId)
+    .filter((item) => item.representativeId === representative.id)
     .flatMap((item) => item.actionPoints);
-  const historicalActions = dataset.historicalActionPoints.filter((item) => item.representativeId === representativeId);
-  const actions = dedupeById([...workflowActions, ...historicalActions])
+  const historicalActions = dataset.historicalActionPoints.filter((item) => item.representativeId === representative.id);
+  const actions = dedupeById([...workflowActions, ...historicalActions]).map((action) => ({
+    ...action,
+    ...(closedOverrides[action.id] ?? {}),
+  }))
     .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
+  const canClose = canCloseConcreteActionPoint(user) &&
+    can(user, "menu.coaching.actionPoints") &&
+    canAccessRepresentative(user, representative);
+
+  async function closeAction(action: WorkflowActionPoint, closedReason: ActionPointCloseReason, closedReasonExplanation: string) {
+    if (!canClose || closingId) return;
+    const actionPointId = action.id.includes(":") ? action.id.split(":")[0] : action.id;
+    setClosingId(action.id);
+    setCloseError(undefined);
+    try {
+      const response = await fetch(`/api/action-points/${encodeURIComponent(actionPointId)}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: user.id,
+          representativeId: representative.id,
+          closedReason,
+          closedReasonExplanation,
+        }),
+      });
+      const payload = await response.json() as {
+        actionPoint?: {
+          status: "afgerond";
+          closedAt: string;
+          closedByUserId: string;
+          closedReason?: ActionPointCloseReason;
+          closedReasonExplanation?: string;
+        };
+        error?: string;
+      };
+      if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? translate(user.language, "myTeam.profile.actionPoints.closeError"));
+      setClosedOverrides((current) => ({
+        ...current,
+        [action.id]: payload.actionPoint!,
+      }));
+      setCloseCandidate(undefined);
+      void workflowApi.refresh();
+    } catch (cause) {
+      setCloseError(cause instanceof Error ? cause.message : translate(user.language, "myTeam.profile.actionPoints.closeError"));
+    } finally {
+      setClosingId(undefined);
+    }
+  }
+
   return (
     <div className="card overflow-hidden">
       <SectionTitle title="Actiepunten" subtitle="Open en afgewerkte opvolgacties voor deze vertegenwoordiger" />
+      {closeError && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{closeError}</p>}
       <div className="divide-y divide-slate-100">
-        {actions.map((action) => <div key={action.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900" title={action.title}>{plainTextSummary(action.title)}</p><p className="mt-0.5 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"}</p></div><StatusBadge status={action.status} /></div>)}
+        {actions.map((action) => {
+          const canCloseAction = canClose && isOpenRepresentativeActionPoint(action.status);
+          const closedByName = action.closedByUserId ? reportingUserName(action.closedByUserId, managedUsers) : "";
+          return (
+            <div key={action.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-900" title={action.title}>{plainTextSummary(action.title)}</p>
+                <p className="mt-0.5 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"}</p>
+                {action.closedAt && <p className="mt-1 text-xs text-slate-500">{translate(user.language, "actionPoints.closedAt")}: {formatDateTime(action.closedAt)}{closedByName ? ` · ${translate(user.language, "actionPoints.closedBy")}: ${closedByName}` : ""}</p>}
+                {action.closedReason && <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">{translate(user.language, "actionPoints.closedReason")}:</span> {translate(user.language, actionPointCloseReasonKey(action.closedReason))}{action.closedReasonExplanation ? ` · ${action.closedReasonExplanation}` : ""}</p>}
+              </div>
+              <StatusBadge status={action.status} />
+              {canCloseAction && <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={() => { setCloseError(undefined); setCloseCandidate(action); }} disabled={closingId !== undefined}>{closingId === action.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : translate(user.language, "actionPoints.actions.close")}</button>}
+            </div>
+          );
+        })}
         {actions.length === 0 && <p className="p-8 text-center text-sm text-slate-500">Geen actiepunten gevonden.</p>}
       </div>
+      {closeCandidate && <ActionPointCloseDialog itemTitle={plainTextSummary(closeCandidate.title)} error={closeError} saving={closingId !== undefined} onCancel={() => setCloseCandidate(undefined)} onConfirm={(closedReason, closedReasonExplanation) => void closeAction(closeCandidate, closedReason, closedReasonExplanation)} />}
+    </div>
+  );
+}
+
+const actionPointCloseReasonKeys: Record<ActionPointCloseReason, TranslationKey> = {
+  GOAL_REACHED: "actionPoints.closeReason.goalReached",
+  NO_LONGER_APPLICABLE: "actionPoints.closeReason.noLongerApplicable",
+  RESOLVED_VIA_OTHER_ACTION: "actionPoints.closeReason.resolvedViaOtherAction",
+  NOT_FEASIBLE: "actionPoints.closeReason.notFeasible",
+  OTHER: "actionPoints.closeReason.other",
+};
+
+function actionPointCloseReasonKey(reason: ActionPointCloseReason) {
+  return actionPointCloseReasonKeys[reason];
+}
+
+function ActionPointCloseDialog({
+  itemTitle,
+  error,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  itemTitle: string;
+  error?: string;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: ActionPointCloseReason, explanation: string) => void;
+}) {
+  const { language } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
+  const [reason, setReason] = useState<ActionPointCloseReason | "">("");
+  const [explanation, setExplanation] = useState("");
+  const [validationError, setValidationError] = useState<string>();
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedExplanation = explanation.trim();
+    if (!reason) {
+      setValidationError(t("actionPoints.closeDialog.reasonRequired"));
+      return;
+    }
+    if (reason === "OTHER" && !trimmedExplanation) {
+      setValidationError(t("actionPoints.closeDialog.explanationRequired"));
+      return;
+    }
+    setValidationError(undefined);
+    onConfirm(reason, trimmedExplanation);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/50 p-4">
+      <form className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onSubmit={submit}>
+        <div className="border-b border-slate-100 p-5">
+          <h2 className="text-lg font-bold text-slate-950">{t("actionPoints.closeDialog.title")}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{t("actionPoints.closeDialog.message")}</p>
+          <p className="mt-2 truncate text-sm font-semibold text-slate-900" title={itemTitle}>{itemTitle}</p>
+        </div>
+        <div className="space-y-4 p-5">
+          <label>
+            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("actionPoints.closeDialog.reasonLabel")} *</span>
+            <select className="field" value={reason} disabled={saving} onChange={(event) => { setReason(event.target.value as ActionPointCloseReason | ""); setValidationError(undefined); }}>
+              <option value="">{t("actionPoints.closeDialog.reasonPlaceholder")}</option>
+              {ACTION_POINT_CLOSE_REASONS.map((option) => <option key={option} value={option}>{t(actionPointCloseReasonKey(option))}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("actionPoints.closeDialog.explanationLabel")}{reason === "OTHER" ? " *" : ""}</span>
+            <textarea className="field min-h-24 resize-y" value={explanation} disabled={saving} maxLength={2000} placeholder={t("actionPoints.closeDialog.explanationPlaceholder")} onChange={(event) => { setExplanation(event.target.value); setValidationError(undefined); }} />
+            <span className="mt-1 block text-xs text-slate-400">{t("actionPoints.closeDialog.explanationHint")}</span>
+          </label>
+          {(validationError || error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{validationError ?? error}</p>}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>{t("actionPoints.closeDialog.cancel")}</button>
+          <button type="submit" className="btn-primary" disabled={saving}>{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{t("actionPoints.closeDialog.confirm")}</button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -4624,7 +4793,7 @@ function ScopedActionPoints() {
   const [draft, setDraft] = useState<ActionDefinitionDraft>();
   const [detailAction, setDetailAction] = useState<ActionPointOverviewItem>();
   const [closeCandidate, setCloseCandidate] = useState<ActionPointOverviewItem>();
-  const [closedWorkflowActions, setClosedWorkflowActions] = useState<Record<string, Pick<ActionPointOverviewItem, "status" | "closedAt" | "closedByUserId" | "closedByName" | "updatedAt">>>({});
+  const [closedWorkflowActions, setClosedWorkflowActions] = useState<Record<string, Pick<ActionPointOverviewItem, "status" | "closedAt" | "closedByUserId" | "closedByName" | "closedReason" | "closedReasonExplanation" | "updatedAt">>>({});
   const allowed = canAccessActionPointsOverview(user, modules);
   const canCreateDefinitions = canCreateActionPointDefinition(user);
   const canManageDefinitions = canManageActionPointDefinitions(user);
@@ -4651,6 +4820,8 @@ function ScopedActionPoints() {
         closedAt: override?.closedAt ?? action.closedAt,
         closedByUserId: override?.closedByUserId ?? action.closedByUserId,
         closedByName: override?.closedByName ?? (action.closedByUserId ? reportingUserName(action.closedByUserId, managedUsers) : undefined),
+        closedReason: override?.closedReason ?? action.closedReason,
+        closedReasonExplanation: override?.closedReasonExplanation ?? action.closedReasonExplanation,
         title: action.title,
         description: action.linkedKpi ? `KPI: ${action.linkedKpi}` : "",
         tipsAndTricks: "",
@@ -4975,7 +5146,7 @@ function ScopedActionPoints() {
     }
   }
 
-  async function closeConcreteActionPoint(item: ActionPointOverviewItem) {
+  async function closeConcreteActionPoint(item: ActionPointOverviewItem, closedReason: ActionPointCloseReason, closedReasonExplanation: string) {
     if (!item.concreteActionPointId) return;
     setSaving(true);
     setError(undefined);
@@ -4986,6 +5157,8 @@ function ScopedActionPoints() {
         body: JSON.stringify({
           actorId: user.id,
           representativeId: item.representativeId,
+          closedReason,
+          closedReasonExplanation,
         }),
       });
       const payload = await response.json() as {
@@ -4996,6 +5169,8 @@ function ScopedActionPoints() {
           closedAt: string;
           closedByUserId: string;
           closedByName: string;
+          closedReason?: ActionPointCloseReason;
+          closedReasonExplanation?: string;
         };
         error?: string;
       };
@@ -5009,6 +5184,8 @@ function ScopedActionPoints() {
           closedAt: closedAction.closedAt,
           closedByUserId: closedAction.closedByUserId,
           closedByName: closedAction.closedByName,
+          closedReason: closedAction.closedReason,
+          closedReasonExplanation: closedAction.closedReasonExplanation,
           updatedAt: closedAction.closedAt,
         },
         [key]: {
@@ -5016,6 +5193,8 @@ function ScopedActionPoints() {
           closedAt: closedAction.closedAt,
           closedByUserId: closedAction.closedByUserId,
           closedByName: closedAction.closedByName,
+          closedReason: closedAction.closedReason,
+          closedReasonExplanation: closedAction.closedReasonExplanation,
           updatedAt: closedAction.closedAt,
         },
       }));
@@ -5027,6 +5206,8 @@ function ScopedActionPoints() {
         closedAt: closedAction.closedAt,
         closedByUserId: closedAction.closedByUserId,
         closedByName: closedAction.closedByName,
+        closedReason: closedAction.closedReason,
+        closedReasonExplanation: closedAction.closedReasonExplanation,
         updatedAt: closedAction.closedAt,
       } : current);
       setNotice(translate(user.language, "actionPoints.closeSuccess"));
@@ -5325,8 +5506,10 @@ function ScopedActionPoints() {
               <ReadOnlyField label="Periode" value={actionPointDateLabel(item)} />
               <ReadOnlyField label="Eigenaar" value={item.ownerName || "Niet toegewezen"} />
               <ReadOnlyField label="Target" value={item.targetValue === undefined ? "Geen target" : String(item.targetValue)} />
-              {item.closedAt && <ReadOnlyField label={translate(user.language, "actionPoints.closedAt")} value={formatShortDate(item.closedAt.slice(0, 10))} />}
+              {item.closedAt && <ReadOnlyField label={translate(user.language, "actionPoints.closedAt")} value={formatDateTime(item.closedAt)} />}
               {item.closedByName && <ReadOnlyField label={translate(user.language, "actionPoints.closedBy")} value={item.closedByName} />}
+              {item.closedReason && <ReadOnlyField label={translate(user.language, "actionPoints.closedReason")} value={translate(user.language, actionPointCloseReasonKey(item.closedReason))} />}
+              {item.closedReasonExplanation && <ReadOnlyField label={translate(user.language, "actionPoints.closedReasonExplanation")} value={item.closedReasonExplanation} />}
             </div>
 
             <div>
@@ -5361,7 +5544,7 @@ function ScopedActionPoints() {
               </>
             )}
             {canCloseThis && (
-              <button type="button" className="btn-primary" onClick={() => setCloseCandidate(item)} disabled={saving}>
+              <button type="button" className="btn-primary" onClick={() => { setError(undefined); setCloseCandidate(item); }} disabled={saving}>
                 {translate(user.language, "actionPoints.actions.close")}
               </button>
             )}
@@ -5374,22 +5557,13 @@ function ScopedActionPoints() {
 
   function renderCloseDialog(item: ActionPointOverviewItem) {
     return (
-      <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/50 p-4">
-        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-          <div className="border-b border-slate-100 p-5">
-            <h2 className="text-lg font-bold text-slate-950">{translate(user.language, "actionPoints.closeDialog.title")}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{translate(user.language, "actionPoints.closeDialog.message")}</p>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2 p-5">
-            <button type="button" className="btn-secondary" onClick={() => setCloseCandidate(undefined)} disabled={saving}>
-              {translate(user.language, "actionPoints.closeDialog.cancel")}
-            </button>
-            <button type="button" className="btn-primary" onClick={() => void closeConcreteActionPoint(item)} disabled={saving}>
-              {translate(user.language, "actionPoints.closeDialog.confirm")}
-            </button>
-          </div>
-        </div>
-      </div>
+      <ActionPointCloseDialog
+        itemTitle={item.title}
+        error={error}
+        saving={saving}
+        onCancel={() => setCloseCandidate(undefined)}
+        onConfirm={(closedReason, closedReasonExplanation) => void closeConcreteActionPoint(item, closedReason, closedReasonExplanation)}
+      />
     );
   }
 

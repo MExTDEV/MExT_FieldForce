@@ -25,6 +25,7 @@ import type {
   CoachingSimpleScore,
 } from "@/lib/types";
 import type { Country } from "@/lib/types";
+import { isActionPointCloseReason } from "@/lib/action-points/close-reasons";
 import { dedupeById, dedupeWorkflowState } from "@/lib/coaching/visibility";
 import { toPriority as toActionDefinitionPriority } from "@/lib/server/action-definitions";
 import {
@@ -198,7 +199,7 @@ export async function loadWorkflowStateFromDatabase(
         scores: item.scores.filter((score) => !score.category?.startsWith("Dossier:")).map(toWorkflowScore),
         actionPoints: item.coachingActions.length
           ? item.coachingActions.map(toCoachingWorkflowAction)
-          : item.actionPoints.map(toWorkflowActionPoint),
+          : item.actionPoints.map((action) => toWorkflowActionPoint(action, item.representativeId)),
         dossier: item.coachingDetail
           ? {
               arrivalTime: item.coachingDetail.arrivalTime ?? "",
@@ -277,7 +278,7 @@ export async function loadWorkflowStateFromDatabase(
         discussedThemes: parseJsonArray(item.contactMoment.discussedThemes),
         conclusion: item.contactMoment.conclusion ?? "",
         reportHtml: item.contactMoment.reportHtml ?? item.contactMoment.conclusion ?? "",
-        actionPoints: item.actionPoints.map(toWorkflowActionPoint),
+        actionPoints: item.actionPoints.map((action) => toWorkflowActionPoint(action, item.representativeId)),
         finalSnapshot: item.contactMoment.finalSnapshot ?? undefined,
         sharedAt: item.contactMoment.sharedAt?.toISOString(),
         sharedById: item.contactMoment.sharedById ?? undefined,
@@ -308,7 +309,7 @@ export async function loadWorkflowStateFromDatabase(
           date: dateOnly(item.plannedAt) ?? "",
           trainer: item.trainingDetail.trainer ?? "",
           result: item.trainingDetail.result ?? "",
-          actionPoints: item.actionPoints.map(toWorkflowActionPoint),
+          actionPoints: item.actionPoints.map((action) => toWorkflowActionPoint(action, item.representativeId)),
           status: fromTrainingStatus(item.status),
           sourceHelpRequestId: item.trainingDetail.sourceHelpRequestId ?? undefined,
           createdAt: item.createdAt.toISOString(),
@@ -1138,18 +1139,34 @@ function toWorkflowActionPoint(item: {
   description: string;
   closedAt?: Date | null;
   closedByUserId?: string | null;
-}): WorkflowActionPoint {
+  closedReason?: string | null;
+  closedReasonExplanation?: string | null;
+  assignments?: {
+    representativeId: string;
+    status: string;
+    closedAt?: Date | null;
+    closedByUserId?: string | null;
+    closedReason?: string | null;
+    closedReasonExplanation?: string | null;
+  }[];
+}, representativeId?: string): WorkflowActionPoint {
+  const assignment = representativeId
+    ? item.assignments?.find((candidate) => candidate.representativeId === representativeId)
+    : undefined;
+  const closedReason = assignment?.closedReason ?? item.closedReason;
   return {
     id: item.id,
     title: item.title,
     type: fromActionType(item.type),
     due: dateOnly(item.dueDate) ?? "",
-    status: fromActionStatus(item.status),
+    status: fromActionStatus(assignment?.status ?? item.status),
     owner: item.ownerId,
     priority: fromPriority(item.priority),
     description: item.description || undefined,
-    closedAt: item.closedAt?.toISOString(),
-    closedByUserId: item.closedByUserId ?? undefined,
+    closedAt: (assignment?.closedAt ?? item.closedAt)?.toISOString(),
+    closedByUserId: assignment?.closedByUserId ?? item.closedByUserId ?? undefined,
+    closedReason: isActionPointCloseReason(closedReason) ? closedReason : undefined,
+    closedReasonExplanation: assignment?.closedReasonExplanation ?? item.closedReasonExplanation ?? undefined,
   };
 }
 

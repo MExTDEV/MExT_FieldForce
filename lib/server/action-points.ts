@@ -1,6 +1,7 @@
 import { ActionPointStatus, Prisma } from "@prisma/client";
 
-import { forbidden, notFound } from "@/lib/server/api";
+import { badRequest, forbidden, notFound } from "@/lib/server/api";
+import { isActionPointCloseReason, type ActionPointCloseReason } from "@/lib/action-points/close-reasons";
 import { prisma } from "@/lib/server/db";
 import { createInAppNotification } from "@/lib/server/notifications";
 import type { Country, MockUser } from "@/lib/types";
@@ -21,6 +22,8 @@ const actionPointCloseSelect = {
   status: true,
   closedAt: true,
   closedByUserId: true,
+  closedReason: true,
+  closedReasonExplanation: true,
   updatedAt: true,
   representative: {
     select: {
@@ -47,6 +50,8 @@ const actionPointCloseSelect = {
       status: true,
       closedAt: true,
       closedByUserId: true,
+      closedReason: true,
+      closedReasonExplanation: true,
       representative: {
         select: {
           id: true,
@@ -83,12 +88,15 @@ export type ClosedActionPointResult = {
   closedAt: string;
   closedByUserId: string;
   closedByName: string;
+  closedReason?: ActionPointCloseReason;
+  closedReasonExplanation?: string;
 };
 
 export async function closeActionPoint(
   actor: MockUser,
-  input: { actionPointId: string; representativeId?: string }
+  input: { actionPointId: string; representativeId?: string; closedReason: string; closedReasonExplanation: string }
 ): Promise<ClosedActionPointResult> {
+  const closedReason = validateCloseReason(input.closedReason, input.closedReasonExplanation);
   const actionPoint = await prisma.actionPoint.findUnique({
     where: { id: input.actionPointId },
     select: actionPointCloseSelect,
@@ -115,6 +123,8 @@ export async function closeActionPoint(
           status: "AFGEROND",
           closedAt,
           closedByUserId: actor.id,
+          closedReason: closedReason.value,
+          closedReasonExplanation: closedReason.explanation || null,
         },
       });
       const current = await tx.actionPoint.findUniqueOrThrow({
@@ -124,7 +134,7 @@ export async function closeActionPoint(
       const currentAssignment = current.assignments.find((item) => item.id === assignment.id);
       if (!currentAssignment) throw new Error("Actiepunttoewijzing niet gevonden.");
       if (updated.count === 1) {
-        await writeActionPointCloseAudit(tx, actor.id, actionPoint, assignment.id, assignment.status, target);
+        await writeActionPointCloseAudit(tx, actor.id, actionPoint, assignment.id, assignment.status, target, closedReason);
       }
       return { result: serializeClosedAssignment(current, currentAssignment), changed: updated.count === 1 };
     });
@@ -148,6 +158,8 @@ export async function closeActionPoint(
         status: "AFGEROND",
         closedAt,
         closedByUserId: actor.id,
+        closedReason: closedReason.value,
+        closedReasonExplanation: closedReason.explanation || null,
       },
     });
     const current = await tx.actionPoint.findUniqueOrThrow({
@@ -155,7 +167,7 @@ export async function closeActionPoint(
       select: actionPointCloseSelect,
     });
     if (updated.count === 1) {
-      await writeActionPointCloseAudit(tx, actor.id, actionPoint, undefined, actionPoint.status, target);
+      await writeActionPointCloseAudit(tx, actor.id, actionPoint, undefined, actionPoint.status, target, closedReason);
     }
     return { result: serializeClosedActionPoint(current), changed: updated.count === 1 };
   });
@@ -200,13 +212,28 @@ function isClosed(status: ActionPointStatus, closedAt: Date | null) {
   return Boolean(closedAt) || closedStatuses.has(status);
 }
 
+function validateCloseReason(value: string, explanation: string) {
+  if (!isActionPointCloseReason(value)) {
+    badRequest("Kies een geldige reden om het actiepunt af te sluiten.");
+  }
+  const trimmedExplanation = explanation.trim();
+  if (trimmedExplanation.length > 2000) {
+    badRequest("De toelichting mag maximaal 2000 tekens bevatten.");
+  }
+  if (value === "OTHER" && !trimmedExplanation) {
+    badRequest("Geef een toelichting wanneer je Andere kiest.");
+  }
+  return { value, explanation: trimmedExplanation };
+}
+
 async function writeActionPointCloseAudit(
   tx: Prisma.TransactionClient,
   actorId: string,
   actionPoint: ActionPointForClose,
   assignmentId: string | undefined,
   oldStatus: ActionPointStatus,
-  target: TargetUser
+  target: TargetUser,
+  closeReason: { value: ActionPointCloseReason; explanation: string }
 ) {
   await tx.auditLog.create({
     data: {
@@ -218,6 +245,8 @@ async function writeActionPointCloseAudit(
         status: oldStatus,
         assignmentId,
         representativeId: target.id,
+        closedReason: closeReason.value,
+        closedReasonExplanation: closeReason.explanation || undefined,
       }),
       newValue: JSON.stringify({
         status: "AFGEROND",
@@ -256,6 +285,8 @@ function serializeClosedActionPoint(actionPoint: ActionPointForClose): ClosedAct
     closedAt: (actionPoint.closedAt ?? actionPoint.updatedAt ?? new Date()).toISOString(),
     closedByUserId: actionPoint.closedByUserId ?? "",
     closedByName: fullName(actionPoint.closedBy),
+    closedReason: isActionPointCloseReason(actionPoint.closedReason) ? actionPoint.closedReason : undefined,
+    closedReasonExplanation: actionPoint.closedReasonExplanation ?? undefined,
   };
 }
 
@@ -271,6 +302,8 @@ function serializeClosedAssignment(
     closedAt: (assignment.closedAt ?? new Date()).toISOString(),
     closedByUserId: assignment.closedByUserId ?? "",
     closedByName: fullName(assignment.closedBy),
+    closedReason: isActionPointCloseReason(assignment.closedReason) ? assignment.closedReason : undefined,
+    closedReasonExplanation: assignment.closedReasonExplanation ?? undefined,
   };
 }
 

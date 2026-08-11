@@ -107,6 +107,19 @@ Close metadata:
 
 - `closedAt`;
 - `closedByUserId`.
+- `closedReason` from the fixed close-reason list;
+- optional `closedReasonExplanation`, except `OTHER` requires an explanation.
+
+The fixed close-reason list is:
+
+- goal reached;
+- no longer applicable;
+- resolved via another action;
+- not feasible;
+- other.
+
+The selected reason and explanation are shown with the closed Action Point in
+the user fiche and the Action Points overview.
 
 Permission:
 
@@ -159,7 +172,6 @@ Not yet fully defined:
 - whether closure needs approval;
 - whether a closed point may reopen;
 - reassignment rules;
-- evidence or comment requirements;
 - overdue escalation.
 
 Do not invent these rules.
