@@ -161,6 +161,8 @@ import {
   type CoachingReportIssue,
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
+import { calculateOfficialCoachingScore } from "@/lib/coaching/score";
+import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
   hasHtmlMarkup,
@@ -1940,12 +1942,29 @@ function TimelinePanel({
   representativeName: string;
   itemTypes: FicheTimelineItemType[];
 }) {
-  const { user } = useSession();
+  const { user, managedUsers } = useSession();
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const workflowApi = useWorkflow();
   const { dataset: performanceDataset } = usePerformance();
+  const [busyActionId, setBusyActionId] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
+  const [actionNotice, setActionNotice] = useState<string>();
   const allowedTypes = new Set(itemTypes);
-  const workflowItems = [...new Map([
+  type TimelineItem = {
+    id: string;
+    type: string;
+    date: string;
+    title?: string;
+    owner: string;
+    status: string;
+    score?: number;
+    intervention?: CoachingIntervention;
+    lastApprovalReminderAt?: string;
+    canRemindApproval?: boolean;
+    canMarkNotExecuted?: boolean;
+    canContinue?: boolean;
+  };
+  const rawItems: TimelineItem[] = [
     ...(allowedTypes.has("begeleiding")
       ? [
           ...performanceDataset.historicalCoachings
@@ -1954,13 +1973,39 @@ function TimelinePanel({
               id: item.id,
               type: "begeleiding" as const,
               date: item.date,
+              title: "Begeleiding",
               owner: item.ownerName,
               status: item.status,
               score: item.overallScore,
             })),
           ...workflowApi.visibleInterventions(user)
             .filter((item) => item.representativeId === representativeId)
-            .map((item) => ({ id: item.id, type: "begeleiding" as const, date: item.plannedDate ?? item.updatedAt, owner: "Coaching", status: item.status, score: undefined })),
+            .map((item) => {
+              const lastApprovalReminderAt = item.auditTrail
+                ?.filter((entry) => entry.action === "coaching.approval_reminded")
+                .sort((left, right) => right.at.localeCompare(left.at))[0]?.at;
+              const canManage = canManageCoaching(user, item);
+              return {
+                id: item.id,
+                type: "begeleiding" as const,
+                date: item.plannedDate ?? item.updatedAt,
+                title: item.title,
+                owner: reportingUserName(item.ownerId, managedUsers),
+                status: item.status,
+                score: item.dossier
+                  ? calculateTotalCoachingScore(item.dossier, item.appointments ?? [])
+                  : undefined,
+                intervention: item,
+                lastApprovalReminderAt,
+                canRemindApproval: canManage && item.status === "verzonden_ter_akkoord",
+                canMarkNotExecuted: canManage && item.status === "gepland" && isScheduledCoachingEndPast({
+                  plannedDate: item.plannedDate,
+                  endTime: item.endTime,
+                  country: item.country,
+                }),
+                canContinue: canManage && item.status === "in_uitvoering",
+              };
+            }),
         ]
       : []),
     ...(allowedTypes.has("contactmoment")
@@ -1994,8 +2039,39 @@ function TimelinePanel({
         allowedTypes.has(item.type)
       )
       .map((item) => ({ id: item.id, type: item.type, date: item.createdAt, owner: item.title, status: item.status })),
-  ].map((item) => [`${item.type}:${item.id}`, item])).values()]
+  ];
+  const workflowItems = [...new Map([
+    ...rawItems.filter((item) => item.intervention),
+    ...rawItems.filter((item) => !item.intervention),
+  ].map((item) => [`${item.type}:${item.id}`, item] as const)).values()]
     .sort((a, b) => b.date.localeCompare(a.date));
+
+  async function executeCoachingAction(item: TimelineItem, action: "remind_approval" | "not_executed") {
+    if (!item.intervention || busyActionId) return;
+    if (action === "not_executed" && !window.confirm(t("myTeam.profile.coachings.notExecutedConfirm"))) return;
+    setBusyActionId(`${item.id}:${action}`);
+    setActionError(undefined);
+    setActionNotice(undefined);
+    try {
+      const response = await fetch(`/api/workflows/coaching/${encodeURIComponent(item.id)}/actions?actorId=${encodeURIComponent(user.id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const payload = await response.json() as { error?: string; mailStatus?: "sent" | "skipped" | "error" };
+      if (!response.ok) throw new Error(payload.error ?? t("myTeam.profile.coachings.actionError"));
+      await workflowApi.refresh();
+      setActionNotice(action === "remind_approval"
+        ? payload.mailStatus === "error"
+          ? t("myTeam.profile.coachings.reminderMailError")
+          : t("myTeam.profile.coachings.reminderSent")
+        : t("myTeam.profile.coachings.notExecutedSuccess"));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : t("myTeam.profile.coachings.actionError"));
+    } finally {
+      setBusyActionId(undefined);
+    }
+  }
 
   const title = t(ficheTabTitleKey(tab));
   const isCoachings = tab === "coachings";
@@ -2003,34 +2079,49 @@ function TimelinePanel({
   return (
     <div className="card overflow-hidden">
       <SectionTitle title={title} subtitle={t("myTeam.profile.timeline.subtitle").replace("{name}", representativeName)} />
+      {actionError && isCoachings && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{actionError}</p>}
+      {actionNotice && isCoachings && <p className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">{actionNotice}</p>}
       {isCoachings && workflowItems.length > 0 && (
-        <div className="hidden grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_44px] gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+        <div className="hidden grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_minmax(150px,1fr)] gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
           <span>{t("myTeam.profile.column.date")}</span>
           <span>{t("myTeam.profile.column.responsible")}</span>
           <span>{t("myTeam.profile.column.score")}</span>
           <span>{t("myTeam.profile.column.status")}</span>
-          <span />
+          <span>{t("myTeam.profile.column.actions")}</span>
         </div>
       )}
       <div className="divide-y divide-slate-100">
-        {workflowItems.map((item) => (
-          <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className={isCoachings ? "grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 focus-visible:bg-brand-50 md:grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_44px] md:items-center md:gap-3" : "flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50"}>
-            {isCoachings ? (
-              <>
-                <span className="font-semibold text-slate-800">{formatShortDate(item.date)}</span>
-                <span className="truncate text-slate-600">{item.owner}</span>
-                <span className="font-bold text-slate-900">{formatOfficialCoachingScore("score" in item ? item.score : undefined)}</span>
-                <StatusBadge status={item.status} />
-                <ChevronRight className="hidden h-4 w-4 justify-self-end text-slate-300 md:block" />
-              </>
-            ) : (
-              <>
-                <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700"><ClipboardCheck className="h-4 w-4" /></div>
-                <div className="min-w-0 flex-1"><p className="font-semibold capitalize text-slate-900">{item.type.replace("_", " ")}</p><p className="mt-0.5 truncate text-xs text-slate-500">{formatShortDate(item.date)} · {item.owner}</p></div>
-                <StatusBadge status={item.status} />
-                <ChevronRight className="h-4 w-4 text-slate-300" />
-              </>
-            )}
+        {workflowItems.map((item) => isCoachings ? (
+          <div key={`${item.type}:${item.id}`} className="grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 md:grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_minmax(150px,1fr)] md:items-center md:gap-3">
+            <Link href={timelineItemHref(item.type, item.id)} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+              <span className="block font-semibold text-slate-800">{formatShortDate(item.date)}</span>
+              {item.title && <span className="block truncate text-xs text-slate-500">{item.title}</span>}
+            </Link>
+            <span className="truncate text-slate-600">{item.owner}</span>
+            <span className="font-bold text-slate-900">{formatOfficialCoachingScore(item.score)}</span>
+            <StatusBadge status={item.status} />
+            <div className="flex min-h-9 flex-wrap items-center gap-2 md:justify-end">
+              {item.canRemindApproval && (
+                <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" title={t("myTeam.profile.coachings.remindApproval")} aria-label={t("myTeam.profile.coachings.remindApproval")} onClick={() => void executeCoachingAction(item, "remind_approval")} disabled={busyActionId !== undefined}>
+                  {busyActionId === `${item.id}:remind_approval` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <><Mail className="h-4 w-4" /> <span>{t("myTeam.profile.coachings.remindApproval")}</span></>}
+                </button>
+              )}
+              {item.canMarkNotExecuted && (
+                <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs text-rose-700" onClick={() => void executeCoachingAction(item, "not_executed")} disabled={busyActionId !== undefined}>
+                  {busyActionId === `${item.id}:not_executed` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : t("myTeam.profile.coachings.notExecuted")}
+                </button>
+              )}
+              {item.canContinue && <Link href={timelineItemHref(item.type, item.id)} className="btn-secondary px-2.5 py-1.5 text-xs">{t("myTeam.profile.coachings.continue")}</Link>}
+              {!item.canRemindApproval && !item.canMarkNotExecuted && !item.canContinue && <span className="text-slate-400">—</span>}
+              {item.lastApprovalReminderAt && item.status === "verzonden_ter_akkoord" && <span className="basis-full text-[11px] text-slate-500">{t("myTeam.profile.coachings.lastReminder")}: {formatDateTime(item.lastApprovalReminderAt)}</span>}
+            </div>
+          </div>
+        ) : (
+          <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700"><ClipboardCheck className="h-4 w-4" /></div>
+            <div className="min-w-0 flex-1"><p className="font-semibold capitalize text-slate-900">{item.type.replace("_", " ")}</p><p className="mt-0.5 truncate text-xs text-slate-500">{formatShortDate(item.date)} · {item.owner}</p></div>
+            <StatusBadge status={item.status} />
+            <ChevronRight className="h-4 w-4 text-slate-300" />
           </Link>
         ))}
         {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{isCoachings ? t("myTeam.profile.coachings.empty") : t("myTeam.profile.timeline.empty")}</p>}
@@ -2414,6 +2505,12 @@ function RepresentativeActionPointsPanel({ representative }: { representative: R
     ...(closedOverrides[action.id] ?? {}),
   }))
     .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
+  const openActions = actions
+    .filter((action) => isOpenRepresentativeActionPoint(action.status))
+    .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
+  const closedActions = actions
+    .filter((action) => !isOpenRepresentativeActionPoint(action.status))
+    .sort((left, right) => (right.closedAt ?? "").localeCompare(left.closedAt ?? ""));
   const canClose = canCloseConcreteActionPoint(user) &&
     can(user, "menu.coaching.actionPoints") &&
     canAccessRepresentative(user, representative);
@@ -2458,19 +2555,18 @@ function RepresentativeActionPointsPanel({ representative }: { representative: R
     }
   }
 
-  return (
-    <div className="card overflow-hidden">
-      <SectionTitle title="Actiepunten" subtitle="Open en afgewerkte opvolgacties voor deze vertegenwoordiger" />
-      {closeError && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{closeError}</p>}
+  function renderActionRows(items: typeof actions, emptyKey: TranslationKey) {
+    return (
       <div className="divide-y divide-slate-100">
-        {actions.map((action) => {
+        {items.map((action) => {
           const canCloseAction = canClose && isOpenRepresentativeActionPoint(action.status);
           const closedByName = action.closedByUserId ? reportingUserName(action.closedByUserId, managedUsers) : "";
+          const actionPointId = action.id.includes(":") ? action.id.split(":")[0] : action.id;
           return (
             <div key={action.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-900" title={action.title}>{plainTextSummary(action.title)}</p>
-                <p className="mt-0.5 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"}</p>
+                <Link href={actionPointHref(representative.id, actionPointId)} className="block truncate text-sm font-semibold text-slate-900 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" title={action.title}>{plainTextSummary(action.title)}</Link>
+                <p className="mt-0.5 text-xs text-slate-500">{translate(user.language, "myTeam.profile.actionPoints.deadline")}: {action.due ? formatShortDate(action.due) : translate(user.language, "myTeam.profile.actionPoints.noDeadline")}</p>
                 {action.closedAt && <p className="mt-1 text-xs text-slate-500">{translate(user.language, "actionPoints.closedAt")}: {formatDateTime(action.closedAt)}{closedByName ? ` · ${translate(user.language, "actionPoints.closedBy")}: ${closedByName}` : ""}</p>}
                 {action.closedReason && <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">{translate(user.language, "actionPoints.closedReason")}:</span> {translate(user.language, actionPointCloseReasonKey(action.closedReason))}{action.closedReasonExplanation ? ` · ${action.closedReasonExplanation}` : ""}</p>}
               </div>
@@ -2479,8 +2575,23 @@ function RepresentativeActionPointsPanel({ representative }: { representative: R
             </div>
           );
         })}
-        {actions.length === 0 && <p className="p-8 text-center text-sm text-slate-500">Geen actiepunten gevonden.</p>}
+        {items.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{translate(user.language, emptyKey)}</p>}
       </div>
+    );
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <SectionTitle title={translate(user.language, "myTeam.profile.tab.actionPoints")} subtitle={translate(user.language, "myTeam.profile.actionPoints.subtitle")} />
+      {closeError && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{closeError}</p>}
+      <section>
+        <div className="border-y border-slate-100 bg-slate-50 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">{translate(user.language, "myTeam.profile.actionPoints.openTitle")}</h3></div>
+        {renderActionRows(openActions, "myTeam.profile.actionPoints.noOpen")}
+      </section>
+      <section className="border-t border-slate-200">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">{translate(user.language, "myTeam.profile.actionPoints.closedTitle")}</h3></div>
+        {renderActionRows(closedActions, "myTeam.profile.actionPoints.noClosed")}
+      </section>
       {closeCandidate && <ActionPointCloseDialog itemTitle={plainTextSummary(closeCandidate.title)} error={closeError} saving={closingId !== undefined} onCancel={() => setCloseCandidate(undefined)} onConfirm={(closedReason, closedReasonExplanation) => void closeAction(closeCandidate, closedReason, closedReasonExplanation)} />}
     </div>
   );
@@ -4289,18 +4400,10 @@ function formatAppointmentAverage(appointment: { scores: Array<{ score: Coaching
 }
 
 function calculateTotalCoachingScore(dossier: CoachingDossier, appointments: CoachingAppointment[]) {
-  const appointmentAverages = appointments.flatMap((appointment) => {
-    const average = averageFive(appointment.scores);
-    return average === undefined ? [] : [average];
+  return calculateOfficialCoachingScore({
+    dossierScores: [...dossier.generalScores, ...dossier.personalityScores].map((score) => score.score),
+    appointmentScores: appointments.map((appointment) => appointment.scores.map((score) => score.score)),
   });
-  const appointmentScore = appointmentAverages.length
-    ? appointmentAverages.reduce((sum, value) => sum + value, 0) / appointmentAverages.length
-    : undefined;
-  const mainScore = averageFive([...dossier.generalScores, ...dossier.personalityScores]);
-  if (appointmentScore === undefined && mainScore === undefined) return undefined;
-  if (appointmentScore === undefined) return (mainScore ?? 0) * 20;
-  if (mainScore === undefined) return appointmentScore * 20;
-  return (appointmentScore * 20 * 0.8) + (mainScore * 20 * 0.2);
 }
 
 function coachingInterventionAsHistory(

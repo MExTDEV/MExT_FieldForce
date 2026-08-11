@@ -116,6 +116,18 @@ The fiche header shows the person's team, country, role/level, e-mail and phone 
 
 The Begeleidingen tab may show the official total score from the shared performance dataset (`overallScore`). Missing or not-yet-visible scores are shown as a neutral dash, not as zero.
 
+The Actiepunten tab is split into Open actiepunten and Gesloten actiepunten.
+Open items remain sorted by deadline; closed items are sorted by closing date,
+newest first. Both sections retain scoped detail links and the existing close
+permission and close-reason dialog.
+
+The Begeleidingen tab shows the actual `ownerId` user as Uitvoerder and uses
+the shared official score calculation. Its Acties column may show only actions
+allowed by the current lifecycle and effective scope: a reminder for missing
+approval, Niet uitgevoerd after the planned end, or Verder afwerken for an
+editable in-progress record. Mutations are re-authorised server-side and are
+audited.
+
 ---
 
 # Grouping and Search

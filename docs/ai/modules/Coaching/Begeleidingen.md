@@ -100,6 +100,24 @@ Other users:
 
 Opens report/history mode.
 
+## Mijn Team actions
+
+The Mijn Team Begeleidingen list uses the shared workflow record and official
+score calculation. The executor is resolved from the intervention owner, not
+from the planner or a fixed presentation label.
+
+For `VERZONDEN_TER_AKKOORD`, an authorised manager may remind only the coached
+person whose approval is pending. The reminder resets the existing approval
+notification state, uses the existing mail service and records sender,
+recipient and timestamp in the audit log. MAIL TEST routing remains owned by
+the central mail service; a ten-minute audit-based cooldown prevents repeated
+reminders.
+
+For an expired `GEPLAND` record, an authorised manager may confirm the
+existing `NIET_UITGEVOERD` end status. The server checks the country timezone,
+current status and effective coaching scope, records the closing actor and
+timestamp, and leaves the record read-only.
+
 ---
 
 # Scope and Grouping

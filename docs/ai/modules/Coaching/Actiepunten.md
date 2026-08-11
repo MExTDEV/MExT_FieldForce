@@ -85,6 +85,11 @@ Representatives see only own visible Action Points.
 
 Management users see only records inside effective scope.
 
+In the Mijn Team fiche, concrete items are always presented in two sections:
+open items first and closed items second. Closed items are sorted by
+`closedAt` descending. The shared detail link and existing close lifecycle are
+preserved.
+
 ---
 
 # Operational Close Lifecycle

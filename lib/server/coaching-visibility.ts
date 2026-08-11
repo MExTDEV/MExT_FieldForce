@@ -11,6 +11,7 @@ const representativeReviewStatuses = [
   "GEFINALISEERD",
   "AFGESLOTEN",
   "VOLTOOID",
+  "NIET_UITGEVOERD",
 ] as readonly InterventionStatus[];
 
 export function buildCoachingVisibilityFilter(
