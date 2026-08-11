@@ -26,6 +26,7 @@ import type {
 } from "@/lib/types";
 import type { Country } from "@/lib/types";
 import { isActionPointCloseReason } from "@/lib/action-points/close-reasons";
+import { resolveCoachingApprovalSentForApprovalAt } from "@/lib/coaching/approval-actions";
 import { dedupeById, dedupeWorkflowState } from "@/lib/coaching/visibility";
 import { toPriority as toActionDefinitionPriority } from "@/lib/server/action-definitions";
 import {
@@ -241,7 +242,11 @@ export async function loadWorkflowStateFromDatabase(
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
         finalizedAt: item.finalizedAt?.toISOString() ?? item.completedAt?.toISOString(),
-        sentForApprovalAt: item.sentForApprovalAt?.toISOString(),
+        sentForApprovalAt: resolveCoachingApprovalSentForApprovalAt({
+          sentForApprovalAt: item.sentForApprovalAt,
+          auditTrail: auditByIntervention.get(item.id),
+          approvalCreatedAt: item.approval?.createdAt,
+        }),
         sentForApprovalById: item.sentForApprovalById ?? undefined,
         approvedByRepAt: item.approvedByRepAt?.toISOString(),
         approvedByRepId: item.approvedByRepId ?? undefined,

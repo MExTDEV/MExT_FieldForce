@@ -138,10 +138,14 @@ import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingApp
 import {
   canEditFutureCoachingPlanning,
   canManageCoaching,
-  canManageCoachingApproval,
   coachingOpenHref,
   representativeApprovalHref,
 } from "@/lib/coaching/access";
+import {
+  canOverrideCoachingApproval,
+  canRemindCoachingApproval,
+  isPendingCoachingApprovalStatus,
+} from "@/lib/coaching/approval-actions";
 import {
   buildCoachingScopeGroups,
   type CoachingScopeCountryGroup,
@@ -1984,11 +1988,11 @@ function TimelinePanel({
           ...workflowApi.visibleInterventions(user)
             .filter((item) => item.representativeId === representativeId)
             .map((item) => {
+              const approval = workflowApi.state.approvals.find((entry) => entry.interventionId === item.id);
               const lastApprovalReminderAt = item.auditTrail
                 ?.filter((entry) => entry.action === "coaching.approval_reminded")
                 .sort((left, right) => right.at.localeCompare(left.at))[0]?.at;
               const canManage = canManageCoaching(user, item);
-              const canManageApproval = canManageCoachingApproval(user, item);
               return {
                 id: item.id,
                 type: "begeleiding" as const,
@@ -2001,10 +2005,13 @@ function TimelinePanel({
                   : undefined,
                 intervention: item,
                 lastApprovalReminderAt,
-                canRemindApproval: canManageApproval && item.status === "verzonden_ter_akkoord",
-                canOverrideApproval: canManageApproval &&
-                  item.status === "verzonden_ter_akkoord" &&
-                  isCoachingApprovalOverrideDue({ sentForApprovalAt: item.sentForApprovalAt }),
+                canRemindApproval: canRemindCoachingApproval(user, item),
+                canOverrideApproval: canOverrideCoachingApproval({
+                  currentUser: user,
+                  intervention: item,
+                  approvalCreatedAt: approval?.createdAt,
+                  isDue: isCoachingApprovalOverrideDue,
+                }),
                 canMarkNotExecuted: canManage && item.status === "gepland" && isScheduledCoachingEndPast({
                   plannedDate: item.plannedDate,
                   endTime: item.endTime,
@@ -2048,8 +2055,8 @@ function TimelinePanel({
       .map((item) => ({ id: item.id, type: item.type, date: item.createdAt, owner: item.title, status: item.status })),
   ];
   const workflowItems = [...new Map([
-    ...rawItems.filter((item) => item.intervention),
     ...rawItems.filter((item) => !item.intervention),
+    ...rawItems.filter((item) => item.intervention),
   ].map((item) => [`${item.type}:${item.id}`, item] as const)).values()]
     .sort((a, b) => b.date.localeCompare(a.date));
 
@@ -2128,7 +2135,7 @@ function TimelinePanel({
               )}
               {item.canContinue && <Link href={timelineItemHref(item.type, item.id)} className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs">{t("myTeam.profile.coachings.continue")}</Link>}
               {!item.canRemindApproval && !item.canOverrideApproval && !item.canMarkNotExecuted && !item.canContinue && <span className="text-slate-400">—</span>}
-              {item.lastApprovalReminderAt && item.status === "verzonden_ter_akkoord" && <span className="basis-full text-center text-[11px] text-slate-500">{t("myTeam.profile.coachings.lastReminder")}: {formatDateTime(item.lastApprovalReminderAt)}</span>}
+              {item.lastApprovalReminderAt && isPendingCoachingApprovalStatus(item.status) && <span className="basis-full text-center text-[11px] text-slate-500">{t("myTeam.profile.coachings.lastReminder")}: {formatDateTime(item.lastApprovalReminderAt)}</span>}
             </div>
           </div>
         ) : (

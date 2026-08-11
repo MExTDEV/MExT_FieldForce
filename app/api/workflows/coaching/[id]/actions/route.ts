@@ -10,6 +10,10 @@ import {
   latestCoachingApprovalOverrideSentAt,
 } from "@/lib/coaching/schedule";
 import { isCoachingApprovalManagerRole } from "@/lib/coaching/access";
+import {
+  isPendingCoachingApprovalStatus,
+  resolveCoachingApprovalSentForApprovalAt,
+} from "@/lib/coaching/approval-actions";
 import { Prisma } from "@prisma/client";
 
 const reminderCooldownMs = 10 * 60 * 1000;
@@ -44,7 +48,7 @@ export async function POST(
         endTime: true,
         sentForApprovalAt: true,
         representative: { select: { firstName: true, lastName: true, role: true, email: true } },
-        approval: { select: { representativeId: true } },
+        approval: { select: { representativeId: true, createdAt: true } },
       },
     });
     if (!coaching) notFound("Begeleiding niet gevonden.");
@@ -119,11 +123,11 @@ async function remindApproval(
     title: string;
     status: string;
     representativeId: string;
-    approval: { representativeId: string } | null;
+    approval: { representativeId: string; createdAt: Date } | null;
   },
   actorId: string
 ) {
-  if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
+  if (!isPendingCoachingApprovalStatus(coaching.status)) {
     badRequest("Alleen een begeleiding die ter akkoord is verzonden kan herinnerd worden.");
   }
   const recipientUserId = coaching.approval?.representativeId ?? coaching.representativeId;
@@ -198,14 +202,14 @@ async function overrideApproval(
     status: string;
     representativeId: string;
     sentForApprovalAt: Date | null;
-    approval: { representativeId: string } | null;
+    approval: { representativeId: string; createdAt: Date } | null;
   },
   actorId: string
 ) {
-  if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
+  if (!isPendingCoachingApprovalStatus(coaching.status)) {
     badRequest("COACHING_APPROVAL_OVERRIDE_STATUS_CHANGED");
   }
-  const sentForApprovalAt = coaching.sentForApprovalAt;
+  const sentForApprovalAt = await resolveStoredApprovalSentAt(coaching);
   if (!sentForApprovalAt) {
     badRequest("COACHING_APPROVAL_OVERRIDE_TIMESTAMP_MISSING");
   }
@@ -221,10 +225,16 @@ async function overrideApproval(
         id: coaching.id,
         type: "BEGELEIDING",
         deletedAt: null,
-        status: "VERZONDEN_TER_AKKOORD",
-        sentForApprovalAt: { lte: latestCoachingApprovalOverrideSentAt(now) },
+        status: { in: ["VERZONDEN_TER_AKKOORD", "WACHT_OP_AKKOORD"] },
+        OR: [
+          { sentForApprovalAt: { lte: latestCoachingApprovalOverrideSentAt(now) } },
+          { sentForApprovalAt: null },
+        ],
       },
-      data: { status: "AKKOORD_DOOR_VERTEGENWOORDIGER" },
+      data: {
+        status: "AKKOORD_DOOR_VERTEGENWOORDIGER",
+        sentForApprovalAt,
+      },
     });
     if (update.count !== 1) {
       badRequest("COACHING_APPROVAL_OVERRIDE_STATUS_CHANGED");
@@ -257,4 +267,43 @@ async function overrideApproval(
   const intervention = state.interventions.find((item) => item.id === coaching.id);
   if (!intervention) notFound("Begeleiding niet gevonden.");
   return { action: "override_approval" as const, intervention };
+}
+
+async function resolveStoredApprovalSentAt(coaching: {
+  id: string;
+  sentForApprovalAt: Date | null;
+  approval: { createdAt: Date } | null;
+}) {
+  if (coaching.sentForApprovalAt) return coaching.sentForApprovalAt;
+  const audit = await prisma.auditLog.findMany({
+    where: {
+      entityType: "Intervention",
+      entityId: coaching.id,
+      action: "coaching.sent_for_approval",
+    },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true, action: true, newValue: true },
+  });
+  const resolved = resolveCoachingApprovalSentForApprovalAt({
+    sentForApprovalAt: coaching.sentForApprovalAt,
+    auditTrail: audit.map((entry) => ({
+      at: entry.createdAt.toISOString(),
+      action: entry.action,
+      newValue: parseJsonObject(entry.newValue),
+    })),
+    approvalCreatedAt: coaching.approval?.createdAt,
+  });
+  return resolved ? new Date(resolved) : null;
+}
+
+function parseJsonObject(value: string | null) {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

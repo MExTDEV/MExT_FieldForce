@@ -106,22 +106,28 @@ The Mijn Team Begeleidingen list uses the shared workflow record and official
 score calculation. The executor is resolved from the intervention owner, not
 from the planner or a fixed presentation label.
 
-For `VERZONDEN_TER_AKKOORD`, an authorised manager may remind only the coached
-person whose approval is pending. The reminder resets the existing approval
-notification state, uses the existing mail service and records sender,
-recipient and timestamp in the audit log. MAIL TEST routing remains owned by
-the central mail service; a ten-minute audit-based cooldown prevents repeated
-reminders.
+For `VERZONDEN_TER_AKKOORD` and older pending `WACHT_OP_AKKOORD` records, an
+authorised manager may remind only the coached person whose approval is
+pending. The reminder resets the existing approval notification state, uses the
+existing mail service and records sender, recipient and timestamp in the audit
+log. MAIL TEST routing remains owned by the central mail service; a ten-minute
+audit-based cooldown prevents repeated reminders.
 
 The Mijn Team table displays the official total coaching score as a rounded
 percentage, using the same shared calculation as the report. For a pending
 approval, the table shows `Porren` to an authorised manager. After fourteen
-full days from the stored `sentForApprovalAt` timestamp, an authorised
-Sales Leader, Sales Manager, Country Manager, Group Manager, Admin or Super
-Admin within effective scope may confirm the existing final status manually.
-The workflow remains read-only, does not populate representative-approval
-fields and records the actor, original approval recipient, original send time
-and `ACKNOWLEDGEMENT_TIMEOUT` reason in the audit log.
+calendar days in the application timezone from the actual approval request
+moment, an authorised Sales Leader, Sales Manager, Country Manager, Group
+Manager, Admin or Super Admin within effective scope may confirm the existing
+final status manually. The primary source is `sentForApprovalAt`; older records
+without that value fall back to the `coaching.sent_for_approval` audit entry and
+then to the existing `Approval.createdAt` notification timestamp. The workflow
+remains read-only, does not populate representative-approval fields and records
+the actor, original approval recipient, original send time and
+`ACKNOWLEDGEMENT_TIMEOUT` reason in the audit log.
+The same fallback can be persisted with
+`npm run backfill:coaching-approval-sent-at -- --write`; without `--write` the
+script reports the affected records only.
 
 For an expired `GEPLAND` record, an authorised manager may confirm the
 existing `NIET_UITGEVOERD` end status. The server checks the country timezone,
