@@ -642,7 +642,7 @@ function ContactMomentDetail({ contact }: { contact: ContactMoment }) {
         try {
           const response = await fetch(`${photoBaseUrl}/${encodeURIComponent(photo.id)}?${actorQuery}`);
           if (!response.ok) throw new Error("photo");
-          return { ...photo, dataUrl: await blobToDataUrl(await response.blob()) };
+          return { ...photo, dataUrl: await blobToDataUrl(await response.blob(), t("contactHelp.contact.photoReadError")) };
         } catch {
           return photo;
         }
@@ -1241,11 +1241,11 @@ function isFinalContactMoment(contact: ContactMoment) {
   return contact.status === "afgesloten" || contact.status === "geannuleerd" || contact.status === "niet_uitgevoerd";
 }
 
-function blobToDataUrl(blob: Blob) {
+function blobToDataUrl(blob: Blob, errorMessage: string) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("Blob kon niet worden gelezen."));
+    reader.onerror = () => reject(reader.error ?? new Error(errorMessage));
     reader.readAsDataURL(blob);
   });
 }

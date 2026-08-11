@@ -198,11 +198,10 @@ function formatEventTime(hour: number) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-function representativeName(representatives: Representative[], id?: string) {
+function representativeName(representatives: Representative[], id: string | undefined, language: Language = "nl") {
   const representative = representatives.find((item) => item.id === id);
-  return representative
-    ? `${representative.firstName} ${representative.lastName}`
-    : "Team";
+  if (representative) return `${representative.firstName} ${representative.lastName}`;
+  return language === "fr" ? "Équipe" : "Team";
 }
 
 function eventColor(type: string) {
@@ -317,7 +316,7 @@ export function PlanningCalendar() {
       .map((item) => {
         const participantName = item.subject
           ? `${item.subject.firstName} ${item.subject.lastName}`
-          : representativeName(representatives, item.representativeId);
+          : representativeName(representatives, item.representativeId, language);
         const approvalId = workflow.state.approvals.find((approval) => approval.interventionId === item.id)?.id;
         const href = coachingOpenHref(user, item, today, approvalId);
         const hour = hourFromTime(item.startTime) ?? deterministicHour(item.id);
@@ -346,7 +345,7 @@ export function PlanningCalendar() {
     const contactEvents = isModuleEnabled("CONTACTMOMENTEN") ? workflow.visibleContactMoments(user).map((item) => ({
       id: `contact-${item.id}`,
       title: item.subject || t("contactHelp.contact.pageTitle"),
-      subtitle: representativeName(representatives, item.representativeId),
+      subtitle: representativeName(representatives, item.representativeId, language),
       date: dateKey(parseDate(item.plannedDate ?? item.createdAt)),
       hour: hourFromTime(item.startTime) ?? deterministicHour(item.id),
       duration: durationFromTimes(item.startTime, item.endTime),
@@ -366,7 +365,7 @@ export function PlanningCalendar() {
     const retrainingEvents = isModuleEnabled("RETRAININGEN") ? workflow.visibleRetrainings(user).map((item) => ({
       id: `retraining-${item.id}`,
       title: item.theme || t("coaching.training.retraining"),
-      subtitle: representativeName(representatives, item.representativeId),
+      subtitle: representativeName(representatives, item.representativeId, language),
       date: dateKey(parseDate(item.date)),
       hour: deterministicHour(item.id),
       duration: 1,
@@ -402,7 +401,7 @@ export function PlanningCalendar() {
     const helpRequestEvents = isModuleEnabled("HULPAANVRAGEN") ? workflow.visibleHelpRequests(user).map((item) => ({
       id: `help-${item.id}`,
       title: item.subject || t("contactHelp.help.pageTitle"),
-      subtitle: representativeName(representatives, item.representativeId),
+      subtitle: representativeName(representatives, item.representativeId, language),
       date: dateKey(parseDate(item.createdAt)),
       hour: deterministicHour(item.id),
       duration: 1,

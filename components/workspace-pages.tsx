@@ -214,25 +214,25 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   const routeModule = moduleForRoute(segments[0] ?? "");
 
   if (sessionLoading) {
-    return <EmptyState title="Gebruikerssessie laden" description="De actieve gebruiker en rechten worden uit MariaDB opgehaald." />;
+    return <EmptyState title={translate("nl", "app.session.loadingTitle")} description={translate("nl", "app.session.loadingDescription")} />;
   }
   if (sessionError) {
     return <SessionFailure />;
   }
   if (!user.id) {
-    return <EmptyState title="Aanmelden vereist" description="Je wordt doorgestuurd naar de loginpagina." />;
+    return <EmptyState title={translate(user.language, "app.access.loginRequiredTitle")} description={translate(user.language, "app.access.loginRequiredDescription")} />;
   }
   if (routeModule && !isModuleEnabled(routeModule.code)) {
-    return <ModuleInactive moduleName={routeModule.name} />;
+    return <ModuleInactive moduleName={translate(user.language, routeModule.navKey as TranslationKey)} language={user.language} />;
   }
   if (routeModule && !canAccessCoachingModuleNavigation(user, routeModule.code)) {
-    return <EmptyState title="Geen toegang" description={`${routeModule.name} is niet beschikbaar voor jouw huidige rechten.`} />;
+    return <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "app.access.moduleDeniedDescription").replace("{module}", translate(user.language, routeModule.navKey as TranslationKey))} />;
   }
 
   if (path === "dashboard") {
     return canAccessDashboard(user)
       ? <Dashboard />
-      : <EmptyState title="Geen toegang" description="Dashboard is niet beschikbaar voor jouw huidige rechten." />;
+      : <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "app.access.dashboardDeniedDescription")} />;
   }
   if (path === "mijn-gegevens") return <MyProfilePage />;
   if (path === "taken-vandaag") return <TodayTasksPage />;
@@ -260,7 +260,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "service") return <PlaceholderWorkspace title="Service" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "mijn-team") {
     if (!isModuleEnabled("BEGELEIDINGEN") || !canAccessMyTeamNavigation(user)) {
-      return <EmptyState title="Geen toegang" description="Mijn Team is alleen beschikbaar voor gebruikers met een team- of beheerscope." />;
+      return <EmptyState title={translate(user.language, "myTeam.page.accessTitle")} description={translate(user.language, "myTeam.page.navigationAccessDescription")} />;
     }
     if (segments[1] === "gebruiker" && segments[2]) {
       return <TeamMemberDetail id={segments[2]} />;
@@ -283,13 +283,13 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
     if (user.role === "REPRESENTATIVE") {
       return user.representativeId
         ? <RepresentativeDetail id={user.representativeId} />
-        : <EmptyState title="Geen persoonlijke fiche" description="Er is geen vertegenwoordigersprofiel gekoppeld aan deze gebruiker." />;
+        : <EmptyState title={translate(user.language, "myTeam.page.noProfileTitle")} description={translate(user.language, "myTeam.page.noProfileDescription")} />;
     }
     return <RepresentativesList />;
   }
   if (path === "actiepunten") {
     if (!can(user, "modulePreparation") || !can(user, "menu.coaching.actionPoints")) {
-      return <EmptyState title="Geen toegang" description="Actiepunten zijn niet beschikbaar voor jouw huidige rechten." />;
+      return <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "app.access.actionPointsDeniedDescription")} />;
     }
     return <ActionPoints />;
   }
@@ -299,7 +299,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
     return <InterventionList kind={path} />;
   }
 
-  return <EmptyState title="Pagina in voorbereiding" description="Deze route is technisch beschikbaar en wordt in een volgende functionele iteratie verder ingevuld." />;
+  return <EmptyState title={translate(user.language, "app.access.pagePreparingTitle")} description={translate(user.language, "app.access.pagePreparingDescription")} />;
 }
 
 type StarterEvaluationCandidate = {
@@ -861,6 +861,7 @@ function groupStarterEvaluationCandidates(candidates: StarterEvaluationCandidate
 function Dashboard() {
   const { user, managedUsers, language } = useSession();
   const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
+  const dashboardLocale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
   const { isModuleEnabled, modules } = useModules();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
@@ -920,7 +921,7 @@ function Dashboard() {
       salesTrainings: scopedSalesTrainings,
       representativeName: (id) => {
         const representative = representatives.find((person) => person.id === id);
-        return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
+        return representative ? `${representative.firstName} ${representative.lastName}` : t("coaching.dashboard.unknown");
       },
       ownerName: (id) => id ? reportingUserName(id, managedUsers) : undefined,
     }),
@@ -932,6 +933,7 @@ function Dashboard() {
       scopedInterventions,
       scopedRetrainings,
       scopedSalesTrainings,
+      t,
       user,
     ],
   );
@@ -953,7 +955,7 @@ function Dashboard() {
     void fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { definitions?: ScopedActionDefinition[] };
-        if (!response.ok) throw new Error("Actiepunten konden niet worden geladen.");
+        if (!response.ok) throw new Error(t("actionPoints.loadError"));
         if (!cancelled) setDashboardDefinitions(payload.definitions ?? []);
       })
       .catch(() => {
@@ -962,17 +964,17 @@ function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [actionPointsEnabled, modules, user]);
+  }, [actionPointsEnabled, modules, t, user]);
   const definitionOpenActionCount = useMemo(
     () => splitActionPointSections(dashboardDefinitions.map((definition) => ({ ...definition, source: "definition" as const })))
       .find((section) => section.id === "open")?.items.length ?? 0,
     [dashboardDefinitions],
   );
   const scopedOtherMoments = planningEnabled ? [
-    ...scopedContacts.map((item) => ({ id: `contact-${item.id}`, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.ownerId, status: item.status })),
-    ...scopedRetrainings.map((item) => ({ id: `retraining-${item.id}`, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
-    ...scopedSalesTrainings.map((item) => ({ id: `sales-${item.id}`, type: "sales_training", person: `${item.participantIds.length} deelnemers`, date: new Date(item.date || item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
-    ...scopedHelpRequests.map((item) => ({ id: `help-${item.id}`, type: "hulpaanvraag", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? "Onbekend", date: new Date(item.updatedAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.requesterId, status: item.status })),
+    ...scopedContacts.map((item) => ({ id: `contact-${item.id}`, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? t("coaching.dashboard.unknown"), date: new Date(item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.ownerId, status: item.status })),
+    ...scopedRetrainings.map((item) => ({ id: `retraining-${item.id}`, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? t("coaching.dashboard.unknown"), date: new Date(item.date || item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
+    ...scopedSalesTrainings.map((item) => ({ id: `sales-${item.id}`, type: "sales_training", person: t("coaching.dashboard.participants").replace("{count}", String(item.participantIds.length)), date: new Date(item.date || item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
+    ...scopedHelpRequests.map((item) => ({ id: `help-${item.id}`, type: "hulpaanvraag", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? t("coaching.dashboard.unknown"), date: new Date(item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.requesterId, status: item.status })),
   ] : [];
   const upcomingMoments = dedupeById([
     ...scopedInterventions
@@ -988,12 +990,12 @@ function Dashboard() {
           ? `${representative.firstName} ${representative.lastName}`
           : item.subject
             ? `${item.subject.firstName} ${item.subject.lastName}`
-            : "Onbekend";
+            : t("coaching.dashboard.unknown");
         return {
           id: `coaching-${item.id}`,
           type: "begeleiding",
           person: personName,
-          date: new Date(sortAt).toLocaleDateString("nl-BE", { day: "numeric", month: "short" }),
+          date: new Date(sortAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }),
           sortAt,
           owner: reportingUserName(item.ownerId, managedUsers),
           status: item.status,
@@ -1212,6 +1214,7 @@ function DashboardAttentionRow({ item }: { item: DashboardAttentionItem }) {
 
 function MyTeamPage() {
   const { user } = useSession();
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const { modules } = useModules();
   const { error, loading, members } = useMyTeamMembers();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -1237,17 +1240,17 @@ function MyTeamPage() {
     });
   }
 
-  if (loading) return <EmptyState title="Mijn Team laden" description="De toegestane teamleden worden veilig opgehaald." />;
-  if (error) return <EmptyState title="Mijn Team kon niet worden geladen" description={error} />;
+  if (loading) return <EmptyState title={t("myTeam.page.loadingTitle")} description={t("myTeam.page.loadingDescription")} />;
+  if (error) return <EmptyState title={t("myTeam.page.errorTitle")} description={error} />;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Mensen"
-        title="Mijn Team"
-        description="Actieve teamleden binnen jouw toegestane team- en landscope, gegroepeerd per land en team."
+        eyebrow={t("myTeam.page.eyebrow")}
+        title={t("myTeam.page.title")}
+        description={t("myTeam.page.description")}
       />
-      {members.length === 0 && <EmptyState title="Geen teamleden gevonden" description="Er zijn geen actieve teamleden binnen jouw huidige scope." />}
+      {members.length === 0 && <EmptyState title={t("myTeam.page.emptyTitle")} description={t("myTeam.page.emptyDescription")} />}
 
       {countries.map(({ country, teams, count }) => {
         const countryKey = `country:${country}`;
@@ -1255,8 +1258,8 @@ function MyTeamPage() {
         return <section key={country} className="card overflow-hidden">
           <button type="button" onClick={() => toggle(countryKey)} aria-expanded={countryOpen} className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5">
             {countryOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
-            <div className="min-w-0 flex-1"><p className="eyebrow">Land</p><h2 className="truncate text-lg font-bold text-slate-950">{countryName(country)}</h2></div>
-            <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{count} {count === 1 ? "persoon" : "personen"}</span>
+            <div className="min-w-0 flex-1"><p className="eyebrow">{t("myTeam.page.country")}</p><h2 className="truncate text-lg font-bold text-slate-950">{countryName(country, user.language)}</h2></div>
+            <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{count} {count === 1 ? t("myTeam.page.personSingular") : t("myTeam.page.personPlural")}</span>
           </button>
           {countryOpen && <div className="space-y-3 border-t border-slate-100 p-3 sm:p-4">
             {teams.map((team) => {
@@ -1267,7 +1270,7 @@ function MyTeamPage() {
                   {teamOpen ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
                   <UsersRound className="h-4 w-4 text-brand-700" />
                   <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{team.name}</h3>
-                  <span className="text-xs font-semibold text-slate-500">{team.members.length} {team.members.length === 1 ? "persoon" : "personen"}</span>
+                  <span className="text-xs font-semibold text-slate-500">{team.members.length} {team.members.length === 1 ? t("myTeam.page.personSingular") : t("myTeam.page.personPlural")}</span>
                 </button>
                 {teamOpen && <div className="divide-y divide-slate-100 border-t border-slate-100">
                   {team.members.map((member) => (
@@ -1275,6 +1278,7 @@ function MyTeamPage() {
                       key={member.id}
                       member={member}
                       showPlannedCoachingIndicator={showPlannedCoachingIndicator}
+                      language={user.language}
                     />
                   ))}
                 </div>}
@@ -1290,22 +1294,25 @@ function MyTeamPage() {
 function MyTeamMemberRow({
   member,
   showPlannedCoachingIndicator,
+  language,
 }: {
   member: MyTeamMember;
   showPlannedCoachingIndicator: boolean;
+  language: MockUser["language"];
 }) {
+  const t = (key: TranslationKey) => translate(language, key);
   const hasPlannedCoaching = showPlannedCoachingIndicator && member.hasPlannedCoaching;
   return <Link href={member.profileHref} className={`grid gap-3 p-3.5 transition sm:grid-cols-[minmax(210px,1.4fr)_minmax(125px,0.7fr)_minmax(145px,0.8fr)_auto] sm:items-center sm:px-4 ${hasPlannedCoaching ? "bg-sky-50/80 hover:bg-sky-50" : "hover:bg-brand-50/40"}`}>
     <div className="flex min-w-0 items-center gap-3">
       <Avatar initials={member.initials} />
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5"><p className="truncate text-sm font-semibold text-slate-900">{member.firstName} {member.lastName}</p>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">Verkoopleider</span>}{hasPlannedCoaching && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">Begeleiding gepland</span>}</div>
-        <p className="mt-0.5 text-xs text-slate-500">{roleLabels[member.role]}</p>
+        <div className="flex flex-wrap items-center gap-1.5"><p className="truncate text-sm font-semibold text-slate-900">{member.firstName} {member.lastName}</p>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">{t("myTeam.page.teamLeader")}</span>}{hasPlannedCoaching && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">{t("myTeam.page.plannedCoaching")}</span>}</div>
+        <p className="mt-0.5 text-xs text-slate-500">{translate(language, `impersonation.role.${member.role}` as TranslationKey)}</p>
       </div>
     </div>
-    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Algemene score</p><p className="mt-1 text-sm font-bold text-slate-800">{member.role !== "REPRESENTATIVE" ? "—" : member.overallScore === undefined ? "Nog geen score" : `${member.overallScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`}</p></div>
-    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Laatste begeleiding</p><p className="mt-1 text-sm text-slate-700">{member.role !== "REPRESENTATIVE" ? "Niet van toepassing" : member.lastCoaching ? formatShortDate(member.lastCoaching) : "Nog geen begeleiding"}</p></div>
-    <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">Fiche <ChevronRight className="h-4 w-4" /></span>
+    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.overallScore")}</p><p className="mt-1 text-sm font-bold text-slate-800">{member.role !== "REPRESENTATIVE" ? "—" : member.overallScore === undefined ? t("myTeam.page.noScore") : `${member.overallScore.toLocaleString(localeForLanguage(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`}</p></div>
+    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.lastCoaching")}</p><p className="mt-1 text-sm text-slate-700">{member.role !== "REPRESENTATIVE" ? t("myTeam.page.notApplicable") : member.lastCoaching ? formatShortDate(member.lastCoaching, language) : t("myTeam.page.noCoaching")}</p></div>
+    <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">{t("myTeam.page.fiche")} <ChevronRight className="h-4 w-4" /></span>
   </Link>;
 }
 
@@ -1322,13 +1329,13 @@ function useMyTeamMembers() {
     fetch(`/api/my-team?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { members?: MyTeamMember[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Teamleden konden niet worden geladen.");
+        if (!response.ok) throw new Error(payload.error ?? translate(user.language, "myTeam.page.errorTitle"));
         if (active) setMembers(payload.members ?? []);
       })
       .catch((cause) => {
         if (!active) return;
         setMembers([]);
-        setError(cause instanceof Error ? cause.message : "Teamleden konden niet worden geladen.");
+        setError(cause instanceof Error ? cause.message : translate(user.language, "myTeam.page.errorTitle"));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -1353,23 +1360,48 @@ function groupMyTeamMembers(members: MyTeamMember[]) {
 }
 
 function TeamMemberDetail({ id }: { id: string }) {
+  const { user } = useSession();
   const { members, loading, error } = useMyTeamMembers();
   const member = members.find((item) => item.id === id);
-  if (loading) return <EmptyState title="Gebruikersfiche laden" description="Het teamlid wordt veilig opgehaald." />;
-  if (error || !member) return <EmptyState title="Geen toegang" description={error ?? "Dit teamlid valt niet binnen jouw huidige scope."} />;
+  if (loading) return <EmptyState title={translate(user.language, "myTeam.page.memberLoadingTitle")} description={translate(user.language, "myTeam.page.memberLoadingDescription")} />;
+  if (error || !member) return <EmptyState title={translate(user.language, "myTeam.page.accessTitle")} description={error ?? translate(user.language, "myTeam.page.memberAccessDescription")} />;
   return <div className="space-y-5">
-    <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← Terug naar Mijn Team</Link>
+    <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← {translate(user.language, "myTeam.page.back")}</Link>
     <div className="card p-5 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <Avatar initials={member.initials} className="h-16 w-16 text-lg" />
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-extrabold text-slate-950">{member.firstName} {member.lastName}</h1>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">Verkoopleider</span>}</div><p className="mt-1 text-sm text-slate-500">{roleLabels[member.role]} · {member.team} · {countryName(member.country)}</p></div>
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-extrabold text-slate-950">{member.firstName} {member.lastName}</h1>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{translate(user.language, "myTeam.page.teamLeader")}</span>}</div><p className="mt-1 text-sm text-slate-500">{translate(user.language, `impersonation.role.${member.role}` as TranslationKey)} · {member.team} · {countryName(member.country, user.language)}</p></div>
       </div>
     </div>
   </div>;
 }
 
-function countryName(country: string) {
-  return country === "BE" ? "België" : country === "NL" ? "Nederland" : country === "DE" ? "Duitsland" : country;
+function countryName(country: string, language: MockUser["language"] = "nl") {
+  const names = {
+    BE: { nl: "België", fr: "Belgique", de: "Belgien" },
+    NL: { nl: "Nederland", fr: "Pays-Bas", de: "Niederlande" },
+    DE: { nl: "Duitsland", fr: "Allemagne", de: "Deutschland" },
+  } as const;
+  return names[country as keyof typeof names]?.[language] ?? country;
+}
+
+function localeForLanguage(language: MockUser["language"]) {
+  return language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
+}
+
+function localizedRepresentativeLevel(
+  level: Representative["level"],
+  t: (key: TranslationKey) => string,
+) {
+  const keys: Partial<Record<Representative["level"], TranslationKey>> = {
+    Starter: "representativeLevel.STARTER",
+    "Sales Executive": "representativeLevel.SALES_EXECUTIVE",
+    Professional: "representativeLevel.PROFESSIONAL",
+    Expert: "representativeLevel.EXPERT",
+    Vertegenwoordiger: "impersonation.role.REPRESENTATIVE",
+  };
+  const key = keys[level];
+  return key ? t(key) : level;
 }
 
 function initialFicheTabFromHash(): FicheTabId {
@@ -1412,11 +1444,15 @@ function coachingScoreOutOfFive(coaching: HistoricalCoaching) {
   return scores.reduce((total, item) => total + item.score, 0) / scores.length / 20;
 }
 
-function coachingPerformanceStatus(coaching: HistoricalCoaching, representativeView = false) {
-  if (coaching.status === "akkoord_door_vertegenwoordiger") return "Akkoord gegeven";
-  if (coaching.status === "verzonden_ter_akkoord") return representativeView ? "Te bevestigen" : "Voor akkoord verzonden";
-  if (coaching.wasReopened || coaching.status === "in_uitvoering") return "Aangepast na afwerking";
-  return "Afgewerkt – wacht op akkoord vertegenwoordiger";
+function coachingPerformanceStatus(
+  coaching: HistoricalCoaching,
+  representativeView: boolean,
+  t: (key: TranslationKey) => string,
+) {
+  if (coaching.status === "akkoord_door_vertegenwoordiger") return t("myTeam.page.status.agreed");
+  if (coaching.status === "verzonden_ter_akkoord") return representativeView ? t("myTeam.page.status.toConfirm") : t("myTeam.page.status.sentForApproval");
+  if (coaching.wasReopened || coaching.status === "in_uitvoering") return t("myTeam.page.status.reopened");
+  return t("myTeam.page.status.completedWaiting");
 }
 
 function RepresentativesList() {
@@ -1552,31 +1588,28 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
   }
 
   if (loading) {
-    return <EmptyState title="Vertegenwoordiger laden" description="De gegevens worden uit MariaDB opgehaald." />;
+    return <EmptyState title={t("myTeam.page.representativeLoadingTitle")} description={t("myTeam.page.representativeLoadingDescription")} />;
   }
 
   if (error) {
-    return <EmptyState title="Database niet bereikbaar" description={error} />;
+    return <EmptyState title={t("myTeam.page.databaseUnavailableTitle")} description={error} />;
   }
 
   if (!representative || !canAccessRepresentative(user, representative)) {
-    return <EmptyState title="Geen toegang" description="Deze vertegenwoordiger valt niet binnen jouw huidige rol- of teamscope." />;
+    return <EmptyState title={t("myTeam.page.accessTitle")} description={t("myTeam.page.representativeAccessDescription")} />;
   }
 
   const latestCompletedCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
   const latestCoaching = latestScoredCoaching(performanceDataset, representative.id);
   const latestScore = latestCoaching ? coachingScoreOutOfFive(latestCoaching) : undefined;
   const scoredCoachings = coachingsForRepresentative(performanceDataset, representative.id).filter(hasCoachingScoreData);
-  const representativeRoleLabel = roleLabels.REPRESENTATIVE;
-  const showLevelBadge = representative.level.localeCompare(
-    representativeRoleLabel,
-    "nl-BE",
-    { sensitivity: "base" }
-  ) !== 0;
+  const representativeRoleLabel = t("impersonation.role.REPRESENTATIVE");
+  const representativeLevelLabel = localizedRepresentativeLevel(representative.level, t);
+  const showLevelBadge = representative.level !== "Vertegenwoordiger";
 
   return (
     <div className="space-y-6">
-      {teamMode && <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← Terug naar Mijn Team</Link>}
+      {teamMode && <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">← {t("myTeam.page.back")}</Link>}
       <div className="card overflow-hidden">
         <div className="bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500 px-5 py-4 text-white sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1587,7 +1620,7 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
                   {representative.firstName} {representative.lastName}
                 </h1>
                 <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/25">{representativeRoleLabel}</span>
-                {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representative.level}</span>}
+                {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representativeLevelLabel}</span>}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-blue-50">
                 <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
@@ -1628,14 +1661,14 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
               {showPerformance && (
                 <div className="card grid place-items-center p-5 text-center">
                   {latestCoaching && latestScore !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestScore * 20))}%, #e2e8f0 0)` }}>
-                    <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{latestScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">van 5</p></div></div>
-                  </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."}</p></div>}
+                    <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{latestScore.toLocaleString(localeForLanguage(user.language), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("myTeam.page.scoreOutOfFive")}</p></div></div>
+                  </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")}</p></div>}
                 </div>
               )}
               {showCoachings && (
                 <div className="card p-5 sm:p-6">
-                  <p className="eyebrow">Laatste begeleiding</p>
-                  {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">{showPerformance && latestScore !== undefined ? `Algemene score ${latestScore.toLocaleString("nl-BE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5` : "Laatste begeleiding"}</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE")} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">Begeleiding openen <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{showPerformance ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Er is een afgewerkte begeleiding beschikbaar."}</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE")} /></div></div> : <EmptyState title="Nog geen begeleidingen beschikbaar" description="Voor deze vertegenwoordiger is nog geen afgewerkte begeleiding gevonden." />}
+                  <p className="eyebrow">{t("myTeam.page.latestCoaching")}</p>
+                  {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">{showPerformance && latestScore !== undefined ? `${t("myTeam.page.overallScore")} ${latestScore.toLocaleString(localeForLanguage(user.language), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5` : t("myTeam.page.latestCoaching")}</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date, user.language)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE", t)} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">{t("myTeam.page.openCoaching")} <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{showPerformance ? t("myTeam.page.completedNoScore") : t("myTeam.page.completedAvailable")}</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE", t)} /></div></div> : <EmptyState title={t("myTeam.page.noCompletedCoachingTitle")} description={t("myTeam.page.noCompletedCoachingDescription")} />}
                 </div>
               )}
             </section>
@@ -1667,7 +1700,7 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
         scoredCoachings.length ? <PerformanceEvolution
           coachings={scoredCoachings}
           representativeName={`${representative.firstName} ${representative.lastName}`}
-        /> : <EmptyState title="Geen score beschikbaar" description={latestCompletedCoaching ? "Er is een afgewerkte begeleiding, maar er werd nog geen score geregistreerd." : "Nog geen afgewerkte begeleiding beschikbaar."} />
+        /> : <EmptyState title={t("myTeam.page.noScore")} description={latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")} />
       )}
       {activeTab === "personalCriteria" && <PersonalCriteriaPanel representative={representative} />}
       {activeTab === "kpis" && <KpiPanel representativeId={representative.id} />}
@@ -1726,7 +1759,7 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
       setMessage({ type: "error", text: result.error });
       return;
     }
-    setMessage({ type: "success", text: editing ? "Persoonlijk criterium bijgewerkt." : "Persoonlijk criterium toegevoegd." });
+    setMessage({ type: "success", text: translate(user.language, editing ? "myTeam.criteria.updated" : "myTeam.criteria.added") });
     setEditing(null);
     setForm({ title: "", description: "", focusName: coachingFramework[0]?.name ?? "" });
     setFormOpen(false);
@@ -1735,7 +1768,7 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
   function deactivateCriterion(id: string) {
     const result = personalCriteria.deactivateCriterion(user, id);
     setMessage(result.ok
-      ? { type: "success", text: "Persoonlijk criterium gedeactiveerd. Historische scores blijven bewaard." }
+      ? { type: "success", text: translate(user.language, "myTeam.criteria.deactivated") }
       : { type: "error", text: result.error }
     );
   }
@@ -1745,15 +1778,15 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
       <div className="card p-5 sm:p-6">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
           <div>
-            <p className="eyebrow">Kapstok</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-950">Persoonlijke criteria voor {representative.firstName}</h2>
+            <p className="eyebrow">{translate(user.language, "myTeam.criteria.eyebrow")}</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-950">{translate(user.language, "myTeam.criteria.title").replace("{name}", representative.firstName)}</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Vaste criteria blijven centraal beheerd. Persoonlijke criteria zijn extra coachingspunten voor alleen deze vertegenwoordiger en worden meegenomen in nieuwe begeleidingen wanneer de bijhorende fase gekozen wordt.
+              {translate(user.language, "myTeam.criteria.description")}
             </p>
           </div>
           {canManage && (
             <button type="button" onClick={openCreate} className="btn-primary">
-              <Plus className="h-4 w-4" /> Criterium toevoegen
+              <Plus className="h-4 w-4" /> {translate(user.language, "myTeam.criteria.add")}
             </button>
           )}
         </div>
@@ -1772,16 +1805,16 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
         <div className="card p-5 sm:p-6">
           <div className="grid gap-4 md:grid-cols-[1fr_240px]">
             <label>
-              <span className="mb-2 block text-sm font-semibold text-slate-700">Naam criterium</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-700">{translate(user.language, "myTeam.criteria.name")}</span>
               <input
                 className="field"
                 value={form.title}
                 onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Bijvoorbeeld: Doorvragen op verborgen bezwaar"
+                placeholder={translate(user.language, "myTeam.criteria.namePlaceholder")}
               />
             </label>
             <label>
-              <span className="mb-2 block text-sm font-semibold text-slate-700">Kapstokfase</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-700">{translate(user.language, "myTeam.criteria.frameworkPhase")}</span>
               <select
                 className="field"
                 value={form.focusName}
@@ -1792,31 +1825,31 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
             </label>
           </div>
           <label className="mt-4 block">
-            <span className="mb-2 block text-sm font-semibold text-slate-700">Beschrijving</span>
+            <span className="mb-2 block text-sm font-semibold text-slate-700">{translate(user.language, "myTeam.criteria.descriptionLabel")}</span>
             <textarea
               className="field min-h-28"
               value={form.description}
               onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              placeholder="Optionele toelichting voor de begeleiding."
+              placeholder={translate(user.language, "myTeam.criteria.descriptionPlaceholder")}
             />
           </label>
           <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button type="button" onClick={() => setFormOpen(false)} className="btn-secondary">Annuleren</button>
-            <button type="button" onClick={saveCriterion} className="btn-primary">Opslaan</button>
+            <button type="button" onClick={() => setFormOpen(false)} className="btn-secondary">{translate(user.language, "myTeam.criteria.cancel")}</button>
+            <button type="button" onClick={saveCriterion} className="btn-primary">{translate(user.language, "myTeam.criteria.save")}</button>
           </div>
         </div>
       )}
 
       <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <div className="card overflow-hidden">
-          <SectionTitle title="Vaste criteria" subtitle="Centraal beheerd door Admin/Super Admin" />
+          <SectionTitle title={translate(user.language, "myTeam.criteria.fixedTitle")} subtitle={translate(user.language, "myTeam.criteria.fixedSubtitle")} />
           <div className="grid gap-3 p-5">
             {coachingFramework.map((focus) => (
               <div key={focus.name} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <div className="flex items-center gap-2">
                   <span className={`h-7 w-1.5 rounded-full ${focus.color}`} />
                   <p className="font-bold text-brand-800">{focus.name}</p>
-                  <span className="ml-auto rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">{focus.criteria.length} vast</span>
+                  <span className="ml-auto rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">{focus.criteria.length} {translate(user.language, "myTeam.criteria.fixedCount")}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {focus.criteria.map((criterion) => (
@@ -1832,7 +1865,7 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
 
         <div className="space-y-4">
           <div className="card overflow-hidden">
-            <SectionTitle title="Persoonlijke criteria" subtitle={`${active.length} actieve criteria voor deze vertegenwoordiger`} />
+            <SectionTitle title={translate(user.language, "myTeam.profile.tab.personalCriteria")} subtitle={translate(user.language, "myTeam.criteria.personalSubtitle").replace("{count}", String(active.length))} />
             <div className="grid gap-3 p-5">
               {active.map((criterion) => (
                 <PersonalCriterionCard
@@ -1845,7 +1878,7 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
               ))}
               {active.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-                  Geen actieve persoonlijke criteria voor deze vertegenwoordiger.
+                  {translate(user.language, "myTeam.criteria.empty")}
                 </div>
               )}
             </div>
@@ -1853,7 +1886,7 @@ function PersonalCriteriaPanel({ representative }: { representative: Representat
 
           {inactive.length > 0 && (
             <div className="card overflow-hidden opacity-80">
-              <SectionTitle title="Historisch bewaard" subtitle="Gedeactiveerde criteria blijven beschikbaar voor oude scores" />
+              <SectionTitle title={translate(user.language, "myTeam.criteria.archivedTitle")} subtitle={translate(user.language, "myTeam.criteria.archivedSubtitle")} />
               <div className="grid gap-3 p-5">
                 {inactive.map((criterion) => (
                   <PersonalCriterionCard
@@ -1882,22 +1915,24 @@ function PersonalCriterionCard({
   onEdit?: () => void;
   onDeactivate?: () => void;
 }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <article className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-brand-700 px-2.5 py-1 text-xs font-bold text-white">Persoonlijk criterium</span>
+            <span className="rounded-full bg-brand-700 px-2.5 py-1 text-xs font-bold text-white">{t("myTeam.criteria.personalBadge")}</span>
             <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-brand-700">{criterion.focusName}</span>
-            {!criterion.isActive && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">Inactief</span>}
+            {!criterion.isActive && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">{t("myTeam.criteria.inactiveBadge")}</span>}
           </div>
           <h3 className="mt-3 font-bold text-slate-950">{criterion.title}</h3>
           {criterion.description && <p className="mt-1 text-sm leading-6 text-slate-600">{criterion.description}</p>}
         </div>
         {canManage && (
           <div className="flex shrink-0 gap-2">
-            <button type="button" onClick={onEdit} className="btn-secondary py-2 text-xs">Bewerken</button>
-            <button type="button" onClick={onDeactivate} className="btn-secondary py-2 text-xs text-rose-700">Deactiveren</button>
+            <button type="button" onClick={onEdit} className="btn-secondary py-2 text-xs">{t("myTeam.criteria.edit")}</button>
+            <button type="button" onClick={onDeactivate} className="btn-secondary py-2 text-xs text-rose-700">{t("myTeam.criteria.deactivate")}</button>
           </div>
         )}
       </div>
@@ -1906,27 +1941,29 @@ function PersonalCriterionCard({
 }
 
 function KpiPanel({ representativeId }: { representativeId: string }) {
+  const { language } = useSession();
+  const t = (key: TranslationKey) => translate(language, key);
   const { dataset: performanceDataset } = usePerformance();
   const snapshots = performanceDataset.monthlyKpiSnapshots.filter((item) => item.representativeId === representativeId);
   const latest = snapshots.at(-1);
   return (
     <div className="card p-5 sm:p-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div><p className="eyebrow">Laatste 6 maanden</p><h2 className="mt-1 text-xl font-bold">KPI-ontwikkeling</h2></div>
-        <select className="field max-w-48"><option>Mei 2026</option><option>April 2026</option></select>
+        <div><p className="eyebrow">{t("myTeam.kpi.lastMonths")}</p><h2 className="mt-1 text-xl font-bold">{t("myTeam.kpi.title")}</h2></div>
+        <select className="field max-w-48"><option>{t("myTeam.kpi.monthMay2026")}</option><option>{t("myTeam.kpi.monthApril2026")}</option></select>
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {(latest?.values ?? []).map((kpi) => (
           <div key={kpi.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-5">
-            <div className="flex items-center justify-between"><p className="font-semibold">{kpi.label}</p><p className="text-lg font-bold">{formatKpiValue(kpi.value, kpi.unit)}</p></div>
+            <div className="flex items-center justify-between"><p className="font-semibold">{kpi.label}</p><p className="text-lg font-bold">{formatKpiValue(kpi.value, kpi.unit, language)}</p></div>
             <div className="mt-6 flex h-24 items-end gap-2">
               {snapshots.map((snapshot) => {
                 const value = snapshot.values.find((item) => item.label === kpi.label)?.value ?? 0;
                 const percentage = Math.min(100, Math.max(15, (value / kpi.target) * 82));
-                return <div key={snapshot.month} title={`${snapshot.month}: ${formatKpiValue(value, kpi.unit)}`} className="flex-1 self-end rounded-t-md bg-brand-700 opacity-80" style={{ height: `${percentage}%` }} />;
+                return <div key={snapshot.month} title={`${snapshot.month}: ${formatKpiValue(value, kpi.unit, language)}`} className="flex-1 self-end rounded-t-md bg-brand-700 opacity-80" style={{ height: `${percentage}%` }} />;
               })}
             </div>
-            <div className="mt-2 flex justify-between text-[10px] text-slate-400"><span>jul 2025</span><span>jun 2026</span></div>
+            <div className="mt-2 flex justify-between text-[10px] text-slate-400"><span>{t("myTeam.kpi.from")}</span><span>{t("myTeam.kpi.to")}</span></div>
           </div>
         ))}
       </div>
@@ -1991,7 +2028,7 @@ function TimelinePanel({
               id: item.id,
               type: "begeleiding" as const,
               date: item.date,
-              title: "Begeleiding",
+              title: t("myTeam.profile.activity.coaching"),
               owner: item.ownerName,
               status: item.status,
               score: item.overallScore,
@@ -2122,7 +2159,7 @@ function TimelinePanel({
         {workflowItems.map((item) => isCoachings ? (
           <div key={`${item.type}:${item.id}`} className="grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 md:grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_minmax(190px,1fr)] md:items-center md:gap-3">
             <Link href={timelineItemHref(item.type, item.id)} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-              <span className="block font-semibold text-slate-800">{formatShortDate(item.date)}</span>
+              <span className="block font-semibold text-slate-800">{formatShortDate(item.date, user.language)}</span>
               {item.title && <span className="block truncate text-xs text-slate-500">{item.title}</span>}
             </Link>
             <span className="truncate text-slate-600">{item.owner}</span>
@@ -2152,7 +2189,7 @@ function TimelinePanel({
         ) : (
           <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50">
             <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700"><ClipboardCheck className="h-4 w-4" /></div>
-            <div className="min-w-0 flex-1"><p className="font-semibold capitalize text-slate-900">{item.type.replace("_", " ")}</p><p className="mt-0.5 truncate text-xs text-slate-500">{formatShortDate(item.date)} · {item.owner}</p></div>
+            <div className="min-w-0 flex-1"><p className="font-semibold capitalize text-slate-900">{t(ficheTimelineItemTypeKey(item.type))}</p><p className="mt-0.5 truncate text-xs text-slate-500">{formatShortDate(item.date, user.language)} · {item.owner}</p></div>
             <StatusBadge status={item.status} />
             <ChevronRight className="h-4 w-4 text-slate-300" />
           </Link>
@@ -2188,6 +2225,18 @@ function timelineItemHref(type: string, id: string) {
 
 function ficheTabTitleKey(tab: FicheTabId): TranslationKey {
   return `myTeam.profile.tab.${tab}` as TranslationKey;
+}
+
+function ficheTimelineItemTypeKey(type: string): TranslationKey {
+  const keys: Record<string, TranslationKey> = {
+    begeleiding: "myTeam.profile.activity.coaching",
+    contactmoment: "myTeam.profile.activity.contactMoment",
+    hulpaanvraag: "myTeam.profile.activity.helpRequest",
+    retraining: "myTeam.profile.activity.retraining",
+    sales_training: "myTeam.profile.activity.salesTraining",
+    actionPoint: "myTeam.profile.activity.actionPoint",
+  };
+  return keys[type] ?? "myTeam.profile.activity.coaching";
 }
 
 function formatOfficialCoachingScore(score: number | undefined) {
@@ -2260,11 +2309,11 @@ function RepresentativeEvaluationsPanel({ representativeId }: { representativeId
           <div className="divide-y divide-slate-100">
             {evaluations.map((evaluation) => (
               <Link key={evaluation.id} href={evaluation.href} className="grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 focus-visible:bg-brand-50 md:grid-cols-[112px_minmax(120px,0.9fr)_minmax(130px,1fr)_120px_112px_44px] md:items-center md:gap-3">
-                <span className="font-semibold text-slate-800">{formatShortDate(evaluation.evaluationDate)}</span>
+                <span className="font-semibold text-slate-800">{formatShortDate(evaluation.evaluationDate, user.language)}</span>
                 <span className="truncate text-slate-600">{t(starterEvaluationMomentKey(evaluation.moment))}</span>
                 <span className="truncate text-slate-600">{evaluation.startedByName || evaluation.leaderName || "—"}</span>
                 <StatusBadge status={evaluation.status.toLowerCase()} />
-                <span className="text-slate-600">{evaluation.approvedAt ? formatShortDate(evaluation.approvedAt) : "—"}</span>
+                <span className="text-slate-600">{evaluation.approvedAt ? formatShortDate(evaluation.approvedAt, user.language) : "—"}</span>
                 <ChevronRight className="hidden h-4 w-4 justify-self-end text-slate-300 md:block" />
               </Link>
             ))}
@@ -2373,7 +2422,7 @@ function RepresentativeOpenActionPointsPanel({ representative }: { representativ
             >
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 group-hover:text-brand-800">{action.title}</p>
-                <span className="shrink-0 text-xs text-slate-500">{t("myTeam.profile.overview.due").replace("{date}", action.due ? formatShortDate(action.due) : t("myTeam.profile.overview.noDueDate"))}</span>
+                <span className="shrink-0 text-xs text-slate-500">{t("myTeam.profile.overview.due").replace("{date}", action.due ? formatShortDate(action.due, user.language) : t("myTeam.profile.overview.noDueDate"))}</span>
                 <StatusBadge status={action.status} />
               </div>
               {action.progress !== undefined && (
@@ -5053,7 +5102,7 @@ function ScopedActionPoints() {
 
   useEffect(() => {
     if (!allowed) return;
-    void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : "Actiepunten konden niet worden geladen."));
+    void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : t("actionPoints.loadError")));
   }, [allowed, refresh]);
 
   useEffect(() => {
@@ -5504,8 +5553,8 @@ function ScopedActionPoints() {
               >
                 {groupOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
                 <div className="min-w-0 flex-1">
-                  <p className="eyebrow">Actiepunten</p>
-                  <h3 className="truncate text-base font-bold text-slate-950">{group.title}</h3>
+                  <p className="eyebrow">{t("actionPoints.pageTitle")}</p>
+                  <h3 className="truncate text-base font-bold text-slate-950">{t(actionPointScopeKey(group.id))}</h3>
                 </div>
                 <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{visibleItemCount}</span>
               </button>
@@ -5603,7 +5652,7 @@ function ScopedActionPoints() {
   }
 
   function renderActionPointCard(item: ActionPointOverviewItem) {
-    const scopeLabel = actionPointScopeLabel(item.scope);
+    const scopeLabel = t(actionPointScopeKey(item.scope));
     const status = item.status ?? (item.active ? "open" : "afgesloten");
     const meta = actionPointMetaParts(item).join(" · ");
     return (
@@ -5622,14 +5671,14 @@ function ScopedActionPoints() {
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{scopeLabel}</span>
               <StatusBadge status={status} />
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{priorityLabel(item.priority)}</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{t(actionPointPriorityKey(item.priority))}</span>
             </div>
           </div>
           <p className="mt-1 truncate text-xs leading-4 text-slate-500">{meta}</p>
         </div>
         {item.targetValue !== undefined && (
           <span className="hidden rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800 sm:inline-flex">
-            Target {item.targetValue}
+            {t("actionPoints.targetValue")} {item.targetValue}
           </span>
         )}
       </button>
@@ -5652,23 +5701,23 @@ function ScopedActionPoints() {
               <h2 className="text-xl font-bold text-slate-950">{item.title}</h2>
               <p className="mt-1 text-sm text-slate-500">{actionPointScopeDetail(item)}</p>
             </div>
-            <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDetailAction(undefined)} aria-label="Sluiten">
+            <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDetailAction(undefined)} aria-label={t("actionPoints.closeDialog.cancel")}>
               <X className="h-5 w-5" />
             </button>
           </div>
 
           <div className="space-y-5 p-5">
             <div className="flex flex-wrap gap-2">
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{actionPointScopeLabel(item.scope)}</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{t(actionPointScopeKey(item.scope))}</span>
               <StatusBadge status={item.status ?? (item.active ? "open" : "afgesloten")} />
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{priorityLabel(item.priority)}</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{t(actionPointPriorityKey(item.priority))}</span>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <ReadOnlyField label="Doelgroep" value={actionPointScopeDetail(item)} />
-              <ReadOnlyField label="Periode" value={actionPointDateLabel(item)} />
-              <ReadOnlyField label="Eigenaar" value={item.ownerName || "Niet toegewezen"} />
-              <ReadOnlyField label="Target" value={item.targetValue === undefined ? "Geen target" : String(item.targetValue)} />
+              <ReadOnlyField label={t("actionPoints.target")} value={actionPointScopeDetail(item)} />
+              <ReadOnlyField label={t("actionPoints.dateFrom")} value={actionPointDateLabel(item)} />
+              <ReadOnlyField label={t("actionPoints.owner")} value={item.ownerName || t("actionPoints.unassigned")} />
+              <ReadOnlyField label={t("actionPoints.targetValue")} value={item.targetValue === undefined ? t("actionPoints.noTarget") : String(item.targetValue)} />
               {item.closedAt && <ReadOnlyField label={translate(user.language, "actionPoints.closedAt")} value={formatDateTime(item.closedAt)} />}
               {item.closedByName && <ReadOnlyField label={translate(user.language, "actionPoints.closedBy")} value={item.closedByName} />}
               {item.closedReason && <ReadOnlyField label={translate(user.language, "actionPoints.closedReason")} value={translate(user.language, actionPointCloseReasonKey(item.closedReason))} />}
@@ -5676,17 +5725,17 @@ function ScopedActionPoints() {
             </div>
 
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Producten</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t("actionPoints.products")}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(item.products ?? []).length > 0
                   ? item.products?.map((product) => <span key={product.id} className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800">{product.name}</span>)
-                  : <span className="text-sm text-slate-500">Geen producten gekoppeld.</span>}
+                  : <span className="text-sm text-slate-500">{t("actionPoints.noProducts")}</span>}
               </div>
             </div>
 
             {!isBlankRichText(body) && (
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Omschrijving</p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t("actionPoints.description")}</p>
                 <RichTextRenderer value={body} className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
               </div>
             )}
@@ -5695,7 +5744,7 @@ function ScopedActionPoints() {
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
             {canManageThis && (
               <>
-                <button type="button" className="btn-secondary" onClick={() => openEditDialog(item)} disabled={saving}>Bewerken</button>
+                <button type="button" className="btn-secondary" onClick={() => openEditDialog(item)} disabled={saving}>{t("actionPoints.edit")}</button>
                 <button
                   type="button"
                   className={item.active ? "btn-secondary text-rose-700" : "btn-primary"}
@@ -5711,7 +5760,7 @@ function ScopedActionPoints() {
                 {translate(user.language, "actionPoints.actions.close")}
               </button>
             )}
-            <button type="button" className="btn-secondary" onClick={() => setDetailAction(undefined)}>Sluiten</button>
+            <button type="button" className="btn-secondary" onClick={() => setDetailAction(undefined)}>{t("actionPoints.closeDialog.cancel")}</button>
           </div>
         </div>
       </div>
@@ -5756,8 +5805,8 @@ function ScopedActionPoints() {
         >
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
             <div>
-              <p className="eyebrow mb-1">Actiepunt</p>
-              <h2 className="text-xl font-bold text-slate-950">{draft.id ? "Actiepunt bewerken" : "Actiepunt toevoegen"}</h2>
+              <p className="eyebrow mb-1">{t("actionPoints.pageTitle")}</p>
+              <h2 className="text-xl font-bold text-slate-950">{draft.id ? `${t("actionPoints.edit")} ${t("actionPoints.pageTitle").toLowerCase()}` : t("actionPoints.add")}</h2>
             </div>
             <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDraft(undefined)} aria-label="Sluiten">
               <X className="h-5 w-5" />
@@ -5766,15 +5815,15 @@ function ScopedActionPoints() {
 
           <div className="space-y-5 p-5">
             {formError && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{formError}</p>}
-            {scopeOptions.length === 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Geen actiepuntsoorten beschikbaar voor jouw rechten.</p>}
+            {scopeOptions.length === 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{t("actionPoints.noTypesAvailable")}</p>}
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Naam</span>
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.name")}</span>
                 <input className="field" value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} disabled={saving} required />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Soort actiepunt</span>
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.targetType")}</span>
                 <select
                   className="field"
                   value={draft.scope}
@@ -5782,7 +5831,7 @@ function ScopedActionPoints() {
                   disabled={saving || scopeOptions.length === 0}
                 >
                   {scopeOptions.map((targetType) => (
-                    <option key={targetType.id} value={targetType.code}>{targetType.name || actionPointScopeLabel(targetType.code)}</option>
+                    <option key={targetType.id} value={targetType.code}>{t(actionPointScopeKey(targetType.code))}</option>
                   ))}
                 </select>
               </label>
@@ -5790,42 +5839,42 @@ function ScopedActionPoints() {
 
             {renderTargetFields(countries, teams, users)}
 
-            <RichTextEditor label="Omschrijving" value={draft.tipsAndTricks} disabled={saving} onChange={(value) => updateDraft({ tipsAndTricks: value })} />
+            <RichTextEditor label={t("actionPoints.description")} value={draft.tipsAndTricks} disabled={saving} onChange={(value) => updateDraft({ tipsAndTricks: value })} />
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Geldig vanaf</span>
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.dateFrom")}</span>
                 <input className="field" type="date" value={draft.validFrom} onChange={(event) => updateDraft({ validFrom: event.target.value })} disabled={saving} required />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Geldig tot</span>
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.dateUntil")}</span>
                 <input className="field" type="date" value={draft.validUntil} onChange={(event) => updateDraft({ validUntil: event.target.value })} disabled={saving} />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Target</span>
-                <input className="field" type="number" min="0" step="0.01" value={draft.targetValue} onChange={(event) => updateDraft({ targetValue: event.target.value })} disabled={saving} placeholder="Optioneel" />
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.targetValue")}</span>
+                <input className="field" type="number" min="0" step="0.01" value={draft.targetValue} onChange={(event) => updateDraft({ targetValue: event.target.value })} disabled={saving} placeholder={t("actionPoints.optional")} />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Prioriteit</span>
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.priority")}</span>
                 <select className="field" value={draft.priority} onChange={(event) => updateDraft({ priority: event.target.value as ScopedActionDefinition["priority"] })} disabled={saving}>
-                  <option value="laag">Laag</option>
-                  <option value="normaal">Normaal</option>
-                  <option value="hoog">Hoog</option>
+                  <option value="laag">{t("actionPoints.priorityLow")}</option>
+                  <option value="normaal">{t("actionPoints.priorityNormal")}</option>
+                  <option value="hoog">{t("actionPoints.priorityHigh")}</option>
                 </select>
               </label>
             </div>
 
             <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
               <input type="checkbox" checked={draft.active} onChange={(event) => updateDraft({ active: event.target.checked })} disabled={saving} />
-              Actief
+              {t("actionPoints.active")}
             </label>
 
             <div>
               <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">Producten</span>
+                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.products")}</span>
                 <span className="relative block">
                   <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-                  <input className="field pl-10" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Zoek product..." disabled={saving} />
+                  <input className="field pl-10" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder={t("actionPoints.searchProducts")} disabled={saving} />
                 </span>
               </label>
               <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl border border-slate-200">
@@ -5845,15 +5894,15 @@ function ScopedActionPoints() {
                     <span>{product.name}</span>
                   </label>
                 ))}
-                {visibleProducts.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">Geen producten gevonden.</p>}
+                {visibleProducts.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">{t("actionPoints.noProductsFound")}</p>}
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
-            <button type="button" className="btn-secondary" onClick={() => setDraft(undefined)} disabled={saving}>Annuleren</button>
+            <button type="button" className="btn-secondary" onClick={() => setDraft(undefined)} disabled={saving}>{t("actionPoints.cancel")}</button>
             <button type="submit" className="btn-primary" disabled={saving || scopeOptions.length === 0}>
-              {saving && <LoaderCircle className="h-4 w-4 animate-spin" />} Opslaan
+              {saving && <LoaderCircle className="h-4 w-4 animate-spin" />} {t("actionPoints.save")}
             </button>
           </div>
         </form>
@@ -5868,12 +5917,12 @@ function ScopedActionPoints() {
   ) {
     if (!draft) return null;
     if (draft.scope === "GLOBAL") {
-      return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">Dit actiepunt geldt globaal voor alle toegestane gebruikers.</div>;
+      return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">{t("actionPoints.globalDescription")}</div>;
     }
     if (draft.scope === "COUNTRY") {
       return (
         <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">Land</span>
+          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.country")}</span>
           <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value })} disabled={saving}>
             {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
           </select>
@@ -5884,13 +5933,13 @@ function ScopedActionPoints() {
       return (
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
-            <span className="mb-1 block text-sm font-semibold text-slate-700">Land</span>
+            <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.country")}</span>
             <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value, teamId: "" })} disabled={saving}>
               {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm font-semibold text-slate-700">Team</span>
+            <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.team")}</span>
             <select className="field" value={draft.teamId} onChange={(event) => updateDraft({ teamId: event.target.value })} disabled={saving} required>
               {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
             </select>
@@ -5901,20 +5950,20 @@ function ScopedActionPoints() {
     return (
       <div className="grid gap-4 md:grid-cols-3">
         <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">Land</span>
+          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.country")}</span>
           <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value, teamId: "", userId: "" })} disabled={saving || user.role === "SALES_LEADER"}>
             {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">Team</span>
+          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.team")}</span>
           <select className="field" value={draft.teamId} onChange={(event) => updateDraft({ teamId: event.target.value, userId: "" })} disabled={saving || user.role === "SALES_LEADER"}>
-            <option value="">Alle teams</option>
+            <option value="">{t("activityHistory.allTeams")}</option>
             {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">Gebruiker</span>
+          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.user")}</span>
           <select className="field" value={draft.userId} onChange={(event) => updateDraft({ userId: event.target.value })} disabled={saving} required>
             {users.map((member) => <option key={member.id} value={member.id}>{member.firstName} {member.lastName}</option>)}
           </select>
@@ -5924,32 +5973,32 @@ function ScopedActionPoints() {
   }
 
   function actionPointScopeDetail(item: ActionPointOverviewItem) {
-    if (item.scope === "GLOBAL") return "Alle toegestane gebruikers";
-    if (item.scope === "COUNTRY") return item.country ? countryName(item.country) : "Land niet ingevuld";
+    if (item.scope === "GLOBAL") return t("actionPoints.allAllowedUsers");
+    if (item.scope === "COUNTRY") return item.country ? countryName(item.country) : t("actionPoints.countryMissing");
     if (item.scope === "TEAM") {
-      return managedUsers.find((member) => member.teamId === item.teamId)?.teamName ?? item.teamId ?? "Team niet ingevuld";
+      return managedUsers.find((member) => member.teamId === item.teamId)?.teamName ?? item.teamId ?? t("actionPoints.teamMissing");
     }
     if (item.representativeName) return item.representativeName;
     const person = managedUsers.find((member) => member.id === item.userId || member.representativeId === item.userId);
-    return person ? `${person.firstName} ${person.lastName}` : item.userId ?? "Gebruiker niet ingevuld";
+    return person ? `${person.firstName} ${person.lastName}` : item.userId ?? t("actionPoints.userMissing");
   }
 
   function actionPointDateLabel(item: ActionPointOverviewItem) {
-    if (item.source === "workflow") return item.due ? formatShortDate(item.due) : "Geen deadline";
-    return `${formatShortDate(item.validFrom)} t/m ${item.validUntil ? formatShortDate(item.validUntil) : "onbepaald"}`;
+    if (item.source === "workflow") return item.due ? formatShortDate(item.due) : t("actionPoints.noDeadline");
+    return `${formatShortDate(item.validFrom)} ${t("actionPoints.until")} ${item.validUntil ? formatShortDate(item.validUntil) : t("actionPoints.undetermined")}`;
   }
 
   function actionPointSourceLabel(item: ActionPointOverviewItem) {
-    if (item.originLabel) return item.originLabel;
-    return item.source === "workflow" ? "Gekoppeld actiepunt" : "Scope-actiepunt";
+    if (item.source === "workflow") return t("actionPoints.linkedOrigin");
+    return t("actionPoints.scopeOrigin");
   }
 
   function actionPointMetaParts(item: ActionPointOverviewItem) {
     return [
       actionPointSourceLabel(item),
       actionPointScopeDetail(item),
-      item.source === "workflow" ? `Deadline ${actionPointDateLabel(item)}` : actionPointDateLabel(item),
-      item.ownerName ? `Eigenaar ${item.ownerName}` : undefined,
+      item.source === "workflow" ? `${t("actionPoints.deadline")} ${actionPointDateLabel(item)}` : actionPointDateLabel(item),
+      item.ownerName ? `${t("actionPoints.owner")} ${item.ownerName}` : undefined,
       richTextToPlainText(item.description).trim() || undefined,
     ].filter(Boolean) as string[];
   }
@@ -6005,6 +6054,19 @@ function priorityLabel(priority: ScopedActionDefinition["priority"]) {
   if (priority === "hoog") return "Hoog";
   if (priority === "laag") return "Laag";
   return "Normaal";
+}
+
+function actionPointPriorityKey(priority: ScopedActionDefinition["priority"]): TranslationKey {
+  if (priority === "hoog") return "actionPoints.priorityHigh";
+  if (priority === "laag") return "actionPoints.priorityLow";
+  return "actionPoints.priorityNormal";
+}
+
+function actionPointScopeKey(scope: ScopedActionDefinition["scope"]): TranslationKey {
+  if (scope === "GLOBAL") return "actionPoints.global";
+  if (scope === "COUNTRY") return "actionPoints.country";
+  if (scope === "TEAM") return "actionPoints.team";
+  return "actionPoints.user";
 }
 
 // Legacy action-point screen retained until the final action-point lifecycle is defined.
@@ -6395,11 +6457,11 @@ function ModuleToggle({
   );
 }
 
-function ModuleInactive({ moduleName }: { moduleName: string }) {
+function ModuleInactive({ moduleName, language }: { moduleName: string; language: MockUser["language"] }) {
   return (
     <EmptyState
-      title="Module niet actief"
-      description={`${moduleName} is momenteel gedeactiveerd in FieldForce. Een Super Admin kan deze module opnieuw activeren via Technisch Beheer > Modules.`}
+      title={translate(language, "app.access.moduleInactiveTitle")}
+      description={translate(language, "app.access.moduleInactiveDescription").replace("{module}", moduleName)}
     />
   );
 }
@@ -6418,9 +6480,9 @@ function PerformanceTrendLabel({ value }: { value: -1 | 0 | 1 }) {
   );
 }
 
-function formatShortDate(value?: string) {
+function formatShortDate(value?: string, language: MockUser["language"] = "nl") {
   if (!value) return "Nog niet";
-  return new Date(`${value}T12:00:00`).toLocaleDateString("nl-BE", {
+  return new Date(`${value}T12:00:00`).toLocaleDateString(localeForLanguage(language), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -6456,13 +6518,15 @@ function executionTimestamp(value?: string) {
   return new Date(Number(match[3]), monthIndex[match[2]], Number(match[1]), 12).getTime();
 }
 
-function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number") {
-  if (unit === "%") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 1 })}%`;
-  if (unit === "EUR") return `€ ${value.toLocaleString("nl-BE", { maximumFractionDigits: 0 })}`;
-  if (unit === "minutes") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} min`;
-  if (unit === "hours") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} u`;
-  if (unit === "km") return `${value.toLocaleString("nl-BE", { maximumFractionDigits: 2 })} km`;
-  return value.toLocaleString("nl-BE", { maximumFractionDigits: 2 });
+function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number", language: MockUser["language"] = "nl") {
+  const locale = localeForLanguage(language);
+  const formatted = value.toLocaleString(locale, { maximumFractionDigits: unit === "%" ? 1 : unit === "EUR" ? 0 : 2 });
+  if (unit === "%") return `${formatted}%`;
+  if (unit === "EUR") return `€ ${formatted}`;
+  if (unit === "minutes") return `${formatted} ${translate(language, "myTeam.kpi.unitMinutes")}`;
+  if (unit === "hours") return `${formatted} ${translate(language, "myTeam.kpi.unitHours")}`;
+  if (unit === "km") return `${formatted} ${translate(language, "myTeam.kpi.unitKm")}`;
+  return formatted;
 }
 
 function SectionTitle({ title, subtitle, link, linkLabel = "Alles" }: { title: string; subtitle: string; link?: string; linkLabel?: string }) {

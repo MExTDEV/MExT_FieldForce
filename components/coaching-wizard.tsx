@@ -210,7 +210,7 @@ export function CoachingWizard() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       saveLocalDraft(offlineStorageKeys.draftIntervention, draft);
-      setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+      setSavedAt(new Date().toLocaleTimeString(localeForLanguage(language), { hour: "2-digit", minute: "2-digit" }));
     }, 600);
     return () => window.clearTimeout(timer);
   }, [draft]);
@@ -290,13 +290,13 @@ export function CoachingWizard() {
       setSaving(true);
       if (helpRequestId) {
         const intervention = await scheduleHelpRequestCoaching(helpRequestId, user.id, workflowInput());
-        setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+        setSavedAt(new Date().toLocaleTimeString(localeForLanguage(language), { hour: "2-digit", minute: "2-digit" }));
         clearLocalDraft(offlineStorageKeys.draftIntervention);
         router.push(`/begeleidingen/${intervention.id}`);
         return;
       }
       await saveCoachingStatus(workflowInput(), "gepland");
-      setSavedAt(new Date().toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }));
+      setSavedAt(new Date().toLocaleTimeString(localeForLanguage(language), { hour: "2-digit", minute: "2-digit" }));
       clearLocalDraft(offlineStorageKeys.draftIntervention);
       router.push("/begeleidingen");
     } catch (scheduleError) {
@@ -1387,7 +1387,7 @@ function FocusStep({ selected, onToggle, language }: { selected: string[]; onTog
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-bold text-slate-950">{focus.name}</p>
-                  <p className="mt-2 text-sm text-slate-500">{focus.criteria.length} criteria</p>
+                  <p className="mt-2 text-sm text-slate-500">{t("coaching.wizard.criteriaCount").replace("{count}", String(focus.criteria.length))}</p>
                 </div>
                 <span className={`grid h-7 w-7 place-items-center rounded-full border ${
                   active ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 text-transparent"
@@ -1408,13 +1408,16 @@ function FocusStep({ selected, onToggle, language }: { selected: string[]; onTog
 function CriteriaStep({
   selectedFocus,
   personalCriteria,
+  language,
 }: {
   selectedFocus: CoachingFrameworkFocus[];
   personalCriteria: ReturnType<typeof usePersonalCriteria>["criteria"];
+  language: Language;
 }) {
+  const t = (key: TranslationKey) => translate(language, key);
   return (
     <div>
-      <StepHeading icon={ListChecks} title={translate("nl", "coaching.wizard.selectedCriteria")} description={translate("nl", "coaching.wizard.selectedCriteriaDescription")} />
+      <StepHeading icon={ListChecks} title={t("coaching.wizard.selectedCriteria")} description={t("coaching.wizard.selectedCriteriaDescription")} />
       <div className="mt-6 space-y-4">
         {selectedFocus.map((focus) => {
           const personal = personalCriteria.filter((criterion) => criterion.focusName === focus.name);
@@ -1424,7 +1427,7 @@ function CriteriaStep({
                 <span className={`h-8 w-1.5 rounded-full ${focus.color}`} />
                 <div>
                   <h3 className="font-bold text-slate-900">{focus.name}</h3>
-                  <p className="text-xs text-slate-500">{translate("nl", "coaching.wizard.fixedCriteriaCount").replace("{count}", String(focus.criteria.length))}{personal.length ? ` · ${translate("nl", "coaching.wizard.personalCriteriaCount").replace("{count}", String(personal.length))}` : ""}</p>
+                  <p className="text-xs text-slate-500">{t("coaching.wizard.fixedCriteriaCount").replace("{count}", String(focus.criteria.length))}{personal.length ? ` · ${t("coaching.wizard.personalCriteriaCount").replace("{count}", String(personal.length))}` : ""}</p>
                 </div>
               </div>
               <div className="grid gap-2 p-4 sm:grid-cols-2">
@@ -1432,7 +1435,7 @@ function CriteriaStep({
                   <div key={criterion} className="flex items-center gap-2 rounded-xl bg-white p-3 text-sm text-slate-700">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-700" />
                     <span className="flex-1">{criterion}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Vast</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{t("coaching.wizard.fixed")}</span>
                   </div>
                 ))}
                 {personal.map((criterion) => (
@@ -1440,7 +1443,7 @@ function CriteriaStep({
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-700" />
                       <span className="flex-1 font-semibold">{criterion.title}</span>
-                      <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{translate("nl", "coaching.wizard.personal")}</span>
+                      <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{t("coaching.wizard.personal")}</span>
                     </div>
                     {criterion.description && <p className="mt-2 pl-6 text-xs leading-5 text-slate-500">{criterion.description}</p>}
                   </div>
@@ -1460,15 +1463,18 @@ function ScoreStep({
   criteria,
   scores,
   onScore,
+  language,
 }: {
   criteria: ScoreCriterion[];
   scores: Record<string, ScoreValue>;
   onScore: (criterion: string, score: ScoreValue) => void;
+  language: Language;
 }) {
+  const t = (key: TranslationKey) => translate(language, key);
   const scoreOptions: ScoreValue[] = [100, 75, 50, 25, 0, "NVT"];
   return (
     <div>
-      <StepHeading icon={ClipboardCheck} title={translate("nl", "coaching.wizard.scoreTitle")} description={translate("nl", "coaching.wizard.scoreDescription")} />
+      <StepHeading icon={ClipboardCheck} title={t("coaching.wizard.scoreTitle")} description={t("coaching.wizard.scoreDescription")} />
       <div className="mt-6 space-y-4">
         {criteria.map((item) => (
           <div key={item.key} className={`rounded-2xl border p-4 sm:p-5 ${item.kind === "personal" ? "border-brand-100 bg-brand-50/40" : "border-slate-200"}`}>
@@ -1476,13 +1482,13 @@ function ScoreStep({
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{item.focus}</p>
-                  {item.kind === "personal" && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{translate("nl", "coaching.wizard.personal")}</span>}
+                  {item.kind === "personal" && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{t("coaching.wizard.personal")}</span>}
                 </div>
                 <p className="mt-1 font-semibold text-slate-900">{item.criterion}</p>
                 {item.description && <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>}
               </div>
               <p className="text-xs text-slate-400">
-                {translate("nl", "coaching.wizard.previousScore")}: <span className="font-bold text-slate-600">{item.previousScore}%</span>
+                {t("coaching.wizard.previousScore")}: <span className="font-bold text-slate-600">{item.previousScore}%</span>
               </p>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">

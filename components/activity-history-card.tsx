@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -19,6 +19,8 @@ import {
   Send,
   X,
 } from "lucide-react";
+import { StatusBadge } from "@/components/ui";
+import { translate, type TranslationKey } from "@/lib/i18n";
 import {
   activityHistoryPageSize,
   type ActivityHistoryItem,
@@ -35,6 +37,7 @@ type Filters = {
 };
 
 export function ActivityHistoryCard({ user }: { user: MockUser }) {
+  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const defaults = useMemo(defaultFilters, []);
   const [filters, setFilters] = useState<Filters>(defaults);
   const [page, setPage] = useState(1);
@@ -59,18 +62,18 @@ export function ActivityHistoryCard({ user }: { user: MockUser }) {
       try {
         const response = await fetch(`/api/activity-history?${params}`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json() as ActivityHistoryResponse & { error?: string };
-        if (!response.ok) throw new Error(payload.error || "De actiehistoriek kon niet worden geladen.");
+        if (!response.ok) throw new Error(payload.error || t("activityHistory.loadError"));
         setData(payload);
       } catch (loadError) {
         if (controller.signal.aborted) return;
-        setError(loadError instanceof Error ? loadError.message : "De actiehistoriek kon niet worden geladen.");
+        setError(loadError instanceof Error ? loadError.message : t("activityHistory.loadError"));
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
     }
     void load();
     return () => controller.abort();
-  }, [filters, page, user.id]);
+  }, [filters, page, t, user.id]);
 
   const representativeOptions = (data?.representatives ?? []).filter((option) =>
     !filters.teamId || option.teamId === filters.teamId
@@ -95,34 +98,34 @@ export function ActivityHistoryCard({ user }: { user: MockUser }) {
             <ListChecks className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 id="activity-history-title" className="text-base font-bold text-slate-950">Actiehistoriek</h2>
-            <p className="text-xs text-slate-500">Uitgevoerde acties binnen je toegelaten scope</p>
+            <h2 id="activity-history-title" className="text-base font-bold text-slate-950">{t("activityHistory.title")}</h2>
+            <p className="text-xs text-slate-500">{t("activityHistory.description")}</p>
           </div>
           {data && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{data.total}</span>}
         </div>
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_1.4fr_auto]">
-          <FilterField label="Van datum">
+          <FilterField label={t("activityHistory.fromDate")}>
             <input type="date" value={filters.from} max={filters.to} onChange={(event) => updateFilter("from", event.target.value)} className="input h-9 py-1.5 text-xs" />
           </FilterField>
-          <FilterField label="Tot datum">
+          <FilterField label={t("activityHistory.toDate")}>
             <input type="date" value={filters.to} min={filters.from} onChange={(event) => updateFilter("to", event.target.value)} className="input h-9 py-1.5 text-xs" />
           </FilterField>
-          <FilterField label="Team">
+          <FilterField label={t("activityHistory.team")}>
             <select value={filters.teamId} onChange={(event) => updateFilter("teamId", event.target.value)} className="input h-9 py-1.5 text-xs">
-              <option value="">Alle teams</option>
+              <option value="">{t("activityHistory.allTeams")}</option>
               {(data?.teams ?? []).map((team) => <option key={team.id} value={team.id}>{team.label}</option>)}
             </select>
           </FilterField>
-          <FilterField label="Vertegenwoordiger">
+          <FilterField label={t("activityHistory.representative")}>
             <select value={filters.representativeId} onChange={(event) => updateFilter("representativeId", event.target.value)} className="input h-9 py-1.5 text-xs">
-              <option value="">Alle vertegenwoordigers</option>
+              <option value="">{t("activityHistory.allRepresentatives")}</option>
               {representativeOptions.map((representative) => <option key={representative.id} value={representative.id}>{representative.label}</option>)}
             </select>
           </FilterField>
           <div className="flex items-end sm:col-span-2 xl:col-span-1">
             <button type="button" onClick={() => { setFilters(defaults); setPage(1); }} className="btn-secondary h-9 w-full justify-center px-3 text-xs xl:w-auto">
-              <X className="h-3.5 w-3.5" /> Filters wissen
+              <X className="h-3.5 w-3.5" /> {t("activityHistory.clearFilters")}
             </button>
           </div>
         </div>
@@ -130,33 +133,33 @@ export function ActivityHistoryCard({ user }: { user: MockUser }) {
 
       {loading ? (
         <div className="flex min-h-40 items-center justify-center gap-2 p-6 text-sm text-slate-500">
-          <LoaderCircle className="h-5 w-5 animate-spin text-brand-600" /> Acties laden…
+          <LoaderCircle className="h-5 w-5 animate-spin text-brand-600" /> {t("activityHistory.loading")}
         </div>
       ) : error ? (
         <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
       ) : !data?.activities.length ? (
         <div className="flex min-h-40 flex-col items-center justify-center p-6 text-center">
           <Filter className="mb-2 h-6 w-6 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-700">Geen acties gevonden voor de gekozen filters.</p>
+          <p className="text-sm font-semibold text-slate-700">{t("activityHistory.empty")}</p>
         </div>
       ) : (
         <>
           <div className="hidden xl:block">
             <div className="grid grid-cols-[78px_58px_168px_1.15fr_0.8fr_112px_1.5fr_1fr] gap-2 border-b border-slate-100 bg-slate-50 px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              <span>Datum</span><span>Tijd</span><span>Type</span><span>Vertegenwoordiger</span><span>Team</span><span>Status</span><span>Korte omschrijving</span><span>Uitgevoerd door</span>
+              <span>{t("activityHistory.date")}</span><span>{t("activityHistory.time")}</span><span>{t("activityHistory.type")}</span><span>{t("activityHistory.representative")}</span><span>{t("activityHistory.team")}</span><span>{t("impersonation.history.status")}</span><span>{t("activityHistory.shortDescription")}</span><span>{t("activityHistory.performedBy")}</span>
             </div>
             <div className="divide-y divide-slate-100">
-              {data.activities.map((activity) => <ActivityTableRow key={activity.id} activity={activity} />)}
+              {data.activities.map((activity) => <ActivityTableRow key={activity.id} activity={activity} language={user.language} />)}
             </div>
           </div>
           <div className="divide-y divide-slate-100 xl:hidden">
-            {data.activities.map((activity) => <ActivityCompactRow key={activity.id} activity={activity} />)}
+            {data.activities.map((activity) => <ActivityCompactRow key={activity.id} activity={activity} language={user.language} />)}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 sm:px-5">
-            <p className="text-xs text-slate-500">Pagina {data.page} van {data.totalPages} · {data.total} acties</p>
+            <p className="text-xs text-slate-500">{t("activityHistory.pageOf").replace("{page}", String(data.page)).replace("{totalPages}", String(data.totalPages)).replace("{total}", String(data.total))}</p>
             <div className="flex gap-2">
-              <button type="button" className="btn-secondary h-8 px-2.5 text-xs" disabled={data.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Vorige</button>
-              <button type="button" className="btn-secondary h-8 px-2.5 text-xs" disabled={data.page >= data.totalPages} onClick={() => setPage((current) => Math.min(data.totalPages, current + 1))}>Volgende <ChevronRight className="h-3.5 w-3.5" /></button>
+              <button type="button" className="btn-secondary h-8 px-2.5 text-xs" disabled={data.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> {t("activityHistory.previous")}</button>
+              <button type="button" className="btn-secondary h-8 px-2.5 text-xs" disabled={data.page >= data.totalPages} onClick={() => setPage((current) => Math.min(data.totalPages, current + 1))}>{t("activityHistory.next")} <ChevronRight className="h-3.5 w-3.5" /></button>
             </div>
           </div>
         </>
@@ -165,23 +168,23 @@ export function ActivityHistoryCard({ user }: { user: MockUser }) {
   );
 }
 
-function ActivityTableRow({ activity }: { activity: ActivityHistoryItem }) {
+function ActivityTableRow({ activity, language }: { activity: ActivityHistoryItem; language: MockUser["language"] }) {
   const date = new Date(activity.occurredAt);
   return (
     <Link href={activity.href} className="grid grid-cols-[78px_58px_168px_1.15fr_0.8fr_112px_1.5fr_1fr] items-center gap-2 px-5 py-2.5 text-xs transition hover:bg-brand-50/40 focus-visible:bg-brand-50">
       <span className="font-medium text-slate-700">{formatDate(date)}</span>
       <span className="text-slate-500">{formatTime(date)}</span>
-      <ActivityType activity={activity} />
+      <ActivityType activity={activity} language={language} />
       <span className="truncate font-semibold text-slate-800">{activity.representativeName}</span>
       <span className="truncate text-slate-600">{activity.teamName}</span>
-      <StatusPill status={activity.status} />
+      <StatusBadge status={activity.status} />
       <span className="truncate text-slate-600" title={activity.description}>{activity.description}</span>
       <span className="truncate text-slate-600">{activity.performedBy}</span>
     </Link>
   );
 }
 
-function ActivityCompactRow({ activity }: { activity: ActivityHistoryItem }) {
+function ActivityCompactRow({ activity, language }: { activity: ActivityHistoryItem; language: MockUser["language"] }) {
   const date = new Date(activity.occurredAt);
   return (
     <Link href={activity.href} className="block px-4 py-3 transition hover:bg-slate-50 sm:px-5">
@@ -189,8 +192,8 @@ function ActivityCompactRow({ activity }: { activity: ActivityHistoryItem }) {
         <ActivityIcon kind={activity.kind} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-bold text-slate-900">{activity.typeLabel}</p>
-            <StatusPill status={activity.status} />
+            <p className="text-xs font-bold text-slate-900">{activityTypeLabel(language, activity.kind)}</p>
+            <StatusBadge status={activity.status} />
           </div>
           <p className="mt-1 truncate text-sm font-semibold text-slate-800">{activity.representativeName} · {activity.teamName}</p>
           <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{activity.description}</p>
@@ -202,8 +205,8 @@ function ActivityCompactRow({ activity }: { activity: ActivityHistoryItem }) {
   );
 }
 
-function ActivityType({ activity }: { activity: ActivityHistoryItem }) {
-  return <span className="flex min-w-0 items-center gap-2"><ActivityIcon kind={activity.kind} /><span className="truncate font-semibold text-slate-700">{activity.typeLabel}</span></span>;
+function ActivityType({ activity, language }: { activity: ActivityHistoryItem; language: MockUser["language"] }) {
+  return <span className="flex min-w-0 items-center gap-2"><ActivityIcon kind={activity.kind} /><span className="truncate font-semibold text-slate-700">{activityTypeLabel(language, activity.kind)}</span></span>;
 }
 
 function ActivityIcon({ kind }: { kind: ActivityHistoryKind }) {
@@ -211,8 +214,21 @@ function ActivityIcon({ kind }: { kind: ActivityHistoryKind }) {
   return <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${tone}`}><Icon className="h-3.5 w-3.5" /></span>;
 }
 
-function StatusPill({ status }: { status: string }) {
-  return <span className="w-fit max-w-full truncate rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold capitalize text-slate-600">{status.toLowerCase().replaceAll("_", " ")}</span>;
+function activityTypeLabel(language: MockUser["language"], kind: ActivityHistoryKind) {
+  const keys: Record<ActivityHistoryKind, TranslationKey> = {
+    coaching_planned: "activityHistory.type.coachingPlanned",
+    coaching_started: "activityHistory.type.coachingStarted",
+    coaching_completed: "activityHistory.type.coachingCompleted",
+    coaching_sent_for_approval: "activityHistory.type.coachingSentForApproval",
+    coaching_approved: "activityHistory.type.coachingApproved",
+    coaching_updated: "activityHistory.type.coachingUpdated",
+    action_point_added: "activityHistory.type.actionPointAdded",
+    action_point_completed: "activityHistory.type.actionPointCompleted",
+    comment_added: "activityHistory.type.commentAdded",
+    score_changed: "activityHistory.type.scoreChanged",
+    pdf_exported: "activityHistory.type.pdfExported",
+  };
+  return translate(language, keys[kind]);
 }
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {

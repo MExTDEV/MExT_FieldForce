@@ -22,21 +22,22 @@ import { isBlankRichText } from "@/lib/rich-text";
 import type { ApprovalStatus, WorkflowApproval } from "@/lib/types";
 
 export function MyReflectionsPage({ id }: { id?: string }) {
-  const { user } = useSession();
+  const { user, language } = useSession();
   const { state, openReflections, submitReflection } = useWorkflow();
   const [submitted, setSubmitted] = useState(false);
+  const t = (key: TranslationKey) => translate(language, key);
 
   if (user.role !== "REPRESENTATIVE") {
-    return <EmptyState title="Alleen voor vertegenwoordigers" description="Schakel via de gebruikerswisselaar naar een vertegenwoordiger om eigen reflecties te bekijken." />;
+    return <EmptyState title={t("representativeWorkflow.onlyRepresentativesTitle")} description={t("representativeWorkflow.onlyReflectionsDescription")} />;
   }
 
   const reflections = openReflections(user);
   if (!id) {
     return (
       <div className="space-y-6">
-        <PageHeader eyebrow="Mijn taken" title="Mijn reflecties" description="Vul na een begeleiding kort in wat je meeneemt en waarop je verder werkt." />
+        <PageHeader eyebrow={t("representativeWorkflow.myTasks")} title={t("representativeWorkflow.reflectionsTitle")} description={t("representativeWorkflow.reflectionsDescription")} />
         {reflections.length === 0 ? (
-          <EmptyState title="Geen open reflecties" description="Nieuwe reflectietaken verschijnen hier automatisch zodra een begeleiding is gefinaliseerd." />
+          <EmptyState title={t("representativeWorkflow.noOpenReflections")} description={t("representativeWorkflow.noOpenReflectionsDescription")} />
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {reflections.map((reflection) => {
@@ -47,13 +48,13 @@ export function MyReflectionsPage({ id }: { id?: string }) {
                     <div className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-50 text-cyan-700">
                       <MessageSquareText className="h-6 w-6" />
                     </div>
-                    <StatusBadge status="wacht_op_vt" label="Niet gestart" />
+                    <StatusBadge status="wacht_op_vt" label={t("representativeWorkflow.notStarted")} />
                   </div>
-                  <h2 className="mt-5 font-bold text-slate-950">{intervention?.title ?? "Begeleiding"}</h2>
+                  <h2 className="mt-5 font-bold text-slate-950">{intervention?.title ?? t("representativeWorkflow.coaching")}</h2>
                   <p className="mt-2 text-sm text-slate-500">
-                    {intervention?.focusNames.join(", ")} · {intervention?.scores.length ?? 0} scores
+                    {intervention?.focusNames.join(", ")} · {intervention?.scores.length ?? 0} {t("representativeWorkflow.scores")}
                   </p>
-                  <p className="mt-5 text-sm font-semibold text-brand-700 group-hover:underline">Reflectie invullen</p>
+                  <p className="mt-5 text-sm font-semibold text-brand-700 group-hover:underline">{t("representativeWorkflow.completeReflection")}</p>
                 </Link>
               );
             })}
@@ -70,7 +71,7 @@ export function MyReflectionsPage({ id }: { id?: string }) {
   const ownsReflection = reflection?.representativeId === user.representativeId;
 
   if (!reflection || !intervention || !ownsReflection) {
-    return <EmptyState title="Reflectie niet beschikbaar" description="Deze reflectie bestaat niet of hoort niet bij de ingelogde vertegenwoordiger." />;
+    return <EmptyState title={t("representativeWorkflow.reflectionUnavailable")} description={t("representativeWorkflow.reflectionUnavailableDescription")} />;
   }
 
   return (
@@ -82,6 +83,7 @@ export function MyReflectionsPage({ id }: { id?: string }) {
       }}
       title={intervention.title}
       submitted={submitted || reflection.status === "ingediend"}
+      language={language}
       onSubmit={(answers) => {
         submitReflection(reflection.id, answers);
         setSubmitted(true);
@@ -94,15 +96,18 @@ function ReflectionForm({
   initial,
   title,
   submitted,
+  language,
   onSubmit,
 }: {
   initial: { learnedText: string; workOnText: string; concreteGoalText: string };
   title: string;
   submitted: boolean;
+  language: import("@/lib/types").Language;
   onSubmit: (answers: typeof initial) => void;
 }) {
   const [answers, setAnswers] = useState(initial);
   const complete = Object.values(answers).every((value) => value.trim().length >= 3);
+  const t = (key: TranslationKey) => translate(language, key);
 
   if (submitted) {
     return (
@@ -111,9 +116,9 @@ function ReflectionForm({
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
             <CheckCircle2 className="h-8 w-8" />
           </div>
-          <h1 className="mt-6 text-2xl font-bold text-slate-950">Reflectie ingediend</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-500">Het verslag staat nu klaar onder Mijn verslagen om te lezen en te bevestigen.</p>
-          <Link href="/mijn-verslagen" className="btn-primary mt-7">Naar mijn verslagen</Link>
+          <h1 className="mt-6 text-2xl font-bold text-slate-950">{t("representativeWorkflow.reflectionSubmitted")}</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-500">{t("representativeWorkflow.reflectionSubmittedDescription")}</p>
+          <Link href="/mijn-verslagen" className="btn-primary mt-7">{t("representativeWorkflow.viewReports")}</Link>
         </div>
       </div>
     );
@@ -122,30 +127,33 @@ function ReflectionForm({
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Link href="/mijn-reflecties" className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700">
-        <ArrowLeft className="h-4 w-4" /> Terug naar reflecties
+        <ArrowLeft className="h-4 w-4" /> {t("representativeWorkflow.backToReflections")}
       </Link>
-      <PageHeader eyebrow="Reflectie" title={title} description="Drie korte antwoorden volstaan. Formuleer vooral concreet wat je in de praktijk gaat doen." />
+      <PageHeader eyebrow={t("representativeWorkflow.reflectionEyebrow")} title={title} description={t("representativeWorkflow.reflectionDescription")} />
       <div className="card space-y-6 p-5 sm:p-7">
         <ReflectionQuestion
           number="1"
-          label="Wat heb je geleerd?"
+          label={t("representativeWorkflow.questionLearned")}
+          placeholder={t("representativeWorkflow.answerPlaceholder")}
           value={answers.learnedText}
           onChange={(value) => setAnswers((current) => ({ ...current, learnedText: value }))}
         />
         <ReflectionQuestion
           number="2"
-          label="Waaraan ga je werken?"
+          label={t("representativeWorkflow.questionWorkOn")}
+          placeholder={t("representativeWorkflow.answerPlaceholder")}
           value={answers.workOnText}
           onChange={(value) => setAnswers((current) => ({ ...current, workOnText: value }))}
         />
         <ReflectionQuestion
           number="3"
-          label="Welk concreet doel wil je bereiken?"
+          label={t("representativeWorkflow.questionGoal")}
+          placeholder={t("representativeWorkflow.answerPlaceholder")}
           value={answers.concreteGoalText}
           onChange={(value) => setAnswers((current) => ({ ...current, concreteGoalText: value }))}
         />
         <button type="button" disabled={!complete} onClick={() => onSubmit(answers)} className="btn-primary w-full sm:w-auto">
-          <Send className="h-4 w-4" /> Indienen
+          <Send className="h-4 w-4" /> {t("representativeWorkflow.submit")}
         </button>
       </div>
     </div>
@@ -155,11 +163,13 @@ function ReflectionForm({
 function ReflectionQuestion({
   number,
   label,
+  placeholder,
   value,
   onChange,
 }: {
   number: string;
   label: string;
+  placeholder: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -174,7 +184,7 @@ function ReflectionQuestion({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-3 w-full rounded-2xl border border-slate-200 p-4 text-sm outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
-        placeholder="Schrijf een kort, concreet antwoord..."
+        placeholder={placeholder}
       />
     </label>
   );
@@ -187,16 +197,16 @@ export function MyReportsPage({ id }: { id?: string }) {
   const t = (key: TranslationKey) => translate(language, key);
 
   if (user.role !== "REPRESENTATIVE") {
-    return <EmptyState title="Alleen voor vertegenwoordigers" description="Schakel via de gebruikerswisselaar naar een vertegenwoordiger om eigen verslagen te bekijken." />;
+    return <EmptyState title={t("representativeWorkflow.onlyRepresentativesTitle")} description={t("representativeWorkflow.onlyReportsDescription")} />;
   }
 
   const approvals = pendingApprovals(user);
   if (!id) {
     return (
       <div className="space-y-6">
-        <PageHeader eyebrow="Mijn taken" title="Mijn verslagen" description="Lees het afgewerkte coachingsverslag en bevestig of je akkoord bent." />
+        <PageHeader eyebrow={t("representativeWorkflow.myTasks")} title={t("representativeWorkflow.reportsTitle")} description={t("representativeWorkflow.reportsDescription")} />
         {approvals.length === 0 ? (
-          <EmptyState title="Geen verslagen wachten op akkoord" description="Na het indienen van een reflectie verschijnt het bijbehorende verslag hier." />
+          <EmptyState title={t("representativeWorkflow.noPendingReports")} description={t("representativeWorkflow.noPendingReportsDescription")} />
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {approvals.map((approval) => {
@@ -209,9 +219,9 @@ export function MyReportsPage({ id }: { id?: string }) {
                     </div>
                     <StatusBadge status="wacht_op_akkoord" />
                   </div>
-                  <h2 className="mt-5 font-bold text-slate-950">{intervention?.title ?? "Coachingsverslag"}</h2>
-                  <p className="mt-2 text-sm text-slate-500">{intervention?.focusNames.length ?? 0} focusfasen · {intervention?.actionPoints.length ?? 0} actiepunten</p>
-                  <p className="mt-5 text-sm font-semibold text-brand-700 group-hover:underline">Verslag bekijken</p>
+                  <h2 className="mt-5 font-bold text-slate-950">{intervention?.title ?? t("representativeWorkflow.coachingReport")}</h2>
+                  <p className="mt-2 text-sm text-slate-500">{intervention?.focusNames.length ?? 0} {t("representativeWorkflow.focusPhases")} · {intervention?.actionPoints.length ?? 0} {t("representativeWorkflow.actionPoints")}</p>
+                  <p className="mt-5 text-sm font-semibold text-brand-700 group-hover:underline">{t("representativeWorkflow.viewReport")}</p>
                 </Link>
               );
             })}
@@ -228,7 +238,7 @@ export function MyReportsPage({ id }: { id?: string }) {
   const ownsApproval = approval ? [user.id, user.representativeId].includes(approval.representativeId) : false;
 
   if (!approval || !intervention || !ownsApproval) {
-    return <EmptyState title="Verslag niet beschikbaar" description="Dit verslag bestaat niet of hoort niet bij de ingelogde vertegenwoordiger." />;
+    return <EmptyState title={t("representativeWorkflow.reportUnavailable")} description={t("representativeWorkflow.reportUnavailableDescription")} />;
   }
 
   if (confirmed || approval.status) {
@@ -238,9 +248,9 @@ export function MyReportsPage({ id }: { id?: string }) {
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
             <CheckCircle2 className="h-8 w-8" />
           </div>
-          <h1 className="mt-6 text-2xl font-bold text-slate-950">Verslag bevestigd</h1>
-          <p className="mt-3 text-sm text-slate-500">De begeleiding is afgesloten en blijft beschikbaar in de historiek.</p>
-          <Link href="/dashboard" className="btn-primary mt-7">Naar dashboard</Link>
+          <h1 className="mt-6 text-2xl font-bold text-slate-950">{t("representativeWorkflow.reportConfirmed")}</h1>
+          <p className="mt-3 text-sm text-slate-500">{t("representativeWorkflow.reportConfirmedDescription")}</p>
+          <Link href="/dashboard" className="btn-primary mt-7">{t("representativeWorkflow.toDashboard")}</Link>
         </div>
       </div>
     );
