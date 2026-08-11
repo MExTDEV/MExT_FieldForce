@@ -64,6 +64,8 @@ export type HistoricalActionPoint = {
   updatedAt: string;
   closedAt?: string;
   closedByUserId?: string;
+  closedReason?: import("@/lib/action-points/close-reasons").ActionPointCloseReason;
+  closedReasonExplanation?: string;
 };
 
 export type MonthlyKpiSnapshot = {

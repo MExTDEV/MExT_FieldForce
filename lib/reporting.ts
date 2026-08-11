@@ -59,6 +59,8 @@ export type ReportingAction = {
   updatedAt: string;
   closedAt?: string;
   closedByUserId?: string;
+  closedReason?: import("@/lib/action-points/close-reasons").ActionPointCloseReason;
+  closedReasonExplanation?: string;
 };
 
 export type ReportingKpi = {
@@ -130,6 +132,8 @@ function actionToReporting(
     updatedAt,
     closedAt: action.closedAt,
     closedByUserId: action.closedByUserId,
+    closedReason: action.closedReason,
+    closedReasonExplanation: action.closedReasonExplanation,
   };
 }
 
@@ -290,6 +294,8 @@ export function buildReportingDataset(
       updatedAt: action.updatedAt,
       closedAt: action.closedAt,
       closedByUserId: action.closedByUserId,
+      closedReason: action.closedReason,
+      closedReasonExplanation: action.closedReasonExplanation,
     }];
   });
 

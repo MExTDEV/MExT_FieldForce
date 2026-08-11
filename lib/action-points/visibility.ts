@@ -23,6 +23,8 @@ export type ActionPointOverviewItem = ScopedActionDefinition & {
   closedAt?: string;
   closedByUserId?: string;
   closedByName?: string;
+  closedReason?: import("@/lib/action-points/close-reasons").ActionPointCloseReason;
+  closedReasonExplanation?: string;
   concreteActionPointId?: string;
   ownerName?: string;
   representativeId?: string;

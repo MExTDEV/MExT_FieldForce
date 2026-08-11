@@ -27,6 +27,8 @@ const actions = normalizeHistoricalActionPoints([
         status: "AFGEROND",
         closedAt,
         closedByUserId: "leader-1",
+        closedReason: "GOAL_REACHED",
+        closedReasonExplanation: "Doelstelling is behaald.",
       },
       {
         id: "assignment-b",
@@ -51,6 +53,8 @@ assert.deepEqual(
 );
 assert.equal(actions[0].closedAt, closedAt.toISOString(), "Sluitdatum wordt doorgegeven aan overzichten.");
 assert.equal(actions[0].closedByUserId, "leader-1", "Sluitende gebruiker wordt doorgegeven aan overzichten.");
+assert.equal(actions[0].closedReason, "GOAL_REACHED", "Sluitreden wordt doorgegeven aan overzichten.");
+assert.equal(actions[0].closedReasonExplanation, "Doelstelling is behaald.", "Toelichting wordt doorgegeven aan overzichten.");
 assert.equal(actions.filter((item) => item.status === "open").length, 1, "Dashboard- en overzichttellingen tellen alleen open toewijzingen.");
 
 console.log("Actiepunt sluiten lifecycle-normalisatie is correct.");

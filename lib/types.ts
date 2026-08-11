@@ -549,6 +549,8 @@ export type WorkflowActionPoint = {
   activatedAt?: string;
   closedAt?: string;
   closedByUserId?: string;
+  closedReason?: import("@/lib/action-points/close-reasons").ActionPointCloseReason;
+  closedReasonExplanation?: string;
 };
 
 export type ScopedActionDefinition = {
