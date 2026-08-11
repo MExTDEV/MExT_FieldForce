@@ -1,11 +1,24 @@
 import { canRoleEditCoachingForm } from "@/lib/coaching/form-access";
-import type { CoachingIntervention, MockUser } from "@/lib/types";
+import type { CoachingIntervention, MockUser, Role } from "@/lib/types";
 import { canOpenCoachingDetail, localDateKey } from "@/lib/coaching/visibility";
 
 const representativeApprovalStatuses = new Set([
   "wacht_op_akkoord",
   "verzonden_ter_akkoord",
 ]);
+
+const coachingApprovalManagerRoles = new Set<Role>([
+  "SALES_LEADER",
+  "SALES_MANAGER",
+  "COUNTRY_MANAGER",
+  "GROUP_MANAGER",
+  "ADMIN",
+  "SUPER_ADMIN",
+]);
+
+export function isCoachingApprovalManagerRole(role: Role) {
+  return coachingApprovalManagerRoles.has(role);
+}
 
 export function canManageCoaching(
   currentUser: MockUser,
@@ -40,6 +53,14 @@ export function coachingOpenHref(
     return `/begeleidingen/${intervention.id}`;
   }
   return undefined;
+}
+
+export function canManageCoachingApproval(
+  currentUser: MockUser,
+  intervention: CoachingIntervention
+) {
+  return isCoachingApprovalManagerRole(currentUser.role) &&
+    canManageCoaching(currentUser, intervention);
 }
 
 export function representativeApprovalHref(

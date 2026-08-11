@@ -4,12 +4,17 @@ import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server
 import { prisma } from "@/lib/server/db";
 import { sendWorkflowEventMail } from "@/lib/server/mail-service";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
-import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
+import {
+  isCoachingApprovalOverrideDue,
+  isScheduledCoachingEndPast,
+  latestCoachingApprovalOverrideSentAt,
+} from "@/lib/coaching/schedule";
+import { isCoachingApprovalManagerRole } from "@/lib/coaching/access";
 import { Prisma } from "@prisma/client";
 
 const reminderCooldownMs = 10 * 60 * 1000;
 
-type CoachingAction = "remind_approval" | "not_executed";
+type CoachingAction = "remind_approval" | "override_approval" | "not_executed";
 
 export async function POST(
   request: Request,
@@ -20,7 +25,7 @@ export async function POST(
     const actor = await requireAuthenticatedUser(new URL(request.url).searchParams.get("actorId"));
     requirePermission(actor, "moduleVisitRecord");
     const payload = await request.json() as { action?: CoachingAction };
-    if (!payload.action || !["remind_approval", "not_executed"].includes(payload.action)) {
+    if (!payload.action || !["remind_approval", "override_approval", "not_executed"].includes(payload.action)) {
       badRequest("Ongeldige begeleidingactie.");
     }
 
@@ -37,17 +42,22 @@ export async function POST(
         country: true,
         plannedAt: true,
         endTime: true,
+        sentForApprovalAt: true,
         representative: { select: { firstName: true, lastName: true, role: true, email: true } },
         approval: { select: { representativeId: true } },
       },
     });
     if (!coaching) notFound("Begeleiding niet gevonden.");
-    if (!canManageStoredCoaching(actor, coaching)) {
+    if (!canManageStoredCoaching(actor, coaching) || !isCoachingApprovalManagerRole(actor.role)) {
       forbidden("Je mag deze begeleiding niet beheren.");
     }
 
     if (payload.action === "remind_approval") {
       return remindApproval(coaching, actor.id);
+    }
+
+    if (payload.action === "override_approval") {
+      return overrideApproval(coaching, actor.id);
     }
 
     if (coaching.status !== "GEPLAND") {
@@ -180,4 +190,71 @@ async function remindApproval(
   }
 
   return { action: "remind_approval" as const, lastReminderAt: now.toISOString(), mailStatus, mailError };
+}
+
+async function overrideApproval(
+  coaching: {
+    id: string;
+    status: string;
+    representativeId: string;
+    sentForApprovalAt: Date | null;
+    approval: { representativeId: string } | null;
+  },
+  actorId: string
+) {
+  if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
+    badRequest("COACHING_APPROVAL_OVERRIDE_STATUS_CHANGED");
+  }
+  const sentForApprovalAt = coaching.sentForApprovalAt;
+  if (!sentForApprovalAt) {
+    badRequest("COACHING_APPROVAL_OVERRIDE_TIMESTAMP_MISSING");
+  }
+  const now = new Date();
+  if (!isCoachingApprovalOverrideDue({ sentForApprovalAt, now })) {
+    badRequest("COACHING_APPROVAL_OVERRIDE_TOO_EARLY");
+  }
+
+  const approvalRecipientUserId = coaching.approval?.representativeId ?? coaching.representativeId;
+  await prisma.$transaction(async (tx) => {
+    const update = await tx.intervention.updateMany({
+      where: {
+        id: coaching.id,
+        type: "BEGELEIDING",
+        deletedAt: null,
+        status: "VERZONDEN_TER_AKKOORD",
+        sentForApprovalAt: { lte: latestCoachingApprovalOverrideSentAt(now) },
+      },
+      data: { status: "AKKOORD_DOOR_VERTEGENWOORDIGER" },
+    });
+    if (update.count !== 1) {
+      badRequest("COACHING_APPROVAL_OVERRIDE_STATUS_CHANGED");
+    }
+    await tx.auditLog.create({
+      data: {
+        userId: actorId,
+        entityType: "Intervention",
+        entityId: coaching.id,
+        action: "coaching.approved_by_manager_override",
+        oldValue: JSON.stringify({
+          status: "VERZONDEN_TER_AKKOORD",
+          sentForApprovalAt: sentForApprovalAt.toISOString(),
+        }),
+        newValue: JSON.stringify({
+          status: "AKKOORD_DOOR_VERTEGENWOORDIGER",
+          overriddenByUserId: actorId,
+          overriddenAt: now.toISOString(),
+          approvalRecipientUserId,
+          originalSentForApprovalAt: sentForApprovalAt.toISOString(),
+          reason: "ACKNOWLEDGEMENT_TIMEOUT",
+        }),
+      },
+    });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  const state = await loadWorkflowStateFromDatabase({
+    interventionWhere: { type: "BEGELEIDING", id: coaching.id, deletedAt: null },
+  });
+  const intervention = state.interventions.find((item) => item.id === coaching.id);
+  if (!intervention) notFound("Begeleiding niet gevonden.");
+  return { action: "override_approval" as const, intervention };
 }

@@ -113,6 +113,16 @@ recipient and timestamp in the audit log. MAIL TEST routing remains owned by
 the central mail service; a ten-minute audit-based cooldown prevents repeated
 reminders.
 
+The Mijn Team table displays the official total coaching score as a rounded
+percentage, using the same shared calculation as the report. For a pending
+approval, the table shows `Porren` to an authorised manager. After fourteen
+full days from the stored `sentForApprovalAt` timestamp, an authorised
+Sales Leader, Sales Manager, Country Manager, Group Manager, Admin or Super
+Admin within effective scope may confirm the existing final status manually.
+The workflow remains read-only, does not populate representative-approval
+fields and records the actor, original approval recipient, original send time
+and `ACKNOWLEDGEMENT_TIMEOUT` reason in the audit log.
+
 For an expired `GEPLAND` record, an authorised manager may confirm the
 existing `NIET_UITGEVOERD` end status. The server checks the country timezone,
 current status and effective coaching scope, records the closing actor and
