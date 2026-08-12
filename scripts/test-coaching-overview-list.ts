@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildCoachingScopeGroups, type CoachingScopeGroupItem } from "../lib/coaching/scope-groups";
 import {
   coachingGroupKey,
+  coachingSectionGroupKey,
   collectCoachingGroupIds,
   matchesCoachingSearch,
   normalizeCoachingSearchText,
@@ -60,6 +61,11 @@ assert.deepEqual(
     coachingGroupKey("user", "NL", "team-b", "rep-2"),
   ].sort(),
   "Alles uitklappen moet land-, team- en gebruikersgroepen omvatten."
+);
+assert.notEqual(
+  coachingSectionGroupKey("future", coachingGroupKey("team", "BE", "team-a")),
+  coachingSectionGroupKey("completed", coachingGroupKey("team", "BE", "team-a")),
+  "Een team in Toekomst mag niet dezelfde uitklapstatus delen met hetzelfde team in Uitgevoerd."
 );
 
 const filteredGroups = buildCoachingScopeGroups(manager, rows.filter((row) => matchesCoachingSearch(row.searchText, "Utrecht")));
