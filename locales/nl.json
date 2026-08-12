@@ -1703,6 +1703,8 @@
   "coaching.report.internalNote": "Interne opmerking",
   "coaching.report.mainFormScores": "Score Algemeen — {score}",
   "coaching.report.detailedCriteria": "Gedetailleerde coachingscriteria",
+  "coaching.report.detailedScores": "Gedetailleerde scores",
+  "coaching.report.noScoresRegistered": "Geen scores geregistreerd.",
   "coaching.report.agreementsWithin": "Afspraken binnen de begeleiding",
   "coaching.report.unnamedAppointment": "Onbenoemde afspraak",
   "coaching.report.noLocation": "Geen locatie",

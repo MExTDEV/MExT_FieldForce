@@ -1705,6 +1705,8 @@
   "coaching.report.internalNote": "Remarque interne",
   "coaching.report.mainFormScores": "Score général — {score}",
   "coaching.report.detailedCriteria": "Critères détaillés de coaching",
+  "coaching.report.detailedScores": "Scores détaillés",
+  "coaching.report.noScoresRegistered": "Aucun score enregistré.",
   "coaching.report.agreementsWithin": "Rendez-vous de l’accompagnement",
   "coaching.report.unnamedAppointment": "Rendez-vous sans nom",
   "coaching.report.noLocation": "Aucun lieu",

@@ -124,6 +124,12 @@ data when available and legend. The percentage uses the central official
 coaching-score calculation; missing or NVT values are excluded and an empty
 result is shown as a neutral no-score state.
 
+Appointment summaries and read-only appointment details use the same score
+scale conversion and exclude empty/NVT criteria. Detailed appointment scores
+are grouped by the configured Coaching framework title and order, with a
+percentage per group and per criterion. Groups without valid scores show the
+configured no-score state and do not contribute to the appointment average.
+
 ## Mijn Team actions
 
 The Mijn Team Begeleidingen list uses the shared workflow record and official

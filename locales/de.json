@@ -1705,6 +1705,8 @@
   "coaching.report.internalNote": "Interne Bemerkung",
   "coaching.report.mainFormScores": "Allgemeiner Score — {score}",
   "coaching.report.detailedCriteria": "Detaillierte Coaching-Kriterien",
+  "coaching.report.detailedScores": "Detaillierte Bewertungen",
+  "coaching.report.noScoresRegistered": "Noch keine Bewertungen erfasst.",
   "coaching.report.agreementsWithin": "Termine innerhalb der Begleitung",
   "coaching.report.unnamedAppointment": "Unbenannter Termin",
   "coaching.report.noLocation": "Kein Ort",

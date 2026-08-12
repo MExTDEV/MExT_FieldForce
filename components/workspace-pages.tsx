@@ -131,6 +131,7 @@ import {
   type HistoricalComparisonResponse,
   type HistoricalScoreReference,
 } from "@/lib/coaching/historical-comparison";
+import { groupAppointmentScores } from "@/lib/coaching/appointment-scores";
 import { translate, type TranslationKey } from "@/lib/i18n";
 import {
   ACTION_POINT_CLOSE_REASONS,
@@ -179,6 +180,7 @@ import {
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
 import {
+  calculateAverageScorePercentage,
   calculateCoachingDossierScore,
   calculateOfficialCoachingScore,
 } from "@/lib/coaching/score";
@@ -3543,7 +3545,7 @@ function CoachingDossierDetail({
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("coaching.report.appointment")} {index + 1}</p>
                   <h3 className="mt-1 text-lg font-bold text-slate-950">{appointment.customer || t("coaching.report.newAppointment")}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{appointment.arrivalTime || "--:--"} - {appointment.departureTime || "--:--"} · {t("coaching.report.averageScore")}: {formatAppointmentAverage(appointment)} / 5</p>
+                  <p className="mt-1 text-sm text-slate-500">{appointment.arrivalTime || "--:--"} - {appointment.departureTime || "--:--"} · {t("coaching.report.averageScore")}: {formatPerformancePercentage(appointmentAverageScore(appointment), t("coaching.performance.notScored"))}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId((current) => current === appointment.id ? undefined : appointment.id)}>
@@ -3854,6 +3856,7 @@ function CompletedCoachingSummary({
   canDownload: boolean;
 }) {
   const { user } = useSession();
+  const { coachingFramework } = useConfiguration();
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const [confirmation, setConfirmation] = useState<"send" | "approve">();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -3998,10 +4001,10 @@ function CompletedCoachingSummary({
                 <button type="button" className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-slate-50" onClick={() => toggleAppointment(appointment.id)} aria-expanded={expanded}>
                   <div className="grid h-10 min-w-16 place-items-center rounded-xl bg-brand-50 px-2 text-xs font-bold text-brand-800">{appointment.arrivalTime || "--:--"}</div>
                   <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{index + 1}. {appointment.customer || t("coaching.report.unnamedAppointment")}</p><p className="mt-1 text-xs capitalize text-slate-500">{appointment.relationType} · {appointment.appointmentType} · {appointment.place || t("coaching.report.noLocation")}</p></div>
-                  <div className="hidden text-right sm:block"><p className="text-sm font-bold text-brand-800">{formatAppointmentAverage(appointment)} / 5</p><p className="text-xs text-slate-400">{t("coaching.report.averageScore")}</p></div>
+                  <div className="hidden text-right sm:block"><p className="text-sm font-bold text-brand-800">{formatPerformancePercentage(appointmentAverageScore(appointment), t("coaching.performance.notScored"))}</p><p className="text-xs text-slate-400">{t("coaching.report.averageScore")}</p></div>
                   <ChevronRight className={`h-5 w-5 shrink-0 text-slate-400 transition ${expanded ? "rotate-90" : ""}`} />
                 </button>
-                {expanded && <AppointmentReadOnlyReport appointment={appointment} />}
+                {expanded && <AppointmentReadOnlyReport appointment={appointment} coachingFramework={coachingFramework} t={t} />}
               </article>;
             })}
             {appointments.length === 0 && <p className="text-sm text-slate-500">{t("coaching.report.noAppointmentsRegistered")}</p>}
@@ -4184,7 +4187,7 @@ function PerformanceWheelDialog({
   );
 }
 
-function AppointmentReadOnlyReport({ appointment }: { appointment: CoachingAppointment }) {
+function AppointmentReadOnlyReport({ appointment, coachingFramework, t }: { appointment: CoachingAppointment; coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"]; t: (key: TranslationKey) => string }) {
   const scores = dedupeScoresByCriterion(appointment.scores);
   return (
     <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-5">
@@ -4194,15 +4197,33 @@ function AppointmentReadOnlyReport({ appointment }: { appointment: CoachingAppoi
         <SummaryValue label="Adres / locatie" value={appointment.place || "Niet ingevuld"} />
         <SummaryValue label="Tijdstip" value={`${appointment.arrivalTime || "--:--"} – ${appointment.departureTime || "--:--"}`} />
         <SummaryValue label="Type" value={`${appointment.relationType} · ${appointment.appointmentType}`} />
-        <SummaryValue label="Gemiddelde score" value={`${formatAppointmentAverage(appointment)} / 5`} />
+        <SummaryValue label={t("coaching.report.averageScore")} value={formatPerformancePercentage(appointmentAverageScore(appointment), t("coaching.performance.notScored"))} />
       </dl>
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Resultaat / activiteit</p><p className="mt-2 text-sm leading-6 text-slate-700">{appointment.activity?.trim() || "Geen resultaat ingevuld."}</p></div>
         <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Notities / opmerkingen</p><OptionalCoachingRemark value={appointment.remarks} className="mt-2 min-h-6 text-sm leading-6 text-slate-700" /></div>
       </div>
-      <h4 className="mt-5 font-bold text-slate-900">Gedetailleerde scores</h4>
-      <ReadOnlySimpleScoreTable scores={scores} splitCriterion />
+      <h4 className="mt-5 font-bold text-slate-900">{t("coaching.report.detailedScores")}</h4>
+      <ReadOnlyAppointmentScoreGroups scores={scores} coachingFramework={coachingFramework} t={t} />
       <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">Geen afzonderlijk aan deze afspraak gekoppelde actiepunten geregistreerd.</div>
+    </div>
+  );
+}
+
+function ReadOnlyAppointmentScoreGroups({ scores, coachingFramework, t }: { scores: CoachingSimpleScore[]; coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"]; t: (key: TranslationKey) => string }) {
+  const groups = groupAppointmentScores(scores, coachingFramework);
+  if (groups.length === 0) return <p className="mt-4 text-sm text-slate-500">{t("coaching.report.noScoresRegistered")}</p>;
+  return (
+    <div className="mt-3 space-y-3">
+      {groups.map((group) => (
+        <section key={group.name} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
+            <h5 className="min-w-0 flex-1 break-words text-sm font-bold text-slate-900">{group.name}</h5>
+            <span className="shrink-0 text-sm font-bold text-brand-800">{formatPerformancePercentage(group.average, t("coaching.performance.notScored"))}</span>
+          </div>
+          <ReadOnlySimpleScoreTable scores={group.scores} splitCriterion />
+        </section>
+      ))}
     </div>
   );
 }
@@ -4657,21 +4678,8 @@ function ScoreDifferenceCell({ current, previous, t }: { current: CoachingSimple
   );
 }
 
-function numericScore(value: CoachingSimpleScore["score"]) {
-  return value === "nvt" || value === null ? undefined : value;
-}
-
-function averageFive(scores: Array<{ score: CoachingSimpleScore["score"] }>) {
-  const values: number[] = scores.flatMap((item) => {
-    const score = numericScore(item.score);
-    return score === undefined ? [] : [score];
-  });
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
-}
-
-function formatAppointmentAverage(appointment: { scores: Array<{ score: CoachingSimpleScore["score"] }> }) {
-  const average = averageFive(appointment.scores);
-  return average === undefined ? "-" : average.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
+function appointmentAverageScore(appointment: { scores: Array<{ score: CoachingSimpleScore["score"] }> }) {
+  return calculateAverageScorePercentage(appointment.scores.map((score) => score.score));
 }
 
 function calculateTotalCoachingScore(dossier: CoachingDossier, appointments: CoachingAppointment[]) {
