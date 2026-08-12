@@ -3385,6 +3385,7 @@ function CoachingDossierDetail({
         representative={representative}
         leaderName={reportingUserName(local.ownerId, managedUsers)}
         totalScore={totalCoachingScore}
+        comparisonHistory={historicalComparison.selected?.history}
         canManage={canManageCompleted}
         showHistory={["ADMIN", "SUPER_ADMIN"].includes(user.role)}
         isRepresentative={local.subject?.userId === user.id || local.representativeId === user.id || local.representativeId === user.representativeId}
@@ -3815,6 +3816,7 @@ function CompletedCoachingSummary({
   representative,
   leaderName,
   totalScore,
+  comparisonHistory,
   canManage,
   showHistory,
   isRepresentative,
@@ -3830,6 +3832,7 @@ function CompletedCoachingSummary({
   representative: Representative;
   leaderName: string;
   totalScore?: number;
+  comparisonHistory?: HistoricalCoaching;
   canManage: boolean;
   showHistory: boolean;
   isRepresentative: boolean;
@@ -3844,10 +3847,12 @@ function CompletedCoachingSummary({
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
   const [confirmation, setConfirmation] = useState<"send" | "approve">();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [wheelOpen, setWheelOpen] = useState(false);
   const [openAppointmentIds, setOpenAppointmentIds] = useState<Set<string>>(() => new Set());
   const dossier = intervention.dossier ?? defaultDossierState();
   const appointments = dedupeById(intervention.appointments ?? []).filter((item) => !item.isDeleted);
   const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
+  const wheelCoachings = comparisonHistory ? [comparisonHistory, currentHistory] : [currentHistory];
   const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
   const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
   const generalRemarks = [
@@ -3912,7 +3917,7 @@ function CompletedCoachingSummary({
         <ApprovalReflectionReadOnly approval={approval} sentForApprovalAt={intervention.sentForApprovalAt} t={t} />
       )}
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_220px]">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.55fr)]">
         <div className="card p-5">
           <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalInfo")}</h2>
           <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -3931,15 +3936,22 @@ function CompletedCoachingSummary({
             <SummaryValue label={t("coaching.report.notified")} value={intervention.notifyRepresentative ? t("contactHelp.common.yes") : t("coaching.report.no")} />
           </dl>
         </div>
-        <div className="card p-5 text-center">
-          <PerformanceWheel
-            representativeId={currentHistory.representativeId}
-            currentInterventionId={currentHistory.id}
-            type="kapstok"
-            coachings={[currentHistory]}
-            notScoredLabel={t("coaching.performance.notScored")}
-            totalScoreLabel={t("coaching.performance.totalScore")}
-          />
+        <div className="card flex min-w-0 flex-col justify-between p-5 sm:p-6">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalScore")}</h2>
+            {totalScore === undefined ? (
+              <p className="mt-5 text-base font-semibold text-slate-500">{t("coaching.report.noScoreAvailable")}</p>
+            ) : (
+              <p className="mt-3 text-5xl font-black tracking-tight text-brand-950">{formatPerformancePercentage(totalScore, t("coaching.report.noScoreAvailable"))}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn-primary mt-8 w-full justify-center whitespace-normal text-center"
+            onClick={() => setWheelOpen(true)}
+          >
+            {t("coaching.report.openPerformanceWheel")}
+          </button>
         </div>
       </section>
 
@@ -4008,6 +4020,155 @@ function CompletedCoachingSummary({
           </div>
         </div>
       )}
+      <PerformanceWheelDialog
+        open={wheelOpen}
+        onClose={() => setWheelOpen(false)}
+        title={t("coaching.report.performanceWheelModalTitle")}
+        closeLabel={t("coaching.report.closePerformanceWheel")}
+        representativeId={currentHistory.representativeId}
+        currentInterventionId={currentHistory.id}
+        comparisonInterventionId={comparisonHistory?.id}
+        coachings={wheelCoachings}
+        totalPercentageOverride={totalScore}
+        notScoredLabel={t("coaching.performance.notScored")}
+        totalScoreLabel={t("coaching.performance.totalScore")}
+        labels={{
+          noComparableScores: t("coaching.performance.noScores"),
+          noCriteria: t("coaching.performance.noCriteria"),
+          incomplete: t("coaching.performance.incomplete"),
+          ariaKapstok: t("coaching.performance.competencyWheel"),
+          ariaGeneral: t("coaching.performance.generalWheel"),
+          previous: t("coaching.performance.previousShort"),
+          current: t("coaching.performance.currentShort"),
+          tooltipHelp: t("coaching.performance.wheelHelp"),
+          currentMeasurement: t("coaching.performance.currentMeasurement"),
+          previousMeasurement: t("coaching.performance.previousMeasurement"),
+          noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
+          better: t("coaching.performance.better"),
+          worse: t("coaching.performance.worse"),
+          equal: t("coaching.performance.equal"),
+          first: t("coaching.performance.firstMeasurement"),
+          green: t("coaching.performance.green"),
+          red: t("coaching.performance.red"),
+          darkBlue: t("coaching.performance.darkBlue"),
+          blue: t("coaching.performance.blue"),
+        }}
+      />
+    </div>
+  );
+}
+
+function PerformanceWheelDialog({
+  open,
+  onClose,
+  title,
+  closeLabel,
+  representativeId,
+  currentInterventionId,
+  comparisonInterventionId,
+  coachings,
+  totalPercentageOverride,
+  notScoredLabel,
+  totalScoreLabel,
+  labels,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  closeLabel: string;
+  representativeId: string;
+  currentInterventionId: string;
+  comparisonInterventionId?: string;
+  coachings: HistoricalCoaching[];
+  totalPercentageOverride?: number;
+  notScoredLabel: string;
+  totalScoreLabel: string;
+  labels: Parameters<typeof PerformanceWheel>[0]["labels"];
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])"
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="performance-wheel-dialog-title"
+        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-[min(1500px,calc(100vw-1rem))] min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
+          <h2 id="performance-wheel-dialog-title" className="text-lg font-bold text-slate-950 sm:text-xl">{title}</h2>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            aria-label={closeLabel}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6">
+          <PerformanceWheel
+            representativeId={representativeId}
+            currentInterventionId={currentInterventionId}
+            comparisonInterventionId={comparisonInterventionId}
+            type="kapstok"
+            coachings={coachings}
+            totalPercentageOverride={totalPercentageOverride}
+            notScoredLabel={notScoredLabel}
+            totalScoreLabel={totalScoreLabel}
+            labels={labels}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -100,6 +100,14 @@ Other users:
 
 Opens report/history mode.
 
+The completed report keeps `Algemene info` as the primary card and shows the
+official total coaching score as a percentage in a separate `Algemene score`
+card. The shared Performance Circle opens from that card in a wide responsive
+dialog with its category ring, category averages, current score, comparison
+data when available and legend. The percentage uses the central official
+coaching-score calculation; missing or NVT values are excluded and an empty
+result is shown as a neutral no-score state.
+
 ## Mijn Team actions
 
 The Mijn Team Begeleidingen list uses the shared workflow record and official

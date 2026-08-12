@@ -30,6 +30,14 @@ assert.equal(
   undefined,
   "Een ongescoorde begeleiding mag geen totaalscore tonen."
 );
+assert.equal(
+  Math.round(calculateOfficialCoachingScore({
+    dossierScores: [3],
+    appointmentScores: [[3], [5]],
+  }) ?? -1),
+  76,
+  "De officiële totaalscore moet afspraken voor 80% en het hoofdformulier voor 20% wegen."
+);
 
 assert.equal(isCoachingApprovalManagerRole("REPRESENTATIVE"), false);
 assert.equal(isCoachingApprovalManagerRole("SERVICE_OPERATOR"), false);

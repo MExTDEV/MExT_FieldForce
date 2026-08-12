@@ -21,6 +21,50 @@ const BAND_OUTER = 350;
 const LABEL_RADIUS = 378;
 const CATEGORY_COLORS = ["#dcecff", "#e8eff8", "#d9e7f7", "#e5edf7", "#d7e8f2"];
 
+export type PerformanceWheelLabels = {
+  noComparableScores: string;
+  noCriteria: string;
+  incomplete: string;
+  ariaKapstok: string;
+  ariaGeneral: string;
+  previous: string;
+  current: string;
+  tooltipHelp: string;
+  currentMeasurement: string;
+  previousMeasurement: string;
+  noPreviousMeasurement: string;
+  better: string;
+  worse: string;
+  equal: string;
+  first: string;
+  green: string;
+  red: string;
+  darkBlue: string;
+  blue: string;
+};
+
+const defaultLabels: PerformanceWheelLabels = {
+  noComparableScores: "Geen vergelijkbare scores beschikbaar.",
+  noCriteria: "Geen gescoorde criteria beschikbaar.",
+  incomplete: "De prestatiecirkel kon niet volledig worden opgebouwd.",
+  ariaKapstok: "Kapstok competentiewiel",
+  ariaGeneral: "Algemeen competentiewiel",
+  previous: "Vorige",
+  current: "Huidige",
+  tooltipHelp: "Beweeg over of tik op een criterium voor scoredetails.",
+  currentMeasurement: "Huidige meting",
+  previousMeasurement: "Vorige meting",
+  noPreviousMeasurement: "Geen vorige meting",
+  better: "Beter",
+  worse: "Slechter",
+  equal: "Gelijk",
+  first: "Eerste meting",
+  green: "groen",
+  red: "rood",
+  darkBlue: "donkerblauw",
+  blue: "blauw",
+};
+
 export function PerformanceWheel({
   representativeId,
   currentInterventionId,
@@ -29,6 +73,8 @@ export function PerformanceWheel({
   coachings,
   notScoredLabel,
   totalScoreLabel,
+  totalPercentageOverride,
+  labels,
   compact = false,
 }: {
   representativeId: string;
@@ -38,6 +84,8 @@ export function PerformanceWheel({
   coachings: HistoricalCoaching[];
   notScoredLabel?: string;
   totalScoreLabel?: string;
+  totalPercentageOverride?: number;
+  labels?: Partial<PerformanceWheelLabels>;
   compact?: boolean;
 }) {
   const data = useMemo(
@@ -56,14 +104,15 @@ export function PerformanceWheel({
   const active = data?.criteria.find((item) => item.id === activeId);
   const effectiveNotScoredLabel = notScoredLabel ?? "Niet gescoord";
   const effectiveTotalScoreLabel = totalScoreLabel ?? "Totale score";
+  const effectiveLabels = { ...defaultLabels, ...labels };
 
   if (!data) {
-    return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">Geen vergelijkbare scores beschikbaar.</div>;
+    return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">{effectiveLabels.noComparableScores}</div>;
   }
 
   const count = data.criteria.length;
   if (count === 0) {
-    return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">Geen gescoorde criteria beschikbaar.</div>;
+    return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">{effectiveLabels.noCriteria}</div>;
   }
   const angleStep = 360 / count;
   const currentPoints = data.criteria.map((item, index) =>
@@ -75,14 +124,14 @@ export function PerformanceWheel({
       : polarPoint(CENTER, CENTER, scoreRadius(item.previousScore), centerAngle(index, angleStep))
   );
   const previousCurveSegments = curveSegments(previousPoints);
-  const labels = data.criteria.map((item) => item.criterion);
-  if (labels.length !== currentPoints.length) {
+  const criterionLabels = data.criteria.map((item) => item.criterion);
+  if (criterionLabels.length !== currentPoints.length) {
     console.error("[performance-wheel] Het aantal labels en scorewaarden komt niet overeen.", {
-      labels: labels.length,
+      labels: criterionLabels.length,
       values: currentPoints.length,
       interventionId: data.currentInterventionId,
     });
-    return <div className="rounded-2xl bg-rose-50 p-8 text-center text-sm text-rose-700">De prestatiecirkel kon niet volledig worden opgebouwd.</div>;
+    return <div className="rounded-2xl bg-rose-50 p-8 text-center text-sm text-rose-700">{effectiveLabels.incomplete}</div>;
   }
 
   return (
@@ -93,8 +142,8 @@ export function PerformanceWheel({
           viewBox={`${-VIEWBOX_HORIZONTAL_MARGIN} ${VIEWBOX_VERTICAL_MARGIN} ${SIZE + VIEWBOX_HORIZONTAL_MARGIN * 2} ${SIZE - VIEWBOX_VERTICAL_MARGIN * 2}`}
           className="h-auto w-full"
           role="img"
-          aria-label={`${type === "kapstok" ? "Kapstok" : "Algemeen"} competentiewiel`}
-          data-wheel-label-count={labels.length}
+          aria-label={type === "kapstok" ? effectiveLabels.ariaKapstok : effectiveLabels.ariaGeneral}
+          data-wheel-label-count={criterionLabels.length}
           data-wheel-value-count={currentPoints.length}
           onMouseLeave={() => setHoverId(undefined)}
         >
@@ -330,7 +379,7 @@ export function PerformanceWheel({
 
           <circle cx={CENTER} cy={CENTER} r={INNER_RADIUS - 5} fill="#ffffff" stroke="#dbeafe" strokeWidth="2" />
           <text x={CENTER} y={CENTER - 6} textAnchor="middle" fill="#003b83" fontSize="22" fontWeight="800">
-            {formatPerformancePercentage(data.totalPercentage, effectiveNotScoredLabel)}
+            {formatPerformancePercentage(totalPercentageOverride ?? data.totalPercentage, effectiveNotScoredLabel)}
           </text>
           <text x={CENTER} y={CENTER + 16} textAnchor="middle" fill="#64748b" fontSize="10" fontWeight="700">
             {effectiveTotalScoreLabel.toUpperCase()}
@@ -346,17 +395,17 @@ export function PerformanceWheel({
               <p className="mt-1 font-semibold text-slate-900">{active.criterion}</p>
             </div>
             <div className="flex items-center gap-4 text-xs text-slate-600">
-              <span>Vorige <strong>{formatPerformancePercentage(active.previousPercentage, effectiveNotScoredLabel)}</strong></span>
-              <span>Huidige <strong>{formatPerformancePercentage(active.currentPercentage, effectiveNotScoredLabel)}</strong></span>
-              <TrendBadge trend={active.trend} />
+              <span>{effectiveLabels.previous} <strong>{formatPerformancePercentage(active.previousPercentage, effectiveNotScoredLabel)}</strong></span>
+              <span>{effectiveLabels.current} <strong>{formatPerformancePercentage(active.currentPercentage, effectiveNotScoredLabel)}</strong></span>
+              <TrendBadge trend={active.trend} labels={effectiveLabels} />
             </div>
           </div>
         ) : (
-          <p className="text-center text-slate-500">Beweeg over of tik op een criterium voor scoredetails.</p>
+          <p className="text-center text-slate-500">{effectiveLabels.tooltipHelp}</p>
         )}
       </div>}
 
-      {!compact && <WheelLegend hasPrevious={Boolean(data.comparisonInterventionId)} />}
+      {!compact && <WheelLegend hasPrevious={Boolean(data.comparisonInterventionId)} labels={effectiveLabels} />}
     </div>
   );
 }
@@ -365,15 +414,15 @@ export function WheelTrendBadge({ trend }: { trend: PerformanceTrend }) {
   return <TrendBadge trend={trend} />;
 }
 
-function WheelLegend({ hasPrevious }: { hasPrevious: boolean }) {
+function WheelLegend({ hasPrevious, labels }: { hasPrevious: boolean; labels: PerformanceWheelLabels }) {
   return (
     <div className="mx-auto mt-4 flex max-w-3xl flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-medium text-slate-600">
-      <LegendLine color="#003b83" label="Huidige meting" />
-      <LegendLine color="#94a3b8" dashed label={hasPrevious ? "Vorige meting" : "Geen vorige meting"} />
-      <LegendDot color="#16a34a" label="Groen = beter" />
-      <LegendDot color="#dc2626" label="Rood = slechter" />
-      <LegendDot color="#003b83" label="Donkerblauw = gelijk" />
-      <LegendDot color="#1266b3" label="Blauw = eerste meting" />
+      <LegendLine color="#003b83" label={labels.currentMeasurement} />
+      <LegendLine color="#94a3b8" dashed label={hasPrevious ? labels.previousMeasurement : labels.noPreviousMeasurement} />
+      <LegendDot color="#16a34a" label={`${labels.better} = ${labels.green}`} />
+      <LegendDot color="#dc2626" label={`${labels.worse} = ${labels.red}`} />
+      <LegendDot color="#003b83" label={`${labels.equal} = ${labels.darkBlue}`} />
+      <LegendDot color="#1266b3" label={`${labels.first} = ${labels.blue}`} />
     </div>
   );
 }
@@ -393,14 +442,13 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />{label}</span>;
 }
 
-function TrendBadge({ trend }: { trend: PerformanceTrend }) {
+function TrendBadge({ trend, labels = defaultLabels }: { trend: PerformanceTrend; labels?: PerformanceWheelLabels }) {
   const styles = {
     better: "bg-emerald-100 text-emerald-800",
     worse: "bg-rose-100 text-rose-800",
     equal: "bg-slate-200 text-slate-700",
     first: "bg-blue-100 text-blue-800",
   };
-  const labels = { better: "Beter", worse: "Slechter", equal: "Gelijk", first: "Eerste meting" };
   return <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${styles[trend]}`}>{labels[trend]}</span>;
 }
 
