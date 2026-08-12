@@ -1339,6 +1339,7 @@
   "coaching.performance.previousShort": "V",
   "coaching.performance.currentShort": "A",
   "coaching.performance.notScored": "nicht bewertet",
+  "coaching.performance.totalScore": "Gesamtscore",
   "coaching.reporting.title": "Reporting",
   "coaching.reporting.description": "Coaching-Aktivität, Nachverfolgung, offene Aufgaben und KPI-Entwicklung in Ihrem Bereich.",
   "coaching.reporting.accessTitle": "Kein Reporting-Zugriff",

@@ -8,6 +8,13 @@ import type {
   WorkflowApproval,
 } from "@/lib/types";
 import {
+  buildPerformanceWheelData,
+  formatPerformancePercentage,
+  type PerformanceWheelData,
+  type PerformanceTrend,
+} from "@/lib/performance/performance-wheel";
+import type { HistoricalCoaching } from "@/lib/performance-data";
+import {
   criterionScoresFromRows,
   mergeCriterionScores,
   normalizePerformanceScore,
@@ -35,6 +42,7 @@ type ScoreRow = {
   group: string;
   criterion: string;
   current: number;
+  scored?: boolean;
   previous?: number;
   comment?: string;
 };
@@ -64,6 +72,7 @@ const translations = {
     general: "Algemene gegevens",
     preparation: "Voorbereiding",
     performance: "Prestatiecirkel",
+    totalScore: "Totale score",
     scoreAnalysis: "Score-analyse",
     actionPoints: "Actiepunten",
     conclusion: "Eindbesluit",
@@ -138,6 +147,7 @@ const translations = {
     general: "Données générales",
     preparation: "Préparation",
     performance: "Cercle de performance",
+    totalScore: "Score total",
     scoreAnalysis: "Analyse des scores",
     actionPoints: "Points d'action",
     conclusion: "Conclusion",
@@ -212,6 +222,7 @@ const translations = {
     general: "Allgemeine Daten",
     preparation: "Vorbereitung",
     performance: "Leistungskreis",
+    totalScore: "Gesamtscore",
     scoreAnalysis: "Score-Analyse",
     actionPoints: "Aktionspunkte",
     conclusion: "Abschluss",
@@ -307,7 +318,7 @@ export async function exportProfessionalCoachingReport(
   }));
 
   startSection(pdf);
-  drawPerformancePage(pdf, input, comparedRows);
+  drawPerformancePage(pdf, input, comparedRows, buildReportWheelData(input));
 
   startSection(pdf);
   drawScoreAnalysis(pdf, input, comparedRows);
@@ -339,10 +350,9 @@ function startSection(pdf: Pdf) {
 
 function drawCover(pdf: Pdf, input: ProfessionalCoachingReportInput, logo?: string) {
   const t = translations[input.language];
-  const rows = collectScoreRows(input.intervention);
-  const previousRows = collectScoreRows(input.previousIntervention);
-  const score = rows.length ? averageOf(rows.map((row) => row.current)) : 0;
-  const previousScore = previousRows.length ? averageOf(previousRows.map((row) => row.current)) : undefined;
+  const wheelData = buildReportWheelData(input);
+  const score = wheelData.totalPercentage;
+  const previousScore = wheelData.previousTotalPercentage;
   pdf.setFillColor(BLUE);
   pdf.rect(0, 0, PAGE_WIDTH, 72, "F");
   pdf.setFillColor(MID_BLUE);
@@ -380,7 +390,7 @@ function drawCover(pdf: Pdf, input: ProfessionalCoachingReportInput, logo?: stri
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(20);
   pdf.setTextColor(BLUE);
-  pdf.text(rows.length ? scoreLabel(score) : "-", 43, 168, { align: "center" });
+  pdf.text(formatPerformancePercentage(score, t.noScore), 43, 168, { align: "center" });
   pdf.setFontSize(6.5);
   pdf.text(t.average.toUpperCase(), 43, 176, { align: "center" });
 
@@ -388,8 +398,8 @@ function drawCover(pdf: Pdf, input: ProfessionalCoachingReportInput, logo?: stri
     [t.duration, durationLabel(input.intervention.startTime, input.intervention.endTime) || "-"],
     [t.appointment, String((input.intervention.appointments ?? []).filter((item) => !item.isDeleted).length)],
     [t.actionPoints, String(input.intervention.actionPoints.length)],
-    [t.average, rows.length ? scoreLabel(score) : "-"],
-    [t.difference, previousScore === undefined ? t.firstMeasurement : signedScore(score - previousScore)],
+    [t.average, formatPerformancePercentage(score, t.noScore)],
+    [t.difference, score !== undefined && previousScore !== undefined ? signedScore(score - previousScore) : t.firstMeasurement],
   ];
   drawCompactKeyValueList(pdf, t.summary, summary, 75, 143, 119, 47, 5);
 
@@ -434,28 +444,42 @@ function drawGeneralPage(pdf: Pdf, input: ProfessionalCoachingReportInput) {
   drawInsightCard(pdf, t.openActions, [`${openActions.length}`, ...openActions.slice(0, 2).map((action) => action.due ? formatDate(action.due, input.language) : action.title)], MARGIN + (cardWidth + 4) * 2, cardY, cardWidth, AMBER);
 }
 
-function drawPerformancePage(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: ScoreRow[]) {
+function drawPerformancePage(
+  pdf: Pdf,
+  input: ProfessionalCoachingReportInput,
+  rows: ScoreRow[],
+  wheelData: PerformanceWheelData
+) {
   const t = translations[input.language];
   drawSectionHeading(pdf, "Prestatieoverzicht", fullName(input.representative));
-  const scores = rows.map((row) => row.current);
-  const average = scores.length ? averageOf(scores) : 0;
-  const previous = rows.flatMap((row) => row.previous === undefined ? [] : [row.previous]);
-  drawPerformanceWheel(pdf, rows, 59, 112, 39);
+  const scoredRows = rows.filter((row) => row.scored !== false);
+  const scores = scoredRows.map((row) => row.current);
+  drawPerformanceWheel(
+    pdf,
+    wheelData,
+    59,
+    112,
+    39,
+    t.totalScore,
+    translations[input.language].noScore
+  );
   const summary = [
-    [t.current, scoreLabel(average)],
-    [t.previous, previous.length ? scoreLabel(averageOf(previous)) : t.firstMeasurement],
-    [t.difference, previous.length ? signedScore(average - averageOf(previous)) : "-"],
-    [t.highest, rows.length ? scoreLabel(Math.max(...scores)) : "-"],
-    [t.lowest, rows.length ? scoreLabel(Math.min(...scores)) : "-"],
-    [t.criteria, String(rows.length)],
+    [t.current, formatPerformancePercentage(wheelData.totalPercentage, t.noScore)],
+    [t.previous, wheelData.previousTotalPercentage === undefined ? t.firstMeasurement : formatPerformancePercentage(wheelData.previousTotalPercentage, t.noScore)],
+    [t.difference, wheelData.totalPercentage !== undefined && wheelData.previousTotalPercentage !== undefined
+      ? signedScore(wheelData.totalPercentage - wheelData.previousTotalPercentage)
+      : "-"],
+    [t.highest, scoredRows.length ? formatPerformancePercentage(Math.max(...scores)) : t.noScore],
+    [t.lowest, scoredRows.length ? formatPerformancePercentage(Math.min(...scores)) : t.noScore],
+    [t.criteria, String(scoredRows.length)],
   ];
   drawCompactKeyValueList(pdf, t.summary, summary, 108, 50, 86, 79, 2);
 
-  const sorted = [...rows].sort((left, right) => right.current - left.current);
+  const sorted = [...scoredRows].sort((left, right) => right.current - left.current);
   drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 163, 86, GREEN);
   drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), 108, 163, 86, RED);
 
-  const distribution = [5, 4, 3, 2, 1].map((value) => `${value}/5: ${rows.filter((row) => Math.max(1, Math.round(row.current / 20)) === value).length}`);
+  const distribution = [5, 4, 3, 2, 1].map((value) => `${value}/5: ${scoredRows.filter((row) => Math.max(1, Math.round(row.current / 20)) === value).length}`);
   const categoryEvolution = categoryEvolutionLines(rows);
   drawInsightCard(pdf, t.distribution, distribution, MARGIN, 218, 56, BLUE);
   drawInsightCard(pdf, t.categoryEvolution, categoryEvolution.slice(0, 5), 76, 218, 75, MID_BLUE);
@@ -572,13 +596,14 @@ function drawAppointment(
 function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: ScoreRow[]) {
   const t = translations[input.language];
   drawSectionHeading(pdf, t.conclusion, fullName(input.representative));
-  const sorted = [...rows].sort((left, right) => right.current - left.current);
+  const wheelData = buildReportWheelData(input);
+  const scoredRows = rows.filter((row) => row.scored !== false);
+  const sorted = [...scoredRows].sort((left, right) => right.current - left.current);
   const actions = input.intervention.actionPoints.filter((action) => !["afgerond", "behaald", "geannuleerd"].includes(action.status));
-  const average = rows.length ? averageOf(rows.map((row) => row.current)) : undefined;
   drawCompactKeyValueList(pdf, t.summary, [
-    [t.average, average === undefined ? "-" : scoreLabel(average)],
+    [t.average, formatPerformancePercentage(wheelData.totalPercentage, t.noScore)],
     [t.status, localizedValue(input.intervention.status, input.language)],
-    [t.criteria, String(rows.length)],
+    [t.criteria, String(scoredRows.length)],
     [t.appointment, String((input.intervention.appointments ?? []).filter((item) => !item.isDeleted).length)],
     [t.openActions, String(actions.length)],
     [t.date, formatDate(input.intervention.plannedDate ?? input.intervention.createdAt, input.language)],
@@ -687,6 +712,7 @@ function collectScoreRows(intervention?: CoachingIntervention): ScoreRow[] {
       group: score.focus,
       criterion: score.criterion,
       current: score.score,
+      scored: score.scored !== false,
       comment: intervention.scores.find((item) => item.focus === score.focus && item.criterion === score.criterion)?.description,
     }));
   }
@@ -700,50 +726,166 @@ function collectScoreRows(intervention?: CoachingIntervention): ScoreRow[] {
 
 function simpleScoreRow(score: CoachingSimpleScore, group: string): ScoreRow | undefined {
   if (typeof score.score !== "number") return undefined;
-  return { group, criterion: score.criterion, current: score.score * 20, previous: score.previousScore === undefined ? undefined : score.previousScore * 20, comment: score.comment };
+  return { group, criterion: score.criterion, current: score.score * 20, scored: true, previous: score.previousScore === undefined ? undefined : score.previousScore * 20, comment: score.comment };
 }
 
-function drawPerformanceWheel(pdf: Pdf, rows: ScoreRow[], centerX: number, centerY: number, radius: number) {
-  const usable = rows;
-  const count = Math.max(3, usable.length);
+function buildReportWheelData(input: ProfessionalCoachingReportInput): PerformanceWheelData {
+  const current = reportHistory(input.intervention, collectScoreRows(input.intervention));
+  const comparison = input.previousIntervention
+    ? reportHistory(input.previousIntervention, collectScoreRows(input.previousIntervention))
+    : undefined;
+  return buildPerformanceWheelData({
+    current,
+    comparison,
+    type: "kapstok",
+    representativeId: input.representative.id,
+    currentInterventionId: input.intervention.id,
+  });
+}
+
+function reportHistory(intervention: CoachingIntervention, rows: ScoreRow[]): HistoricalCoaching {
+  return {
+    id: intervention.id,
+    representativeId: intervention.representativeId,
+    date: intervention.plannedDate ?? intervention.createdAt.slice(0, 10),
+    ownerId: intervention.ownerId,
+    ownerName: "",
+    status: "afgesloten",
+    focusNames: [...new Set([
+      ...intervention.focusNames,
+      ...rows.map((row) => row.group),
+    ])],
+    phaseScores: [],
+    generalScores: [],
+    criterionScores: rows.map((row) => ({
+      focus: row.group,
+      criterion: row.criterion,
+      score: row.current,
+      scored: row.scored !== false,
+    })),
+  };
+}
+
+function drawPerformanceWheel(
+  pdf: Pdf,
+  data: PerformanceWheelData,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  totalScoreLabel: string,
+  notScoredLabel: string
+) {
+  const count = Math.max(1, data.criteria.length);
+  const angleStep = 360 / count;
+  const ringInner = radius + 3;
+  const ringOuter = radius + 10;
   pdf.setFillColor("#F8FAFC");
-  pdf.circle(centerX, centerY, radius + 3, "F");
+  pdf.circle(centerX, centerY, ringOuter + 2, "F");
+
+  data.categories.forEach((category, index) => {
+    const start = -90 + category.startIndex * angleStep;
+    const end = -90 + category.endIndex * angleStep;
+    drawPdfAnnularSector(pdf, centerX, centerY, ringInner, ringOuter, start, end, ["#DCECFB", "#E8F1FB", "#D9EAF8", "#E5EFF9"][index % 4]);
+    const midpoint = (start + end) / 2;
+    const labelPoint = pdfPolarPoint(centerX, centerY, (ringInner + ringOuter) / 2, midpoint);
+    const score = formatPerformancePercentage(category.currentPercentage, notScoredLabel);
+    const label = `${category.name.toUpperCase()} - ${score}`;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(Math.max(4.8, Math.min(6.2, 6.2 - Math.max(0, label.length - 22) * 0.08)));
+    pdf.setTextColor(pdfTrendTextColor(category.trend));
+    pdf.text(label, labelPoint.x, labelPoint.y, {
+      align: "center",
+      angle: readablePdfAngle(midpoint),
+    });
+  });
+
   for (const percentage of [20, 40, 60, 80, 100]) {
     pdf.setDrawColor(SLATE_300);
     pdf.setLineWidth(percentage === 100 ? 0.45 : 0.22);
     pdf.circle(centerX, centerY, radius * percentage / 100, "S");
   }
-  const points = usable.map((row, index) => {
-    const angle = -Math.PI / 2 + index * (Math.PI * 2 / count);
-    const outerX = centerX + Math.cos(angle) * radius;
-    const outerY = centerY + Math.sin(angle) * radius;
+
+  const points = data.criteria.map((criterion, index) => {
+    const angle = -90 + index * angleStep;
+    const outer = pdfPolarPoint(centerX, centerY, radius, angle);
     pdf.setDrawColor("#FFFFFF");
     pdf.setLineWidth(0.6);
-    pdf.line(centerX, centerY, outerX, outerY);
-    const factor = Math.max(0, Math.min(100, row.current)) / 100;
-    return { x: centerX + Math.cos(angle) * radius * factor, y: centerY + Math.sin(angle) * radius * factor };
+    pdf.line(centerX, centerY, outer.x, outer.y);
+    const factor = (criterion.currentPercentage ?? 0) / 100;
+    return pdfPolarPoint(centerX, centerY, radius * factor, angle);
   });
+
   if (points.length > 1) {
-    pdf.setLineWidth(1.1);
     points.forEach((point, index) => {
       const next = points[(index + 1) % points.length];
-      const row = usable[index];
-      const difference = row.previous === undefined ? undefined : row.current - row.previous;
-      const trendColor = difference === undefined || difference === 0 ? MID_BLUE : difference > 0 ? GREEN : RED;
-      pdf.setDrawColor(trendColor);
+      const criterion = data.criteria[index];
+      const nextCriterion = data.criteria[(index + 1) % data.criteria.length];
+      if (criterion.currentPercentage === undefined || nextCriterion.currentPercentage === undefined) return;
+      const color = pdfTrendTextColor(criterion.trend);
+      pdf.setDrawColor(color);
+      pdf.setLineWidth(1.1);
       pdf.line(point.x, point.y, next.x, next.y);
-      pdf.setFillColor(trendColor);
+      pdf.setFillColor(color);
       pdf.circle(point.x, point.y, 1.7, "F");
     });
   }
+
   pdf.setFillColor("#FFFFFF");
   pdf.setDrawColor(LIGHT_BLUE);
   pdf.circle(centerX, centerY, 10, "FD");
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(11);
-  pdf.setTextColor(BLUE);
-  pdf.text(rows.length ? scoreLabel(averageOf(rows.map((row) => row.current))) : "-", centerX, centerY + 1, { align: "center" });
+  pdf.setFontSize(9);
+  pdf.setTextColor(pdfTrendTextColor(data.totalTrend));
+  pdf.text(formatPerformancePercentage(data.totalPercentage, notScoredLabel), centerX, centerY - 1, { align: "center" });
+  pdf.setFontSize(4.5);
+  pdf.setTextColor(SLATE_500);
+  pdf.text(totalScoreLabel.toUpperCase(), centerX, centerY + 5, { align: "center" });
+}
 
+function drawPdfAnnularSector(
+  pdf: Pdf,
+  centerX: number,
+  centerY: number,
+  innerRadius: number,
+  outerRadius: number,
+  startAngle: number,
+  endAngle: number,
+  fill: string
+) {
+  const steps = Math.max(3, Math.ceil(Math.abs(endAngle - startAngle) / 8));
+  const points = Array.from({ length: steps + 1 }, (_, index) =>
+    pdfPolarPoint(centerX, centerY, outerRadius, startAngle + (endAngle - startAngle) * index / steps)
+  ).concat(Array.from({ length: steps + 1 }, (_, index) =>
+    pdfPolarPoint(centerX, centerY, innerRadius, endAngle - (endAngle - startAngle) * index / steps)
+  ));
+  const first = points[0];
+  pdf.setFillColor(fill);
+  pdf.setDrawColor("#FFFFFF");
+  pdf.setLineWidth(0.35);
+  pdf.lines(
+    points.slice(1).map((point) => [point.x - first.x, point.y - first.y]),
+    first.x,
+    first.y,
+    [1, 1],
+    "FD",
+    true
+  );
+}
+
+function pdfPolarPoint(centerX: number, centerY: number, radius: number, angle: number) {
+  const radians = angle * Math.PI / 180;
+  return { x: centerX + Math.cos(radians) * radius, y: centerY + Math.sin(radians) * radius };
+}
+
+function readablePdfAngle(angle: number) {
+  const normalized = ((angle % 360) + 360) % 360;
+  return normalized > 90 && normalized < 270 ? angle + 180 : angle;
+}
+
+function pdfTrendTextColor(trend: PerformanceTrend) {
+  if (trend === "better") return GREEN;
+  if (trend === "worse") return RED;
+  return BLUE;
 }
 
 function drawAppointmentScores(pdf: Pdf, input: ProfessionalCoachingReportInput, scores: CoachingSimpleScore[], startY: number, continuationTitle: string) {
@@ -933,7 +1075,7 @@ function drawInsightCard(pdf: Pdf, title: string, lines: string[], x: number, y:
 
 function categoryEvolutionLines(rows: ScoreRow[]) {
   const groups = new Map<string, ScoreRow[]>();
-  rows.forEach((row) => groups.set(row.group || "Algemeen", [...(groups.get(row.group || "Algemeen") ?? []), row]));
+  rows.filter((row) => row.scored !== false).forEach((row) => groups.set(row.group || "Algemeen", [...(groups.get(row.group || "Algemeen") ?? []), row]));
   return [...groups.entries()].map(([group, groupRows]) => {
     const current = averageOf(groupRows.map((row) => row.current));
     const previousRows = groupRows.filter((row) => row.previous !== undefined);

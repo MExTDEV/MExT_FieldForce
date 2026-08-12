@@ -14,6 +14,7 @@ export const generalCompetencies = [
 export type PerformanceDimension = {
   label: string;
   score: number;
+  scored?: boolean;
 };
 
 export type HistoricalCriterionScore = {

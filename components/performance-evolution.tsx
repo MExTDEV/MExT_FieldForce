@@ -6,6 +6,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, 
 import { PerformanceWheel, WheelTrendBadge } from "@/components/charts/PerformanceWheel";
 import {
   getPerformanceWheelData,
+  formatPerformancePercentage,
   type PerformanceWheelCategory,
   type PerformanceWheelCriterion,
   type PerformanceWheelType,
@@ -81,6 +82,7 @@ export function PerformanceEvolution({
         data,
         svgElement,
         notScoredLabel: t("coaching.performance.notScored"),
+        totalScoreLabel: t("coaching.performance.totalScore"),
         preview,
       });
       if (result.previewUrl) {
@@ -237,6 +239,7 @@ export function PerformanceEvolution({
               type={mode}
               coachings={coachings}
               notScoredLabel={t("coaching.performance.notScored")}
+              totalScoreLabel={t("coaching.performance.totalScore")}
             />
             <p className="mt-4 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
               <Info className="h-4 w-4 text-brand-700" />
@@ -315,8 +318,8 @@ function ScoreOverview({ criteria, categories }: { criteria: PerformanceWheelCri
               <h3 className="text-sm font-bold text-brand-800">{displayCategory(group.category)}</h3>
               <span className="rounded-full bg-white px-2 py-1 text-xs font-extrabold text-brand-800 ring-1 ring-slate-200">
                 {(() => {
-                  const average = categories.find((category) => category.name === group.category)?.currentAverage;
-                  return average === undefined ? t("coaching.performance.notScored") : formatScore(Math.round(average) / 10);
+                  const percentage = categories.find((category) => category.name === group.category)?.currentPercentage;
+                  return formatPerformancePercentage(percentage, t("coaching.performance.notScored"));
                 })()}
               </span>
             </div>

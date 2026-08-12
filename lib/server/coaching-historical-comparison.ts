@@ -213,6 +213,7 @@ export function toHistoricalCoaching(row: HistoricalIntervention): HistoricalCoa
     .map((score) => ({
       label: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
       score: normalizePerformanceScore(score.score),
+      scored: score.score !== null && score.score !== undefined && !score.notApplicable,
     }));
   const dossierValues = scoreRows
     .filter((score) => score.category?.startsWith("Dossier:"))

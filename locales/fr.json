@@ -1339,6 +1339,7 @@
   "coaching.performance.previousShort": "P",
   "coaching.performance.currentShort": "A",
   "coaching.performance.notScored": "non évalué",
+  "coaching.performance.totalScore": "Score total",
   "coaching.reporting.title": "Reporting",
   "coaching.reporting.description": "Activité d’accompagnement, suivi, tâches ouvertes et évolution des KPI dans votre périmètre.",
   "coaching.reporting.accessTitle": "Accès au reporting refusé",

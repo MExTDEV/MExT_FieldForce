@@ -321,13 +321,22 @@ Completed records may be opened as a report and exported using the existing PDF 
 The report must use the same underlying record and current criteria data.
 
 The shared Performance Circle shows the configured kapstok hoofditems as contiguous
-outer sectors. Each sector contains the main-item title and its average score,
-calculated from only numerically scored criteria belonging to that item. NVT,
-not-scored and missing values are excluded from the denominator; an item without
-scored criteria is shown as `Niet gescoord`. The same shared calculation and
-sector labels are used for the execution form, preparation, report, Mijn Team
-profile, historical comparisons and PDF export. Historical sector scores are
-always calculated from the selected historical Begeleiding.
+outer sectors. Each sector contains the main-item title and its rounded percentage,
+calculated from only numerically scored criteria belonging to that item. The centre
+shows the rounded total percentage, calculated directly from all scored criteria
+(weighted by criterion count), not as an average of sector percentages. NVT,
+not-scored and missing values are excluded from every denominator; an item or total
+without scored criteria is shown as `Niet gescoord`. The percentage conversion uses
+the canonical score scale from `lib/performance-data` and the shared formatter in
+`lib/performance/performance-wheel.ts`.
+
+The same shared viewmodel, calculation, rounding, comparison colours and sector
+labels are used for the execution form, preparation, report, Mijn Team profile,
+historical comparisons and PDF export. Historical sector and total scores are
+always calculated from the selected historical Begeleiding. The professional report
+PDF has a technically necessary vector renderer instead of mounting the browser SVG;
+it consumes the same viewmodel and therefore uses the same order, percentages,
+labels and trend colours.
 
 When the Begeleiding was sent for representative approval, the professional PDF includes the representative's stored reflection answers when an approval record with answers is available.
 
