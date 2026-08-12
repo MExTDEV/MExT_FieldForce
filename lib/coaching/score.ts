@@ -28,10 +28,11 @@ export function calculateOfficialCoachingScore(input: {
 }
 
 export function calculateCoachingDossierScore(dossierScores: OfficialCoachingScoreValue[]) {
-  return calculateOfficialCoachingScore({
-    dossierScores,
-    appointmentScores: [],
-  });
+  return calculateAverageScorePercentage(dossierScores);
+}
+
+export function calculateAverageScorePercentage(values: OfficialCoachingScoreValue[]) {
+  return averagePercent(values);
 }
 
 function averagePercent(values: OfficialCoachingScoreValue[]) {
