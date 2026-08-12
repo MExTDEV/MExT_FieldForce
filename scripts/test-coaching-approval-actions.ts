@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-import {
-  isCoachingApprovalOverrideDue,
-  latestCoachingApprovalOverrideSentAt,
-} from "../lib/coaching/schedule";
 import { calculateOfficialCoachingScore } from "../lib/coaching/score";
 import {
-  canOverrideCoachingApproval,
   canRemindCoachingApproval,
   isPendingCoachingApprovalStatus,
   resolveCoachingApprovalSentForApprovalAt,
@@ -34,23 +29,6 @@ assert.equal(
   calculateOfficialCoachingScore({ dossierScores: ["NVT"], appointmentScores: [] }),
   undefined,
   "Een ongescoorde begeleiding mag geen totaalscore tonen."
-);
-
-const sentForApprovalAt = "2026-03-15T10:00:00.000Z";
-assert.equal(
-  isCoachingApprovalOverrideDue({ sentForApprovalAt, now: new Date("2026-03-29T08:59:59.999Z") }),
-  false,
-  "De override mag in Europe/Brussels niet voor veertien kalenderdagen beschikbaar zijn."
-);
-assert.equal(
-  isCoachingApprovalOverrideDue({ sentForApprovalAt, now: new Date("2026-03-29T09:00:00.000Z") }),
-  true,
-  "De override moet vanaf hetzelfde lokale uur na veertien kalenderdagen beschikbaar zijn."
-);
-assert.equal(isCoachingApprovalOverrideDue({ sentForApprovalAt: undefined }), false);
-assert.equal(
-  latestCoachingApprovalOverrideSentAt(new Date("2026-03-29T09:00:00.000Z")).toISOString(),
-  sentForApprovalAt
 );
 
 assert.equal(isCoachingApprovalManagerRole("REPRESENTATIVE"), false);
@@ -116,70 +94,14 @@ function intervention(input: {
   };
 }
 
-const lessThanFourteenDays = intervention({
+const pending = intervention({
   status: "verzonden_ter_akkoord",
   sentForApprovalAt: "2026-07-16T12:00:00.000Z",
 });
-assert.equal(isPendingCoachingApprovalStatus(lessThanFourteenDays.status), true);
-assert.equal(canRemindCoachingApproval(manager, lessThanFourteenDays), true, "Porren moet meteen zichtbaar zijn.");
-assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: manager,
-    intervention: lessThanFourteenDays,
-    now: new Date("2026-07-30T11:59:59.999Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  false,
-  "Akkoord zetten mag niet voor exact 14 kalenderdagen zichtbaar zijn."
-);
-assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: manager,
-    intervention: lessThanFourteenDays,
-    now: new Date("2026-07-30T12:00:00.000Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  true,
-  "Akkoord zetten moet exact na 14 kalenderdagen zichtbaar zijn."
-);
-assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: manager,
-    intervention: lessThanFourteenDays,
-    now: new Date("2026-08-11T08:00:00.000Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  true,
-  "De begeleidingen van 15/16 juli moeten op 11 augustus overrulbaar zijn."
-);
-
-const wachtOpAkkoord = intervention({
-  status: "wacht_op_akkoord",
-  sentForApprovalAt: "2026-07-15T08:00:00.000Z",
-});
-assert.equal(canRemindCoachingApproval(manager, wachtOpAkkoord), true, "De oudere pending status mag de knop Porren niet verbergen.");
-assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: manager,
-    intervention: wachtOpAkkoord,
-    now: new Date("2026-08-11T08:00:00.000Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  true,
-  "De oudere pending status moet Akkoord zetten tonen wanneer de termijn verstreken is."
-);
-
-const otherStatus = intervention({ status: "voltooid", sentForApprovalAt: "2026-07-15T08:00:00.000Z" });
-assert.equal(canRemindCoachingApproval(manager, otherStatus), false);
-assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: manager,
-    intervention: otherStatus,
-    now: new Date("2026-08-11T08:00:00.000Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  false
-);
+assert.equal(isPendingCoachingApprovalStatus(pending.status), true);
+assert.equal(canRemindCoachingApproval(manager, pending), true, "Porren moet zichtbaar blijven.");
+assert.equal(canRemindCoachingApproval(representative, pending), false, "De begeleide gebruiker mag niet porren.");
+assert.equal(canRemindCoachingApproval(serviceOperator, pending), false, "Een niet-workflowbeheerrol mag niet porren.");
 
 const legacyWithAudit = intervention({
   status: "verzonden_ter_akkoord",
@@ -187,49 +109,30 @@ const legacyWithAudit = intervention({
 });
 assert.equal(resolveCoachingApprovalSentForApprovalAt(legacyWithAudit), "2026-07-16T12:00:00.000Z");
 assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: manager,
-    intervention: legacyWithAudit,
-    now: new Date("2026-08-11T08:00:00.000Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  true,
-  "Een bestaand record zonder nieuw datumveld moet via betrouwbare historiek behandeld worden."
-);
-assert.equal(
   resolveCoachingApprovalSentForApprovalAt({
     sentForApprovalAt: undefined,
     auditTrail: [],
     approvalCreatedAt: "2026-07-16T12:00:00.000Z",
   }),
   "2026-07-16T12:00:00.000Z",
-  "Approval.createdAt is de laatste fallback voor oudere records zonder verzendveld."
-);
-
-assert.equal(canRemindCoachingApproval(representative, lessThanFourteenDays), false, "De begeleide gebruiker mag zichzelf niet porren.");
-assert.equal(canRemindCoachingApproval(serviceOperator, lessThanFourteenDays), false, "Een niet-workflowbeheerrol mag niet porren.");
-assert.equal(
-  canOverrideCoachingApproval({
-    currentUser: representative,
-    intervention: lessThanFourteenDays,
-    now: new Date("2026-08-11T08:00:00.000Z"),
-    isDue: isCoachingApprovalOverrideDue,
-  }),
-  false,
-  "De begeleide gebruiker mag de manager-override niet uitvoeren."
+  "Approval.createdAt blijft een fallback voor oudere records."
 );
 
 const route = fs.readFileSync("app/api/workflows/coaching/[id]/actions/route.ts", "utf8");
-assert.match(route, /isPendingCoachingApprovalStatus\(coaching\.status\)/, "De API moet pending statussen centraal controleren.");
-assert.match(route, /status:\s*\{\s*in:\s*\["VERZONDEN_TER_AKKOORD", "WACHT_OP_AKKOORD"\]\s*\}/, "De override moet beide interne pending statussen server-side toestaan.");
-assert.match(route, /coaching\.approved_by_manager_override/, "De override moet expliciet in de historiek terechtkomen.");
-assert.doesNotMatch(route, /approvedByRepAt|approvedByRepId/, "De override mag niet doen alsof de begeleide gebruiker zelf akkoord gaf.");
+assert.match(route, /remind_approval/);
+assert.doesNotMatch(route, /override_approval|COACHING_APPROVAL_OVERRIDE|approved_by_manager_override/);
 
 const workspacePage = fs.readFileSync("components/workspace-pages.tsx", "utf8");
 assert.match(
   workspacePage,
-  /\.\.\.rawItems\.filter\(\(item\) => !item\.intervention\),[\s\S]*\.\.\.rawItems\.filter\(\(item\) => item\.intervention\),/,
-  "De Mijn Team-tabel moet workflowrecords met acties laten winnen van historische scorekopieën."
+  /canRemindCoachingApproval\(user, item\)/,
+  "De Mijn Team-tabel moet Porren blijven koppelen aan de bestaande rechtencontrole."
 );
+assert.doesNotMatch(workspacePage, /overrideApproval|override_approval|canOverrideApproval|isCoachingApprovalOverrideDue/);
 
-console.log("Coaching score-, termijn-, visibility- en override-autorisatieregels zijn correct.");
+for (const locale of ["nl", "fr", "de"]) {
+  const translations = fs.readFileSync(`locales/${locale}.json`, "utf8");
+  assert.doesNotMatch(translations, /overrideApproval|overrideConfirmation|overrideTooEarly|overrideTimestampMissing/);
+}
+
+console.log("Coaching approval visibility en Porren-regels zijn correct.");
