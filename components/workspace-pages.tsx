@@ -177,7 +177,10 @@ import {
   type CoachingReportIssue,
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
-import { calculateOfficialCoachingScore } from "@/lib/coaching/score";
+import {
+  calculateCoachingDossierScore,
+  calculateOfficialCoachingScore,
+} from "@/lib/coaching/score";
 import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
@@ -3860,6 +3863,7 @@ function CompletedCoachingSummary({
   const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
   const wheelCoachings = comparisonHistory ? [comparisonHistory, currentHistory] : [currentHistory];
   const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
+  const mainFormScore = calculateCoachingDossierScore(mainScoreRows.map((score) => score.score));
   const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
   const generalRemarks = [
     ...dossier.groupAttentionPoints.filter((item) => !isBlankRichText(item)).map((text, index) => ({ label: `Groepsaandachtspunt ${index + 1}`, text })),
@@ -3970,7 +3974,7 @@ function CompletedCoachingSummary({
       </section>
 
       <section id="scores" className="card scroll-mt-24 p-5">
-        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.mainFormScores")}</h2>
+        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.mainFormScores").replace("{score}", formatPerformancePercentage(mainFormScore, t("coaching.report.noScoreAvailable")))}</h2>
         <ReadOnlySimpleScoreTable scores={mainScoreRows} />
         <h3 className="mt-6 text-base font-bold text-slate-900">{t("coaching.report.detailedCriteria")}</h3>
         <ReadOnlyWorkflowScoreTable scores={workflowScoreRows} />
@@ -4259,14 +4263,21 @@ function ApprovalReflectionReadOnly({
 function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: CoachingSimpleScore[]; splitCriterion?: boolean }) {
   if (scores.length === 0) return <p className="mt-4 text-sm text-slate-500">Geen scores geregistreerd.</p>;
   return (
-    <div className="mt-4 space-y-2">
+    <div className="mt-4 grid gap-2 md:grid-cols-2">
       {scores.map((score) => {
         const criterion = splitScoreCriterion(score.criterion);
-        const trend = scoreTrend(score.score, score.previousScore);
-        return <div key={score.criterion} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_90px_minmax(180px,1.2fr)] sm:items-center">
-          <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{splitCriterion ? criterion.group : "Criterium"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{splitCriterion ? criterion.detail : score.criterion}</p></div>
-          <div><p className="text-sm font-bold text-slate-950">{score.score === null ? "—" : score.score === "nvt" ? "N.v.t." : `${score.score} / 5`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}</p>}</div>
-          <OptionalCoachingRemark value={score.comment} className="min-h-5 text-sm leading-5 text-slate-600" />
+        const currentPercentage = score.score === null || score.score === "nvt" ? undefined : normalizePerformanceScore(score.score);
+        const previousPercentage = score.previousScore === undefined ? undefined : normalizePerformanceScore(score.previousScore);
+        const trend = scoreTrend(currentPercentage, previousPercentage);
+        return <div key={score.criterion} className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 break-words text-sm font-semibold text-slate-800">{splitCriterion ? criterion.detail : score.criterion}</p>
+            <div className="shrink-0 text-right">
+              <p className="text-sm font-bold text-slate-950">{currentPercentage === undefined ? (score.score === "nvt" ? "N.v.t." : "—") : `${currentPercentage}%`}</p>
+              {previousPercentage !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {previousPercentage}%</p>}
+            </div>
+          </div>
+          {!isBlankRichText(score.comment) && <OptionalCoachingRemark value={score.comment} className="mt-1 text-sm leading-5 text-slate-600" />}
         </div>;
       })}
     </div>

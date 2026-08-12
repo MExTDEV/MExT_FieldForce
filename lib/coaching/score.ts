@@ -27,6 +27,13 @@ export function calculateOfficialCoachingScore(input: {
   return (appointmentScore * 0.8) + (dossierScore * 0.2);
 }
 
+export function calculateCoachingDossierScore(dossierScores: OfficialCoachingScoreValue[]) {
+  return calculateOfficialCoachingScore({
+    dossierScores,
+    appointmentScores: [],
+  });
+}
+
 function averagePercent(values: OfficialCoachingScoreValue[]) {
   const scored = values.flatMap((value) => {
     if (value === null || value === "nvt" || value === "NVT") return [];
