@@ -16,7 +16,7 @@ const INNER_RADIUS = 54;
 const PLOT_RADIUS = 286;
 const BAND_INNER = 300;
 const BAND_OUTER = 350;
-const CRITERION_LABEL_RADIUS = 252;
+const LABEL_RADIUS = 378;
 const CATEGORY_COLORS = ["#dcecff", "#e8eff8", "#d9e7f7", "#e5edf7", "#d7e8f2"];
 
 export function PerformanceWheel({
@@ -258,17 +258,19 @@ export function PerformanceWheel({
           {data.criteria.map((item, index) => {
             const point = currentPoints[index];
             const angle = centerAngle(index, angleStep);
-            const labelPoint = polarPoint(CENTER, CENTER, CRITERION_LABEL_RADIUS, angle);
-            const maxCharacters = Math.max(6, Math.floor(
-              CRITERION_LABEL_RADIUS * degreesToRadians(angleStep) * 0.72 / (8.5 * 0.56)
-            ));
-            const criterionLabel = compactLabel(
-              `${item.criterion} (${item.currentScored ? formatScore(item.currentTen) : effectiveNotScoredLabel})`,
-              maxCharacters
-            );
+            const labelPoint = polarPoint(CENTER, CENTER, LABEL_RADIUS, angle);
+            const rightSide = Math.cos(degreesToRadians(angle)) >= 0;
             const color = trendColor(item.trend);
             return (
               <g key={`point-${item.id}`}>
+                <line
+                  x1={polarPoint(CENTER, CENTER, BAND_OUTER + 3, angle).x}
+                  y1={polarPoint(CENTER, CENTER, BAND_OUTER + 3, angle).y}
+                  x2={polarPoint(CENTER, CENTER, LABEL_RADIUS - 10, angle).x}
+                  y2={polarPoint(CENTER, CENTER, LABEL_RADIUS - 10, angle).y}
+                  stroke="#cbd5e1"
+                  strokeWidth="1"
+                />
                 <circle
                   cx={point.x}
                   cy={point.y}
@@ -281,14 +283,13 @@ export function PerformanceWheel({
                 <text
                   x={labelPoint.x}
                   y={labelPoint.y}
-                  textAnchor="middle"
+                  textAnchor={rightSide ? "start" : "end"}
                   dominantBaseline="middle"
                   fill={trendColor(item.trend)}
-                  fontSize={type === "kapstok" ? "8.5" : "10"}
+                  fontSize={type === "kapstok" ? "9.5" : "12"}
                   fontWeight={activeId === item.id ? "700" : "600"}
-                  transform={`rotate(${readableRotation(angle)} ${labelPoint.x} ${labelPoint.y})`}
                 >
-                  {criterionLabel}
+                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({item.currentScored ? formatScore(item.currentTen) : effectiveNotScoredLabel})
                 </text>
               </g>
             );
