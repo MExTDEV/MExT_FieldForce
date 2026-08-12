@@ -364,9 +364,9 @@ function prepareRow(pdf: jsPDF, row: PerformanceWheelCriterion, notScoredLabel: 
   const criterion = pdf.splitTextToSize(row.criterion, 82) as string[];
   return {
     criterion,
-    previous: row.previousTen === undefined ? "-" : formatScore(row.previousTen),
-    current: row.currentScored ? formatScore(row.currentTen) : notScoredLabel,
-    difference: formatDifference(row.differenceTen),
+    previous: formatPerformancePercentage(row.previousPercentage, "-"),
+    current: formatPerformancePercentage(row.currentPercentage, notScoredLabel),
+    difference: formatDifference(row.difference),
     trend: row.trend,
     height: Math.max(10.5, criterion.length * 3.8 + 4),
   };
@@ -413,12 +413,8 @@ function trendLabel(trend: PerformanceTrend) {
 
 function formatDifference(difference?: number) {
   if (difference === undefined) return "-";
-  if (difference > 0) return `+${formatScore(difference)}`;
-  return formatScore(difference);
-}
-
-function formatScore(value: number) {
-  return value.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
+  const rounded = Math.round(difference).toLocaleString("nl-BE");
+  return difference > 0 ? `+${rounded}%` : `${rounded}%`;
 }
 
 function formatDate(value: Date) {

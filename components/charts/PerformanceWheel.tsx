@@ -289,7 +289,7 @@ export function PerformanceWheel({
                   fontSize={type === "kapstok" ? "9.5" : "12"}
                   fontWeight={activeId === item.id ? "700" : "600"}
                 >
-                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({item.currentScored ? formatScore(item.currentTen) : effectiveNotScoredLabel})
+                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({formatPerformancePercentage(item.currentPercentage, effectiveNotScoredLabel)})
                 </text>
               </g>
             );
@@ -313,8 +313,8 @@ export function PerformanceWheel({
               <p className="mt-1 font-semibold text-slate-900">{active.criterion}</p>
             </div>
             <div className="flex items-center gap-4 text-xs text-slate-600">
-              <span>Vorige <strong>{active.previousTen === undefined ? "-" : formatScore(active.previousTen)}</strong></span>
-              <span>Huidige <strong>{active.currentScored ? formatScore(active.currentTen) : "niet gescoord"}</strong></span>
+              <span>Vorige <strong>{formatPerformancePercentage(active.previousPercentage, effectiveNotScoredLabel)}</strong></span>
+              <span>Huidige <strong>{formatPerformancePercentage(active.currentPercentage, effectiveNotScoredLabel)}</strong></span>
               <TrendBadge trend={active.trend} />
             </div>
           </div>
@@ -466,8 +466,4 @@ function categoryLabelLayout(
 
 function compactLabel(label: string, limit: number) {
   return label.length > limit ? `${label.slice(0, limit - 1)}…` : label;
-}
-
-function formatScore(value: number) {
-  return value.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
 }
