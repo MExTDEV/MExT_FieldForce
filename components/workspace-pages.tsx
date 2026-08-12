@@ -160,6 +160,7 @@ import {
 import {
   coachingGroupKey,
   collectCoachingGroupIds,
+  coachingSectionGroupKey,
   matchesCoachingSearch,
   normalizeCoachingSearchText,
 } from "@/lib/coaching/overview-list";
@@ -4936,19 +4937,26 @@ function InterventionList({ kind }: { kind: string }) {
     .sort((left, right) => right.executionAt - left.executionAt);
 
   const allScopeGroups = buildCoachingScopeGroups(user, allRows);
-  const allGroupIds = collectCoachingGroupIds(allScopeGroups);
-  const filteredRowIds = filteredRows.map((item) => item.id).join("|");
+  const groupIdsForSection = (sectionKey: string, rows: InterventionListRow[]) => new Set(
+    [...collectCoachingGroupIds(buildCoachingScopeGroups(user, rows))]
+      .map((groupId) => coachingSectionGroupKey(sectionKey, groupId))
+  );
+  const todayGroupIds = groupIdsForSection("today", todayRows);
+  const plannedGroupIds = groupIdsForSection("future", plannedRows);
+  const completedGroupIds = groupIdsForSection("completed", completedRows);
+  const allGroupIds = new Set([...todayGroupIds, ...plannedGroupIds, ...completedGroupIds]);
+  const filteredGroupIdsKey = [...allGroupIds].sort().join("|");
   const filteredGroupIdsRef = useRef<Set<string>>(new Set());
-  const previousFilteredRowIdsRef = useRef("");
-  if (previousFilteredRowIdsRef.current !== filteredRowIds) {
-    previousFilteredRowIdsRef.current = filteredRowIds;
-    filteredGroupIdsRef.current = collectCoachingGroupIds(buildCoachingScopeGroups(user, filteredRows));
+  const previousFilteredGroupIdsKeyRef = useRef("");
+  if (previousFilteredGroupIdsKeyRef.current !== filteredGroupIdsKey) {
+    previousFilteredGroupIdsKeyRef.current = filteredGroupIdsKey;
+    filteredGroupIdsRef.current = new Set(allGroupIds);
   }
   useEffect(() => {
     if (isSearchActive) {
       setExpandedGroupIds(new Set(filteredGroupIdsRef.current));
     }
-  }, [filteredRowIds, isSearchActive, normalizedSearchTerm]);
+  }, [filteredGroupIdsKey, isSearchActive, normalizedSearchTerm]);
   const isGroupOpen = (groupId: string) => expandedGroupIds === null || expandedGroupIds.has(groupId);
   const toggleGroup = (groupId: string) => {
     setExpandedGroupIds((current) => {
@@ -4978,6 +4986,7 @@ function InterventionList({ kind }: { kind: string }) {
     }
 
     const scopeGroups = buildCoachingScopeGroups(user, items);
+    const scopedGroupKey = (groupId: string) => coachingSectionGroupKey(sectionKey, groupId);
     const scopedGroupDomId = (groupId: string) => groupDomId(`${sectionKey}-${groupId}`);
     if (scopeGroups.enabled) {
       if (scopeGroups.showCountry) {
@@ -4988,11 +4997,11 @@ function InterventionList({ kind }: { kind: string }) {
                 <button
                   type="button"
                   className="flex w-full flex-wrap items-center gap-3 text-left"
-                  aria-expanded={isGroupOpen(coachingGroupKey("country", country.id))}
+                  aria-expanded={isGroupOpen(scopedGroupKey(coachingGroupKey("country", country.id)))}
                   aria-controls={scopedGroupDomId(coachingGroupKey("country", country.id))}
-                  onClick={() => toggleGroup(coachingGroupKey("country", country.id))}
+                  onClick={() => toggleGroup(scopedGroupKey(coachingGroupKey("country", country.id)))}
                 >
-                  {isGroupOpen(coachingGroupKey("country", country.id)) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
+                  {isGroupOpen(scopedGroupKey(coachingGroupKey("country", country.id))) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
                   <div className="grid h-9 w-9 place-items-center rounded-lg bg-white text-brand-700 shadow-sm">
                     <MapPin className="h-4 w-4" />
                   </div>
@@ -5004,7 +5013,7 @@ function InterventionList({ kind }: { kind: string }) {
                     {countCountryItems(country)} {countCountryItems(country) === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
                   </span>
                 </button>
-                {isGroupOpen(coachingGroupKey("country", country.id)) && <div id={scopedGroupDomId(coachingGroupKey("country", country.id))} className="space-y-3">
+                {isGroupOpen(scopedGroupKey(coachingGroupKey("country", country.id))) && <div id={scopedGroupDomId(coachingGroupKey("country", country.id))} className="space-y-3">
                   {country.teams.map((team) => renderTeamGroup(team, country.id, sectionKey))}
                 </div>}
               </section>
@@ -5032,17 +5041,18 @@ function InterventionList({ kind }: { kind: string }) {
   function renderTeamGroup(team: CoachingScopeTeamGroup<InterventionListRow>, countryId: string, sectionKey: string) {
     const count = countTeamItems(team);
     const teamGroupId = coachingGroupKey("team", countryId, team.id);
+    const scopedTeamGroupId = coachingSectionGroupKey(sectionKey, teamGroupId);
     const scopedGroupDomId = (groupId: string) => groupDomId(`${sectionKey}-${groupId}`);
     return (
       <section key={team.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <button
           type="button"
           className="flex w-full flex-wrap items-center gap-2.5 bg-white px-3 py-3 text-left sm:px-4"
-          aria-expanded={isGroupOpen(teamGroupId)}
+          aria-expanded={isGroupOpen(scopedTeamGroupId)}
           aria-controls={scopedGroupDomId(teamGroupId)}
-          onClick={() => toggleGroup(teamGroupId)}
+          onClick={() => toggleGroup(scopedTeamGroupId)}
         >
-          {isGroupOpen(teamGroupId) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
+          {isGroupOpen(scopedTeamGroupId) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
           <UsersRound className="h-4 w-4 text-brand-700" />
           <div className="min-w-0 flex-1">
             <p className="eyebrow">{t("coaching.list.team")}</p>
@@ -5052,27 +5062,28 @@ function InterventionList({ kind }: { kind: string }) {
             {count} {count === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
           </span>
         </button>
-        {isGroupOpen(teamGroupId) && <div id={scopedGroupDomId(teamGroupId)} className="space-y-3 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
+        {isGroupOpen(scopedTeamGroupId) && <div id={scopedGroupDomId(teamGroupId)} className="space-y-3 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
           {team.users.map((userGroup) => {
             const userGroupId = coachingGroupKey("user", countryId, team.id, userGroup.id);
+            const scopedUserGroupId = coachingSectionGroupKey(sectionKey, userGroupId);
             return (
               <section key={userGroup.id} className="space-y-2">
                 <button
                   type="button"
                   className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
-                  aria-expanded={isGroupOpen(userGroupId)}
+                  aria-expanded={isGroupOpen(scopedUserGroupId)}
                   aria-controls={scopedGroupDomId(userGroupId)}
-                  onClick={() => toggleGroup(userGroupId)}
+                  onClick={() => toggleGroup(scopedUserGroupId)}
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    {isGroupOpen(userGroupId) ? <ChevronDown className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />}
+                    {isGroupOpen(scopedUserGroupId) ? <ChevronDown className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />}
                     <span className="truncate text-sm font-bold text-slate-900">{userGroup.name}</span>
                   </span>
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
                     {userGroup.items.length}
                   </span>
                 </button>
-                {isGroupOpen(userGroupId) && <div id={scopedGroupDomId(userGroupId)} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {isGroupOpen(scopedUserGroupId) && <div id={scopedGroupDomId(userGroupId)} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                   <div className="divide-y divide-slate-100">
                     {userGroup.items.map((item) => renderInterventionRow(item))}
                   </div>

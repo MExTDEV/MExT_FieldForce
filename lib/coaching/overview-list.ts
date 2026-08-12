@@ -26,6 +26,10 @@ export function coachingGroupKey(
   return [level, countryId, teamId, userId].filter(Boolean).join(":");
 }
 
+export function coachingSectionGroupKey(sectionKey: string, groupId: string) {
+  return `${sectionKey}:${groupId}`;
+}
+
 export function collectCoachingGroupIds<T extends CoachingScopeGroupItem>(
   groups: CoachingScopeGroups<T>,
 ) {
