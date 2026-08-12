@@ -5,6 +5,17 @@ import {
 export type PerformanceWheelType = "kapstok" | "algemeen";
 export type PerformanceTrend = "better" | "worse" | "equal" | "first";
 
+export const performanceTrendColors: Record<PerformanceTrend, string> = {
+  better: "#16a34a",
+  worse: "#dc2626",
+  equal: "#003b83",
+  first: "#1266b3",
+};
+
+export function performanceTrendColor(trend: PerformanceTrend) {
+  return performanceTrendColors[trend];
+}
+
 export type PerformanceWheelCriterion = {
   id: string;
   index: number;

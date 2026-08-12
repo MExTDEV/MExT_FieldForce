@@ -1,6 +1,7 @@
 import type { jsPDF } from "jspdf";
 import {
   formatPerformancePercentage,
+  performanceTrendColor,
 } from "@/lib/performance/performance-wheel";
 import type {
   PerformanceTrend,
@@ -389,9 +390,7 @@ function groupCriteria(data: PerformanceWheelData) {
 }
 
 function trendTextColor(trend: PerformanceTrend) {
-  if (trend === "better") return "#166534";
-  if (trend === "worse") return "#991B1B";
-  return BRAND_BLUE;
+  return performanceTrendColor(trend);
 }
 
 function trendColors(trend: PerformanceTrend) {
