@@ -158,6 +158,12 @@ import {
   type CoachingScopeTeamGroup,
 } from "@/lib/coaching/scope-groups";
 import {
+  coachingGroupKey,
+  collectCoachingGroupIds,
+  matchesCoachingSearch,
+  normalizeCoachingSearchText,
+} from "@/lib/coaching/overview-list";
+import {
   canOpenCoachingDetail,
   completedCoachingStatuses,
   dedupeById,
@@ -4748,6 +4754,7 @@ function formatPercentage(value?: number) {
 
 type InterventionListRow = CoachingScopeGroupItem & {
   type: string;
+  searchText: string;
   date: string;
   owner: string;
   status: string;
@@ -4769,6 +4776,10 @@ function InterventionList({ kind }: { kind: string }) {
   const { state, visibleInterventions } = useWorkflow();
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string> | null>(null);
+  const normalizedSearchTerm = normalizeCoachingSearchText(searchTerm);
+  const isSearchActive = Boolean(normalizedSearchTerm);
   const labels: Record<string, { title: string; description: string; icon: typeof ClipboardCheck }> = {
     begeleidingen: { title: t("coaching.list.coachings"), description: t("coaching.list.coachingsDescription"), icon: ClipboardCheck },
     contactmomenten: { title: t("coaching.list.contacts"), description: t("coaching.list.contactsDescription"), icon: Phone },
@@ -4789,12 +4800,25 @@ function InterventionList({ kind }: { kind: string }) {
         return {
           id: item.id,
           type: "begeleiding",
+          searchText: [
+            representative.firstName,
+            representative.lastName,
+            item.ownerName,
+            item.date,
+            formatShortDate(item.date, language),
+            item.status,
+            t(`status.${item.status}` as TranslationKey),
+            representative.country,
+            countryName(representative.country, language),
+            representative.team,
+            ...item.focusNames,
+          ].join(" "),
           person: `${representative.firstName} ${representative.lastName}`,
           representativeId: representative.id,
           country: representative.country,
           teamId: representative.teamId,
           team: representative.team,
-          date: formatShortDate(item.date),
+          date: formatShortDate(item.date, language),
           owner: item.ownerName,
           status: item.status,
           editable: false,
@@ -4835,12 +4859,30 @@ function InterventionList({ kind }: { kind: string }) {
       return {
         id: item.id,
         type: "begeleiding",
+        searchText: [
+          personName,
+          item.title,
+          item.ownerId,
+          reportingUserName(item.ownerId, managedUsers),
+          item.country,
+          countryName(item.country, language),
+          representative?.team,
+          item.subject?.team,
+          item.teamId,
+          item.plannedDate,
+          formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10), language),
+          item.status,
+          t(`status.${item.status}` as TranslationKey),
+          ...item.focusNames,
+          item.internalNotes,
+          item.deviationReason,
+        ].filter(Boolean).join(" "),
         person: personName,
         representativeId: representative?.id ?? item.subject?.id ?? item.representativeId,
         country: item.country,
         teamId: representative?.teamId ?? item.subject?.teamId ?? item.teamId,
         team: representative?.team ?? item.subject?.team ?? t("coaching.list.noTeam"),
-        date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10)),
+        date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10), language),
         owner: reportingUserName(item.ownerId, managedUsers),
         status: item.status,
         editable: Boolean(openHref),
@@ -4861,26 +4903,62 @@ function InterventionList({ kind }: { kind: string }) {
     ...workflowRows,
     ...historicalRows.filter((item) => !workflowIds.has(item.id)),
   ]);
-  const todayRows = allRows
+  const filteredRows = isSearchActive
+    ? allRows.filter((item) => matchesCoachingSearch(item.searchText, normalizedSearchTerm))
+    : allRows;
+  const todayRows = filteredRows
     .filter((item) =>
       !completedCoachingStatuses.has(item.status) &&
       item.status !== "geannuleerd" &&
       item.plannedDate === todayKey
     )
     .sort((left, right) => left.executionAt - right.executionAt);
-  const plannedRows = allRows
+  const plannedRows = filteredRows
     .filter((item) =>
       !completedCoachingStatuses.has(item.status) &&
       item.status !== "geannuleerd" &&
       item.plannedDate > todayKey
     )
     .sort((left, right) => left.executionAt - right.executionAt);
-  const completedRows = allRows
+  const completedRows = filteredRows
     .filter((item) => completedCoachingStatuses.has(item.status))
     .sort((left, right) => right.executionAt - left.executionAt);
 
-  function renderRows(items: InterventionListRow[], emptyMessage: string) {
+  const allScopeGroups = buildCoachingScopeGroups(user, allRows);
+  const allGroupIds = collectCoachingGroupIds(allScopeGroups);
+  const filteredRowIds = filteredRows.map((item) => item.id).join("|");
+  const filteredGroupIdsRef = useRef<Set<string>>(new Set());
+  const previousFilteredRowIdsRef = useRef("");
+  if (previousFilteredRowIdsRef.current !== filteredRowIds) {
+    previousFilteredRowIdsRef.current = filteredRowIds;
+    filteredGroupIdsRef.current = collectCoachingGroupIds(buildCoachingScopeGroups(user, filteredRows));
+  }
+  useEffect(() => {
+    if (isSearchActive) {
+      setExpandedGroupIds(new Set(filteredGroupIdsRef.current));
+    }
+  }, [filteredRowIds, isSearchActive, normalizedSearchTerm]);
+  const isGroupOpen = (groupId: string) => expandedGroupIds === null || expandedGroupIds.has(groupId);
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+  const setAllGroupsOpen = (open: boolean) => {
+    setExpandedGroupIds(open ? new Set(allGroupIds) : new Set());
+  };
+  const updateSearchTerm = (value: string) => {
+    setSearchTerm(value);
+    if (!normalizeCoachingSearchText(value)) setExpandedGroupIds(null);
+  };
+  const groupDomId = (groupId: string) => `coaching-group-${groupId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+
+  function renderRows(items: InterventionListRow[], emptyMessage: string, sectionKey: string) {
     if (items.length === 0) {
+      if (isSearchActive) return null;
       return (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
           {emptyMessage}
@@ -4889,27 +4967,35 @@ function InterventionList({ kind }: { kind: string }) {
     }
 
     const scopeGroups = buildCoachingScopeGroups(user, items);
+    const scopedGroupDomId = (groupId: string) => groupDomId(`${sectionKey}-${groupId}`);
     if (scopeGroups.enabled) {
       if (scopeGroups.showCountry) {
         return (
           <div className="space-y-4">
             {scopeGroups.countries.map((country) => (
               <section key={country.id} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-                <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  className="flex w-full flex-wrap items-center gap-3 text-left"
+                  aria-expanded={isGroupOpen(coachingGroupKey("country", country.id))}
+                  aria-controls={scopedGroupDomId(coachingGroupKey("country", country.id))}
+                  onClick={() => toggleGroup(coachingGroupKey("country", country.id))}
+                >
+                  {isGroupOpen(coachingGroupKey("country", country.id)) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
                   <div className="grid h-9 w-9 place-items-center rounded-lg bg-white text-brand-700 shadow-sm">
                     <MapPin className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="eyebrow">{t("coaching.list.country")}</p>
-                    <h3 className="truncate text-base font-bold text-slate-950">{countryName(country.id)}</h3>
+                    <h3 className="truncate text-base font-bold text-slate-950">{countryName(country.id, language)}</h3>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm">
                     {countCountryItems(country)} {countCountryItems(country) === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
                   </span>
-                </div>
-                <div className="space-y-3">
-                  {country.teams.map((team) => renderTeamGroup(team))}
-                </div>
+                </button>
+                {isGroupOpen(coachingGroupKey("country", country.id)) && <div id={scopedGroupDomId(coachingGroupKey("country", country.id))} className="space-y-3">
+                  {country.teams.map((team) => renderTeamGroup(team, country.id, sectionKey))}
+                </div>}
               </section>
             ))}
           </div>
@@ -4918,7 +5004,7 @@ function InterventionList({ kind }: { kind: string }) {
 
       return (
         <div className="space-y-3">
-          {scopeGroups.countries.flatMap((country) => country.teams).map((team) => renderTeamGroup(team))}
+          {scopeGroups.countries.flatMap((country) => country.teams.map((team) => ({ countryId: country.id, team }))).map(({ countryId, team }) => renderTeamGroup(team, countryId, sectionKey))}
         </div>
       );
     }
@@ -4932,37 +5018,60 @@ function InterventionList({ kind }: { kind: string }) {
     );
   }
 
-  function renderTeamGroup(team: CoachingScopeTeamGroup<InterventionListRow>) {
+  function renderTeamGroup(team: CoachingScopeTeamGroup<InterventionListRow>, countryId: string, sectionKey: string) {
     const count = countTeamItems(team);
+    const teamGroupId = coachingGroupKey("team", countryId, team.id);
+    const scopedGroupDomId = (groupId: string) => groupDomId(`${sectionKey}-${groupId}`);
     return (
       <section key={team.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center gap-2.5 bg-white px-3 py-3 sm:px-4">
+        <button
+          type="button"
+          className="flex w-full flex-wrap items-center gap-2.5 bg-white px-3 py-3 text-left sm:px-4"
+          aria-expanded={isGroupOpen(teamGroupId)}
+          aria-controls={scopedGroupDomId(teamGroupId)}
+          onClick={() => toggleGroup(teamGroupId)}
+        >
+          {isGroupOpen(teamGroupId) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
           <UsersRound className="h-4 w-4 text-brand-700" />
           <div className="min-w-0 flex-1">
-          <p className="eyebrow">{t("coaching.list.team")}</p>
+            <p className="eyebrow">{t("coaching.list.team")}</p>
             <h4 className="truncate text-sm font-bold text-slate-900">{team.name}</h4>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            {count} {count === 1 ? "begeleiding" : "begeleidingen"}
+            {count} {count === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
           </span>
-        </div>
-        <div className="space-y-3 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
-          {team.users.map((userGroup) => (
-            <section key={userGroup.id} className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-bold text-slate-900">{userGroup.name}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                  {userGroup.items.length}
-                </span>
-              </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <div className="divide-y divide-slate-100">
-                  {userGroup.items.map((item) => renderInterventionRow(item))}
+        </button>
+        {isGroupOpen(teamGroupId) && <div id={scopedGroupDomId(teamGroupId)} className="space-y-3 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
+          {team.users.map((userGroup) => {
+            const userGroupId = coachingGroupKey("user", countryId, team.id, userGroup.id);
+            return (
+              <section key={userGroup.id} className="space-y-2">
+                <button
+                  type="button"
+                  className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+                  aria-expanded={isGroupOpen(userGroupId)}
+                  aria-controls={scopedGroupDomId(userGroupId)}
+                  onClick={() => toggleGroup(userGroupId)}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    {isGroupOpen(userGroupId) ? <ChevronDown className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />}
+                    <span className="truncate text-sm font-bold text-slate-900">{userGroup.name}</span>
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                    {userGroup.items.length}
+                  </span>
+                </button>
+                {isGroupOpen(userGroupId) && <div id={scopedGroupDomId(userGroupId)} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <div className="divide-y divide-slate-100">
+                    {userGroup.items.map((item) => renderInterventionRow(item))}
+                  </div>
                 </div>
-              </div>
-            </section>
-          ))}
+                }
+              </section>
+            );
+          })}
         </div>
+        }
       </section>
     );
   }
@@ -5028,7 +5137,8 @@ function InterventionList({ kind }: { kind: string }) {
         description={current.description}
         actions={can(user, "intervention:create") ? <Link href={kind === "begeleidingen" ? "/begeleidingen/nieuw" : "#"} className="btn-primary"><Plus className="h-4 w-4" /> {t("coaching.list.newCoaching")}</Link> : undefined}
       />
-      <div className="card p-4"><div className="grid gap-3 md:grid-cols-[1fr_180px_180px]"><label className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field pl-10" placeholder={t("coaching.list.search")} /></label><select className="field"><option>{t("coaching.list.allStatuses")}</option><option>{t("coaching.list.planned")}</option><option>{t("coaching.list.closed")}</option></select><select className="field"><option>{t("coaching.list.next30Days")}</option><option>{t("coaching.list.thisQuarter")}</option></select></div></div>
+      <div className="card p-4"><div className="flex flex-wrap items-center gap-3"><label className="relative min-w-[min(100%,18rem)] flex-1"><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field w-full pl-10 pr-10" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder={t("coaching.list.search")} aria-label={t("coaching.list.search")} />{searchTerm && <button type="button" className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => updateSearchTerm("")} aria-label={t("coaching.list.clearSearch")}><X className="h-4 w-4" /></button>}</label><select className="field md:w-[180px]"><option>{t("coaching.list.allStatuses")}</option><option>{t("coaching.list.planned")}</option><option>{t("coaching.list.closed")}</option></select><select className="field md:w-[180px]"><option>{t("coaching.list.next30Days")}</option><option>{t("coaching.list.thisQuarter")}</option></select>{allScopeGroups.enabled && <div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(true)}><ChevronDown className="h-4 w-4" /> {t("coaching.list.expandAll")}</button><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(false)}><ChevronRight className="h-4 w-4" /> {t("coaching.list.collapseAll")}</button></div>}</div></div>
+      {isSearchActive && filteredRows.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm font-semibold text-slate-600">{t("coaching.list.noSearchResults")}</div>}
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -5038,7 +5148,7 @@ function InterventionList({ kind }: { kind: string }) {
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{todayRows.length}</span>
         </div>
-        {renderRows(todayRows, t("coaching.list.emptyToday"))}
+        {renderRows(todayRows, t("coaching.list.emptyToday"), "today")}
       </section>
 
       <section className="space-y-4 border-t border-slate-200 pt-6">
@@ -5050,7 +5160,7 @@ function InterventionList({ kind }: { kind: string }) {
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{plannedRows.length}</span>
         </div>
-        {renderRows(plannedRows, t("coaching.list.emptyFuture"))}
+        {renderRows(plannedRows, t("coaching.list.emptyFuture"), "future")}
       </section>
 
       <section className="space-y-4 border-t border-slate-200 pt-6">
@@ -5062,7 +5172,7 @@ function InterventionList({ kind }: { kind: string }) {
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{completedRows.length}</span>
         </div>
-        {renderRows(completedRows, t("coaching.list.emptyCompleted"))}
+        {renderRows(completedRows, t("coaching.list.emptyCompleted"), "completed")}
       </section>
     </div>
   );
