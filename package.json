@@ -28,6 +28,7 @@
     "test:action-point-close": "tsx scripts/test-action-point-close-lifecycle.ts",
     "test:action-point-targets": "tsx scripts/test-action-point-target-visibility.ts",
     "test:coaching-groups": "tsx scripts/test-coaching-scope-groups.ts",
+    "test:coaching-overview-list": "tsx scripts/test-coaching-overview-list.ts",
     "test:coaching-visibility": "tsx scripts/test-coaching-visibility.ts",
     "test:coaching-historical-comparison": "tsx scripts/test-coaching-historical-comparison.ts",
     "test:coaching-preparation-reference": "tsx scripts/test-coaching-preparation-reference.ts",

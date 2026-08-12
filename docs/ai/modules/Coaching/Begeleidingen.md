@@ -26,6 +26,14 @@ Main sections may remain visible with an empty state.
 
 Empty nested country, team or user groups are omitted.
 
+The overview search filters the already authorised records immediately while
+typing. It matches the coached person's name, coach, country, team, date,
+status, title and other displayed coaching metadata case-insensitively and by
+partial text. Empty groups disappear, matching groups open automatically and a
+clear action restores the complete overview. Management groupings expose
+country, team and user chevrons with shared `Alles uitklappen` and
+`Alles inklappen` controls; individual groups remain independently toggleable.
+
 ---
 
 # Open Mode
