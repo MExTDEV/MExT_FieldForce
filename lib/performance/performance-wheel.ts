@@ -1,6 +1,5 @@
 import {
   type HistoricalCoaching,
-  type PerformanceDimension,
 } from "@/lib/performance-data";
 
 export type PerformanceWheelType = "kapstok" | "algemeen";
@@ -25,7 +24,7 @@ export type PerformanceWheelCategory = {
   name: string;
   startIndex: number;
   endIndex: number;
-  currentAverage: number;
+  currentAverage?: number;
   previousAverage?: number;
 };
 
@@ -38,6 +37,7 @@ export type PerformanceWheelData = {
   comparisonDate?: string;
   criteria: PerformanceWheelCriterion[];
   categories: PerformanceWheelCategory[];
+  currentAverage?: number;
 };
 
 const generalCategoryOrder = [
@@ -71,21 +71,22 @@ export function getPerformanceWheelData(
   );
   const criteria = currentCriteria.map((item, index) => {
     const previousScore = previousScores.get(criterionKey(item));
+    const currentScored = item.scored !== false;
     return {
       id: `${type}-${index}-${criterionKey(item)}`,
       index: index + 1,
       category: item.category,
       criterion: item.criterion,
-      currentScored: item.scored !== false,
+      currentScored,
       currentScore: item.score,
       previousScore,
       currentTen: normalizeScoreToTen(item.score),
       previousTen: previousScore === undefined ? undefined : normalizeScoreToTen(previousScore),
-      difference: previousScore === undefined ? undefined : item.score - previousScore,
-      differenceTen: previousScore === undefined
+      difference: currentScored && previousScore !== undefined ? item.score - previousScore : undefined,
+      differenceTen: !currentScored || previousScore === undefined
         ? undefined
         : normalizeDifferenceToTen(item.score - previousScore),
-      trend: calculateTrend(item.score, previousScore),
+      trend: currentScored ? calculateTrend(item.score, previousScore) : "first",
     } satisfies PerformanceWheelCriterion;
   });
 
@@ -98,6 +99,7 @@ export function getPerformanceWheelData(
     comparisonDate: comparison?.date,
     criteria,
     categories: calculateCategoryAverages(criteria),
+    currentAverage: averageScored(criteria.map((item) => ({ score: item.currentScore, scored: item.currentScored }))),
   };
 }
 
@@ -128,16 +130,22 @@ export function calculateCategoryAverages(criteria: PerformanceWheelCriterion[])
         name: criterion.category,
         startIndex: criterion.index - 1,
         endIndex: criterion.index,
-        currentAverage: criterion.currentScore,
-        previousAverage: criterion.previousScore,
+        currentAverage: averageScored(criteria.slice(criterion.index - 1, criterion.index).map((item) => ({
+          score: item.currentScore,
+          scored: item.currentScored,
+        }))),
+        previousAverage: averageOptional([criterion.previousScore]),
       });
       continue;
     }
     const rows = criteria.slice(existing.startIndex, criterion.index);
     existing.endIndex = criterion.index;
-    existing.currentAverage = average(rows.map((item) => item.currentScore));
+    existing.currentAverage = averageScored(rows.map((item) => ({
+      score: item.currentScore,
+      scored: item.currentScored,
+    })));
     const previous = rows.flatMap((item) => item.previousScore === undefined ? [] : [item.previousScore]);
-    existing.previousAverage = previous.length ? average(previous) : undefined;
+    existing.previousAverage = averageOptional(previous);
   }
   return categories;
 }
@@ -170,11 +178,15 @@ function criteriaFor(intervention: HistoricalCoaching | undefined, type: Perform
   if (type === "algemeen") {
     return calculateCriterionAverages(
       generalCategoryOrder.flatMap((category) =>
-        category.criteria.map((criterion) => ({
-          category: category.name,
-          criterion,
-          score: intervention.generalScores.find((item) => item.label === criterion)?.score ?? 0,
-        }))
+        category.criteria.map((criterion) => {
+          const score = intervention.generalScores.find((item) => item.label === criterion)?.score;
+          return {
+            category: category.name,
+            criterion,
+            score: score ?? 0,
+            scored: score !== undefined,
+          };
+        })
       )
     );
   }
@@ -190,23 +202,16 @@ function criteriaFor(intervention: HistoricalCoaching | undefined, type: Perform
       intervention.criterionScores.filter((score) => score.focus === focus).length
         ? intervention.criterionScores
           .filter((score) => score.focus === focus)
+          .sort((left, right) => (left.sortOrder ?? Number.MAX_SAFE_INTEGER) - (right.sortOrder ?? Number.MAX_SAFE_INTEGER))
           .map((score) => ({
             category: focus,
             criterion: score.criterion,
             score: score.score,
             scored: score.scored,
           }))
-        : [{
-          category: focus,
-          criterion: focus,
-          score: phaseFallback(intervention.phaseScores, focus),
-        }]
+        : []
     )
   );
-}
-
-function phaseFallback(scores: PerformanceDimension[], focus: string) {
-  return scores.find((item) => item.label === focus)?.score ?? 0;
 }
 
 function criterionKey(item: { category: string; criterion: string }) {
@@ -219,4 +224,14 @@ function normalizeDifferenceToTen(difference: number) {
 
 function average(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+}
+
+function averageScored(values: Array<{ score: number; scored: boolean }>) {
+  const scored = values.filter((item) => item.scored).map((item) => item.score);
+  return scored.length ? average(scored) : undefined;
+}
+
+function averageOptional(values: Array<number | undefined>) {
+  const defined = values.flatMap((value) => value === undefined ? [] : [value]);
+  return defined.length ? average(defined) : undefined;
 }

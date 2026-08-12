@@ -4345,6 +4345,7 @@ function HistoricalScoreComparisonPanel({
               comparisonInterventionId={selected.id}
               type="kapstok"
               coachings={wheelCoachings}
+              notScoredLabel={t("coaching.performance.notScored")}
             />
           </div>
             <div className="mt-5">

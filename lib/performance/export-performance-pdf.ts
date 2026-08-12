@@ -1,4 +1,5 @@
 import type { jsPDF } from "jspdf";
+import { normalizeScoreToTen } from "@/lib/performance/performance-wheel";
 import type {
   PerformanceTrend,
   PerformanceWheelCriterion,
@@ -21,12 +22,14 @@ type ExportPerformancePdfOptions = {
   modeLabel: string;
   data: PerformanceWheelData;
   svgElement: SVGSVGElement;
+  notScoredLabel?: string;
   preview?: boolean;
 };
 
 type PdfGroup = {
   category: string;
   rows: PerformanceWheelCriterion[];
+  average?: number;
 };
 
 type PreparedRow = {
@@ -45,6 +48,7 @@ export async function exportPerformancePdf({
   modeLabel,
   data,
   svgElement,
+  notScoredLabel = "Niet gescoord",
   preview = false,
 }: ExportPerformancePdfOptions) {
   const [{ jsPDF }] = await Promise.all([
@@ -68,8 +72,8 @@ export async function exportPerformancePdf({
   svgClone.setAttribute("height", "1000");
   await pdf.svg(svgClone, { x: 18, y: 53, width: 174, height: 174 });
 
-  drawFirstPageSummary(pdf, data);
-  drawScorePages(pdf, groupCriteria(data.criteria));
+  drawFirstPageSummary(pdf, data, notScoredLabel);
+  drawScorePages(pdf, groupCriteria(data), notScoredLabel);
   drawHeadersAndFooters(pdf, representativeName, exportDateLabel);
 
   const filenameDate = exportDate.toISOString().slice(0, 10);
@@ -126,10 +130,7 @@ function drawFirstPageIntro(
   );
 }
 
-function drawFirstPageSummary(pdf: jsPDF, data: PerformanceWheelData) {
-  const average = data.criteria.reduce((sum, row) => sum + row.currentTen, 0) /
-    Math.max(1, data.criteria.length);
-
+function drawFirstPageSummary(pdf: jsPDF, data: PerformanceWheelData, notScoredLabel: string) {
   pdf.setDrawColor(BORDER);
   pdf.setFillColor("#FFFFFF");
   pdf.roundedRect(MARGIN, 232, PAGE_WIDTH - MARGIN * 2, 39, 4, 4, "FD");
@@ -161,17 +162,17 @@ function drawFirstPageSummary(pdf: jsPDF, data: PerformanceWheelData) {
   pdf.setFont("helvetica", "bold");
   pdf.setTextColor(BRAND_BLUE);
   pdf.setFontSize(17);
-  pdf.text(formatScore(average), 172, 251, { align: "center" });
+  pdf.text(data.currentAverage === undefined ? notScoredLabel : formatScore(normalizeScoreToTen(data.currentAverage)), 172, 251, { align: "center" });
   pdf.setFontSize(7.5);
   pdf.text("GEMIDDELDE SCORE", 172, 258, { align: "center" });
 }
 
-function drawScorePages(pdf: jsPDF, groups: PdfGroup[]) {
+function drawScorePages(pdf: jsPDF, groups: PdfGroup[], notScoredLabel: string) {
   pdf.addPage();
   let y = 33;
 
   for (const group of groups) {
-    const rows = group.rows.map((row) => prepareRow(pdf, row));
+    const rows = group.rows.map((row) => prepareRow(pdf, row, notScoredLabel));
     const fullHeight = 20 + rows.reduce((sum, row) => sum + row.height, 0);
     if (fullHeight <= CONTENT_BOTTOM - 33 && y + fullHeight > CONTENT_BOTTOM) {
       pdf.addPage();
@@ -200,7 +201,7 @@ function drawScorePages(pdf: jsPDF, groups: PdfGroup[]) {
         continue;
       }
 
-      drawPhaseBlock(pdf, displayCategory(group.category), chunk, y, continuation);
+      drawPhaseBlock(pdf, displayCategory(group.category), chunk, group.average, notScoredLabel, y, continuation);
       y += chunkHeight + 5;
       rowIndex += chunk.length;
       continuation = rowIndex < rows.length;
@@ -217,6 +218,8 @@ function drawPhaseBlock(
   pdf: jsPDF,
   category: string,
   rows: PreparedRow[],
+  average: number | undefined,
+  notScoredLabel: string,
   y: number,
   continuation: boolean
 ) {
@@ -231,7 +234,8 @@ function drawPhaseBlock(
   pdf.setFont("helvetica", "bold");
   pdf.setTextColor(BRAND_BLUE);
   pdf.setFontSize(10.5);
-  pdf.text(`${category}${continuation ? " (vervolg)" : ""}`, MARGIN + 5, y + 6.5);
+  const scoreLabel = average === undefined ? notScoredLabel : formatScore(normalizeScoreToTen(average));
+  pdf.text(`${category}${continuation ? " (vervolg)" : ""} · ${scoreLabel}`, MARGIN + 5, y + 6.5);
 
   const columnY = y + 16.5;
   pdf.setFontSize(7.5);
@@ -344,25 +348,29 @@ function drawHeadersAndFooters(pdf: jsPDF, representativeName: string, exportDat
   }
 }
 
-function prepareRow(pdf: jsPDF, row: PerformanceWheelCriterion): PreparedRow {
+function prepareRow(pdf: jsPDF, row: PerformanceWheelCriterion, notScoredLabel: string): PreparedRow {
   const criterion = pdf.splitTextToSize(row.criterion, 82) as string[];
   return {
     criterion,
     previous: row.previousTen === undefined ? "-" : formatScore(row.previousTen),
-    current: formatScore(row.currentTen),
+    current: row.currentScored ? formatScore(row.currentTen) : notScoredLabel,
     difference: formatDifference(row.differenceTen),
     trend: row.trend,
     height: Math.max(10.5, criterion.length * 3.8 + 4),
   };
 }
 
-function groupCriteria(criteria: PerformanceWheelCriterion[]) {
-  return criteria.reduce<PdfGroup[]>((groups, row) => {
+function groupCriteria(data: PerformanceWheelData) {
+  return data.criteria.reduce<PdfGroup[]>((groups, row) => {
     const existing = groups.find((group) => group.category === row.category);
     if (existing) {
       existing.rows.push(row);
     } else {
-      groups.push({ category: row.category, rows: [row] });
+      groups.push({
+        category: row.category,
+        rows: [row],
+        average: data.categories.find((category) => category.name === row.category)?.currentAverage,
+      });
     }
     return groups;
   }, []);

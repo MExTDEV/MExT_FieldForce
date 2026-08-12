@@ -174,17 +174,37 @@ export function toHistoricalCoaching(row: HistoricalIntervention): HistoricalCoa
       criterion: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
       score: normalizePerformanceScore(score.score),
       scored: true,
+      sortOrder: score.criterionSnapshot?.sortOrder ?? score.criterion?.sortOrder,
     }));
   const appointmentCriterionScores = criterionScoresFromRows(
     (row.coachingDetail?.appointments ?? []).flatMap((appointment) =>
-      appointment.scoreRows.map((score) => ({
+      appointment.scoreRows
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((score) => ({
         criterion: score.criterion,
         score: score.score,
         notApplicable: score.notApplicable,
+        sortOrder: score.sortOrder,
       }))
     )
   );
-  const criterionScores = mergeCriterionScores(appointmentCriterionScores, storedCriterionScores);
+  const snapshotCriterionScores = row.criterionSnapshots
+    .filter((snapshot) => snapshot.criterionType === "COAT_RACK")
+    .map((snapshot) => {
+      const score = row.scores.find((candidate) =>
+        candidate.criterionSnapshotId === snapshot.id ||
+        candidate.criterionId === snapshot.sourceCriterionId ||
+        (candidate.label === snapshot.title && candidate.category === snapshot.focusName)
+      );
+      return {
+        focus: snapshot.focusName ?? "Algemeen",
+        criterion: snapshot.title,
+        score: score?.score === null || score?.score === undefined ? 0 : normalizePerformanceScore(score.score),
+        scored: score?.score !== null && score?.score !== undefined && !score.notApplicable,
+        sortOrder: snapshot.sortOrder,
+      };
+    });
+  const criterionScores = mergeCriterionScores(appointmentCriterionScores, storedCriterionScores, snapshotCriterionScores);
   const phaseScores = averageByLabel(criterionScores
     .filter((score) => score.scored !== false)
     .map((score) => ({ label: score.focus, score: score.score })));
@@ -222,7 +242,13 @@ export function toHistoricalCoaching(row: HistoricalIntervention): HistoricalCoa
     status: row.status.toLowerCase() as Status,
     overallScore,
     focusNames: [...new Set([
-      ...row.focuses.map((focus) => focus.focus.name),
+      ...row.focuses
+        .sort((left, right) => left.focus.sortOrder - right.focus.sortOrder)
+        .map((focus) => focus.focus.name),
+      ...row.criterionSnapshots
+        .filter((snapshot) => snapshot.criterionType === "COAT_RACK" && snapshot.focusName)
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((snapshot) => snapshot.focusName!),
       ...criterionScores.map((score) => score.focus),
     ])],
     phaseScores: phaseScores.length

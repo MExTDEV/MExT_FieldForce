@@ -6,6 +6,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, FileDown, Info, LoaderCircle, 
 import { PerformanceWheel, WheelTrendBadge } from "@/components/charts/PerformanceWheel";
 import {
   getPerformanceWheelData,
+  type PerformanceWheelCategory,
   type PerformanceWheelCriterion,
   type PerformanceWheelType,
 } from "@/lib/performance/performance-wheel";
@@ -79,6 +80,7 @@ export function PerformanceEvolution({
         modeLabel: mode === "kapstok" ? t("coaching.performance.framework") : t("coaching.performance.general"),
         data,
         svgElement,
+        notScoredLabel: t("coaching.performance.notScored"),
         preview,
       });
       if (result.previewUrl) {
@@ -234,6 +236,7 @@ export function PerformanceEvolution({
               comparisonInterventionId={effectiveComparisonId}
               type={mode}
               coachings={coachings}
+              notScoredLabel={t("coaching.performance.notScored")}
             />
             <p className="mt-4 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
               <Info className="h-4 w-4 text-brand-700" />
@@ -241,7 +244,7 @@ export function PerformanceEvolution({
             </p>
           </div>
 
-          <ScoreOverview criteria={data.criteria} />
+          <ScoreOverview criteria={data.criteria} categories={data.categories} />
           {exportError && (
             <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
               {exportError}
@@ -290,7 +293,7 @@ export function PerformanceEvolution({
   );
 }
 
-function ScoreOverview({ criteria }: { criteria: PerformanceWheelCriterion[] }) {
+function ScoreOverview({ criteria, categories }: { criteria: PerformanceWheelCriterion[]; categories: PerformanceWheelCategory[] }) {
   const { language } = useSession();
   const t = (key: TranslationKey) => translate(language, key);
   const groups = criteria.reduce<Array<{ category: string; rows: PerformanceWheelCriterion[] }>>((result, row) => {
@@ -308,7 +311,15 @@ function ScoreOverview({ criteria }: { criteria: PerformanceWheelCriterion[] }) 
       {groups.map((group) => (
         <section key={group.category} className="rounded-xl border border-slate-200 bg-slate-50/70">
           <div className="border-b border-slate-200 px-3.5 py-2.5">
-            <h3 className="text-sm font-bold text-brand-800">{displayCategory(group.category)}</h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-brand-800">{displayCategory(group.category)}</h3>
+              <span className="rounded-full bg-white px-2 py-1 text-xs font-extrabold text-brand-800 ring-1 ring-slate-200">
+                {(() => {
+                  const average = categories.find((category) => category.name === group.category)?.currentAverage;
+                  return average === undefined ? t("coaching.performance.notScored") : formatScore(Math.round(average) / 10);
+                })()}
+              </span>
+            </div>
           </div>
           <div className="divide-y divide-slate-200/80">
             {group.rows.map((row) => (

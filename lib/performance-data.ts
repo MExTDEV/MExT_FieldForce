@@ -21,12 +21,14 @@ export type HistoricalCriterionScore = {
   criterion: string;
   score: number;
   scored?: boolean;
+  sortOrder?: number;
 };
 
 export type RawCriterionScore = {
   criterion: string;
   score: number | null;
   notApplicable?: boolean;
+  sortOrder?: number;
 };
 
 export type HistoricalCoaching = {
@@ -137,12 +139,14 @@ export function criterionScoresFromRows(rows: RawCriterionScore[]): HistoricalCr
     focus: string;
     criterion: string;
     values: number[];
+    sortOrder?: number;
   }>();
 
   for (const row of rows) {
     const { focus, criterion } = splitCriterionLabel(row.criterion);
     const key = criterionScoreKey({ focus, criterion });
-    const current = grouped.get(key) ?? { focus, criterion, values: [] };
+    const current = grouped.get(key) ?? { focus, criterion, values: [], sortOrder: row.sortOrder };
+    if (current.sortOrder === undefined && row.sortOrder !== undefined) current.sortOrder = row.sortOrder;
     if (row.score !== null && !row.notApplicable) {
       current.values.push(normalizePerformanceScore(row.score));
     }
@@ -154,6 +158,7 @@ export function criterionScoresFromRows(rows: RawCriterionScore[]): HistoricalCr
     criterion: item.criterion,
     score: item.values.length ? Math.round(average(item.values)) : 0,
     scored: item.values.length > 0,
+    sortOrder: item.sortOrder,
   }));
 }
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   getPerformanceWheelData,
+  normalizeScoreToTen,
   type PerformanceTrend,
   type PerformanceWheelType,
 } from "@/lib/performance/performance-wheel";
@@ -23,12 +24,14 @@ export function PerformanceWheel({
   comparisonInterventionId,
   type,
   coachings,
+  notScoredLabel,
 }: {
   representativeId: string;
   currentInterventionId: string;
   comparisonInterventionId?: string;
   type: PerformanceWheelType;
   coachings: HistoricalCoaching[];
+  notScoredLabel?: string;
 }) {
   const data = useMemo(
     () => getPerformanceWheelData(
@@ -44,6 +47,7 @@ export function PerformanceWheel({
   const [pinnedId, setPinnedId] = useState<string>();
   const activeId = pinnedId ?? hoverId;
   const active = data?.criteria.find((item) => item.id === activeId);
+  const effectiveNotScoredLabel = notScoredLabel ?? "Niet gescoord";
 
   if (!data) {
     return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">Geen vergelijkbare scores beschikbaar.</div>;
@@ -107,7 +111,7 @@ export function PerformanceWheel({
                 <path
                   d={annularSectorPath(CENTER, CENTER, INNER_RADIUS, scoreRadius(item.currentScore), start, end)}
                   fill={trendWedgeColor(item.trend)}
-                  fillOpacity={highlighted ? "0.4" : trendWedgeOpacity(item.trend)}
+                  fillOpacity={item.currentScored ? (highlighted ? "0.4" : trendWedgeOpacity(item.trend)) : "0"}
                   data-wedge-trend={item.trend}
                 />
                 <path
@@ -167,8 +171,13 @@ export function PerformanceWheel({
             const start = -90 + category.startIndex * angleStep;
             const end = -90 + category.endIndex * angleStep;
             const labelPoint = polarPoint(CENTER, CENTER, (BAND_INNER + BAND_OUTER) / 2, (start + end) / 2);
+            const label = categoryLabelLayout(category, end - start, type, effectiveNotScoredLabel);
             return (
-              <g key={category.name}>
+              <g
+                key={category.name}
+                data-wheel-category={category.name}
+                data-wheel-category-score={category.currentAverage === undefined ? "not-scored" : formatScore(normalizeScoreToTen(category.currentAverage))}
+              >
                 <path
                   d={annularSectorPath(CENTER, CENTER, BAND_INNER, BAND_OUTER, start, end)}
                   fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
@@ -181,11 +190,21 @@ export function PerformanceWheel({
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fill="#003b83"
-                  fontSize={type === "kapstok" ? "12" : "14"}
+                  fontSize={label.fontSize}
                   fontWeight="700"
                   transform={`rotate(${readableRotation((start + end) / 2)} ${labelPoint.x} ${labelPoint.y})`}
                 >
-                  {category.name}
+                  <title>{`${category.name} · ${label.score}`}</title>
+                  {label.lines.map((line, lineIndex) => (
+                    <tspan
+                      key={`${category.name}-${lineIndex}`}
+                      x={labelPoint.x}
+                      dy={lineIndex === 0 ? `${-((label.lines.length - 1) * label.lineHeight) / 2}px` : `${label.lineHeight}px`}
+                      fontWeight={lineIndex === label.lines.length - 1 ? "800" : "700"}
+                    >
+                      {line}
+                    </tspan>
+                  ))}
                 </text>
               </g>
             );
@@ -202,17 +221,21 @@ export function PerformanceWheel({
               data-wheel-line="previous"
             />
           )}
-          <polygon
-            points={currentPoints.map(pointString).join(" ")}
-            fill="none"
-            stroke="#bfdbfe"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            data-wheel-line="current"
-          />
+          {data.criteria.every((item) => item.currentScored) && (
+            <polygon
+              points={currentPoints.map(pointString).join(" ")}
+              fill="none"
+              stroke="#bfdbfe"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              data-wheel-line="current"
+            />
+          )}
           {currentPoints.map((point, index) => {
             const next = currentPoints[(index + 1) % currentPoints.length];
             const item = data.criteria[index];
+            const nextItem = data.criteria[(index + 1) % data.criteria.length];
+            if (!item.currentScored || !nextItem.currentScored) return null;
             return (
               <line
                 key={`trend-line-${item.id}`}
@@ -262,7 +285,7 @@ export function PerformanceWheel({
                   fontSize={type === "kapstok" ? "9.5" : "12"}
                   fontWeight={activeId === item.id ? "700" : "600"}
                 >
-                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({item.currentScored ? formatScore(item.currentTen) : "niet gescoord"})
+                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({item.currentScored ? formatScore(item.currentTen) : effectiveNotScoredLabel})
                 </text>
               </g>
             );
@@ -270,7 +293,7 @@ export function PerformanceWheel({
 
           <circle cx={CENTER} cy={CENTER} r={INNER_RADIUS - 5} fill="#ffffff" stroke="#dbeafe" strokeWidth="2" />
           <text x={CENTER} y={CENTER - 6} textAnchor="middle" fill="#003b83" fontSize="22" fontWeight="800">
-            {formatScore(average(data.criteria.map((item) => item.currentTen)))}
+            {data.currentAverage === undefined ? effectiveNotScoredLabel : formatScore(normalizeScoreToTen(data.currentAverage))}
           </text>
           <text x={CENTER} y={CENTER + 16} textAnchor="middle" fill="#64748b" fontSize="11" fontWeight="600">
             GEMIDDELD
@@ -409,14 +432,65 @@ function readableRotation(angle: number) {
   return normalized > 90 && normalized < 270 ? angle + 180 : angle;
 }
 
+function categoryLabelLayout(
+  category: { name: string; currentAverage?: number },
+  angleSpan: number,
+  type: PerformanceWheelType,
+  notScoredLabel: string
+) {
+  const baseFontSize = type === "kapstok" ? 11 : 13;
+  const lineHeight = type === "kapstok" ? 12 : 14;
+  const score = category.currentAverage === undefined
+    ? notScoredLabel
+    : formatScore(normalizeScoreToTen(category.currentAverage));
+  const availableWidth = ((BAND_INNER + BAND_OUTER) / 2) * degreesToRadians(angleSpan) * 0.8;
+  const maxCharacters = Math.max(8, Math.floor(availableWidth / (baseFontSize * 0.57)));
+  const title = category.name.toLocaleUpperCase();
+  const combined = `${title} · ${score}`;
+
+  if (combined.length <= maxCharacters) {
+    return { lines: [combined], fontSize: baseFontSize, lineHeight, score };
+  }
+
+  const titleLines = wrapLabel(title, Math.max(5, maxCharacters));
+  const lines = titleLines.length <= 2
+    ? [...titleLines, score]
+    : [compactLabel(title, Math.max(5, maxCharacters)), score];
+  return {
+    lines,
+    fontSize: Math.max(8, baseFontSize - (lines.length > 2 ? 1 : 0)),
+    lineHeight,
+    score,
+  };
+}
+
+function wrapLabel(label: string, maxCharacters: number) {
+  const words = label.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (word.length > maxCharacters) {
+      if (current) lines.push(current);
+      lines.push(compactLabel(word, maxCharacters));
+      current = "";
+      continue;
+    }
+    const next = current ? `${current} ${word}` : word;
+    if (current && next.length > maxCharacters) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 function compactLabel(label: string, limit: number) {
   return label.length > limit ? `${label.slice(0, limit - 1)}…` : label;
 }
 
 function formatScore(value: number) {
   return value.toLocaleString("nl-BE", { maximumFractionDigits: 1 });
-}
-
-function average(values: number[]) {
-  return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 }

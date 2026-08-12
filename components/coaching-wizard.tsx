@@ -959,6 +959,7 @@ function PreparationStep({
                     currentInterventionId={selected.id}
                     type="kapstok"
                     coachings={[selected.history]}
+                    notScoredLabel={t("coaching.performance.notScored")}
                   />
                   <p className="mt-3 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
                     <Info className="h-4 w-4 text-brand-700" />
@@ -985,6 +986,7 @@ function PreparationStep({
               currentInterventionId={latest.id}
               type="kapstok"
               coachings={[latest.history]}
+              notScoredLabel={t("coaching.performance.notScored")}
             />
           </div>
         </div>

@@ -13,6 +13,52 @@ import { loadPerformanceDatasetFromDatabase } from "../lib/server/performance";
 import { listRepresentativesFromDatabase } from "../lib/server/representatives";
 
 async function main() {
+  const wheelCoachings = [
+    {
+      id: "current",
+      representativeId: "rep-test",
+      date: "2026-08-12",
+      ownerId: "coach",
+      ownerName: "Coach",
+      status: "afgesloten" as const,
+      focusNames: ["Introductie", "Demonstratie", "Afsluiten"],
+      phaseScores: [],
+      generalScores: [],
+      criterionScores: [
+        { focus: "Introductie", criterion: "Voorstellen", score: 84, scored: true, sortOrder: 1 },
+        { focus: "Introductie", criterion: "Bedanken", score: 0, scored: false, sortOrder: 2 },
+        { focus: "Demonstratie", criterion: "Uitleg", score: 76, scored: true, sortOrder: 1 },
+        { focus: "Afsluiten", criterion: "Order noteren", score: 0, scored: false, sortOrder: 1 },
+      ],
+    },
+    {
+      id: "previous",
+      representativeId: "rep-test",
+      date: "2026-08-01",
+      ownerId: "coach",
+      ownerName: "Coach",
+      status: "afgesloten" as const,
+      focusNames: ["Introductie", "Demonstratie"],
+      phaseScores: [],
+      generalScores: [],
+      criterionScores: [
+        { focus: "Introductie", criterion: "Voorstellen", score: 74, scored: true, sortOrder: 1 },
+        { focus: "Introductie", criterion: "Bedanken", score: 64, scored: true, sortOrder: 2 },
+        { focus: "Demonstratie", criterion: "Uitleg", score: 66, scored: true, sortOrder: 1 },
+      ],
+    },
+  ];
+  const wheel = getPerformanceWheelData("rep-test", "current", "kapstok", "previous", wheelCoachings);
+  assert.ok(wheel, "Een dynamische prestatiecirkel moet worden opgebouwd");
+  assert.deepEqual(wheel?.categories.map((item) => item.name), ["Introductie", "Demonstratie", "Afsluiten"]);
+  assert.equal(wheel?.categories[0]?.currentAverage, 84, "Een hoofditemgemiddelde gebruikt alleen effectief gescoorde criteria");
+  assert.equal(wheel?.categories[1]?.currentAverage, 76);
+  assert.equal(wheel?.categories[2]?.currentAverage, undefined, "Een hoofditem zonder scores krijgt geen fictieve nulscore");
+  assert.equal(wheel?.currentAverage, 80, "Het globale gemiddelde negeert NVT en niet-gescoorde criteria");
+  assert.equal(wheel?.criteria.find((item) => item.criterion === "Bedanken")?.currentScored, false);
+  assert.equal(wheel?.criteria.find((item) => item.criterion === "Bedanken")?.difference, undefined);
+  assert.equal(wheel?.categories[0]?.previousAverage, 69, "De vergelijking gebruikt de geselecteerde eerdere begeleiding");
+
   const appointmentCriteria = criterionScoresFromRows([
     { criterion: "Introductie - Voorstellen", score: 4 },
     { criterion: "Introductie - Bedanken", score: 3 },

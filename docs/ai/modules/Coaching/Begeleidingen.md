@@ -320,6 +320,15 @@ Completed records may be opened as a report and exported using the existing PDF 
 
 The report must use the same underlying record and current criteria data.
 
+The shared Performance Circle shows the configured kapstok hoofditems as contiguous
+outer sectors. Each sector contains the main-item title and its average score,
+calculated from only numerically scored criteria belonging to that item. NVT,
+not-scored and missing values are excluded from the denominator; an item without
+scored criteria is shown as `Niet gescoord`. The same shared calculation and
+sector labels are used for the execution form, preparation, report, Mijn Team
+profile, historical comparisons and PDF export. Historical sector scores are
+always calculated from the selected historical Begeleiding.
+
 When the Begeleiding was sent for representative approval, the professional PDF includes the representative's stored reflection answers when an approval record with answers is available.
 
 ---
