@@ -52,22 +52,6 @@ export function canRemindCoachingApproval(
     isPendingCoachingApprovalStatus(intervention.status);
 }
 
-export function canOverrideCoachingApproval(input: {
-  currentUser: MockUser;
-  intervention: CoachingIntervention;
-  approvalCreatedAt?: string | Date | null;
-  now?: Date;
-  isDue: (input: { sentForApprovalAt?: string | Date | null; now?: Date }) => boolean;
-}) {
-  if (!canRemindCoachingApproval(input.currentUser, input.intervention)) return false;
-  const sentForApprovalAt = resolveCoachingApprovalSentForApprovalAt({
-    sentForApprovalAt: input.intervention.sentForApprovalAt,
-    auditTrail: input.intervention.auditTrail,
-    approvalCreatedAt: input.approvalCreatedAt,
-  });
-  return input.isDue({ sentForApprovalAt, now: input.now });
-}
-
 function validIsoDate(value?: string | Date | null) {
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(value);

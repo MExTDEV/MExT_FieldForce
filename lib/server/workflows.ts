@@ -1128,7 +1128,7 @@ function auditSummary(action: string) {
     "coaching.reopened": "Afgewerkte begeleiding opnieuw geopend voor aanpassing.",
     "coaching.sent_for_approval": "Begeleiding naar de vertegenwoordiger verstuurd ter akkoord.",
     "coaching.approved_by_representative": "Vertegenwoordiger bevestigde voor akkoord.",
-    "coaching.approved_by_manager_override": "Akkoord werd handmatig gezet na het verstrijken van de akkoordtermijn.",
+    "coaching.approved_by_manager_override": "Begeleiding akkoord geregistreerd.",
     "workflow.coaching.save": "Begeleiding aangepast en opgeslagen.",
   };
   return labels[action] ?? action.replaceAll("_", " ").replaceAll(".", " · ");

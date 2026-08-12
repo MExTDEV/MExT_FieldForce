@@ -115,19 +115,9 @@ audit-based cooldown prevents repeated reminders.
 
 The Mijn Team table displays the official total coaching score as a rounded
 percentage, using the same shared calculation as the report. For a pending
-approval, the table shows `Porren` to an authorised manager. After fourteen
-calendar days in the application timezone from the actual approval request
-moment, an authorised Sales Leader, Sales Manager, Country Manager, Group
-Manager, Admin or Super Admin within effective scope may confirm the existing
-final status manually. The primary source is `sentForApprovalAt`; older records
-without that value fall back to the `coaching.sent_for_approval` audit entry and
-then to the existing `Approval.createdAt` notification timestamp. The workflow
-remains read-only, does not populate representative-approval fields and records
-the actor, original approval recipient, original send time and
-`ACKNOWLEDGEMENT_TIMEOUT` reason in the audit log.
-The same fallback can be persisted with
-`npm run backfill:coaching-approval-sent-at -- --write`; without `--write` the
-script reports the affected records only.
+approval, the table shows only `Porren` to an authorised manager. The approval
+task remains owned by the coached person; managers cannot confirm the report
+on that person's behalf after a deadline.
 
 For an expired `GEPLAND` record, an authorised manager may confirm the
 existing `NIET_UITGEVOERD` end status. The server checks the country timezone,

@@ -148,7 +148,6 @@ import {
   representativeApprovalHref,
 } from "@/lib/coaching/access";
 import {
-  canOverrideCoachingApproval,
   canRemindCoachingApproval,
   isPendingCoachingApprovalStatus,
 } from "@/lib/coaching/approval-actions";
@@ -173,7 +172,7 @@ import {
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
 import { calculateOfficialCoachingScore } from "@/lib/coaching/score";
-import { isCoachingApprovalOverrideDue, isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
+import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
   hasHtmlMarkup,
@@ -2009,7 +2008,6 @@ function TimelinePanel({
   const [busyActionId, setBusyActionId] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [actionNotice, setActionNotice] = useState<string>();
-  const [overrideCandidate, setOverrideCandidate] = useState<TimelineItem>();
   const allowedTypes = new Set(itemTypes);
   type TimelineItem = {
     id: string;
@@ -2022,7 +2020,6 @@ function TimelinePanel({
     intervention?: CoachingIntervention;
     lastApprovalReminderAt?: string;
     canRemindApproval?: boolean;
-    canOverrideApproval?: boolean;
     canMarkNotExecuted?: boolean;
     canContinue?: boolean;
   };
@@ -2043,7 +2040,6 @@ function TimelinePanel({
           ...workflowApi.visibleInterventions(user)
             .filter((item) => item.representativeId === representativeId)
             .map((item) => {
-              const approval = workflowApi.state.approvals.find((entry) => entry.interventionId === item.id);
               const lastApprovalReminderAt = item.auditTrail
                 ?.filter((entry) => entry.action === "coaching.approval_reminded")
                 .sort((left, right) => right.at.localeCompare(left.at))[0]?.at;
@@ -2061,12 +2057,6 @@ function TimelinePanel({
                 intervention: item,
                 lastApprovalReminderAt,
                 canRemindApproval: canRemindCoachingApproval(user, item),
-                canOverrideApproval: canOverrideCoachingApproval({
-                  currentUser: user,
-                  intervention: item,
-                  approvalCreatedAt: approval?.createdAt,
-                  isDue: isCoachingApprovalOverrideDue,
-                }),
                 canMarkNotExecuted: canManage && item.status === "gepland" && isScheduledCoachingEndPast({
                   plannedDate: item.plannedDate,
                   endTime: item.endTime,
@@ -2115,7 +2105,7 @@ function TimelinePanel({
   ].map((item) => [`${item.type}:${item.id}`, item] as const)).values()]
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  async function executeCoachingAction(item: TimelineItem, action: "remind_approval" | "override_approval" | "not_executed") {
+  async function executeCoachingAction(item: TimelineItem, action: "remind_approval" | "not_executed") {
     if (!item.intervention || busyActionId) return;
     if (action === "not_executed" && !window.confirm(t("myTeam.profile.coachings.notExecutedConfirm"))) return;
     setBusyActionId(`${item.id}:${action}`);
@@ -2130,14 +2120,11 @@ function TimelinePanel({
       const payload = await response.json() as { error?: string; mailStatus?: "sent" | "skipped" | "error" };
       if (!response.ok) throw new Error(coachingActionErrorMessage(payload.error, t));
       await workflowApi.refresh();
-      if (action === "override_approval") setOverrideCandidate(undefined);
       setActionNotice(action === "remind_approval"
         ? payload.mailStatus === "error"
           ? t("myTeam.profile.coachings.reminderMailError")
           : t("myTeam.profile.coachings.reminderSent")
-        : action === "override_approval"
-          ? t("myTeam.profile.coachings.overrideSuccess")
-          : t("myTeam.profile.coachings.notExecutedSuccess"));
+        : t("myTeam.profile.coachings.notExecutedSuccess"));
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : t("myTeam.profile.coachings.actionError"));
     } finally {
@@ -2178,18 +2165,13 @@ function TimelinePanel({
                   {busyActionId === `${item.id}:remind_approval` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <><Mail className="h-4 w-4" /> <span>{t("myTeam.profile.coachings.remindApproval")}</span></>}
                 </button>
               )}
-              {item.canOverrideApproval && (
-                <button type="button" className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs" title={t("myTeam.profile.coachings.overrideApprovalTooltip")} aria-label={t("myTeam.profile.coachings.overrideApprovalTooltip")} onClick={() => setOverrideCandidate(item)} disabled={busyActionId !== undefined}>
-                  {t("myTeam.profile.coachings.overrideApproval")}
-                </button>
-              )}
               {item.canMarkNotExecuted && (
                 <button type="button" className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs text-rose-700" onClick={() => void executeCoachingAction(item, "not_executed")} disabled={busyActionId !== undefined}>
                   {busyActionId === `${item.id}:not_executed` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : t("myTeam.profile.coachings.notExecuted")}
                 </button>
               )}
               {item.canContinue && <Link href={timelineItemHref(item.type, item.id)} className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs">{t("myTeam.profile.coachings.continue")}</Link>}
-              {!item.canRemindApproval && !item.canOverrideApproval && !item.canMarkNotExecuted && !item.canContinue && <span className="text-slate-400">—</span>}
+              {!item.canRemindApproval && !item.canMarkNotExecuted && !item.canContinue && <span className="text-slate-400">—</span>}
               {item.lastApprovalReminderAt && isPendingCoachingApprovalStatus(item.status) && <span className="basis-full text-center text-[11px] text-slate-500">{t("myTeam.profile.coachings.lastReminder")}: {formatDateTime(item.lastApprovalReminderAt)}</span>}
             </div>
           </div>
@@ -2203,20 +2185,6 @@ function TimelinePanel({
         ))}
         {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{isCoachings ? t("myTeam.profile.coachings.empty") : t("myTeam.profile.timeline.empty")}</p>}
       </div>
-      {overrideCandidate && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="coaching-override-title">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 id="coaching-override-title" className="text-xl font-bold text-slate-950">{t("myTeam.profile.coachings.overrideConfirmationTitle")}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{t("myTeam.profile.coachings.overrideConfirmationDescription")}</p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" className="btn-secondary" onClick={() => setOverrideCandidate(undefined)} disabled={busyActionId !== undefined}>{t("myTeam.profile.coachings.cancel")}</button>
-              <button type="button" className="btn-primary" onClick={() => void executeCoachingAction(overrideCandidate, "override_approval")} disabled={busyActionId !== undefined}>
-                {busyActionId === `${overrideCandidate.id}:override_approval` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : t("myTeam.profile.coachings.overrideApproval")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2252,9 +2220,6 @@ function formatOfficialCoachingScore(score: number | undefined) {
 }
 
 function coachingActionErrorMessage(error: string | undefined, t: (key: TranslationKey) => string) {
-  if (error === "COACHING_APPROVAL_OVERRIDE_TOO_EARLY") return t("myTeam.profile.coachings.overrideTooEarly");
-  if (error === "COACHING_APPROVAL_OVERRIDE_TIMESTAMP_MISSING") return t("myTeam.profile.coachings.overrideTimestampMissing");
-  if (error === "COACHING_APPROVAL_OVERRIDE_STATUS_CHANGED") return t("myTeam.profile.coachings.overrideStatusChanged");
   return error ?? t("myTeam.profile.coachings.actionError");
 }
 
@@ -3894,8 +3859,6 @@ function CompletedCoachingSummary({
   const latestAudit = [...(intervention.auditTrail ?? [])]
     .sort((left, right) => right.at.localeCompare(left.at))[0];
   const locked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(intervention.status);
-  const manualApprovalOverride = intervention.auditTrail
-    ?.find((entry) => entry.action === "coaching.approved_by_manager_override");
 
   function confirmTransition() {
     if (confirmation === "send") onSendForApproval();
@@ -3935,11 +3898,7 @@ function CompletedCoachingSummary({
       {locked && (
         <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm font-semibold text-fuchsia-900">
           {intervention.status === "akkoord_door_vertegenwoordiger"
-            ? manualApprovalOverride
-              ? t("coaching.report.lockedApprovedOverride")
-                .replace("{user}", manualApprovalOverride.userName ?? manualApprovalOverride.userId)
-                .replace("{date}", formatDateTime(manualApprovalOverride.at))
-              : `${t("coaching.report.lockedApproved")}${intervention.approvedByRepAt ? ` ${t("coaching.report.on")} ${formatDateTime(intervention.approvedByRepAt)}` : ""}.`
+            ? `${t("coaching.report.lockedApproved")}${intervention.approvedByRepAt ? ` ${t("coaching.report.on")} ${formatDateTime(intervention.approvedByRepAt)}` : ""}.`
             : t("coaching.report.lockedSent")}
         </div>
       )}
@@ -4032,7 +3991,7 @@ function CompletedCoachingSummary({
           <button type="button" className="flex w-full items-center justify-between text-left font-bold text-slate-950" onClick={() => setHistoryOpen((value) => !value)}>
             {t("coaching.report.history")} <span>{historyOpen ? "−" : "+"}</span>
           </button>
-          {historyOpen && <div className="mt-4 space-y-3">{intervention.auditTrail!.map((entry) => <div key={entry.id} className="border-l-2 border-brand-200 pl-4"><p className="text-sm font-semibold text-slate-800">{entry.action === "coaching.approved_by_manager_override" ? t("coaching.report.approvalOverrideAudit").replace("{user}", entry.userName ?? entry.userId) : entry.summary}</p><p className="text-xs text-slate-500">{formatDateTime(entry.at)} · {entry.userName ?? entry.userId}</p></div>)}</div>}
+          {historyOpen && <div className="mt-4 space-y-3">{intervention.auditTrail!.map((entry) => <div key={entry.id} className="border-l-2 border-brand-200 pl-4"><p className="text-sm font-semibold text-slate-800">{entry.summary}</p><p className="text-xs text-slate-500">{formatDateTime(entry.at)} · {entry.userName ?? entry.userId}</p></div>)}</div>}
         </section>
       )}
 
