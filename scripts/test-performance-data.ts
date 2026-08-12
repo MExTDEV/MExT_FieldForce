@@ -105,6 +105,26 @@ async function main() {
   assert.equal(weightedWheel.categories[1]?.currentPercentage, 67, "NVT moet uit het onderdeelgemiddelde blijven");
   assert.equal(weightedWheel.totalPercentage, 76, "Het totaal moet gewogen zijn op criteriumniveau");
   assert.equal(weightedWheel.categories[1]?.name, "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole", "Nieuwe lange hoofdonderdelen moeten dynamisch verschijnen");
+  assert.deepEqual(
+    weightedWheel.categories.map((item) => [item.startIndex, item.endIndex]),
+    [[0, 2], [2, 6]],
+    "Elke buitenringsector moet exact de aaneengesloten criteria van het hoofdonderdeel omvatten"
+  );
+
+  const generalWheel = buildPerformanceWheelData({
+    current: {
+      ...wheelCoachings[0],
+      id: "general-current",
+      generalScores: [
+        { label: "Stiptheid", score: 80, scored: true },
+        { label: "Respect", score: 60, scored: true },
+      ],
+      criterionScores: [],
+    },
+    type: "algemeen",
+  });
+  assert.equal(generalWheel.categories.length, 1, "De algemene modus moet ook een zichtbare volledige ringsector kunnen tekenen");
+  assert.deepEqual([generalWheel.categories[0]?.startIndex, generalWheel.categories[0]?.endIndex], [0, 2]);
 
   const appointmentCriteria = criterionScoresFromRows([
     { criterion: "Introductie - Voorstellen", score: 4 },

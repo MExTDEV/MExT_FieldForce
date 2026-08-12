@@ -16,7 +16,7 @@ const INNER_RADIUS = 54;
 const PLOT_RADIUS = 286;
 const BAND_INNER = 300;
 const BAND_OUTER = 350;
-const LABEL_RADIUS = 378;
+const CRITERION_LABEL_RADIUS = 252;
 const CATEGORY_COLORS = ["#dcecff", "#e8eff8", "#d9e7f7", "#e5edf7", "#d7e8f2"];
 
 export function PerformanceWheel({
@@ -27,6 +27,7 @@ export function PerformanceWheel({
   coachings,
   notScoredLabel,
   totalScoreLabel,
+  compact = false,
 }: {
   representativeId: string;
   currentInterventionId: string;
@@ -35,6 +36,7 @@ export function PerformanceWheel({
   coachings: HistoricalCoaching[];
   notScoredLabel?: string;
   totalScoreLabel?: string;
+  compact?: boolean;
 }) {
   const data = useMemo(
     () => getPerformanceWheelData(
@@ -82,7 +84,7 @@ export function PerformanceWheel({
 
   return (
     <div>
-      <div className="mx-auto w-full max-w-[1040px]">
+      <div className={`mx-auto w-full ${compact ? "max-w-[360px]" : "max-w-[1040px]"}`}>
         <svg
           data-testid="performance-wheel-svg"
           viewBox={`0 0 ${SIZE} ${SIZE}`}
@@ -174,14 +176,18 @@ export function PerformanceWheel({
           {data.categories.map((category, index) => {
             const start = -90 + category.startIndex * angleStep;
             const end = -90 + category.endIndex * angleStep;
-            const labelPoint = polarPoint(CENTER, CENTER, (BAND_INNER + BAND_OUTER) / 2, (start + end) / 2);
             const label = categoryLabelLayout(category, end - start, type, effectiveNotScoredLabel);
+            const labelAngle = Math.abs(end - start) >= 359.99 ? -90 : (start + end) / 2;
+            const labelPoint = polarPoint(CENTER, CENTER, (BAND_INNER + BAND_OUTER) / 2, labelAngle);
             return (
               <g
                 key={category.name}
                 data-wheel-category={category.name}
                 data-wheel-category-score={formatPerformancePercentage(category.currentPercentage, effectiveNotScoredLabel)}
                 data-wheel-category-trend={category.trend}
+                data-wheel-category-start={category.startIndex}
+                data-wheel-category-end={category.endIndex}
+                data-wheel-category-criteria={data.criteria.slice(category.startIndex, category.endIndex).map((item) => item.id).join(",")}
               >
                 <path
                   d={annularSectorPath(CENTER, CENTER, BAND_INNER, BAND_OUTER, start, end)}
@@ -197,19 +203,12 @@ export function PerformanceWheel({
                   fill={categoryLabelColor(category.trend)}
                   fontSize={label.fontSize}
                   fontWeight="700"
-                  transform={`rotate(${readableRotation((start + end) / 2)} ${labelPoint.x} ${labelPoint.y})`}
+                  transform={`rotate(${readableRotation(labelAngle + 90)} ${labelPoint.x} ${labelPoint.y})`}
+                  textLength={label.textLength}
+                  lengthAdjust="spacingAndGlyphs"
                 >
                   <title>{`${category.name} - ${label.score}`}</title>
-                  {label.lines.map((line, lineIndex) => (
-                    <tspan
-                      key={`${category.name}-${lineIndex}`}
-                      x={labelPoint.x}
-                      dy={lineIndex === 0 ? `${-((label.lines.length - 1) * label.lineHeight) / 2}px` : `${label.lineHeight}px`}
-                      fontWeight={lineIndex === label.lines.length - 1 ? "800" : "700"}
-                    >
-                      {line}
-                    </tspan>
-                  ))}
+                  {label.text}
                 </text>
               </g>
             );
@@ -259,19 +258,17 @@ export function PerformanceWheel({
           {data.criteria.map((item, index) => {
             const point = currentPoints[index];
             const angle = centerAngle(index, angleStep);
-            const labelPoint = polarPoint(CENTER, CENTER, LABEL_RADIUS, angle);
-            const rightSide = Math.cos(degreesToRadians(angle)) >= 0;
+            const labelPoint = polarPoint(CENTER, CENTER, CRITERION_LABEL_RADIUS, angle);
+            const maxCharacters = Math.max(6, Math.floor(
+              CRITERION_LABEL_RADIUS * degreesToRadians(angleStep) * 0.72 / (8.5 * 0.56)
+            ));
+            const criterionLabel = compactLabel(
+              `${item.criterion} (${item.currentScored ? formatScore(item.currentTen) : effectiveNotScoredLabel})`,
+              maxCharacters
+            );
             const color = trendColor(item.trend);
             return (
               <g key={`point-${item.id}`}>
-                <line
-                  x1={polarPoint(CENTER, CENTER, BAND_OUTER + 3, angle).x}
-                  y1={polarPoint(CENTER, CENTER, BAND_OUTER + 3, angle).y}
-                  x2={polarPoint(CENTER, CENTER, LABEL_RADIUS - 10, angle).x}
-                  y2={polarPoint(CENTER, CENTER, LABEL_RADIUS - 10, angle).y}
-                  stroke="#cbd5e1"
-                  strokeWidth="1"
-                />
                 <circle
                   cx={point.x}
                   cy={point.y}
@@ -284,13 +281,14 @@ export function PerformanceWheel({
                 <text
                   x={labelPoint.x}
                   y={labelPoint.y}
-                  textAnchor={rightSide ? "start" : "end"}
+                  textAnchor="middle"
                   dominantBaseline="middle"
                   fill={trendColor(item.trend)}
-                  fontSize={type === "kapstok" ? "9.5" : "12"}
+                  fontSize={type === "kapstok" ? "8.5" : "10"}
                   fontWeight={activeId === item.id ? "700" : "600"}
+                  transform={`rotate(${readableRotation(angle)} ${labelPoint.x} ${labelPoint.y})`}
                 >
-                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({item.currentScored ? formatScore(item.currentTen) : effectiveNotScoredLabel})
+                  {criterionLabel}
                 </text>
               </g>
             );
@@ -306,7 +304,7 @@ export function PerformanceWheel({
         </svg>
       </div>
 
-      <div data-testid="wheel-tooltip" className="mt-2 min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+      {!compact && <div data-testid="wheel-tooltip" className="mt-2 min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
         {active ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -322,9 +320,9 @@ export function PerformanceWheel({
         ) : (
           <p className="text-center text-slate-500">Beweeg over of tik op een criterium voor scoredetails.</p>
         )}
-      </div>
+      </div>}
 
-      <WheelLegend hasPrevious={Boolean(data.comparisonInterventionId)} />
+      {!compact && <WheelLegend hasPrevious={Boolean(data.comparisonInterventionId)} />}
     </div>
   );
 }
@@ -379,7 +377,13 @@ function annularSectorPath(
   outerRadius: number,
   startAngle: number,
   endAngle: number
-) {
+): string {
+  if (Math.abs(endAngle - startAngle) >= 359.99) {
+    return [
+      annularSectorPath(cx, cy, innerRadius, outerRadius, startAngle, startAngle + 180),
+      annularSectorPath(cx, cy, innerRadius, outerRadius, startAngle + 180, startAngle + 360),
+    ].join(" ");
+  }
   const outerStart = polarPoint(cx, cy, outerRadius, startAngle);
   const outerEnd = polarPoint(cx, cy, outerRadius, endAngle);
   const innerEnd = polarPoint(cx, cy, innerRadius, endAngle);
@@ -445,51 +449,18 @@ function categoryLabelLayout(
   notScoredLabel: string
 ) {
   const baseFontSize = type === "kapstok" ? 11 : 13;
-  const lineHeight = type === "kapstok" ? 12 : 14;
   const score = formatPerformancePercentage(category.currentPercentage, notScoredLabel);
-  const availableWidth = ((BAND_INNER + BAND_OUTER) / 2) * degreesToRadians(angleSpan) * 0.8;
-  const maxCharacters = Math.max(8, Math.floor(availableWidth / (baseFontSize * 0.57)));
-  const title = category.name.toLocaleUpperCase();
-  const combined = `${title} - ${score}`;
-
-  if (combined.length <= maxCharacters) {
-    return { lines: [combined], fontSize: baseFontSize, lineHeight, score };
-  }
-
-  const titleLimit = Math.max(5, maxCharacters - score.length - 3);
-  const titleLines = wrapLabel(title, titleLimit);
-  const lines = titleLines.length === 1
-    ? [titleLines[0], score]
-    : [compactLabel(title, Math.max(5, maxCharacters)), score];
+  const text = `${category.name.toLocaleUpperCase()} - ${score}`;
+  const radius = (BAND_INNER + BAND_OUTER) / 2;
+  const availableWidth = Math.max(24, radius * degreesToRadians(Math.min(360, angleSpan)) * 0.8);
+  const estimatedWidth = text.length * baseFontSize * 0.57;
+  const fontSize = Math.max(7, Math.min(baseFontSize, baseFontSize * availableWidth / Math.max(1, estimatedWidth)));
   return {
-    lines,
-    fontSize: Math.max(8, baseFontSize - (titleLines.length > 1 ? 1 : 0)),
-    lineHeight,
+    text,
+    fontSize,
+    textLength: estimatedWidth > availableWidth ? availableWidth : undefined,
     score,
   };
-}
-
-function wrapLabel(label: string, maxCharacters: number) {
-  const words = label.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    if (word.length > maxCharacters) {
-      if (current) lines.push(current);
-      lines.push(compactLabel(word, maxCharacters));
-      current = "";
-      continue;
-    }
-    const next = current ? `${current} ${word}` : word;
-    if (current && next.length > maxCharacters) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = next;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
 }
 
 function compactLabel(label: string, limit: number) {

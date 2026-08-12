@@ -338,6 +338,13 @@ PDF has a technically necessary vector renderer instead of mounting the browser 
 it consumes the same viewmodel and therefore uses the same order, percentages,
 labels and trend colours.
 
+Kapstok-groepering gebruikt de opgeslagen `HistoricalCriterionScore.focus`-waarde
+voor ieder criterium, met `focusNames` uit de actuele of opgeslagen kapstokconfiguratie
+als volgorde en `sortOrder` als criteriumvolgorde. `Algemeen` is uitsluitend de
+expliciete algemene weergave en is geen fallback voor een kapstokweergave. Een
+enkelvoudige categorie wordt in SVG/PDF opgesplitst in twee halve bogen zodat de
+buitenring ook bij een volledige cirkel zichtbaar blijft.
+
 When the Begeleiding was sent for representative approval, the professional PDF includes the representative's stored reflection answers when an approval record with answers is available.
 
 ---

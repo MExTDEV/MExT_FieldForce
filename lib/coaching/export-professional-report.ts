@@ -787,7 +787,7 @@ function drawPerformanceWheel(
     const start = -90 + category.startIndex * angleStep;
     const end = -90 + category.endIndex * angleStep;
     drawPdfAnnularSector(pdf, centerX, centerY, ringInner, ringOuter, start, end, ["#DCECFB", "#E8F1FB", "#D9EAF8", "#E5EFF9"][index % 4]);
-    const midpoint = (start + end) / 2;
+    const midpoint = Math.abs(end - start) >= 359.99 ? -90 : (start + end) / 2;
     const labelPoint = pdfPolarPoint(centerX, centerY, (ringInner + ringOuter) / 2, midpoint);
     const score = formatPerformancePercentage(category.currentPercentage, notScoredLabel);
     const label = `${category.name.toUpperCase()} - ${score}`;
@@ -796,7 +796,7 @@ function drawPerformanceWheel(
     pdf.setTextColor(pdfTrendTextColor(category.trend));
     pdf.text(label, labelPoint.x, labelPoint.y, {
       align: "center",
-      angle: readablePdfAngle(midpoint),
+      angle: readablePdfTangentAngle(midpoint),
     });
   });
 
@@ -853,6 +853,11 @@ function drawPdfAnnularSector(
   endAngle: number,
   fill: string
 ) {
+  if (Math.abs(endAngle - startAngle) >= 359.99) {
+    drawPdfAnnularSector(pdf, centerX, centerY, innerRadius, outerRadius, startAngle, startAngle + 180, fill);
+    drawPdfAnnularSector(pdf, centerX, centerY, innerRadius, outerRadius, startAngle + 180, startAngle + 360, fill);
+    return;
+  }
   const steps = Math.max(3, Math.ceil(Math.abs(endAngle - startAngle) / 8));
   const points = Array.from({ length: steps + 1 }, (_, index) =>
     pdfPolarPoint(centerX, centerY, outerRadius, startAngle + (endAngle - startAngle) * index / steps)
@@ -881,6 +886,10 @@ function pdfPolarPoint(centerX: number, centerY: number, radius: number, angle: 
 function readablePdfAngle(angle: number) {
   const normalized = ((angle % 360) + 360) % 360;
   return normalized > 90 && normalized < 270 ? angle + 180 : angle;
+}
+
+function readablePdfTangentAngle(midpoint: number) {
+  return readablePdfAngle(midpoint + 90);
 }
 
 function pdfTrendTextColor(trend: PerformanceTrend) {

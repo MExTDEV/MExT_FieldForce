@@ -1661,9 +1661,15 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
             <section className={`grid gap-4 ${showCoachings && showPerformance ? "lg:grid-cols-[220px_1fr]" : ""}`}>
               {showPerformance && (
                 <div className="card grid place-items-center p-5 text-center">
-                  {latestCoaching && latestPercentage !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestPercentage))}%, #e2e8f0 0)` }}>
-                    <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{formatPerformancePercentage(latestPercentage, t("coaching.performance.notScored"))}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.performance.totalScore")}</p></div></div>
-                  </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")}</p></div>}
+                  {latestCoaching && latestPercentage !== undefined ? <PerformanceWheel
+                    representativeId={representative.id}
+                    currentInterventionId={latestCoaching.id}
+                    type="kapstok"
+                    coachings={performanceDataset.historicalCoachings}
+                    notScoredLabel={t("coaching.performance.notScored")}
+                    totalScoreLabel={t("coaching.performance.totalScore")}
+                    compact
+                  /> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")}</p></div>}
                 </div>
               )}
               {showCoachings && (
