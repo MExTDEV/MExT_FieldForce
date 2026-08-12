@@ -272,11 +272,12 @@ export function PerformanceWheel({
 
           {data.criteria.map((item, index) => {
             const point = currentPoints[index];
-            if (!item.currentScored) return null;
             const angle = centerAngle(index, angleStep);
             const labelPoint = polarPoint(CENTER, CENTER, LABEL_RADIUS, angle);
             const rightSide = Math.cos(degreesToRadians(angle)) >= 0;
-            const criterionText = `${item.criterion}${item.currentPercentage === undefined ? "" : ` (${formatPerformancePercentage(item.currentPercentage, effectiveNotScoredLabel)})`}`;
+            const criterionText = item.currentScored && item.currentPercentage !== undefined
+              ? `${item.criterion} (${formatPerformancePercentage(item.currentPercentage, effectiveNotScoredLabel)})`
+              : item.criterion;
             const maxCharacters = Math.max(10, Math.floor(
               LABEL_RADIUS * degreesToRadians(angleStep) * 0.78 / (9.5 * 0.56)
             ));
@@ -292,15 +293,17 @@ export function PerformanceWheel({
                   stroke="#cbd5e1"
                   strokeWidth="1"
                 />
-                <circle
-                  cx={point.x}
-                  cy={point.y}
-                  r={activeId === item.id ? 7 : 5.5}
-                  fill={color}
-                  stroke="#ffffff"
-                  strokeWidth="2.5"
-                  data-trend={item.trend}
-                />
+                {item.currentScored && (
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={activeId === item.id ? 7 : 5.5}
+                    fill={color}
+                    stroke="#ffffff"
+                    strokeWidth="2.5"
+                    data-trend={item.trend}
+                  />
+                )}
                 <text
                   x={labelPoint.x}
                   y={labelPoint.y}
