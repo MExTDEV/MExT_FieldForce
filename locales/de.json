@@ -1703,7 +1703,7 @@
   "coaching.report.performance": "Leistung",
   "coaching.report.summaryConclusion": "Zusammenfassung und Abschluss",
   "coaching.report.internalNote": "Interne Bemerkung",
-  "coaching.report.mainFormScores": "Bewertungen des Hauptformulars",
+  "coaching.report.mainFormScores": "Allgemeiner Score — {score}",
   "coaching.report.detailedCriteria": "Detaillierte Coaching-Kriterien",
   "coaching.report.agreementsWithin": "Termine innerhalb der Begleitung",
   "coaching.report.unnamedAppointment": "Unbenannter Termin",

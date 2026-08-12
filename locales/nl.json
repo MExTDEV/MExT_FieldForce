@@ -1701,7 +1701,7 @@
   "coaching.report.performance": "Prestatie",
   "coaching.report.summaryConclusion": "Samenvatting en conclusie",
   "coaching.report.internalNote": "Interne opmerking",
-  "coaching.report.mainFormScores": "Scores hoofdformulier",
+  "coaching.report.mainFormScores": "Score Algemeen — {score}",
   "coaching.report.detailedCriteria": "Gedetailleerde coachingscriteria",
   "coaching.report.agreementsWithin": "Afspraken binnen de begeleiding",
   "coaching.report.unnamedAppointment": "Onbenoemde afspraak",

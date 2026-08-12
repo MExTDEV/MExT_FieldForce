@@ -108,6 +108,14 @@ Other users:
 
 Opens report/history mode.
 
+The completed report labels the main-form score section as `Score Algemeen —
+XX%`. The percentage is calculated through the central coaching score
+calculation using only valid General and Personality scores; empty and NVT
+criteria are excluded. Individual scores are displayed as percentages using
+the shared score-scale conversion, without a redundant `Criterium` label.
+The shared read-only score table uses two columns from tablet/desktop widths
+and one column on narrow mobile screens.
+
 The completed report keeps `Algemene info` as the primary card and shows the
 official total coaching score as a percentage in a separate `Algemene score`
 card. The shared Performance Circle opens from that card in a wide responsive
