@@ -960,6 +960,7 @@ function PreparationStep({
                     type="kapstok"
                     coachings={[selected.history]}
                     notScoredLabel={t("coaching.performance.notScored")}
+                    totalScoreLabel={t("coaching.performance.totalScore")}
                   />
                   <p className="mt-3 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
                     <Info className="h-4 w-4 text-brand-700" />
@@ -987,6 +988,7 @@ function PreparationStep({
               type="kapstok"
               coachings={[latest.history]}
               notScoredLabel={t("coaching.performance.notScored")}
+              totalScoreLabel={t("coaching.performance.totalScore")}
             />
           </div>
         </div>

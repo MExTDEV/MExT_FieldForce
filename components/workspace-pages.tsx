@@ -115,6 +115,11 @@ import {
 } from "@/lib/performance-data";
 import type { HistoricalCoaching } from "@/lib/performance-data";
 import {
+  buildPerformanceWheelData,
+  formatPerformancePercentage,
+  getPerformanceWheelData,
+} from "@/lib/performance/performance-wheel";
+import {
   actionPointHref,
   buildRepresentativeActivities,
   isOpenRepresentativeActionPoint,
@@ -1437,13 +1442,6 @@ function plainTextSummary(value: string, maxLength = 120) {
   return compact.length > maxLength ? `${compact.slice(0, maxLength - 1).trimEnd()}…` : compact;
 }
 
-function coachingScoreOutOfFive(coaching: HistoricalCoaching) {
-  if (coaching.overallScore !== undefined) return coaching.overallScore / 20;
-  const scores = coaching.phaseScores.length ? coaching.phaseScores : coaching.generalScores;
-  if (!scores.length) return undefined;
-  return scores.reduce((total, item) => total + item.score, 0) / scores.length / 20;
-}
-
 function coachingPerformanceStatus(
   coaching: HistoricalCoaching,
   representativeView: boolean,
@@ -1601,7 +1599,10 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
 
   const latestCompletedCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
   const latestCoaching = latestScoredCoaching(performanceDataset, representative.id);
-  const latestScore = latestCoaching ? coachingScoreOutOfFive(latestCoaching) : undefined;
+  const latestWheel = latestCoaching
+    ? getPerformanceWheelData(representative.id, latestCoaching.id, "kapstok", undefined, performanceDataset.historicalCoachings)
+    : undefined;
+  const latestPercentage = latestWheel?.totalPercentage;
   const scoredCoachings = coachingsForRepresentative(performanceDataset, representative.id).filter(hasCoachingScoreData);
   const representativeRoleLabel = t("impersonation.role.REPRESENTATIVE");
   const representativeLevelLabel = localizedRepresentativeLevel(representative.level, t);
@@ -1660,15 +1661,15 @@ function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?:
             <section className={`grid gap-4 ${showCoachings && showPerformance ? "lg:grid-cols-[220px_1fr]" : ""}`}>
               {showPerformance && (
                 <div className="card grid place-items-center p-5 text-center">
-                  {latestCoaching && latestScore !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestScore * 20))}%, #e2e8f0 0)` }}>
-                    <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{latestScore.toLocaleString(localeForLanguage(user.language), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("myTeam.page.scoreOutOfFive")}</p></div></div>
+                  {latestCoaching && latestPercentage !== undefined ? <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, latestPercentage))}%, #e2e8f0 0)` }}>
+                    <div className="grid h-28 w-28 place-items-center rounded-full bg-white"><div><p className="text-3xl font-black text-brand-950">{formatPerformancePercentage(latestPercentage, t("coaching.performance.notScored"))}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.performance.totalScore")}</p></div></div>
                   </div> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")}</p></div>}
                 </div>
               )}
               {showCoachings && (
                 <div className="card p-5 sm:p-6">
                   <p className="eyebrow">{t("myTeam.page.latestCoaching")}</p>
-                  {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">{showPerformance && latestScore !== undefined ? `${t("myTeam.page.overallScore")} ${latestScore.toLocaleString(localeForLanguage(user.language), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5` : t("myTeam.page.latestCoaching")}</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date, user.language)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE", t)} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">{t("myTeam.page.openCoaching")} <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{showPerformance ? t("myTeam.page.completedNoScore") : t("myTeam.page.completedAvailable")}</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE", t)} /></div></div> : <EmptyState title={t("myTeam.page.noCompletedCoachingTitle")} description={t("myTeam.page.noCompletedCoachingDescription")} />}
+                  {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">{showPerformance && latestPercentage !== undefined ? `${t("myTeam.page.overallScore")} ${formatPerformancePercentage(latestPercentage, t("coaching.performance.notScored"))}` : t("myTeam.page.latestCoaching")}</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date, user.language)} · {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE", t)} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">{t("myTeam.page.openCoaching")} <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{showPerformance ? t("myTeam.page.completedNoScore") : t("myTeam.page.completedAvailable")}</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE", t)} /></div></div> : <EmptyState title={t("myTeam.page.noCompletedCoachingTitle")} description={t("myTeam.page.noCompletedCoachingDescription")} />}
                 </div>
               )}
             </section>
@@ -3737,8 +3738,23 @@ function CoachingReportClosingSummary({
 }) {
   const dossier = intervention.dossier ?? defaultDossierState();
   const appointments = (intervention.appointments ?? []).filter((appointment) => !appointment.isDeleted);
+  const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
+  const currentWheel = buildPerformanceWheelData({ current: currentHistory, type: "kapstok" });
   return (
     <div id="coaching-step-7" className="space-y-5">
+      <section className="card p-5 sm:p-6">
+        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.performance")}</h2>
+        <div className="mt-4">
+          <PerformanceWheel
+            representativeId={currentHistory.representativeId}
+            currentInterventionId={currentHistory.id}
+            type="kapstok"
+            coachings={[currentHistory]}
+            notScoredLabel={t("coaching.performance.notScored")}
+            totalScoreLabel={t("coaching.performance.totalScore")}
+          />
+        </div>
+      </section>
       <section className="card p-5 sm:p-6">
         <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.summary")}</h2>
         <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -3748,7 +3764,7 @@ function CoachingReportClosingSummary({
           <SummaryValue label={t("coaching.report.arrivalTime")} value={dossier.arrivalTime || "--:--"} />
           <SummaryValue label={t("coaching.report.appointments")} value={String(appointments.length)} />
           <SummaryValue label={t("coaching.report.actionPoints")} value={String(intervention.actionPoints.length)} />
-          <SummaryValue label={t("coaching.report.totalScore")} value={formatPercentage(totalScore)} />
+          <SummaryValue label={t("coaching.report.totalScore")} value={formatPerformancePercentage(currentWheel.totalPercentage, t("coaching.performance.notScored"))} />
           <SummaryValue label={t("coaching.report.missingRequired")} value={String(issues.length)} />
         </dl>
       </section>
@@ -3860,6 +3876,7 @@ function CompletedCoachingSummary({
   const [openAppointmentIds, setOpenAppointmentIds] = useState<Set<string>>(() => new Set());
   const dossier = intervention.dossier ?? defaultDossierState();
   const appointments = dedupeById(intervention.appointments ?? []).filter((item) => !item.isDeleted);
+  const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
   const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
   const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
   const generalRemarks = [
@@ -3949,12 +3966,15 @@ function CompletedCoachingSummary({
             <SummaryValue label={t("coaching.report.notified")} value={intervention.notifyRepresentative ? t("contactHelp.common.yes") : t("coaching.report.no")} />
           </dl>
         </div>
-        <div className="card grid place-items-center p-5 text-center">
-          <div className="grid h-36 w-36 place-items-center rounded-full" style={{ background: `conic-gradient(#003B83 ${Math.max(0, Math.min(100, totalScore ?? 0))}%, #e2e8f0 0)` }}>
-            <div className="grid h-28 w-28 place-items-center rounded-full bg-white">
-              <div><p className="text-3xl font-black text-brand-950">{formatPercentage(totalScore)}</p><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.performance")}</p></div>
-            </div>
-          </div>
+        <div className="card p-5 text-center">
+          <PerformanceWheel
+            representativeId={currentHistory.representativeId}
+            currentInterventionId={currentHistory.id}
+            type="kapstok"
+            coachings={[currentHistory]}
+            notScoredLabel={t("coaching.performance.notScored")}
+            totalScoreLabel={t("coaching.performance.totalScore")}
+          />
         </div>
       </section>
 
@@ -4346,6 +4366,7 @@ function HistoricalScoreComparisonPanel({
               type="kapstok"
               coachings={wheelCoachings}
               notScoredLabel={t("coaching.performance.notScored")}
+              totalScoreLabel={t("coaching.performance.totalScore")}
             />
           </div>
             <div className="mt-5">
@@ -4532,6 +4553,12 @@ function coachingInterventionAsHistory(
       }))
     )
   );
+  const workflowCriterionScores = intervention.scores.map((score) => ({
+    focus: score.focus,
+    criterion: score.criterion,
+    score: score.value === "NVT" ? 0 : normalizePerformanceScore(score.value),
+    scored: score.value !== "NVT",
+  }));
   const dossierCriterionScores = [
     ...dossier.generalScores.map((score) => ({ ...score, category: "Dossier:Algemeen" })),
     ...dossier.personalityScores.map((score) => ({ ...score, category: "Dossier:Persoonlijkheid" })),
@@ -4545,7 +4572,7 @@ function coachingInterventionAsHistory(
         scored: true,
       }]
   );
-  const criterionScores = mergeCriterionScores(appointmentCriterionScores, dossierCriterionScores);
+  const criterionScores = mergeCriterionScores(appointmentCriterionScores, workflowCriterionScores, dossierCriterionScores);
   const phaseScores = averageScoreDimensions(criterionScores
     .filter((score) => score.scored !== false)
     .map((score) => ({ label: score.focus, score: score.score })));
@@ -4570,7 +4597,7 @@ function coachingInterventionAsHistory(
     generalScores: [...dossier.generalScores, ...dossier.personalityScores].flatMap((score) =>
       score.score === "nvt" || score.score === null
         ? []
-        : [{ label: score.criterion, score: normalizePerformanceScore(score.score) }]
+        : [{ label: score.criterion, score: normalizePerformanceScore(score.score), scored: true }]
     ),
     criterionScores,
   };

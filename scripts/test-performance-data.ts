@@ -6,13 +6,36 @@ import {
   performanceTrend,
 } from "../lib/performance-data";
 import {
+  calculateAveragePercentage,
+  buildPerformanceWheelData,
+  formatPerformancePercentage,
   getPerformanceWheelData,
   getPreviousComparableIntervention,
+  percentageFromScore,
 } from "../lib/performance/performance-wheel";
 import { loadPerformanceDatasetFromDatabase } from "../lib/server/performance";
 import { listRepresentativesFromDatabase } from "../lib/server/representatives";
 
 async function main() {
+  assert.equal(calculateAveragePercentage([
+    { score: 4 },
+    { score: 5 },
+  ], { minimum: 0, maximum: 5 }), 90, "Een scoregemiddelde moet naar percentage worden omgerekend");
+  assert.equal(calculateAveragePercentage([
+    { score: 3 },
+    { score: 3 },
+    { score: 4 },
+  ], { minimum: 0, maximum: 5 }), 67, "Percentageafronding moet mathematisch gebeuren");
+  assert.equal(calculateAveragePercentage([
+    { score: 3 },
+    { score: 3 },
+    { score: 4 },
+    { score: 0, scored: false },
+  ], { minimum: 0, maximum: 5 }), 67, "NVT en ontbrekende scores mogen het gemiddelde niet verlagen");
+  assert.equal(calculateAveragePercentage([{ score: 0, scored: false }], { minimum: 0, maximum: 5 }), undefined);
+  assert.equal(percentageFromScore(4.2, { minimum: 0, maximum: 5 }), 84);
+  assert.equal(formatPerformancePercentage(82), "82%");
+
   const wheelCoachings = [
     {
       id: "current",
@@ -51,13 +74,37 @@ async function main() {
   const wheel = getPerformanceWheelData("rep-test", "current", "kapstok", "previous", wheelCoachings);
   assert.ok(wheel, "Een dynamische prestatiecirkel moet worden opgebouwd");
   assert.deepEqual(wheel?.categories.map((item) => item.name), ["Introductie", "Demonstratie", "Afsluiten"]);
-  assert.equal(wheel?.categories[0]?.currentAverage, 84, "Een hoofditemgemiddelde gebruikt alleen effectief gescoorde criteria");
-  assert.equal(wheel?.categories[1]?.currentAverage, 76);
-  assert.equal(wheel?.categories[2]?.currentAverage, undefined, "Een hoofditem zonder scores krijgt geen fictieve nulscore");
-  assert.equal(wheel?.currentAverage, 80, "Het globale gemiddelde negeert NVT en niet-gescoorde criteria");
+  assert.equal(wheel?.categories[0]?.currentPercentage, 84, "Een hoofditemgemiddelde gebruikt alleen effectief gescoorde criteria");
+  assert.equal(wheel?.categories[1]?.currentPercentage, 76);
+  assert.equal(wheel?.categories[2]?.currentPercentage, undefined, "Een hoofditem zonder scores krijgt geen fictieve nulscore");
+  assert.equal(wheel?.totalPercentage, 80, "Het globale gemiddelde negeert NVT en niet-gescoorde criteria");
   assert.equal(wheel?.criteria.find((item) => item.criterion === "Bedanken")?.currentScored, false);
   assert.equal(wheel?.criteria.find((item) => item.criterion === "Bedanken")?.difference, undefined);
-  assert.equal(wheel?.categories[0]?.previousAverage, 69, "De vergelijking gebruikt de geselecteerde eerdere begeleiding");
+  assert.equal(wheel?.categories[0]?.previousPercentage, 69, "De vergelijking gebruikt de geselecteerde eerdere begeleiding");
+  assert.equal(wheel?.previousTotalPercentage, 68, "De totale vergelijking gebruikt dezelfde percentageberekening");
+  assert.equal(wheel?.categories[0]?.trend, "better");
+  assert.equal(wheel?.totalTrend, "better");
+
+  const weightedWheel = buildPerformanceWheelData({
+    current: {
+      ...wheelCoachings[0],
+      id: "weighted-current",
+      focusNames: ["Onderdeel A", "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole"],
+      criterionScores: [
+        { focus: "Onderdeel A", criterion: "A1", score: 80, scored: true, sortOrder: 1 },
+        { focus: "Onderdeel A", criterion: "A2", score: 100, scored: true, sortOrder: 2 },
+        { focus: "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole", criterion: "B1", score: 60, scored: true, sortOrder: 1 },
+        { focus: "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole", criterion: "B2", score: 60, scored: true, sortOrder: 2 },
+        { focus: "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole", criterion: "B3", score: 80, scored: true, sortOrder: 3 },
+        { focus: "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole", criterion: "B4", score: 0, scored: false, sortOrder: 4 },
+      ],
+    },
+    type: "kapstok",
+  });
+  assert.equal(weightedWheel.categories[0]?.currentPercentage, 90, "Onderdeel A moet 90% tonen");
+  assert.equal(weightedWheel.categories[1]?.currentPercentage, 67, "NVT moet uit het onderdeelgemiddelde blijven");
+  assert.equal(weightedWheel.totalPercentage, 76, "Het totaal moet gewogen zijn op criteriumniveau");
+  assert.equal(weightedWheel.categories[1]?.name, "Een uitzonderlijk lang hoofdonderdeel voor labelcontrole", "Nieuwe lange hoofdonderdelen moeten dynamisch verschijnen");
 
   const appointmentCriteria = criterionScoresFromRows([
     { criterion: "Introductie - Voorstellen", score: 4 },

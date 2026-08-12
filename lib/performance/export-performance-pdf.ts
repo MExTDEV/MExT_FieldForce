@@ -1,5 +1,7 @@
 import type { jsPDF } from "jspdf";
-import { normalizeScoreToTen } from "@/lib/performance/performance-wheel";
+import {
+  formatPerformancePercentage,
+} from "@/lib/performance/performance-wheel";
 import type {
   PerformanceTrend,
   PerformanceWheelCriterion,
@@ -23,6 +25,7 @@ type ExportPerformancePdfOptions = {
   data: PerformanceWheelData;
   svgElement: SVGSVGElement;
   notScoredLabel?: string;
+  totalScoreLabel?: string;
   preview?: boolean;
 };
 
@@ -30,6 +33,7 @@ type PdfGroup = {
   category: string;
   rows: PerformanceWheelCriterion[];
   average?: number;
+  trend: PerformanceTrend;
 };
 
 type PreparedRow = {
@@ -49,6 +53,7 @@ export async function exportPerformancePdf({
   data,
   svgElement,
   notScoredLabel = "Niet gescoord",
+  totalScoreLabel = "Totale score",
   preview = false,
 }: ExportPerformancePdfOptions) {
   const [{ jsPDF }] = await Promise.all([
@@ -72,7 +77,7 @@ export async function exportPerformancePdf({
   svgClone.setAttribute("height", "1000");
   await pdf.svg(svgClone, { x: 18, y: 53, width: 174, height: 174 });
 
-  drawFirstPageSummary(pdf, data, notScoredLabel);
+  drawFirstPageSummary(pdf, data, notScoredLabel, totalScoreLabel);
   drawScorePages(pdf, groupCriteria(data), notScoredLabel);
   drawHeadersAndFooters(pdf, representativeName, exportDateLabel);
 
@@ -130,7 +135,12 @@ function drawFirstPageIntro(
   );
 }
 
-function drawFirstPageSummary(pdf: jsPDF, data: PerformanceWheelData, notScoredLabel: string) {
+function drawFirstPageSummary(
+  pdf: jsPDF,
+  data: PerformanceWheelData,
+  notScoredLabel: string,
+  totalScoreLabel: string
+) {
   pdf.setDrawColor(BORDER);
   pdf.setFillColor("#FFFFFF");
   pdf.roundedRect(MARGIN, 232, PAGE_WIDTH - MARGIN * 2, 39, 4, 4, "FD");
@@ -162,9 +172,9 @@ function drawFirstPageSummary(pdf: jsPDF, data: PerformanceWheelData, notScoredL
   pdf.setFont("helvetica", "bold");
   pdf.setTextColor(BRAND_BLUE);
   pdf.setFontSize(17);
-  pdf.text(data.currentAverage === undefined ? notScoredLabel : formatScore(normalizeScoreToTen(data.currentAverage)), 172, 251, { align: "center" });
+  pdf.text(formatPerformancePercentage(data.totalPercentage, notScoredLabel), 172, 251, { align: "center" });
   pdf.setFontSize(7.5);
-  pdf.text("GEMIDDELDE SCORE", 172, 258, { align: "center" });
+  pdf.text(totalScoreLabel.toUpperCase(), 172, 258, { align: "center" });
 }
 
 function drawScorePages(pdf: jsPDF, groups: PdfGroup[], notScoredLabel: string) {
@@ -201,7 +211,7 @@ function drawScorePages(pdf: jsPDF, groups: PdfGroup[], notScoredLabel: string) 
         continue;
       }
 
-      drawPhaseBlock(pdf, displayCategory(group.category), chunk, group.average, notScoredLabel, y, continuation);
+      drawPhaseBlock(pdf, displayCategory(group.category), chunk, group.average, group.trend, notScoredLabel, y, continuation);
       y += chunkHeight + 5;
       rowIndex += chunk.length;
       continuation = rowIndex < rows.length;
@@ -219,6 +229,7 @@ function drawPhaseBlock(
   category: string,
   rows: PreparedRow[],
   average: number | undefined,
+  trend: PerformanceTrend,
   notScoredLabel: string,
   y: number,
   continuation: boolean
@@ -232,10 +243,10 @@ function drawPhaseBlock(
   pdf.roundedRect(MARGIN, y, PAGE_WIDTH - MARGIN * 2, 10, 3, 3, "F");
   pdf.rect(MARGIN, y + 6, PAGE_WIDTH - MARGIN * 2, 4, "F");
   pdf.setFont("helvetica", "bold");
-  pdf.setTextColor(BRAND_BLUE);
+  pdf.setTextColor(trendTextColor(trend));
   pdf.setFontSize(10.5);
-  const scoreLabel = average === undefined ? notScoredLabel : formatScore(normalizeScoreToTen(average));
-  pdf.text(`${category}${continuation ? " (vervolg)" : ""} · ${scoreLabel}`, MARGIN + 5, y + 6.5);
+  const scoreLabel = formatPerformancePercentage(average, notScoredLabel);
+  pdf.text(`${category}${continuation ? " (vervolg)" : ""} - ${scoreLabel}`, MARGIN + 5, y + 6.5);
 
   const columnY = y + 16.5;
   pdf.setFontSize(7.5);
@@ -369,11 +380,18 @@ function groupCriteria(data: PerformanceWheelData) {
       groups.push({
         category: row.category,
         rows: [row],
-        average: data.categories.find((category) => category.name === row.category)?.currentAverage,
+        average: data.categories.find((category) => category.name === row.category)?.currentPercentage,
+        trend: data.categories.find((category) => category.name === row.category)?.trend ?? "first",
       });
     }
     return groups;
   }, []);
+}
+
+function trendTextColor(trend: PerformanceTrend) {
+  if (trend === "better") return "#166534";
+  if (trend === "worse") return "#991B1B";
+  return BRAND_BLUE;
 }
 
 function trendColors(trend: PerformanceTrend) {

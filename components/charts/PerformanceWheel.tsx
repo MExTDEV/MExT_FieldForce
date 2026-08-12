@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import {
+  formatPerformancePercentage,
   getPerformanceWheelData,
-  normalizeScoreToTen,
   type PerformanceTrend,
   type PerformanceWheelType,
 } from "@/lib/performance/performance-wheel";
@@ -14,8 +14,8 @@ const CENTER = SIZE / 2;
 const INNER_RADIUS = 54;
 const PLOT_RADIUS = 286;
 const BAND_INNER = 300;
-const BAND_OUTER = 336;
-const LABEL_RADIUS = 372;
+const BAND_OUTER = 350;
+const LABEL_RADIUS = 378;
 const CATEGORY_COLORS = ["#dcecff", "#e8eff8", "#d9e7f7", "#e5edf7", "#d7e8f2"];
 
 export function PerformanceWheel({
@@ -25,6 +25,7 @@ export function PerformanceWheel({
   type,
   coachings,
   notScoredLabel,
+  totalScoreLabel,
 }: {
   representativeId: string;
   currentInterventionId: string;
@@ -32,6 +33,7 @@ export function PerformanceWheel({
   type: PerformanceWheelType;
   coachings: HistoricalCoaching[];
   notScoredLabel?: string;
+  totalScoreLabel?: string;
 }) {
   const data = useMemo(
     () => getPerformanceWheelData(
@@ -48,6 +50,7 @@ export function PerformanceWheel({
   const activeId = pinnedId ?? hoverId;
   const active = data?.criteria.find((item) => item.id === activeId);
   const effectiveNotScoredLabel = notScoredLabel ?? "Niet gescoord";
+  const effectiveTotalScoreLabel = totalScoreLabel ?? "Totale score";
 
   if (!data) {
     return <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">Geen vergelijkbare scores beschikbaar.</div>;
@@ -176,7 +179,8 @@ export function PerformanceWheel({
               <g
                 key={category.name}
                 data-wheel-category={category.name}
-                data-wheel-category-score={category.currentAverage === undefined ? "not-scored" : formatScore(normalizeScoreToTen(category.currentAverage))}
+                data-wheel-category-score={formatPerformancePercentage(category.currentPercentage, effectiveNotScoredLabel)}
+                data-wheel-category-trend={category.trend}
               >
                 <path
                   d={annularSectorPath(CENTER, CENTER, BAND_INNER, BAND_OUTER, start, end)}
@@ -189,12 +193,12 @@ export function PerformanceWheel({
                   y={labelPoint.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill="#003b83"
+                  fill={categoryLabelColor(category.trend)}
                   fontSize={label.fontSize}
                   fontWeight="700"
                   transform={`rotate(${readableRotation((start + end) / 2)} ${labelPoint.x} ${labelPoint.y})`}
                 >
-                  <title>{`${category.name} · ${label.score}`}</title>
+                  <title>{`${category.name} - ${label.score}`}</title>
                   {label.lines.map((line, lineIndex) => (
                     <tspan
                       key={`${category.name}-${lineIndex}`}
@@ -292,11 +296,11 @@ export function PerformanceWheel({
           })}
 
           <circle cx={CENTER} cy={CENTER} r={INNER_RADIUS - 5} fill="#ffffff" stroke="#dbeafe" strokeWidth="2" />
-          <text x={CENTER} y={CENTER - 6} textAnchor="middle" fill="#003b83" fontSize="22" fontWeight="800">
-            {data.currentAverage === undefined ? effectiveNotScoredLabel : formatScore(normalizeScoreToTen(data.currentAverage))}
+          <text x={CENTER} y={CENTER - 6} textAnchor="middle" fill={trendColor(data.totalTrend)} fontSize="22" fontWeight="800">
+            {formatPerformancePercentage(data.totalPercentage, effectiveNotScoredLabel)}
           </text>
-          <text x={CENTER} y={CENTER + 16} textAnchor="middle" fill="#64748b" fontSize="11" fontWeight="600">
-            GEMIDDELD
+          <text x={CENTER} y={CENTER + 16} textAnchor="middle" fill="#64748b" fontSize="10" fontWeight="700">
+            {effectiveTotalScoreLabel.toUpperCase()}
           </text>
         </svg>
       </div>
@@ -417,6 +421,10 @@ function trendColor(trend: PerformanceTrend) {
   return "#1266b3";
 }
 
+function categoryLabelColor(trend: PerformanceTrend) {
+  return trend === "better" || trend === "worse" ? trendColor(trend) : "#003b83";
+}
+
 function trendWedgeColor(trend: PerformanceTrend) {
   if (trend === "better") return "#22c55e";
   if (trend === "worse") return "#ef4444";
@@ -433,32 +441,31 @@ function readableRotation(angle: number) {
 }
 
 function categoryLabelLayout(
-  category: { name: string; currentAverage?: number },
+  category: { name: string; currentPercentage?: number },
   angleSpan: number,
   type: PerformanceWheelType,
   notScoredLabel: string
 ) {
   const baseFontSize = type === "kapstok" ? 11 : 13;
   const lineHeight = type === "kapstok" ? 12 : 14;
-  const score = category.currentAverage === undefined
-    ? notScoredLabel
-    : formatScore(normalizeScoreToTen(category.currentAverage));
+  const score = formatPerformancePercentage(category.currentPercentage, notScoredLabel);
   const availableWidth = ((BAND_INNER + BAND_OUTER) / 2) * degreesToRadians(angleSpan) * 0.8;
   const maxCharacters = Math.max(8, Math.floor(availableWidth / (baseFontSize * 0.57)));
   const title = category.name.toLocaleUpperCase();
-  const combined = `${title} · ${score}`;
+  const combined = `${title} - ${score}`;
 
   if (combined.length <= maxCharacters) {
     return { lines: [combined], fontSize: baseFontSize, lineHeight, score };
   }
 
-  const titleLines = wrapLabel(title, Math.max(5, maxCharacters));
-  const lines = titleLines.length <= 2
-    ? [...titleLines, score]
+  const titleLimit = Math.max(5, maxCharacters - score.length - 3);
+  const titleLines = wrapLabel(title, titleLimit);
+  const lines = titleLines.length === 1
+    ? [titleLines[0], score]
     : [compactLabel(title, Math.max(5, maxCharacters)), score];
   return {
     lines,
-    fontSize: Math.max(8, baseFontSize - (lines.length > 2 ? 1 : 0)),
+    fontSize: Math.max(8, baseFontSize - (titleLines.length > 1 ? 1 : 0)),
     lineHeight,
     score,
   };

@@ -206,6 +206,7 @@ async function loadHistoricalCoachings(
       .map((score) => ({
         label: score.label ?? score.criterion?.name ?? score.personalCriterion?.title ?? "Criterium",
         score: scoreToPercent(score.score),
+        scored: score.score !== null && score.score !== undefined && !score.notApplicable,
       }));
     const overallScore = calculateOfficialCoachingScore({
       dossierScores: scoreRows

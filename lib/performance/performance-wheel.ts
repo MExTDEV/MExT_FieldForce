@@ -12,7 +12,9 @@ export type PerformanceWheelCriterion = {
   criterion: string;
   currentScored: boolean;
   currentScore: number;
+  currentPercentage?: number;
   previousScore?: number;
+  previousPercentage?: number;
   currentTen: number;
   previousTen?: number;
   difference?: number;
@@ -24,8 +26,9 @@ export type PerformanceWheelCategory = {
   name: string;
   startIndex: number;
   endIndex: number;
-  currentAverage?: number;
-  previousAverage?: number;
+  currentPercentage?: number;
+  previousPercentage?: number;
+  trend: PerformanceTrend;
 };
 
 export type PerformanceWheelData = {
@@ -37,15 +40,16 @@ export type PerformanceWheelData = {
   comparisonDate?: string;
   criteria: PerformanceWheelCriterion[];
   categories: PerformanceWheelCategory[];
-  currentAverage?: number;
+  totalPercentage?: number;
+  previousTotalPercentage?: number;
+  totalTrend: PerformanceTrend;
 };
 
-const generalCategoryOrder = [
-  { name: "Werkhouding", criteria: ["Stiptheid", "Respect"] },
-  { name: "Persoonlijkheid", criteria: ["Zelfzekerheid", "Persoonlijke verzorging"] },
-  { name: "Organisatie", criteria: ["Voorbereiding", "Administratie"] },
-  { name: "Communicatie", criteria: ["Tempo", "Overtuigingskracht"] },
-] as const;
+/** Historical wheel values are normalised to this scale by performance-data. */
+export const performanceWheelScoreScale = {
+  minimum: 0,
+  maximum: 100,
+} as const;
 
 export function getPerformanceWheelData(
   representativeId: string,
@@ -63,6 +67,23 @@ export function getPerformanceWheelData(
       item.id === comparisonInterventionId && item.representativeId === representativeId
     )
     : getPreviousComparableIntervention(representativeId, currentInterventionId, source);
+  return buildPerformanceWheelData({
+    current,
+    comparison,
+    type,
+    representativeId,
+    currentInterventionId,
+  });
+}
+
+export function buildPerformanceWheelData(input: {
+  current: HistoricalCoaching;
+  comparison?: HistoricalCoaching;
+  type: PerformanceWheelType;
+  representativeId?: string;
+  currentInterventionId?: string;
+}): PerformanceWheelData {
+  const { current, comparison, type } = input;
   const currentCriteria = criteriaFor(current, type);
   const previousScores = new Map(
     criteriaFor(comparison, type)
@@ -72,6 +93,8 @@ export function getPerformanceWheelData(
   const criteria = currentCriteria.map((item, index) => {
     const previousScore = previousScores.get(criterionKey(item));
     const currentScored = item.scored !== false;
+    const currentPercentage = currentScored ? percentageFromScore(item.score) : undefined;
+    const previousPercentage = previousScore === undefined ? undefined : percentageFromScore(previousScore);
     return {
       id: `${type}-${index}-${criterionKey(item)}`,
       index: index + 1,
@@ -79,27 +102,40 @@ export function getPerformanceWheelData(
       criterion: item.criterion,
       currentScored,
       currentScore: item.score,
+      currentPercentage,
       previousScore,
-      currentTen: normalizeScoreToTen(item.score),
-      previousTen: previousScore === undefined ? undefined : normalizeScoreToTen(previousScore),
-      difference: currentScored && previousScore !== undefined ? item.score - previousScore : undefined,
-      differenceTen: !currentScored || previousScore === undefined
+      previousPercentage,
+      currentTen: currentPercentage === undefined ? 0 : percentageToTen(currentPercentage),
+      previousTen: previousPercentage === undefined ? undefined : percentageToTen(previousPercentage),
+      difference: currentPercentage === undefined || previousPercentage === undefined ? undefined : currentPercentage - previousPercentage,
+      differenceTen: currentPercentage === undefined || previousPercentage === undefined
         ? undefined
-        : normalizeDifferenceToTen(item.score - previousScore),
-      trend: currentScored ? calculateTrend(item.score, previousScore) : "first",
+        : normalizeDifferenceToTen(currentPercentage - previousPercentage),
+      trend: currentPercentage === undefined ? "first" : calculateTrend(currentPercentage, previousPercentage),
     } satisfies PerformanceWheelCriterion;
   });
 
   return {
-    representativeId,
-    currentInterventionId,
+    representativeId: input.representativeId ?? current.representativeId,
+    currentInterventionId: input.currentInterventionId ?? current.id,
     comparisonInterventionId: comparison?.id,
     type,
     currentDate: current.date,
     comparisonDate: comparison?.date,
     criteria,
     categories: calculateCategoryAverages(criteria),
-    currentAverage: averageScored(criteria.map((item) => ({ score: item.currentScore, scored: item.currentScored }))),
+    totalPercentage: calculateAveragePercentage(criteria.map((item) => ({
+      score: item.currentScore,
+      scored: item.currentScored,
+    }))),
+    previousTotalPercentage: calculateAveragePercentage(criteriaFor(comparison, type).map((item) => ({
+      score: item.score,
+      scored: item.scored !== false,
+    }))),
+    totalTrend: calculateTrend(
+      calculateAveragePercentage(criteria.map((item) => ({ score: item.currentScore, scored: item.currentScored }))),
+      calculateAveragePercentage(criteriaFor(comparison, type).map((item) => ({ score: item.score, scored: item.scored !== false })))
+    ),
   };
 }
 
@@ -130,27 +166,40 @@ export function calculateCategoryAverages(criteria: PerformanceWheelCriterion[])
         name: criterion.category,
         startIndex: criterion.index - 1,
         endIndex: criterion.index,
-        currentAverage: averageScored(criteria.slice(criterion.index - 1, criterion.index).map((item) => ({
-          score: item.currentScore,
-          scored: item.currentScored,
-        }))),
-        previousAverage: averageOptional([criterion.previousScore]),
+        currentPercentage: undefined,
+        previousPercentage: undefined,
+        trend: "first",
       });
       continue;
     }
     const rows = criteria.slice(existing.startIndex, criterion.index);
     existing.endIndex = criterion.index;
-    existing.currentAverage = averageScored(rows.map((item) => ({
+    existing.currentPercentage = calculateAveragePercentage(rows.map((item) => ({
       score: item.currentScore,
       scored: item.currentScored,
     })));
-    const previous = rows.flatMap((item) => item.previousScore === undefined ? [] : [item.previousScore]);
-    existing.previousAverage = averageOptional(previous);
+    existing.previousPercentage = calculateAveragePercentage(rows.map((item) => ({
+      score: item.previousScore ?? 0,
+      scored: item.previousScore !== undefined,
+    })));
+  }
+  for (const category of categories) {
+    const rows = criteria.slice(category.startIndex, category.endIndex);
+    category.currentPercentage = calculateAveragePercentage(rows.map((item) => ({
+      score: item.currentScore,
+      scored: item.currentScored,
+    })));
+    category.previousPercentage = calculateAveragePercentage(rows.map((item) => ({
+      score: item.previousScore ?? 0,
+      scored: item.previousScore !== undefined,
+    })));
+    category.trend = calculateTrend(category.currentPercentage, category.previousPercentage);
   }
   return categories;
 }
 
-export function calculateTrend(current: number, previous?: number): PerformanceTrend {
+export function calculateTrend(current: number | undefined, previous?: number): PerformanceTrend {
+  if (current === undefined) return "first";
   if (previous === undefined) return "first";
   if (current > previous) return "better";
   if (current < previous) return "worse";
@@ -158,7 +207,40 @@ export function calculateTrend(current: number, previous?: number): PerformanceT
 }
 
 export function normalizeScoreToTen(score: number) {
-  return Math.round(score) / 10;
+  const percentage = percentageFromScore(score);
+  return percentage === undefined ? 0 : percentageToTen(percentage);
+}
+
+export function percentageFromScore(
+  score: number,
+  scale: { minimum: number; maximum: number } = performanceWheelScoreScale
+) {
+  if (!Number.isFinite(score) || !Number.isFinite(scale.minimum) || !Number.isFinite(scale.maximum)) return undefined;
+  const range = scale.maximum - scale.minimum;
+  if (range <= 0) return undefined;
+  const clamped = Math.max(scale.minimum, Math.min(scale.maximum, score));
+  return Math.round(((clamped - scale.minimum) / range) * 100);
+}
+
+export function calculateAveragePercentage(
+  values: Array<{ score: number; scored?: boolean }>,
+  scale: { minimum: number; maximum: number } = performanceWheelScoreScale
+) {
+  const scored = values
+    .filter((item) => item.scored !== false && Number.isFinite(item.score))
+    .map((item) => item.score);
+  if (!scored.length) return undefined;
+  return percentageFromScore(average(scored), scale);
+}
+
+export function formatPerformancePercentage(value: number | undefined, notScoredLabel = "Niet gescoord") {
+  return value === undefined
+    ? notScoredLabel
+    : `${Math.round(value).toLocaleString("nl-BE")}%`;
+}
+
+function percentageToTen(percentage: number) {
+  return Math.round(percentage) / 10;
 }
 
 export function getPreviousComparableIntervention(
@@ -177,17 +259,12 @@ function criteriaFor(intervention: HistoricalCoaching | undefined, type: Perform
   if (!intervention) return [];
   if (type === "algemeen") {
     return calculateCriterionAverages(
-      generalCategoryOrder.flatMap((category) =>
-        category.criteria.map((criterion) => {
-          const score = intervention.generalScores.find((item) => item.label === criterion)?.score;
-          return {
-            category: category.name,
-            criterion,
-            score: score ?? 0,
-            scored: score !== undefined,
-          };
-        })
-      )
+      intervention.generalScores.map((item) => ({
+        category: "Algemeen",
+        criterion: item.label,
+        score: item.score,
+        scored: item.scored,
+      }))
     );
   }
   const categoryOrder = [
@@ -224,14 +301,4 @@ function normalizeDifferenceToTen(difference: number) {
 
 function average(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
-}
-
-function averageScored(values: Array<{ score: number; scored: boolean }>) {
-  const scored = values.filter((item) => item.scored).map((item) => item.score);
-  return scored.length ? average(scored) : undefined;
-}
-
-function averageOptional(values: Array<number | undefined>) {
-  const defined = values.flatMap((value) => value === undefined ? [] : [value]);
-  return defined.length ? average(defined) : undefined;
 }
