@@ -12,7 +12,8 @@ import type { HistoricalCoaching } from "@/lib/performance-data";
 
 const SIZE = 1000;
 const CENTER = SIZE / 2;
-const VIEWBOX_MARGIN = 120;
+const VIEWBOX_HORIZONTAL_MARGIN = 120;
+const VIEWBOX_VERTICAL_MARGIN = 64;
 const INNER_RADIUS = 54;
 const PLOT_RADIUS = 286;
 const BAND_INNER = 300;
@@ -89,7 +90,7 @@ export function PerformanceWheel({
       <div className={`mx-auto w-full ${compact ? "max-w-[360px]" : "max-w-[1040px]"}`}>
         <svg
           data-testid="performance-wheel-svg"
-          viewBox={`${-VIEWBOX_MARGIN} ${-VIEWBOX_MARGIN} ${SIZE + VIEWBOX_MARGIN * 2} ${SIZE + VIEWBOX_MARGIN * 2}`}
+          viewBox={`${-VIEWBOX_HORIZONTAL_MARGIN} ${VIEWBOX_VERTICAL_MARGIN} ${SIZE + VIEWBOX_HORIZONTAL_MARGIN * 2} ${SIZE - VIEWBOX_VERTICAL_MARGIN * 2}`}
           className="h-auto w-full"
           role="img"
           aria-label={`${type === "kapstok" ? "Kapstok" : "Algemeen"} competentiewiel`}
