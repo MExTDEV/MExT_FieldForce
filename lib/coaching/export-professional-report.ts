@@ -10,6 +10,7 @@ import type {
 import {
   buildPerformanceWheelData,
   formatPerformancePercentage,
+  performanceTrendColor,
   type PerformanceWheelData,
   type PerformanceTrend,
 } from "@/lib/performance/performance-wheel";
@@ -883,9 +884,7 @@ function readablePdfAngle(angle: number) {
 }
 
 function pdfTrendTextColor(trend: PerformanceTrend) {
-  if (trend === "better") return GREEN;
-  if (trend === "worse") return RED;
-  return BLUE;
+  return performanceTrendColor(trend);
 }
 
 function drawAppointmentScores(pdf: Pdf, input: ProfessionalCoachingReportInput, scores: CoachingSimpleScore[], startY: number, continuationTitle: string) {

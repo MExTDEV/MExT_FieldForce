@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   formatPerformancePercentage,
   getPerformanceWheelData,
+  performanceTrendColor,
   type PerformanceTrend,
   type PerformanceWheelType,
 } from "@/lib/performance/performance-wheel";
@@ -415,10 +416,7 @@ function pointString(point: { x: number; y: number }) {
 }
 
 function trendColor(trend: PerformanceTrend) {
-  if (trend === "better") return "#16a34a";
-  if (trend === "worse") return "#dc2626";
-  if (trend === "equal") return "#003b83";
-  return "#1266b3";
+  return performanceTrendColor(trend);
 }
 
 function categoryLabelColor(trend: PerformanceTrend) {
