@@ -12,6 +12,7 @@ import type { HistoricalCoaching } from "@/lib/performance-data";
 
 const SIZE = 1000;
 const CENTER = SIZE / 2;
+const VIEWBOX_MARGIN = 120;
 const INNER_RADIUS = 54;
 const PLOT_RADIUS = 286;
 const BAND_INNER = 300;
@@ -67,11 +68,12 @@ export function PerformanceWheel({
   const currentPoints = data.criteria.map((item, index) =>
     polarPoint(CENTER, CENTER, scoreRadius(item.currentScore), centerAngle(index, angleStep))
   );
-  const previousPoints = data.criteria.flatMap((item, index) =>
+  const previousPoints = data.criteria.map((item, index) =>
     item.previousScore === undefined
-      ? []
-      : [polarPoint(CENTER, CENTER, scoreRadius(item.previousScore), centerAngle(index, angleStep))]
+      ? undefined
+      : polarPoint(CENTER, CENTER, scoreRadius(item.previousScore), centerAngle(index, angleStep))
   );
+  const previousCurveSegments = curveSegments(previousPoints);
   const labels = data.criteria.map((item) => item.criterion);
   if (labels.length !== currentPoints.length) {
     console.error("[performance-wheel] Het aantal labels en scorewaarden komt niet overeen.", {
@@ -87,7 +89,7 @@ export function PerformanceWheel({
       <div className={`mx-auto w-full ${compact ? "max-w-[360px]" : "max-w-[1040px]"}`}>
         <svg
           data-testid="performance-wheel-svg"
-          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          viewBox={`${-VIEWBOX_MARGIN} ${-VIEWBOX_MARGIN} ${SIZE + VIEWBOX_MARGIN * 2} ${SIZE + VIEWBOX_MARGIN * 2}`}
           className="h-auto w-full"
           role="img"
           aria-label={`${type === "kapstok" ? "Kapstok" : "Algemeen"} competentiewiel`}
@@ -214,9 +216,10 @@ export function PerformanceWheel({
             );
           })}
 
-          {previousPoints.length === count && (
+          {previousCurveSegments.map((segment, index) => segment.length > 1 ? (
             <polyline
-              points={previousPoints.map(pointString).join(" ")}
+              key={`previous-segment-${index}`}
+              points={segment.map(pointString).join(" ")}
               fill="none"
               stroke="#94a3b8"
               strokeWidth="2"
@@ -224,7 +227,19 @@ export function PerformanceWheel({
               strokeLinejoin="round"
               data-wheel-line="previous"
             />
-          )}
+          ) : (
+            <circle
+              key={`previous-point-${index}`}
+              cx={segment[0]?.x}
+              cy={segment[0]?.y}
+              r="3"
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth="2"
+              strokeDasharray="3 2"
+              data-wheel-line="previous"
+            />
+          ))}
           {data.criteria.every((item) => item.currentScored) && (
             <polygon
               points={currentPoints.map(pointString).join(" ")}
@@ -257,9 +272,15 @@ export function PerformanceWheel({
 
           {data.criteria.map((item, index) => {
             const point = currentPoints[index];
+            if (!item.currentScored) return null;
             const angle = centerAngle(index, angleStep);
             const labelPoint = polarPoint(CENTER, CENTER, LABEL_RADIUS, angle);
             const rightSide = Math.cos(degreesToRadians(angle)) >= 0;
+            const criterionText = `${item.criterion}${item.currentPercentage === undefined ? "" : ` (${formatPerformancePercentage(item.currentPercentage, effectiveNotScoredLabel)})`}`;
+            const maxCharacters = Math.max(10, Math.floor(
+              LABEL_RADIUS * degreesToRadians(angleStep) * 0.78 / (9.5 * 0.56)
+            ));
+            const criterionLines = wrapLabel(criterionText, maxCharacters);
             const color = trendColor(item.trend);
             return (
               <g key={`point-${item.id}`}>
@@ -289,14 +310,22 @@ export function PerformanceWheel({
                   fontSize={type === "kapstok" ? "9.5" : "12"}
                   fontWeight={activeId === item.id ? "700" : "600"}
                 >
-                  {compactLabel(item.criterion, type === "kapstok" ? 25 : 28)} ({formatPerformancePercentage(item.currentPercentage, effectiveNotScoredLabel)})
+                  {criterionLines.map((line, lineIndex) => (
+                    <tspan
+                      key={`${item.id}-label-${lineIndex}`}
+                      x={labelPoint.x}
+                      dy={lineIndex === 0 ? `${-((criterionLines.length - 1) * 11) / 2}px` : "11px"}
+                    >
+                      {line}
+                    </tspan>
+                  ))}
                 </text>
               </g>
             );
           })}
 
           <circle cx={CENTER} cy={CENTER} r={INNER_RADIUS - 5} fill="#ffffff" stroke="#dbeafe" strokeWidth="2" />
-          <text x={CENTER} y={CENTER - 6} textAnchor="middle" fill={trendColor(data.totalTrend)} fontSize="22" fontWeight="800">
+          <text x={CENTER} y={CENTER - 6} textAnchor="middle" fill="#003b83" fontSize="22" fontWeight="800">
             {formatPerformancePercentage(data.totalPercentage, effectiveNotScoredLabel)}
           </text>
           <text x={CENTER} y={CENTER + 16} textAnchor="middle" fill="#64748b" fontSize="10" fontWeight="700">
@@ -420,6 +449,21 @@ function pointString(point: { x: number; y: number }) {
   return `${point.x},${point.y}`;
 }
 
+function curveSegments(points: Array<{ x: number; y: number } | undefined>) {
+  const segments: Array<Array<{ x: number; y: number }>> = [];
+  let current: Array<{ x: number; y: number }> = [];
+  for (const point of points) {
+    if (point) {
+      current.push(point);
+    } else if (current.length) {
+      segments.push(current);
+      current = [];
+    }
+  }
+  if (current.length) segments.push(current);
+  return segments;
+}
+
 function trendColor(trend: PerformanceTrend) {
   return performanceTrendColor(trend);
 }
@@ -451,7 +495,9 @@ function categoryLabelLayout(
 ) {
   const baseFontSize = type === "kapstok" ? 11 : 13;
   const score = formatPerformancePercentage(category.currentPercentage, notScoredLabel);
-  const text = `${category.name.toLocaleUpperCase()} - ${score}`;
+  const text = category.currentPercentage === undefined
+    ? category.name.toLocaleUpperCase()
+    : `${category.name.toLocaleUpperCase()} - ${score}`;
   const radius = (BAND_INNER + BAND_OUTER) / 2;
   const availableWidth = Math.max(24, radius * degreesToRadians(Math.min(360, angleSpan)) * 0.8);
   const estimatedWidth = text.length * baseFontSize * 0.57;
@@ -464,6 +510,19 @@ function categoryLabelLayout(
   };
 }
 
-function compactLabel(label: string, limit: number) {
-  return label.length > limit ? `${label.slice(0, limit - 1)}…` : label;
+function wrapLabel(label: string, maxCharacters: number) {
+  const words = label.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (current && next.length > maxCharacters) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [label];
 }
