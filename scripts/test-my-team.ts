@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { myTeamScopeWhere } from "../lib/server/my-team";
 import { sortMyTeamMembers, type MyTeamMember } from "../lib/my-team";
 import type { MockUser, Role } from "../lib/types";
@@ -38,5 +39,24 @@ const sorted = sortMyTeamMembers([
   { ...base, id: "rep-a", firstName: "An", lastName: "De Smet", initials: "AD", role: "REPRESENTATIVE", isTeamLeader: false },
 ]);
 assert.deepEqual(sorted.map((member) => member.id), ["leader-a", "leader-b", "rep-z", "rep-a"]);
+
+const myTeamComponent = readFileSync("components/workspace-pages.tsx", "utf8");
+assert.match(
+  myTeamComponent,
+  /formatPerformancePercentage\(member\.overallScore/,
+  "Mijn Team moet de algemene score als percentage tonen."
+);
+assert.doesNotMatch(
+  myTeamComponent,
+  /member\.overallScore[^\n]*\/ 5/,
+  "Mijn Team mag de algemene score niet meer als punten op vijf tonen."
+);
+
+const myTeamServer = readFileSync("lib/server/my-team.ts", "utf8");
+assert.doesNotMatch(
+  myTeamServer,
+  /latestScored\.overallScore \/ 20/,
+  "De Mijn Team-API mag de officiële percentagescore niet terug omrekenen naar punten."
+);
 
 console.log("Mijn Team scope- en sorteertests geslaagd.");
