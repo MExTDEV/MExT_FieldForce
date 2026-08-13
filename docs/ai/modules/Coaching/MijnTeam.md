@@ -114,7 +114,7 @@ Productanalyse is not a FieldForce profile module and must not appear in this me
 
 The fiche header shows the person's team, country, role/level, e-mail and phone when available. Contact links use semantic `mailto:` and `tel:` links and must not be repeated in the body.
 
-The Begeleidingen tab may show the official total score from the shared performance dataset (`overallScore`). Missing or not-yet-visible scores are shown as a neutral dash, not as zero.
+The Begeleidingen tab may show the official total score from the shared performance dataset (`overallScore`). Scores in Mijn Team are presented as percentages. Missing or not-yet-visible scores are shown as a neutral dash, not as zero.
 
 The Actiepunten tab is split into Open actiepunten and Gesloten actiepunten.
 Open items remain sorted by deadline; closed items are sorted by closing date,

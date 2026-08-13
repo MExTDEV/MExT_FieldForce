@@ -1327,7 +1327,7 @@ function MyTeamMemberRow({
         <p className="mt-0.5 text-xs text-slate-500">{translate(language, `impersonation.role.${member.role}` as TranslationKey)}</p>
       </div>
     </div>
-    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.overallScore")}</p><p className="mt-1 text-sm font-bold text-slate-800">{member.role !== "REPRESENTATIVE" ? "—" : member.overallScore === undefined ? t("myTeam.page.noScore") : `${member.overallScore.toLocaleString(localeForLanguage(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5`}</p></div>
+    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.overallScore")}</p><p className="mt-1 text-sm font-bold text-slate-800">{member.role !== "REPRESENTATIVE" ? "—" : member.overallScore === undefined ? t("myTeam.page.noScore") : formatPerformancePercentage(member.overallScore, t("coaching.performance.notScored"))}</p></div>
     <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.lastCoaching")}</p><p className="mt-1 text-sm text-slate-700">{member.role !== "REPRESENTATIVE" ? t("myTeam.page.notApplicable") : member.lastCoaching ? formatShortDate(member.lastCoaching, language) : t("myTeam.page.noCoaching")}</p></div>
     <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">{t("myTeam.page.fiche")} <ChevronRight className="h-4 w-4" /></span>
   </Link>;

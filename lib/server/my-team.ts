@@ -152,7 +152,7 @@ export async function listVisibleMyTeamMembers(actor: MockUser): Promise<MyTeamM
         lastCoaching: latestCompleted?.date,
         overallScore: latestScored?.overallScore === undefined
           ? undefined
-          : latestScored.overallScore / 20,
+          : latestScored.overallScore,
         profileHref: representativeId
           ? `/mijn-team/${encodeURIComponent(representativeId)}`
           : `/mijn-team/gebruiker/${encodeURIComponent(user.id)}`,
