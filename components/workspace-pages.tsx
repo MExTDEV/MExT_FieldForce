@@ -118,6 +118,7 @@ import {
   buildPerformanceWheelData,
   formatPerformancePercentage,
   getPerformanceWheelData,
+  type PerformanceWheelData,
 } from "@/lib/performance/performance-wheel";
 import {
   actionPointHref,
@@ -2961,6 +2962,7 @@ function CoachingDossierDetail({
   const [activeStep, setActiveStep] = useState<CoachingReportStepId>(1);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">("saved");
   const [saveError, setAutosaveError] = useState<string>();
+  const reportWheelRef = useRef<HTMLDivElement>(null);
   const localRef = useRef(local);
   const saveCoachingRef = useRef(workflowApi.saveCoachingStatus);
   const autosaveTimerRef = useRef<number | undefined>(undefined);
@@ -2975,6 +2977,24 @@ function CoachingDossierDetail({
   const draftStorageKey = `fieldforce:coaching-report-draft:${local.id}:${user.id}`;
   localRef.current = local;
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+  const wheelLabels = {
+    ariaKapstok: t("coaching.performance.competencyWheel"),
+    ariaGeneral: t("coaching.performance.generalWheel"),
+    previous: t("coaching.performance.previousShort"),
+    current: t("coaching.performance.currentShort"),
+    tooltipHelp: t("coaching.performance.wheelHelp"),
+    currentMeasurement: t("coaching.performance.currentMeasurement"),
+    previousMeasurement: t("coaching.performance.previousMeasurement"),
+    noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
+    better: t("coaching.performance.better"),
+    worse: t("coaching.performance.worse"),
+    equal: t("coaching.performance.equal"),
+    first: t("coaching.performance.firstMeasurement"),
+    green: t("coaching.performance.green"),
+    red: t("coaching.performance.red"),
+    darkBlue: t("coaching.performance.darkBlue"),
+    blue: t("coaching.performance.blue"),
+  };
   const approval = workflowApi.state.approvals.find((item) => item.interventionId === local.id);
   const updateActionTips = useCallback((actionId: string, tipsAndTricks: string) => {
     setLocal((current) => ({
@@ -3010,6 +3030,11 @@ function CoachingDossierDetail({
   const comparisonWheelCoachings = historicalComparison.selected
     ? [historicalComparison.selected.history, currentHistoricalCoaching]
     : [currentHistoricalCoaching];
+  const reportWheelData = buildPerformanceWheelData({
+    current: currentHistoricalCoaching,
+    comparison: historicalComparison.selected?.history,
+    type: "kapstok",
+  });
 
   useEffect(() => {
     const interventionReadOnly = !canManageCoaching(user, intervention) ||
@@ -3173,7 +3198,7 @@ function CoachingDossierDetail({
     }
   }
 
-  async function downloadProfessionalReport() {
+  async function downloadProfessionalReport(performanceWheelSvg?: SVGSVGElement, performanceWheelData = reportWheelData) {
     setIsExportingReport(true);
     setReportMessage(undefined);
     try {
@@ -3197,6 +3222,8 @@ function CoachingDossierDetail({
         representative,
         leaderName: reportingUserName(local.ownerId, managedUsers),
         language: user.language,
+        performanceWheelSvg: performanceWheelSvg ?? reportWheelRef.current?.querySelector<SVGSVGElement>('[data-testid="performance-wheel-svg"]') ?? undefined,
+        performanceWheelData,
       });
       void fetch(`/api/activity-history?actorId=${encodeURIComponent(user.id)}`, {
         method: "POST",
@@ -3405,7 +3432,7 @@ function CoachingDossierDetail({
         message={message}
         onSendForApproval={() => void transition("send_for_approval")}
         onApprove={() => void transition("approve")}
-        onDownload={() => void downloadProfessionalReport()}
+        onDownload={(performanceWheelSvg, performanceWheelData) => void downloadProfessionalReport(performanceWheelSvg, performanceWheelData)}
         canDownload={can(user, "modulePdfExport")}
       />
     );
@@ -3472,6 +3499,19 @@ function CoachingDossierDetail({
         </div>
       )}
       <CoachingOutlookSyncStatus intervention={local} />
+
+      <div ref={reportWheelRef} aria-hidden="true" className="pointer-events-none fixed -left-[10000px] top-0 w-[1040px] opacity-0">
+        <PerformanceWheel
+          representativeId={currentHistoricalCoaching.representativeId}
+          currentInterventionId={currentHistoricalCoaching.id}
+          comparisonInterventionId={historicalComparison.selected?.history.id}
+          type="kapstok"
+          coachings={comparisonWheelCoachings}
+          notScoredLabel={t("coaching.performance.notScored")}
+          totalScoreLabel={t("coaching.performance.totalScore")}
+          labels={wheelLabels}
+        />
+      </div>
 
       {activeStep === 7 && (
       <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
@@ -3852,20 +3892,44 @@ function CompletedCoachingSummary({
   message?: string;
   onSendForApproval: () => void;
   onApprove: () => void;
-  onDownload: () => void;
+  onDownload: (performanceWheelSvg?: SVGSVGElement, performanceWheelData?: PerformanceWheelData) => void;
   canDownload: boolean;
 }) {
   const { user } = useSession();
   const { coachingFramework } = useConfiguration();
   const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
+  const wheelLabels = {
+    ariaKapstok: t("coaching.performance.competencyWheel"),
+    ariaGeneral: t("coaching.performance.generalWheel"),
+    previous: t("coaching.performance.previousShort"),
+    current: t("coaching.performance.currentShort"),
+    tooltipHelp: t("coaching.performance.wheelHelp"),
+    currentMeasurement: t("coaching.performance.currentMeasurement"),
+    previousMeasurement: t("coaching.performance.previousMeasurement"),
+    noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
+    better: t("coaching.performance.better"),
+    worse: t("coaching.performance.worse"),
+    equal: t("coaching.performance.equal"),
+    first: t("coaching.performance.firstMeasurement"),
+    green: t("coaching.performance.green"),
+    red: t("coaching.performance.red"),
+    darkBlue: t("coaching.performance.darkBlue"),
+    blue: t("coaching.performance.blue"),
+  };
   const [confirmation, setConfirmation] = useState<"send" | "approve">();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [wheelOpen, setWheelOpen] = useState(false);
   const [openAppointmentIds, setOpenAppointmentIds] = useState<Set<string>>(() => new Set());
+  const reportWheelRef = useRef<HTMLDivElement>(null);
   const dossier = intervention.dossier ?? defaultDossierState();
   const appointments = dedupeById(intervention.appointments ?? []).filter((item) => !item.isDeleted);
   const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
   const wheelCoachings = comparisonHistory ? [comparisonHistory, currentHistory] : [currentHistory];
+  const reportWheelData = buildPerformanceWheelData({
+    current: currentHistory,
+    comparison: comparisonHistory,
+    type: "kapstok",
+  });
   const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
   const mainFormScore = calculateCoachingDossierScore(mainScoreRows.map((score) => score.score));
   const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
@@ -3899,7 +3963,7 @@ function CompletedCoachingSummary({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">← {t("coaching.report.back")}</Link>
         <div className="flex flex-wrap gap-2">
-          {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={onDownload}><FileDown className="h-4 w-4" /> {t("coaching.report.pdfReport")}</button>}
+          {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={() => onDownload(reportWheelRef.current?.querySelector<SVGSVGElement>('[data-testid="performance-wheel-svg"]') ?? undefined, reportWheelData)}><FileDown className="h-4 w-4" /> {t("coaching.report.pdfReport")}</button>}
           {canManage && !locked && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("send")}>{t("coaching.report.sendForApproval")}</button>}
           {isRepresentative && intervention.status === "verzonden_ter_akkoord" && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("approve")}>{t("coaching.report.approve")}</button>}
           <StatusBadge status={intervention.status} />
@@ -3914,6 +3978,18 @@ function CompletedCoachingSummary({
       />
 
       {message && <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm font-semibold text-brand-900">{message}</div>}
+      <div ref={reportWheelRef} aria-hidden="true" className="pointer-events-none fixed -left-[10000px] top-0 w-[1040px] opacity-0">
+        <PerformanceWheel
+          representativeId={currentHistory.representativeId}
+          currentInterventionId={currentHistory.id}
+          comparisonInterventionId={comparisonHistory?.id}
+          type="kapstok"
+          coachings={wheelCoachings}
+          notScoredLabel={t("coaching.performance.notScored")}
+          totalScoreLabel={t("coaching.performance.totalScore")}
+          labels={wheelLabels}
+        />
+      </div>
       {locked && (
         <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm font-semibold text-fuchsia-900">
           {intervention.status === "akkoord_door_vertegenwoordiger"

@@ -27,7 +27,64 @@ type ExportPerformancePdfOptions = {
   svgElement: SVGSVGElement;
   notScoredLabel?: string;
   totalScoreLabel?: string;
+  labels?: Partial<PerformancePdfLabels>;
   preview?: boolean;
+};
+
+type PerformancePdfLabels = {
+  title: string;
+  coaching: string;
+  comparisonWith: string;
+  firstMeasurementDescription: string;
+  legend: string;
+  currentMeasurement: string;
+  previousMeasurement: string;
+  noPreviousMeasurement: string;
+  better: string;
+  worse: string;
+  equal: string;
+  first: string;
+  green: string;
+  red: string;
+  darkBlue: string;
+  blue: string;
+  criterion: string;
+  previous: string;
+  current: string;
+  difference: string;
+  trend: string;
+  continuation: string;
+  exportDate: string;
+  page: string;
+  of: string;
+};
+
+const defaultLabels: PerformancePdfLabels = {
+  title: "Prestatiecirkel",
+  coaching: "begeleiding",
+  comparisonWith: "Vergelijking met",
+  firstMeasurementDescription: "Eerste meting - geen vorige begeleiding beschikbaar",
+  legend: "Legenda",
+  currentMeasurement: "Huidige meting",
+  previousMeasurement: "Vorige meting",
+  noPreviousMeasurement: "Geen vorige meting",
+  better: "Beter",
+  worse: "Slechter",
+  equal: "Gelijk",
+  first: "Eerste meting",
+  green: "groen",
+  red: "rood",
+  darkBlue: "donkerblauw",
+  blue: "blauw",
+  criterion: "Criterium",
+  previous: "Vorige",
+  current: "Huidig",
+  difference: "Verschil",
+  trend: "Trend",
+  continuation: "vervolg",
+  exportDate: "Exportdatum",
+  page: "Pagina",
+  of: "van",
 };
 
 type PdfGroup = {
@@ -55,6 +112,7 @@ export async function exportPerformancePdf({
   svgElement,
   notScoredLabel = "Niet gescoord",
   totalScoreLabel = "Totale score",
+  labels,
   preview = false,
 }: ExportPerformancePdfOptions) {
   const [{ jsPDF }] = await Promise.all([
@@ -64,12 +122,14 @@ export async function exportPerformancePdf({
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const exportDate = new Date();
   const exportDateLabel = formatDate(exportDate);
+  const effectiveLabels = { ...defaultLabels, ...labels };
 
   drawFirstPageIntro(pdf, {
     representativeName,
     coachingDate,
     comparisonDate,
     modeLabel,
+    labels: effectiveLabels,
   });
 
   const svgClone = svgElement.cloneNode(true) as SVGSVGElement;
@@ -78,9 +138,9 @@ export async function exportPerformancePdf({
   svgClone.setAttribute("height", "1000");
   await pdf.svg(svgClone, { x: 18, y: 53, width: 174, height: 174 });
 
-  drawFirstPageSummary(pdf, data, notScoredLabel, totalScoreLabel);
-  drawScorePages(pdf, groupCriteria(data), notScoredLabel);
-  drawHeadersAndFooters(pdf, representativeName, exportDateLabel);
+  drawFirstPageSummary(pdf, data, notScoredLabel, totalScoreLabel, effectiveLabels);
+  drawScorePages(pdf, groupCriteria(data), notScoredLabel, effectiveLabels);
+  drawHeadersAndFooters(pdf, representativeName, exportDateLabel, effectiveLabels);
 
   const filenameDate = exportDate.toISOString().slice(0, 10);
   const filename = `fieldforce-prestatiecirkel-${slugify(representativeName)}-${filenameDate}.pdf`;
@@ -111,12 +171,13 @@ function drawFirstPageIntro(
     coachingDate: string;
     comparisonDate?: string;
     modeLabel: string;
+    labels: PerformancePdfLabels;
   }
 ) {
   pdf.setTextColor(BRAND_BLUE);
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(23);
-  pdf.text("Prestatiecirkel", MARGIN, 35);
+  pdf.text(details.labels.title, MARGIN, 35);
 
   pdf.setTextColor(SLATE_950);
   pdf.setFontSize(14);
@@ -125,11 +186,11 @@ function drawFirstPageIntro(
   pdf.setTextColor(SLATE_600);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9.5);
-  pdf.text(`${details.modeLabel} - begeleiding ${details.coachingDate}`, MARGIN, 49);
+  pdf.text(`${details.modeLabel} - ${details.labels.coaching} ${details.coachingDate}`, MARGIN, 49);
   pdf.text(
     details.comparisonDate
-      ? `Vergelijking met ${details.comparisonDate}`
-      : "Eerste meting - geen vorige begeleiding beschikbaar",
+      ? `${details.labels.comparisonWith} ${details.comparisonDate}`
+      : details.labels.firstMeasurementDescription,
     PAGE_WIDTH - MARGIN,
     49,
     { align: "right" }
@@ -140,31 +201,46 @@ function drawFirstPageSummary(
   pdf: jsPDF,
   data: PerformanceWheelData,
   notScoredLabel: string,
-  totalScoreLabel: string
+  totalScoreLabel: string,
+  labels: PerformancePdfLabels
 ) {
   pdf.setDrawColor(BORDER);
   pdf.setFillColor("#FFFFFF");
   pdf.roundedRect(MARGIN, 232, PAGE_WIDTH - MARGIN * 2, 39, 4, 4, "FD");
 
   const legend = [
-    { color: "#22C55E", label: "Groen = beter dan vorige keer" },
-    { color: "#EF4444", label: "Rood = slechter dan vorige keer" },
-    { color: BRAND_BLUE, label: "Blauw/grijs = gelijk of eerste meting" },
+    { kind: "line", color: BRAND_BLUE, label: labels.currentMeasurement },
+    { kind: "line", color: "#94A3B8", label: data.comparisonInterventionId ? labels.previousMeasurement : labels.noPreviousMeasurement },
+    { kind: "dot", color: "#16A34A", label: `${labels.better} = ${labels.green}` },
+    { kind: "dot", color: "#DC2626", label: `${labels.worse} = ${labels.red}` },
+    { kind: "dot", color: BRAND_BLUE, label: `${labels.equal} = ${labels.darkBlue}` },
+    { kind: "dot", color: "#1266B3", label: `${labels.first} = ${labels.blue}` },
   ];
 
   pdf.setFont("helvetica", "bold");
   pdf.setTextColor(BRAND_BLUE);
   pdf.setFontSize(9);
-  pdf.text("LEGENDE", MARGIN + 6, 241);
+  pdf.text(labels.legend.toUpperCase(), MARGIN + 6, 241);
 
   legend.forEach((item, index) => {
-    const y = 248 + index * 6;
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const x = MARGIN + 5 + column * 61;
+    const y = 248 + row * 6;
+    pdf.setDrawColor(item.color);
     pdf.setFillColor(item.color);
-    pdf.circle(MARGIN + 7.5, y - 1, 1.6, "F");
+    if (item.kind === "line") {
+      if (pdf.setLineDashPattern) pdf.setLineDashPattern(index === 1 ? [1.5, 1.2] : [], 0);
+      pdf.setLineWidth(0.8);
+      pdf.line(x, y - 1, x + 5, y - 1);
+      if (pdf.setLineDashPattern) pdf.setLineDashPattern([], 0);
+    } else {
+      pdf.circle(x + 2.5, y - 1, 1.6, "F");
+    }
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(SLATE_600);
-    pdf.setFontSize(8.5);
-    pdf.text(item.label, MARGIN + 12, y);
+    pdf.setFontSize(7.5);
+    pdf.text(item.label, x + 9, y);
   });
 
   pdf.setFillColor("#EFF6FF");
@@ -178,7 +254,7 @@ function drawFirstPageSummary(
   pdf.text(totalScoreLabel.toUpperCase(), 172, 258, { align: "center" });
 }
 
-function drawScorePages(pdf: jsPDF, groups: PdfGroup[], notScoredLabel: string) {
+function drawScorePages(pdf: jsPDF, groups: PdfGroup[], notScoredLabel: string, labels: PerformancePdfLabels) {
   pdf.addPage();
   let y = 33;
 
@@ -212,7 +288,7 @@ function drawScorePages(pdf: jsPDF, groups: PdfGroup[], notScoredLabel: string) 
         continue;
       }
 
-      drawPhaseBlock(pdf, displayCategory(group.category), chunk, group.average, group.trend, notScoredLabel, y, continuation);
+      drawPhaseBlock(pdf, displayCategory(group.category), chunk, group.average, group.trend, notScoredLabel, labels, y, continuation);
       y += chunkHeight + 5;
       rowIndex += chunk.length;
       continuation = rowIndex < rows.length;
@@ -232,6 +308,7 @@ function drawPhaseBlock(
   average: number | undefined,
   trend: PerformanceTrend,
   notScoredLabel: string,
+  labels: PerformancePdfLabels,
   y: number,
   continuation: boolean
 ) {
@@ -247,16 +324,16 @@ function drawPhaseBlock(
   pdf.setTextColor(trendTextColor(trend));
   pdf.setFontSize(10.5);
   const scoreLabel = formatPerformancePercentage(average, notScoredLabel);
-  pdf.text(`${category}${continuation ? " (vervolg)" : ""} - ${scoreLabel}`, MARGIN + 5, y + 6.5);
+  pdf.text(`${category}${continuation ? ` (${labels.continuation})` : ""} - ${scoreLabel}`, MARGIN + 5, y + 6.5);
 
   const columnY = y + 16.5;
   pdf.setFontSize(7.5);
   pdf.setTextColor(SLATE_400);
-  pdf.text("CRITERIUM", MARGIN + 5, columnY);
-  pdf.text("VORIG", 112, columnY, { align: "center" });
-  pdf.text("HUIDIG", 130, columnY, { align: "center" });
-  pdf.text("VERSCHIL", 151, columnY, { align: "center" });
-  pdf.text("TREND", 178, columnY, { align: "center" });
+  pdf.text(labels.criterion.toUpperCase(), MARGIN + 5, columnY);
+  pdf.text(labels.previous.toUpperCase(), 112, columnY, { align: "center" });
+  pdf.text(labels.current.toUpperCase(), 130, columnY, { align: "center" });
+  pdf.text(labels.difference.toUpperCase(), 151, columnY, { align: "center" });
+  pdf.text(labels.trend.toUpperCase(), 178, columnY, { align: "center" });
 
   let rowY = y + 20;
   rows.forEach((row, index) => {
@@ -279,7 +356,7 @@ function drawPhaseBlock(
     pdf.text(row.current, 130, textY, { align: "center" });
 
     drawStatusBadge(pdf, row.difference, 151, rowY + row.height / 2, row.trend, 25, "difference");
-    drawStatusBadge(pdf, trendLabel(row.trend), 178, rowY + row.height / 2, row.trend, 35, "trend");
+    drawStatusBadge(pdf, trendLabel(row.trend, labels), 178, rowY + row.height / 2, row.trend, 35, "trend");
     rowY += row.height;
   });
 }
@@ -331,7 +408,7 @@ function drawTrendIcon(pdf: jsPDF, centerX: number, centerY: number, trend: Perf
   pdf.line(centerX, endY, centerX + 1.4, endY + headOffset);
 }
 
-function drawHeadersAndFooters(pdf: jsPDF, representativeName: string, exportDate: string) {
+function drawHeadersAndFooters(pdf: jsPDF, representativeName: string, exportDate: string, labels: PerformancePdfLabels) {
   const totalPages = pdf.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
     pdf.setPage(pageNumber);
@@ -341,13 +418,13 @@ function drawHeadersAndFooters(pdf: jsPDF, representativeName: string, exportDat
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor(BRAND_BLUE);
     pdf.setFontSize(9);
-    pdf.text("Prestatiecirkel", MARGIN, 13);
+    pdf.text(labels.title, MARGIN, 13);
 
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(SLATE_600);
     pdf.setFontSize(8);
     pdf.text(representativeName, MARGIN, 19);
-    pdf.text(`Exportdatum: ${exportDate}`, PAGE_WIDTH - MARGIN, 19, { align: "right" });
+    pdf.text(`${labels.exportDate}: ${exportDate}`, PAGE_WIDTH - MARGIN, 19, { align: "right" });
 
     pdf.setDrawColor(BORDER);
     pdf.line(MARGIN, 24, PAGE_WIDTH - MARGIN, 24);
@@ -356,7 +433,7 @@ function drawHeadersAndFooters(pdf: jsPDF, representativeName: string, exportDat
     pdf.setTextColor(SLATE_600);
     pdf.setFontSize(7.5);
     pdf.text("FieldForce - Grow. Coach. Perform.", MARGIN, 291);
-    pdf.text(`Pagina ${pageNumber} van ${totalPages}`, PAGE_WIDTH - MARGIN, 291, { align: "right" });
+    pdf.text(`${labels.page} ${pageNumber} ${labels.of} ${totalPages}`, PAGE_WIDTH - MARGIN, 291, { align: "right" });
   }
 }
 
@@ -402,12 +479,12 @@ function trendColors(trend: PerformanceTrend) {
   }[trend];
 }
 
-function trendLabel(trend: PerformanceTrend) {
+function trendLabel(trend: PerformanceTrend, labels: PerformancePdfLabels) {
   return {
-    better: "Beter",
-    worse: "Slechter",
-    equal: "Gelijk",
-    first: "Eerste meting",
+    better: labels.better,
+    worse: labels.worse,
+    equal: labels.equal,
+    first: labels.first,
   }[trend];
 }
 

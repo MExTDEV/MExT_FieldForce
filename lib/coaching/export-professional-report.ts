@@ -30,6 +30,8 @@ export type ProfessionalCoachingReportInput = {
   leaderName: string;
   language: Language;
   logoDataUrl?: string;
+  performanceWheelSvg?: SVGSVGElement;
+  performanceWheelData?: PerformanceWheelData;
 };
 
 export type ProfessionalCoachingReportResult = {
@@ -141,6 +143,18 @@ const translations = {
     reflectionLearning: "Wat neem je mee uit deze begeleiding?",
     reflectionGoal: "Waar ga je concreet mee aan de slag?",
     reflectionCompletedAt: "Ingevuld op",
+    wheelCurrent: "Huidige meting",
+    wheelPrevious: "Vorige meting",
+    wheelNoPrevious: "Geen vorige meting",
+    wheelBetter: "Beter",
+    wheelWorse: "Slechter",
+    wheelEqual: "Gelijk",
+    wheelFirst: "Eerste meting",
+    wheelGreen: "groen",
+    wheelRed: "rood",
+    wheelDarkBlue: "donkerblauw",
+    wheelBlue: "blauw",
+    wheelLegend: "Legenda",
   },
   fr: {
     report: "Rapport d'accompagnement",
@@ -216,6 +230,18 @@ const translations = {
     reflectionLearning: "Que retiens-tu de cet accompagnement ?",
     reflectionGoal: "Sur quoi vas-tu travailler concrètement ?",
     reflectionCompletedAt: "Complété le",
+    wheelCurrent: "Mesure actuelle",
+    wheelPrevious: "Mesure précédente",
+    wheelNoPrevious: "Aucune mesure précédente",
+    wheelBetter: "Meilleur",
+    wheelWorse: "Moins bon",
+    wheelEqual: "Égal",
+    wheelFirst: "Première mesure",
+    wheelGreen: "vert",
+    wheelRed: "rouge",
+    wheelDarkBlue: "bleu foncé",
+    wheelBlue: "bleu",
+    wheelLegend: "Légende",
   },
   de: {
     report: "Begleitungsbericht",
@@ -291,6 +317,18 @@ const translations = {
     reflectionLearning: "Was nimmst du aus dieser Begleitung mit?",
     reflectionGoal: "Woran wirst du konkret arbeiten?",
     reflectionCompletedAt: "Ausgefüllt am",
+    wheelCurrent: "Aktuelle Messung",
+    wheelPrevious: "Vorherige Messung",
+    wheelNoPrevious: "Keine vorherige Messung",
+    wheelBetter: "Besser",
+    wheelWorse: "Schlechter",
+    wheelEqual: "Gleich",
+    wheelFirst: "Erste Messung",
+    wheelGreen: "grün",
+    wheelRed: "rot",
+    wheelDarkBlue: "dunkelblau",
+    wheelBlue: "blau",
+    wheelLegend: "Legende",
   },
 } as const;
 
@@ -299,6 +337,7 @@ export async function exportProfessionalCoachingReport(
   options: { download?: boolean } = {}
 ): Promise<ProfessionalCoachingReportResult> {
   const { jsPDF } = await import("jspdf");
+  await import("svg2pdf.js");
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const logo = input.logoDataUrl ?? await loadLogoDataUrl();
   const appointments = (input.intervention.appointments ?? []).filter((item) => !item.isDeleted);
@@ -319,7 +358,7 @@ export async function exportProfessionalCoachingReport(
   }));
 
   startSection(pdf);
-  drawPerformancePage(pdf, input, comparedRows, buildReportWheelData(input));
+  await drawPerformancePage(pdf, input, comparedRows, input.performanceWheelData ?? buildReportWheelData(input));
 
   startSection(pdf);
   drawScoreAnalysis(pdf, input, comparedRows);
@@ -351,7 +390,7 @@ function startSection(pdf: Pdf) {
 
 function drawCover(pdf: Pdf, input: ProfessionalCoachingReportInput, logo?: string) {
   const t = translations[input.language];
-  const wheelData = buildReportWheelData(input);
+  const wheelData = input.performanceWheelData ?? buildReportWheelData(input);
   const score = wheelData.totalPercentage;
   const previousScore = wheelData.previousTotalPercentage;
   pdf.setFillColor(BLUE);
@@ -445,25 +484,25 @@ function drawGeneralPage(pdf: Pdf, input: ProfessionalCoachingReportInput) {
   drawInsightCard(pdf, t.openActions, [`${openActions.length}`, ...openActions.slice(0, 2).map((action) => action.due ? formatDate(action.due, input.language) : action.title)], MARGIN + (cardWidth + 4) * 2, cardY, cardWidth, AMBER);
 }
 
-function drawPerformancePage(
+async function drawPerformancePage(
   pdf: Pdf,
   input: ProfessionalCoachingReportInput,
   rows: ScoreRow[],
   wheelData: PerformanceWheelData
 ) {
   const t = translations[input.language];
-  drawSectionHeading(pdf, "Prestatieoverzicht", fullName(input.representative));
+  drawSectionHeading(pdf, t.performance, fullName(input.representative));
   const scoredRows = rows.filter((row) => row.scored !== false);
   const scores = scoredRows.map((row) => row.current);
-  drawPerformanceWheel(
-    pdf,
-    wheelData,
-    59,
-    112,
-    39,
-    t.totalScore,
-    translations[input.language].noScore
-  );
+  if (input.performanceWheelSvg) {
+    const svgClone = input.performanceWheelSvg.cloneNode(true) as SVGSVGElement;
+    svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    svgClone.setAttribute("width", "1000");
+    svgClone.setAttribute("height", "1000");
+    await pdf.svg(svgClone, { x: 14, y: 42, width: 182, height: 132 });
+  } else {
+    drawPerformanceWheel(pdf, wheelData, 59, 112, 39, t.totalScore, t.noScore);
+  }
   const summary = [
     [t.current, formatPerformancePercentage(wheelData.totalPercentage, t.noScore)],
     [t.previous, wheelData.previousTotalPercentage === undefined ? t.firstMeasurement : formatPerformancePercentage(wheelData.previousTotalPercentage, t.noScore)],
@@ -474,17 +513,85 @@ function drawPerformancePage(
     [t.lowest, scoredRows.length ? formatPerformancePercentage(Math.min(...scores)) : t.noScore],
     [t.criteria, String(scoredRows.length)],
   ];
-  drawCompactKeyValueList(pdf, t.summary, summary, 108, 50, 86, 79, 2);
+  drawCompactKeyValueList(
+    pdf,
+    t.summary,
+    summary,
+    input.performanceWheelSvg ? MARGIN : 108,
+    input.performanceWheelSvg ? 178 : 50,
+    input.performanceWheelSvg ? CONTENT_WIDTH : 86,
+    input.performanceWheelSvg ? 43 : 79,
+    input.performanceWheelSvg ? 3 : 2
+  );
 
   const sorted = [...scoredRows].sort((left, right) => right.current - left.current);
-  drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 163, 86, GREEN);
-  drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), 108, 163, 86, RED);
+  if (input.performanceWheelSvg) {
+    drawPerformanceLegend(pdf, t, 231, Boolean(wheelData.comparisonInterventionId));
+  } else {
+    drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 163, 86, GREEN);
+    drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), 108, 163, 86, RED);
+  }
 
-  const distribution = [5, 4, 3, 2, 1].map((value) => `${value}/5: ${scoredRows.filter((row) => Math.max(1, Math.round(row.current / 20)) === value).length}`);
+  const distribution = [
+    ["80-100%", (value: number) => value >= 80],
+    ["60-79%", (value: number) => value >= 60 && value < 80],
+    ["40-59%", (value: number) => value >= 40 && value < 60],
+    ["0-39%", (value: number) => value < 40],
+  ].map(([label, predicate]) => `${label}: ${scoredRows.filter((row) => (predicate as (value: number) => boolean)(row.current)).length}`);
   const categoryEvolution = categoryEvolutionLines(rows);
-  drawInsightCard(pdf, t.distribution, distribution, MARGIN, 218, 56, BLUE);
-  drawInsightCard(pdf, t.categoryEvolution, categoryEvolution.slice(0, 5), 76, 218, 75, MID_BLUE);
-  drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), 155, 218, 39, AMBER);
+  if (input.performanceWheelSvg) {
+    addWhitePage(pdf);
+    drawSectionHeading(pdf, `${t.performance} - ${t.summary}`, fullName(input.representative));
+    drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 50, 86, GREEN);
+    drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), 108, 50, 86, RED);
+    drawInsightCard(pdf, t.distribution, distribution, MARGIN, 108, 56, BLUE);
+    drawInsightCard(pdf, t.categoryEvolution, categoryEvolution.slice(0, 5), 76, 108, 75, MID_BLUE);
+    drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), 155, 108, 39, AMBER);
+  } else {
+    drawInsightCard(pdf, t.distribution, distribution, MARGIN, 218, 56, BLUE);
+    drawInsightCard(pdf, t.categoryEvolution, categoryEvolution.slice(0, 5), 76, 218, 75, MID_BLUE);
+    drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), 155, 218, 39, AMBER);
+  }
+}
+
+function drawPerformanceLegend(
+  pdf: Pdf,
+  t: (typeof translations)[Language],
+  y: number,
+  hasPrevious: boolean
+) {
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(7);
+  pdf.setTextColor(BLUE);
+  pdf.text(t.wheelLegend.toUpperCase(), MARGIN, y);
+  const items = [
+    { kind: "line", color: BLUE, label: t.wheelCurrent },
+    { kind: "line", color: "#94A3B8", label: hasPrevious ? t.wheelPrevious : t.wheelNoPrevious },
+    { kind: "dot", color: "#16A34A", label: `${t.wheelBetter} = ${t.wheelGreen}` },
+    { kind: "dot", color: "#DC2626", label: `${t.wheelWorse} = ${t.wheelRed}` },
+    { kind: "dot", color: BLUE, label: `${t.wheelEqual} = ${t.wheelDarkBlue}` },
+    { kind: "dot", color: "#1266B3", label: `${t.wheelFirst} = ${t.wheelBlue}` },
+  ];
+  items.forEach((item, index) => {
+    const column = index % 3;
+    const row = Math.floor(index / 3);
+    const x = MARGIN + column * 62;
+    const itemY = y + 6 + row * 6;
+    pdf.setDrawColor(item.color);
+    pdf.setFillColor(item.color);
+    if (item.kind === "line") {
+      if (pdf.setLineDashPattern) pdf.setLineDashPattern(index === 1 ? [1.5, 1.2] : [], 0);
+      pdf.setLineWidth(0.8);
+      pdf.line(x, itemY - 1.5, x + 7, itemY - 1.5);
+      if (pdf.setLineDashPattern) pdf.setLineDashPattern([], 0);
+    } else {
+      pdf.circle(x + 2, itemY - 1.5, 1.3, "F");
+    }
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(5.5);
+    pdf.setTextColor(SLATE_500);
+    pdf.text(item.label, x + 10, itemY);
+  });
 }
 
 function drawScoreAnalysis(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: ScoreRow[]) {
@@ -597,7 +704,7 @@ function drawAppointment(
 function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: ScoreRow[]) {
   const t = translations[input.language];
   drawSectionHeading(pdf, t.conclusion, fullName(input.representative));
-  const wheelData = buildReportWheelData(input);
+  const wheelData = input.performanceWheelData ?? buildReportWheelData(input);
   const scoredRows = rows.filter((row) => row.scored !== false);
   const sorted = [...scoredRows].sort((left, right) => right.current - left.current);
   const actions = input.intervention.actionPoints.filter((action) => !["afgerond", "behaald", "geannuleerd"].includes(action.status));
@@ -1051,13 +1158,14 @@ function drawCompactKeyValueList(
     const cellX = x + 4 + column * cellWidth;
     const cellY = y + 14 + row * rowHeight;
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(5.8);
+    pdf.setFontSize(5.3);
     pdf.setTextColor(SLATE_500);
-    pdf.text(label.toUpperCase(), cellX, cellY, { maxWidth: cellWidth - 3 });
+    const labelLines = pdf.splitTextToSize(label.toUpperCase(), cellWidth - 3) as string[];
+    pdf.text(labelLines.slice(0, 2), cellX, cellY);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.3);
     pdf.setTextColor(SLATE_950);
-    pdf.text(String(value), cellX, cellY + 4, { maxWidth: cellWidth - 3 });
+    pdf.text(String(value), cellX, cellY + 4 + Math.min(labelLines.length, 2) * 2.8, { maxWidth: cellWidth - 3 });
   });
   return y + height;
 }
