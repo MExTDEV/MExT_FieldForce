@@ -54,6 +54,10 @@ async function findSalesDayAgendaAppointments(input: {
       leads: { orderBy: { createdAt: "asc" } },
       followUps: { orderBy: { createdAt: "asc" } },
       references: { orderBy: { createdAt: "asc" } },
+      salesDocuments: {
+        orderBy: { createdAt: "desc" },
+        select: { id: true, documentNumber: true, documentType: true, status: true, deliveryStatus: true, amountIncludingVat: true, currency: true },
+      },
     },
     orderBy: [{ sequence: "asc" }, { startsAt: "asc" }, { id: "asc" }],
   });

@@ -10,6 +10,7 @@ export type ManagementSection =
   | "kapstok"
   | "modules"
   | "mail"
+  | "mailTemplates"
   | "profiel"
   | "log";
 
@@ -71,6 +72,12 @@ export const managementSections: ManagementSectionDefinition[] = [
     section: "mail",
     href: "/beheer/instellingen/mail",
     navKey: "nav.mail",
+    permission: "menu.coaching.settings",
+  },
+  {
+    section: "mailTemplates",
+    href: "/beheer/instellingen/mail/templates",
+    navKey: "nav.mailTemplates",
     permission: "menu.coaching.settings",
     requiredPermissions: ["mail.templates.view"],
   },

@@ -167,4 +167,39 @@ textarea {
   .rich-text-editor ol {
     @apply list-decimal pl-5;
   }
+
+  .transactional-mail-editor-content {
+    @apply min-h-56 w-full rounded-b-2xl bg-white p-4 text-sm leading-6 text-slate-800 outline-none;
+  }
+
+  .transactional-mail-editor-content p {
+    @apply my-2 first:mt-0 last:mb-0;
+  }
+
+  .transactional-mail-editor-content h1,
+  .transactional-mail-editor-content h2,
+  .transactional-mail-editor-content h3 {
+    @apply mb-2 mt-4 font-bold leading-snug text-slate-950 first:mt-0;
+  }
+
+  .transactional-mail-editor-content h1 { @apply text-2xl; }
+  .transactional-mail-editor-content h2 { @apply text-xl; }
+  .transactional-mail-editor-content h3 { @apply text-lg; }
+  .transactional-mail-editor-content ul { @apply my-2 list-disc pl-6; }
+  .transactional-mail-editor-content ol { @apply my-2 list-decimal pl-6; }
+  .transactional-mail-editor-content blockquote { @apply my-3 border-l-4 border-brand-200 bg-brand-50/60 py-2 pl-4 text-slate-700; }
+  .transactional-mail-editor-content a { @apply font-semibold text-brand-700 underline; }
+  .transactional-mail-editor-content img { @apply my-3 max-h-64 max-w-full rounded-lg object-contain; }
+  .transactional-mail-editor-content table { @apply my-3 w-full border-collapse text-sm; }
+  .transactional-mail-editor-content th,
+  .transactional-mail-editor-content td { @apply border border-slate-300 px-3 py-2 text-left align-top; }
+  .transactional-mail-editor-content th { @apply bg-slate-100 font-bold; }
+  .transactional-mail-editor-content mark { @apply rounded px-0.5; }
+
+  .mail-design-header > .block > span { @apply text-inherit; }
+  .mail-design-header > .block > div { @apply border-white/30 bg-transparent; }
+  .mail-design-header .transactional-mail-editor-content { @apply min-h-24 bg-transparent text-inherit; }
+  .mail-design-header .transactional-mail-editor-content p,
+  .mail-design-header .transactional-mail-editor-content strong { @apply text-inherit; }
+  .mail-design-footer .transactional-mail-editor-content { @apply min-h-24 bg-transparent text-inherit; }
 }

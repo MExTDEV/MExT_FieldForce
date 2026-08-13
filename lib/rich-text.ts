@@ -19,6 +19,15 @@ const allowedRichTextTags = new Set([
   "blockquote",
   "a",
   "hr",
+  "span",
+  "mark",
+  "img",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
 ]);
 
 export function sanitizeRichText(value: string | null | undefined) {
@@ -36,6 +45,30 @@ export function sanitizeRichText(value: string | null | undefined) {
         return href
           ? `<a href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer">`
           : "<a>";
+      }
+      if (name === "img") {
+        const src = normalizeSafeImageSrc(getAttribute(tag, "src"));
+        if (!src) return "";
+        const alt = escapeAttribute(getAttribute(tag, "alt") ?? "");
+        const width = normalizeImageDimension(getAttribute(tag, "width"));
+        const height = normalizeImageDimension(getAttribute(tag, "height"));
+        const dimensions = `${width ? ` width="${width}"` : ""}${height ? ` height="${height}"` : ""}`;
+        const responsiveStyle = width ? ` style="display:block;max-width:100%;width:${width}px;height:auto;"` : "";
+        return `<img src="${escapeAttribute(src)}" alt="${alt}"${dimensions}${responsiveStyle}>`;
+      }
+      if (name === "mark") {
+        const color = normalizeSafeColor(getAttribute(tag, "data-color"));
+        return color ? `<mark style="background-color:${color}">` : "<mark>";
+      }
+      if (name === "span" || /^h[1-6]$/.test(name) || name === "p" || name === "blockquote" || name === "th" || name === "td") {
+        const style = sanitizeInlineStyle(getAttribute(tag, "style"));
+        const styleAttribute = style ? ` style="${escapeAttribute(style)}"` : "";
+        if (name === "th" || name === "td") {
+          const colspan = normalizeTableSpan(getAttribute(tag, "colspan"));
+          const rowspan = normalizeTableSpan(getAttribute(tag, "rowspan"));
+          return `<${name}${colspan ? ` colspan="${colspan}"` : ""}${rowspan ? ` rowspan="${rowspan}"` : ""}${styleAttribute}>`;
+        }
+        return `<${name}${styleAttribute}>`;
       }
       return `<${name}>`;
     });
@@ -107,8 +140,47 @@ export function hasHtmlMarkup(value: string | null | undefined) {
 function normalizeSafeHref(rawValue: string | undefined) {
   if (!rawValue) return "";
   const value = rawValue.trim().replace(/^["']|["']$/g, "");
-  if (/^(https?:|mailto:)/i.test(value)) return value;
+  if (/^(https?:|mailto:)/i.test(value) || /^\/{1,2}[^/]/.test(value) || /^{{[a-zA-Z0-9_.]+}}$/.test(value)) return value;
   return "";
+}
+
+function normalizeSafeImageSrc(rawValue: string | undefined) {
+  const value = rawValue?.trim() ?? "";
+  return /^https?:\/\//i.test(value) ? value : "";
+}
+
+function normalizeImageDimension(value: string | undefined) {
+  const dimension = Number(value);
+  return Number.isInteger(dimension) && dimension >= 1 && dimension <= 2400 ? String(dimension) : "";
+}
+
+function getAttribute(tag: string, name: string) {
+  const match = tag.match(new RegExp(`\\s${name}\\s*=\\s*("[^"]*"|'[^']*'|[^\\s>]+)`, "i"));
+  return match?.[1]?.replace(/^['"]|['"]$/g, "");
+}
+
+function normalizeSafeColor(value: string | undefined) {
+  const normalized = value?.trim() ?? "";
+  return /^(#[0-9a-f]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(?:0|1|0?\.\d+)\s*\))$/i.test(normalized) ? normalized : "";
+}
+
+function sanitizeInlineStyle(value: string | undefined) {
+  if (!value) return "";
+  const declarations = value.split(";").flatMap((declaration) => {
+    const [property, ...rawValues] = declaration.split(":");
+    const normalizedProperty = property?.trim().toLowerCase();
+    const normalizedValue = rawValues.join(":").trim();
+    if (!normalizedProperty || !normalizedValue) return [];
+    if (normalizedProperty === "text-align" && /^(left|center|right|justify)$/i.test(normalizedValue)) return [`text-align:${normalizedValue}`];
+    if ((normalizedProperty === "color" || normalizedProperty === "background-color") && normalizeSafeColor(normalizedValue)) return [`${normalizedProperty}:${normalizeSafeColor(normalizedValue)}`];
+    return [];
+  });
+  return declarations.join(";");
+}
+
+function normalizeTableSpan(value: string | undefined) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 1 && number <= 20 ? String(number) : "";
 }
 
 function escapeAttribute(value: string) {

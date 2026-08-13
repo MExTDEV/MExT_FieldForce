@@ -20,11 +20,9 @@ type MailVersionRecord = {
   bodyHtml: string;
 };
 type MailTemplateRecord = { id: string; mailTypeId: string; scopeKey: string; versions?: MailVersionRecord[] };
-type FooterVersionRecord = { bodyHtml: string };
 type MailProfileRecord = {
   senderName: string | null;
   replyToEmail: string | null;
-  footers?: Array<{ language: Language; versions: FooterVersionRecord[] }>;
   logoAsset?: { publicUrl: string } | null;
 };
 type MailDelegate = {
@@ -41,6 +39,7 @@ export type MailDatabase = {
   mailParameterDefinition: MailDelegate;
   mailTemplate: MailDelegate;
   mailTemplateVersion: MailDelegate;
+  mailDesign: MailDelegate;
   mailCountryProfile: MailDelegate;
   mailFooter: MailDelegate;
   mailFooterVersion: MailDelegate;
@@ -101,18 +100,16 @@ export async function resolveTransactionalMail(input: {
     stored = undefined;
   }
 
-  let footerHtml: string | undefined;
   let senderName = input.globalSenderName;
   let replyToEmail = input.globalReplyToEmail;
   let logoUrl: string | undefined;
   try {
     const profile = (await mailDb.mailCountryProfile.findUnique({
       where: { country: input.country },
-      include: { logoAsset: true, footers: { where: { language: input.language }, include: { versions: { where: { status: "PUBLISHED" }, orderBy: { version: "desc" }, take: 1 } } } },
+      include: { logoAsset: true },
     })) as MailProfileRecord | null;
     senderName = profile?.senderName?.trim() || senderName;
     replyToEmail = profile?.replyToEmail?.trim() || replyToEmail;
-    footerHtml = profile?.footers?.[0]?.versions?.[0]?.bodyHtml;
     logoUrl = profile?.logoAsset?.publicUrl;
   } catch {
     // Country profiles are optional; global settings and the code footer remain valid.
@@ -127,7 +124,6 @@ export async function resolveTransactionalMail(input: {
         preheader: stored.version.preheader,
         bodyHtml: stored.version.bodyHtml,
         parameters: input.parameters,
-        footerHtml,
         logoUrl,
         senderName,
       })
@@ -139,7 +135,6 @@ export async function resolveTransactionalMail(input: {
           subject: fallback.subject,
           preheader: fallback.preheader,
           bodyHtml: fallback.bodyHtml,
-          footerHtml,
           logoUrl,
           parameters: input.parameters,
           senderName,

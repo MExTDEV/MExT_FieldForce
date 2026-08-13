@@ -94,6 +94,7 @@ const manageNav = [
   { section: "kapstok", icon: MessageSquareText },
   { section: "modules", icon: Settings },
   { section: "mail", icon: Mail },
+  { section: "mailTemplates", icon: BookOpenCheck },
   { section: "profiel", icon: UserRound },
   { section: "log", icon: ListChecks },
 ] as const;
@@ -155,11 +156,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { clearSaveError, retrySave, saveError } = useWorkflow();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [openManagementGroups, setOpenManagementGroups] = useState<Record<string, boolean>>({});
+  const [openManagementGroups, setOpenManagementGroups] = useState<Record<string, boolean>>({ settings: true, mail: true });
   const visibleManagementSections = getVisibleManagementSections(user);
   const activeDomainKey = getDomainForPath(pathname);
   const isContractPath = pathname === "/contract" || pathname.startsWith("/contract/");
-  const visibleManagementNav = visibleManagementSections.flatMap((section) => {
+  const visibleManagementNav = visibleManagementSections.filter((section) => section.section !== "mailTemplates").flatMap((section) => {
     const item = manageNav.find((candidate) => candidate.section === section.section);
     return item ? [{ ...section, icon: item.icon }] : [];
   });
@@ -282,16 +283,52 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     />
                     {open && !collapsed && (
                       <div className="mt-1 space-y-1 pl-6">
-                        {item.children.map((child) => (
-                          <SubNavItem
-                            key={child.href}
-                            href={child.href}
-                            icon={child.icon}
-                            label={translate(language, child.navKey as TranslationKey)}
-                            active={pathname === child.href || pathname.startsWith(`${child.href}/`)}
-                            onClick={() => setMobileOpen(false)}
-                          />
-                        ))}
+                        {item.children.map((child) => {
+                          if (child.section !== "mail") {
+                            return (
+                              <SubNavItem
+                                key={child.href}
+                                href={child.href}
+                                icon={child.icon}
+                                label={translate(language, child.navKey as TranslationKey)}
+                                active={pathname === child.href || pathname.startsWith(`${child.href}/`)}
+                                onClick={() => setMobileOpen(false)}
+                              />
+                            );
+                          }
+                          const templateSection = visibleManagementSections.find((section) => section.section === "mailTemplates");
+                          const mailOpen = Boolean(openManagementGroups.mail);
+                          return (
+                            <div key={child.href}>
+                              <NavGroupButton
+                                icon={child.icon}
+                                label={translate(language, child.navKey as TranslationKey)}
+                                active={pathname === child.href || pathname.startsWith(`${child.href}/`)}
+                                open={mailOpen}
+                                collapsed={collapsed}
+                                onClick={() => setOpenManagementGroups((groups) => ({ ...groups, mail: !groups.mail }))}
+                              />
+                              {mailOpen && templateSection && (
+                                <div className="mt-1 space-y-1 pl-6">
+                                  <SubNavItem
+                                    href={child.href}
+                                    icon={Settings}
+                                    label={translate(language, "nav.mailAdmin")}
+                                    active={pathname === child.href}
+                                    onClick={() => setMobileOpen(false)}
+                                  />
+                                  <SubNavItem
+                                    href={templateSection.href}
+                                    icon={BookOpenCheck}
+                                    label={translate(language, templateSection.navKey as TranslationKey)}
+                                    active={pathname === templateSection.href || pathname.startsWith(`${templateSection.href}/`)}
+                                    onClick={() => setMobileOpen(false)}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

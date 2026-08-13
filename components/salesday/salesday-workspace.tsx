@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, MapPin, Phone, Plus, UserRound } from "lucide-react";
 
 import { useSession } from "@/components/session-provider";
 import { useSalesDayDeviceRuntime } from "@/components/salesday/device-runtime-provider";
@@ -12,7 +13,26 @@ type AgendaAppointment = {
   id: string;
   sequence: number;
   status?: string;
-  relation?: { displayName?: string | null } | null;
+  externalId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  outcomeReasonExternalId?: string | null;
+  relation?: {
+    displayName?: string | null;
+    type?: string | null;
+    externalLinks?: Array<{ externalId: string }>;
+    contacts?: Array<{ name: string; phone?: string | null; mobile?: string | null; primary?: boolean }>;
+    addresses?: Array<{ street: string; houseNumber?: string | null; postalCode: string; city: string; primary?: boolean }>;
+  } | null;
+  salesDocuments?: Array<{
+    id: string;
+    documentNumber: string;
+    documentType: string;
+    status: string;
+    deliveryStatus: string;
+    amountIncludingVat: string;
+    currency: string;
+  }>;
   representative?: {
     id: string;
     firstName: string;
@@ -154,16 +174,19 @@ export function SalesDayWorkspace({ section, appointmentId }: { section?: string
 
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow="SalesDay" title={title} description={isDashboard ? t("salesday.dashboard.description") : t("salesday.workspace.scopeDescription")} />
-      <nav className="flex flex-wrap gap-2" aria-label="SalesDay">
-        <Link className="btn-secondary" href="/salesday">{t("salesday.dashboard.navOverview")}</Link>
-        <Link className="btn-secondary" href="/salesday/mijn-voorbereiding">{t("salesday.nav.preparation")}</Link>
-        <Link className="btn-secondary" href="/salesday/mijn-agenda">{t("salesday.nav.agenda")}</Link>
-        <Link className="btn-secondary" href="/salesday/mijn-voorraad">{t("salesday.nav.stock")}</Link>
-        <Link className="btn-secondary" href="/salesday/cash">{t("salesday.nav.cash")}</Link>
-        {!isRepresentative && <Link className="btn-secondary" href="/salesday/mijn-team">{t("salesday.nav.team")}</Link>}
-        {isRepresentative && <Link className="btn-secondary" href="/salesday/dagafsluiting">{t("salesday.nav.dayClosure")}</Link>}
-      </nav>
+      {section === "mijn-agenda" ? (
+        <AgendaSummary appointments={appointments} appointmentId={appointmentId} businessDate={state.value?.businessDate} language={user.language} />
+      ) : <>
+        <PageHeader eyebrow="SalesDay" title={title} description={isDashboard ? t("salesday.dashboard.description") : t("salesday.workspace.scopeDescription")} />
+        <nav className="flex flex-wrap gap-2" aria-label="SalesDay">
+          <Link className="btn-secondary" href="/salesday">{t("salesday.dashboard.navOverview")}</Link>
+          <Link className="btn-secondary" href="/salesday/mijn-voorbereiding">{t("salesday.nav.preparation")}</Link>
+          <Link className="btn-secondary" href="/salesday/mijn-agenda">{t("salesday.nav.agenda")}</Link>
+          <Link className="btn-secondary" href="/salesday/mijn-voorraad">{t("salesday.nav.stock")}</Link>
+          <Link className="btn-secondary" href="/salesday/cash">{t("salesday.nav.cash")}</Link>
+          {!isRepresentative && <Link className="btn-secondary" href="/salesday/mijn-team">{t("salesday.nav.team")}</Link>}
+          {isRepresentative && <Link className="btn-secondary" href="/salesday/dagafsluiting">{t("salesday.nav.dayClosure")}</Link>}
+        </nav>
       {isDashboard
         ? <OperationalDashboardSummary dashboard={state.value ?? {}} language={user.language} />
         : section === "mijn-team"
@@ -177,6 +200,7 @@ export function SalesDayWorkspace({ section, appointmentId }: { section?: string
           : section === "documenten"
             ? <DocumentSummary documents={state.value?.documents ?? []} appointmentId={appointmentId} language={user.language} />
             : <AgendaSummary appointments={appointments} appointmentId={appointmentId} language={user.language} />}
+      </>}
     </div>
   );
 }
@@ -263,36 +287,86 @@ function DashboardMetric({ label, value, detail, tone = "default" }: { label: st
   );
 }
 
-function AgendaSummary({ appointments, appointmentId, language }: { appointments: AgendaAppointment[]; appointmentId?: string; language: SalesDayWorkspaceLanguage }) {
+function AgendaSummary({ appointments, appointmentId, businessDate, language }: { appointments: AgendaAppointment[]; appointmentId?: string; businessDate?: string; language: SalesDayWorkspaceLanguage }) {
   const t = (key: TranslationKey) => translate(language, key);
-  if (!appointments.length) return <EmptyState title={t("salesday.appointments.emptyTitle")} description={t("salesday.appointments.emptyDescription")} />;
-  const grouped = groupAppointmentsByRepresentative(appointments);
-  if (grouped.length > 1 || grouped[0]?.representative) {
-    return (
-      <div className="grid gap-4">
-        {grouped.map((group) => (
-          <section key={group.key} className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
-              <div>
-                <h2 className="font-semibold text-slate-950">{representativeName(group.representative, t("salesday.appointments.customerFallback"))}</h2>
-                <p className="text-sm text-slate-500">{group.representative?.team?.name ?? group.representative?.country ?? ""}</p>
-              </div>
-              <StatusBadge status="open" label={`${group.items.length} ${t("salesday.dashboard.appointments").toLowerCase()}`} />
+  const openAppointments = appointments.filter((appointment) => appointment.status === "PLANNED" || !appointment.status);
+  const grouped = groupAppointmentsByRepresentative(openAppointments);
+  const noTimeCount = appointments.filter((appointment) => appointment.status === "NOT_COMPLETED" || /no.?time|geen.?tijd/i.test(appointment.outcomeReasonExternalId ?? "")).length;
+  const absentCount = appointments.filter((appointment) => appointment.status === "CANCELLED" || /absent|afwezig/i.test(appointment.outcomeReasonExternalId ?? "")).length;
+
+  return (
+    <div className="space-y-4">
+      <header className="card border-brand-100 p-3 sm:p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700">
+              <CalendarDays className="h-6 w-6" aria-hidden="true" />
             </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="min-w-0">
+              <p className="eyebrow mb-1">{t("salesday.agenda.eyebrow")}</p>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-950">{t("salesday.agenda.title")}</h1>
+              <p className="mt-1 text-sm text-slate-500">{t("salesday.agenda.description")}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <time dateTime={businessDate} className="inline-flex min-h-10 items-center rounded-xl border border-brand-100 bg-brand-50 px-3 text-sm font-semibold text-brand-800">
+              {formatBusinessDate(businessDate, language)}
+            </time>
+            <Link className="btn-secondary min-h-10" href="/salesday/mijn-agenda?new=appointment"><Plus className="h-4 w-4" aria-hidden="true" />{t("salesday.agenda.newAppointment")}</Link>
+            <Link className="btn-secondary min-h-10" href="/salesday/mijn-agenda?new=prospect"><Plus className="h-4 w-4" aria-hidden="true" />{t("salesday.agenda.newProspect")}</Link>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <AgendaMetric icon={CalendarDays} label={t("salesday.agenda.totalAppointments")} value={appointments.length} />
+        <AgendaMetric icon={Clock3} label={t("salesday.agenda.toDo")} value={openAppointments.length} />
+        <AgendaMetric icon={CheckCircle2} label={t("salesday.agenda.completed")} value={appointments.filter((appointment) => appointment.status === "COMPLETED").length} />
+        <AgendaMetric icon={Clock3} label={t("salesday.agenda.noTime")} value={noTimeCount} />
+        <AgendaMetric icon={UserRound} label={t("salesday.agenda.customerAbsent")} value={absentCount} />
+      </div>
+
+      {!appointments.length ? (
+        <EmptyState title={t("salesday.appointments.emptyTitle")} description={t("salesday.appointments.emptyDescription")} />
+      ) : (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <h2 className="eyebrow">{t("salesday.agenda.openAppointments")}</h2>
+            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">{openAppointments.length}</span>
+          </div>
+          {openAppointments.length ? grouped.map((group) => (
+            <div key={group.key} className="space-y-2">
+              {grouped.length > 1 && group.representative && (
+                <div className="flex items-center justify-between border-b border-slate-200 px-1 pb-2 pt-2">
+                  <div>
+                    <h3 className="font-semibold text-slate-950">{representativeName(group.representative, t("salesday.appointments.customerFallback"))}</h3>
+                    <p className="text-xs text-slate-500">{group.representative.team?.name ?? group.representative.country}</p>
+                  </div>
+                  <StatusBadge status="open" label={`${group.items.length} ${t("salesday.dashboard.appointments").toLowerCase()}`} />
+                </div>
+              )}
               {group.items.map((appointment) => (
                 <AgendaAppointmentCard key={appointment.id} appointment={appointment} appointmentId={appointmentId} language={language} />
               ))}
             </div>
-          </section>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <div className="grid gap-3">
-      {appointments.map((appointment) => <AgendaAppointmentCard key={appointment.id} appointment={appointment} appointmentId={appointmentId} language={language} />)}
+          )) : <EmptyState title={t("salesday.agenda.noOpenTitle")} description={t("salesday.agenda.noOpenDescription")} />}
+        </section>
+      )}
     </div>
+  );
+}
+
+function AgendaMetric({ icon: Icon, label, value }: { icon: typeof CalendarDays; label: string; value: number }) {
+  return (
+    <article className="card flex items-center gap-3 rounded-xl border-slate-200 bg-slate-50/70 px-3 py-2.5">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-100 text-brand-700">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-lg font-bold leading-5 text-slate-950">{value}</p>
+      </div>
+    </article>
   );
 }
 
@@ -325,17 +399,45 @@ function PreparationSummary({ preparations, language }: { preparations: Preparat
 
 function AgendaAppointmentCard({ appointment, appointmentId, language }: { appointment: AgendaAppointment; appointmentId?: string; language: SalesDayWorkspaceLanguage }) {
   const t = (key: TranslationKey) => translate(language, key);
+  const address = appointment.relation?.addresses?.find((item) => item.primary) ?? appointment.relation?.addresses?.[0];
+  const contact = appointment.relation?.contacts?.find((item) => item.primary) ?? appointment.relation?.contacts?.[0];
+  const phone = contact?.phone ?? contact?.mobile;
+  const document = appointment.salesDocuments?.[0];
+  const relationType = appointment.relation?.type === "PROSPECT" ? t("salesday.agenda.prospect") : t("salesday.agenda.customer");
+  const identifier = appointment.externalId ?? appointment.relation?.externalLinks?.[0]?.externalId;
   return (
-    <article id={appointment.id === appointmentId ? "appointment" : undefined} className="card p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">#{appointment.sequence}</p>
-          <h3 className="font-semibold text-slate-900">{appointment.relation?.displayName ?? t("salesday.appointments.customerFallback")}</h3>
+    <article id={appointment.id === appointmentId ? "appointment" : undefined} className="card border-l-4 border-l-brand-700 p-2.5 sm:p-3">
+      <div className="grid gap-3 lg:grid-cols-[4.75rem_minmax(0,1fr)_13rem_13.5rem] lg:items-center">
+        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center lg:self-stretch lg:pt-2.5">
+          <p className="text-sm font-bold leading-5 text-slate-950">{formatTime(appointment.startsAt, language)}</p>
+          <p className="text-sm font-bold leading-5 text-slate-950">{formatTime(appointment.endsAt, language)}</p>
+          <span className="mt-1 inline-flex rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600 ring-1 ring-slate-200">{t("salesday.agenda.open")}</span>
         </div>
-        <StatusBadge status={appointment.status?.toLowerCase() ?? "open"} label={appointment.status ?? t("salesday.appointments.planned")} />
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Link className="btn-secondary min-h-10" href={`/salesday/documenten/${appointment.id}`}>{t("salesday.appointments.documents")}</Link>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${relationType === t("salesday.agenda.prospect") ? "bg-amber-100 text-amber-800" : "bg-cyan-100 text-cyan-800"}`}>{relationType}</span>
+            {identifier && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{identifier}</span>}
+            <StatusBadge status="gepland" label={t("salesday.agenda.planned")} />
+            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${relationType === t("salesday.agenda.prospect") ? "bg-amber-100 text-amber-800" : "bg-amber-100 text-amber-800"}`}>{relationType}</span>
+          </div>
+          <h3 className="mt-1.5 truncate text-sm font-bold text-slate-950">{appointment.relation?.displayName ?? t("salesday.appointments.customerFallback")}</h3>
+          {address && <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-500"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-700" aria-hidden="true" />{formatAddress(address)}</p>}
+          {document && <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800">{documentTypeLabel(document.documentType, t)} {document.documentNumber} · {document.amountIncludingVat} {document.currency} · {documentStatusLabel(document.status, t)}</div>}
+        </div>
+
+        <div className="text-xs text-slate-600">
+          <p className="flex items-center gap-1.5"><UserRound className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />{contact?.name ?? representativeName(appointment.representative, t("salesday.agenda.noContact"))}</p>
+          {phone && <p className="mt-1 flex items-center gap-1.5"><Phone className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />{phone}</p>}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Link className="btn-primary min-h-9 w-full px-3 py-2" href={`/salesday/documenten/${appointment.id}`}><ArrowUpRight className="h-4 w-4" aria-hidden="true" />{t("salesday.agenda.openAppointment")}</Link>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Link className="btn-secondary min-h-9 px-2 py-2 text-xs" href={`/salesday/mijn-agenda/${appointment.id}?outcome=not-completed`}>{t("salesday.agenda.noTime")}</Link>
+            <Link className="btn-secondary min-h-9 px-2 py-2 text-xs" href={`/salesday/mijn-agenda/${appointment.id}?duplicate=1`}>{t("salesday.agenda.duplicate")}</Link>
+          </div>
+        </div>
       </div>
     </article>
   );
@@ -513,6 +615,37 @@ function localeForLanguage(language: SalesDayWorkspaceLanguage) {
   if (language === "fr") return "fr-BE";
   if (language === "de") return "de-DE";
   return "nl-BE";
+}
+
+function formatBusinessDate(value: string | undefined, language: SalesDayWorkspaceLanguage) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(localeForLanguage(language), { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatTime(value: string | null | undefined, language: SalesDayWorkspaceLanguage) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString(localeForLanguage(language), { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatAddress(address: { street: string; houseNumber?: string | null; postalCode: string; city: string }) {
+  return `${address.street}${address.houseNumber ? ` ${address.houseNumber}` : ""}, ${address.postalCode} ${address.city}`;
+}
+
+function documentTypeLabel(documentType: string, t: (key: TranslationKey) => string) {
+  if (documentType === "OFFER") return t("salesday.agenda.offer");
+  if (documentType === "ORDER") return t("salesday.agenda.order");
+  if (documentType === "INVOICE") return t("salesday.agenda.invoice");
+  return documentType.replaceAll("_", " ");
+}
+
+function documentStatusLabel(status: string, t: (key: TranslationKey) => string) {
+  if (status === "SENT") return t("salesday.agenda.sent");
+  if (status === "ACCEPTED") return t("salesday.agenda.accepted");
+  return status.replaceAll("_", " ");
 }
 
 function formatDate(value?: string | null, language: SalesDayWorkspaceLanguage = "nl") {

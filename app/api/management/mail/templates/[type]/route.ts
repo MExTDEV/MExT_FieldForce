@@ -1,6 +1,6 @@
 import { badRequest, handleApi } from "@/lib/server/api";
 import { requireAuthenticatedUser } from "@/lib/server/authenticated-user";
-import { getMailTemplateEditor, publishMailTemplateVersion, restoreMailTemplateVersion, saveMailTemplateDraft, sendMailTemplateTest } from "@/lib/server/mail-management";
+import { getMailTemplateEditor, publishMailTemplateVersion, restoreMailTemplateVersion, saveMailTemplateDraft, sendMailTemplateTest, sendMailTemplateDraftTest } from "@/lib/server/mail-management";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +41,9 @@ export async function POST(request: Request, context: { params: Promise<{ type: 
     }
     if (action === "test" && typeof payload.versionId === "string") {
       return { result: await sendMailTemplateTest(actor, payload.versionId) };
+    }
+    if (action === "testCurrent") {
+      return { result: await sendMailTemplateDraftTest(actor, { type, country: payload.country as "BE" | "NL" | "DE", language: payload.language as "nl" | "fr" | "de", subject: String(payload.subject ?? ""), preheader: String(payload.preheader ?? ""), bodyHtml: String(payload.bodyHtml ?? "") }) };
     }
     badRequest(`Onbekende templateactie voor ${type}.`);
   }, "De templateactie kon niet worden uitgevoerd.");
