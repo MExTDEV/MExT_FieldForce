@@ -25,6 +25,7 @@ export const completedCoachingStatuses = new Set([
   "verzonden_ter_akkoord",
   "akkoord_door_vertegenwoordiger",
   "niet_uitgevoerd",
+  "geannuleerd",
 ]);
 
 export function dedupeById<T extends { id: string }>(items: T[]): T[] {
@@ -52,7 +53,8 @@ export function canViewCoaching(
   if (currentUser.role === "REPRESENTATIVE") {
     return isCurrentUserCoachingTarget(currentUser, intervention) && (
       representativeReviewStatuses.has(intervention.status) ||
-      (intervention.status === "gepland" && intervention.notifyRepresentative === true)
+      (intervention.status === "gepland" && intervention.notifyRepresentative === true) ||
+      (intervention.status === "geannuleerd" && intervention.notifyRepresentative === true)
     );
   }
   return intervention.country === currentUser.country;
@@ -64,7 +66,8 @@ export function canOpenCoachingDetail(
 ) {
   if (currentUser.role === "REPRESENTATIVE") {
     return isCurrentUserCoachingTarget(currentUser, intervention) &&
-      representativeReviewStatuses.has(intervention.status);
+      representativeReviewStatuses.has(intervention.status) ||
+      (intervention.status === "geannuleerd" && intervention.notifyRepresentative === true);
   }
   return canViewCoaching(currentUser, intervention);
 }

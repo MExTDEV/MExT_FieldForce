@@ -677,6 +677,13 @@ export type CoachingIntervention = {
   preparationReferenceCoachingId?: string;
   historicAccessSettings?: string;
   deletedAt?: string;
+  cancelledAt?: string;
+  cancelledById?: string;
+  cancellationReason?: string;
+  cancelledPreviousStatus?: Status;
+  calendarCancellationPending?: boolean;
+  calendarCancellationError?: string;
+  notificationRecipientIds?: string[];
   outlookEventId?: string;
   outlookICalUId?: string;
   outlookSyncStatus: "NOT_SYNCED" | "SYNCED" | "ERROR";

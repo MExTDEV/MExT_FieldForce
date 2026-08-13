@@ -104,6 +104,21 @@ Other users:
 
 - see read-only mode unless the approval request is withdrawn according to the workflow.
 
+## Annulering
+
+Bij iedere toekomstige, nog niet gestarte geplande begeleiding tonen Dashboard
+en de gedeelde workflowdata een beheeractie wanneer de bestaande
+scope-/beheerrechten dit toestaan. De actie opent een bevestigingsvenster met
+begeleide gebruiker, datum/tijd, uitvoerder en Outlook-waarschuwing en vereist
+een annuleringsreden.
+
+De begeleiding wordt niet fysiek verwijderd. `GEANNULEERD` blijft beschikbaar
+in historie en audit, maar is niet meer uitvoerbaar of zichtbaar als actieve
+toekomstige begeleiding. De oorspronkelijk geregistreerde ontvangers krijgen
+de annulering via de bestaande interne notificatie- en mailkanalen; MAIL TEST
+blijft centraal afdwingen dat echte gebruikers nooit mail ontvangen wanneer de
+testmodus actief is.
+
 ## Completed
 
 Opens report/history mode.

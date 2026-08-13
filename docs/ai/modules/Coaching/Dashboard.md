@@ -23,6 +23,11 @@ The data source must reuse shared visibility and workflow logic used by Planning
 
 Do not create a separate dashboard-only workflow dataset.
 
+Toekomstige geplande Begeleidingen tonen een compacte beheeractie wanneer de
+actieve gebruiker volgens de bestaande scope- en lifecyclechecks mag beheren.
+Annulering gebruikt de gedeelde Begeleiding-endpoint en verwijdert de rij na
+een geslaagde serverbevestiging direct uit de actieve dashboardweergave.
+
 ---
 
 # Personal ToDos

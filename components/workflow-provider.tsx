@@ -72,6 +72,7 @@ type WorkflowContextValue = {
   saveConcept: (input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
   finalizeCoaching: (input: CoachingWorkflowInput) => Promise<CoachingIntervention>;
   saveCoachingStatus: (input: CoachingWorkflowInput, status: Status) => Promise<CoachingIntervention>;
+  cancelCoaching: (id: string, reason: string) => Promise<CoachingIntervention>;
   transitionCoaching: (id: string, action: "reopen" | "send_for_approval" | "approve") => Promise<CoachingIntervention>;
   saveApprovalReflection: (
     approvalId: string,
@@ -394,6 +395,17 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     saveConcept: (input) => upsertIntervention(input, "concept"),
     finalizeCoaching: (input) => upsertIntervention(input, "voltooid"),
     saveCoachingStatus: upsertIntervention,
+    cancelCoaching: async (id, reason) => {
+      const response = await fetch(`/api/workflows/coaching/${encodeURIComponent(id)}/cancel?actorId=${encodeURIComponent(user.id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const payload = await response.json() as { intervention?: CoachingIntervention; error?: string };
+      if (!response.ok || !payload.intervention) throw new Error(payload.error ?? "De begeleiding kon niet worden geannuleerd.");
+      setState((current) => mergeWorkflowStatePatch(current, { interventions: [payload.intervention!] }));
+      return payload.intervention;
+    },
     transitionCoaching,
     saveApprovalReflection,
     submitReflection,
@@ -514,6 +526,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     upsertIntervention,
     updateState,
     visibleInterventions,
+    user,
   ]);
 
   return <WorkflowContext.Provider value={value}>{children}</WorkflowContext.Provider>;

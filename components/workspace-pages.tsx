@@ -144,6 +144,7 @@ import {
 } from "@/lib/my-team";
 import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, MockUser, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowActionPoint, WorkflowScore } from "@/lib/types";
 import {
+  canCancelFutureCoaching,
   canEditFutureCoachingPlanning,
   canManageCoaching,
   coachingOpenHref,
@@ -1016,9 +1017,10 @@ function Dashboard() {
           sortAt,
           owner: reportingUserName(item.ownerId, managedUsers),
           status: item.status,
+          coaching: item,
         };
       }),
-    ...scopedOtherMoments,
+    ...scopedOtherMoments.map((item) => ({ ...item, coaching: undefined })),
   ])
     .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
     .slice(0, 5);
@@ -1101,6 +1103,7 @@ function Dashboard() {
                   <p className="mt-1 text-xs capitalize text-slate-500">{item.type.replace("_", " ")} · {item.owner}</p>
                 </div>
                 <StatusBadge status={item.status} />
+                {item.coaching && canCancelFutureCoaching(user, item.coaching) && <DashboardCoachingCancel intervention={item.coaching} />}
               </div>
             ))}
           </div>
@@ -1125,6 +1128,55 @@ function Dashboard() {
         )}
       </section>
     </div>
+  );
+}
+
+function DashboardCoachingCancel({ intervention }: { intervention: CoachingIntervention }) {
+  const { managedUsers, language } = useSession();
+  const { cancelCoaching } = useWorkflow();
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const representativeName = intervention.subject ? `${intervention.subject.firstName} ${intervention.subject.lastName}`.trim() : t("coaching.dashboard.unknown");
+  const dateTime = `${intervention.plannedDate ?? "-"} ${intervention.startTime ?? ""}${intervention.endTime ? ` - ${intervention.endTime}` : ""}`.trim();
+  async function handleCancel() {
+    if (!reason.trim() || busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await cancelCoaching(intervention.id, reason.trim());
+      setOpen(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("coaching.cancel.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-700" aria-label={t("coaching.cancel.open")} onClick={(event) => { event.stopPropagation(); setOpen(true); }}>
+        <MoreHorizontal className="h-5 w-5" />
+      </button>
+      {open && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby={`cancel-title-${intervention.id}`}>
+        <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="flex items-start justify-between gap-4">
+            <div><p className="eyebrow">{t("coaching.cancel.eyebrow")}</p><h2 id={`cancel-title-${intervention.id}`} className="mt-1 text-xl font-bold text-slate-950">{t("coaching.cancel.title")}</h2></div>
+            <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={() => setOpen(false)} aria-label={t("coaching.cancel.close")}><X className="h-5 w-5" /></button>
+          </div>
+          <div className="mt-4 space-y-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+            <p><strong>{t("coaching.cancel.coachedUser")}:</strong> {representativeName}</p>
+            <p><strong>{t("coaching.cancel.dateTime")}:</strong> {dateTime}</p>
+            <p><strong>{t("coaching.cancel.coach")}:</strong> {reportingUserName(intervention.ownerId, managedUsers)}</p>
+          </div>
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{t("coaching.cancel.outlookWarning")}</p>
+          <label className="mt-4 block"><span className="mb-2 block text-sm font-bold text-slate-800">{t("coaching.cancel.reason")}</span><textarea className="field min-h-24 w-full" value={reason} onChange={(event) => setReason(event.target.value)} required disabled={busy} /></label>
+          {error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+          <div className="mt-5 flex justify-end gap-2"><button type="button" className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>{t("coaching.cancel.abort")}</button><button type="button" className="btn-primary bg-rose-700 hover:bg-rose-800 disabled:opacity-60" disabled={busy || !reason.trim()} onClick={() => void handleCancel()}>{busy ? t("coaching.cancel.deleting") : t("coaching.cancel.confirm")}</button></div>
+        </div>
+      </div>}
+    </>
   );
 }
 
@@ -5017,7 +5069,7 @@ function InterventionList({ kind }: { kind: string }) {
     )
     .sort((left, right) => left.executionAt - right.executionAt);
   const completedRows = filteredRows
-    .filter((item) => completedCoachingStatuses.has(item.status))
+    .filter((item) => completedCoachingStatuses.has(item.status) || item.status === "geannuleerd")
     .sort((left, right) => right.executionAt - left.executionAt);
 
   const allScopeGroups = buildCoachingScopeGroups(user, allRows);

@@ -35,6 +35,7 @@ export function buildCoachingVisibilityFilter(
       OR: [
         { status: { in: [...representativeReviewStatuses] } },
         { status: "GEPLAND", notifyRepresentative: true },
+        { status: "GEANNULEERD", notifyRepresentative: true },
       ],
     };
   }
@@ -47,7 +48,10 @@ export function buildCoachingDetailAccessFilter(
   if (currentUser.role === "REPRESENTATIVE") {
     return {
       representativeId: currentUser.id,
-      status: { in: [...representativeReviewStatuses] },
+      OR: [
+        { status: { in: [...representativeReviewStatuses] } },
+        { status: "GEANNULEERD", notifyRepresentative: true },
+      ],
     };
   }
   return buildCoachingVisibilityFilter(currentUser);

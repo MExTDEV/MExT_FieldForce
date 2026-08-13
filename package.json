@@ -33,6 +33,8 @@
     "test:coaching-historical-comparison": "tsx scripts/test-coaching-historical-comparison.ts",
     "test:coaching-preparation-reference": "tsx scripts/test-coaching-preparation-reference.ts",
     "test:coaching-schedule-refresh": "tsx scripts/test-coaching-schedule-refresh.ts",
+    "test:coaching-business-days": "tsx scripts/test-coaching-business-days.ts",
+    "test:coaching-cancellation": "tsx scripts/test-coaching-cancellation.ts",
     "test:coaching-approval-actions": "tsx scripts/test-coaching-approval-actions.ts",
     "test:coaching-report-score": "tsx scripts/test-coaching-report-score.ts",
     "test:coaching-appointment-scores": "tsx scripts/test-coaching-appointment-scores.ts",

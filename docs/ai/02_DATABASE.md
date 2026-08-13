@@ -32,6 +32,13 @@ Prisma is the source of truth for application-level database access.
 
 Database changes must be made through the Prisma schema and migration workflow.
 
+Migration `0058_coaching_cancellation` voegt uitsluitend annulatiemetadata toe
+aan `Intervention`: tijdstip, uitvoerder, reden, vorige status,
+`calendarCancellationPending`/fout en een snapshot van oorspronkelijke
+notificatie-ontvangers. `NotificationDelivery` bewaart optioneel het
+weergegeven bericht voor annuleringen. Begeleidingen worden niet fysiek
+verwijderd.
+
 Direct manual schema changes in production are not allowed unless explicitly documented as an exceptional recovery action.
 
 All names and free text must preserve Dutch, French and German characters end to end. Imports must not silently convert Windows-1252, ISO-8859-1 or already damaged text into stored business data. Use the UTF-8 diagnostic script before repairing stored text, and only repair `U+FFFD` records when the intended value is known from a reliable source.

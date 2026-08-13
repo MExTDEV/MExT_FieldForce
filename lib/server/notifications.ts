@@ -38,6 +38,7 @@ const inAppNotificationSelect = {
   entityType: true,
   entityId: true,
   originalTo: true,
+  message: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.NotificationDeliverySelect;
@@ -63,6 +64,12 @@ const notificationMetadata: Record<
     entityType: "coaching",
     titleKey: "notifications.coaching.planned.title",
     bodyKey: "notifications.coaching.planned.body",
+    link: (entityId) => `/begeleidingen/${entityId}`,
+  },
+  COACHING_CANCELLED: {
+    entityType: "coaching",
+    titleKey: "notifications.coaching.cancelled.title",
+    bodyKey: "notifications.coaching.cancelled.body",
     link: (entityId) => `/begeleidingen/${entityId}`,
   },
   COACHING_APPROVAL_CONFIRMED: {
@@ -196,6 +203,7 @@ export async function createInAppNotification(
     eventKey?: string;
     triggeredByUserId?: string;
     sourceModule?: string;
+    message?: string;
   }
 ) {
   const metadata = notificationMetadata[input.type];
@@ -218,6 +226,7 @@ export async function createInAppNotification(
       entityId: input.entityId,
       mailTestActive: false,
       originalTo: input.triggeredByUserId,
+      message: input.message,
     },
     update: {
       status: inAppUnreadStatus,
@@ -225,6 +234,7 @@ export async function createInAppNotification(
       entityType: metadata.entityType,
       entityId: input.entityId,
       originalTo: input.triggeredByUserId,
+      message: input.message,
       updatedAt: new Date(),
     },
   });
@@ -401,7 +411,7 @@ export async function markNotificationsForEntityAsRead(
 }
 
 export function buildInAppNotification(
-  row: InAppNotificationRecord,
+  row: Omit<InAppNotificationRecord, "message"> & { message?: string | null },
   language: NotificationLanguage
 ): AppNotification | undefined {
   const type = notificationTypeFromEventKey(row.eventKey);
@@ -414,7 +424,7 @@ export function buildInAppNotification(
     targetUserId: row.recipientUserId,
     type,
     title: translate(language, metadata.titleKey),
-    body: translate(language, metadata.bodyKey),
+    body: row.message ?? translate(language, metadata.bodyKey),
     linkUrl: metadata.link(row.entityId),
     entityType: metadata.entityType,
     entityId: row.entityId,
