@@ -247,6 +247,24 @@ export async function transferCoachingsBetweenOwners(
   }
 }
 
+export async function cancelStoredOutlookEvent(
+  actorAccessToken: string,
+  actorId: string,
+  interventionId: string,
+) {
+  const stored = await prisma.intervention.findUnique({
+    where: { id: interventionId },
+    select: { ownerId: true, outlookEventId: true },
+  });
+  if (!stored?.outlookEventId) return { eventId: undefined };
+  const ownerAccessToken = stored.ownerId === actorId
+    ? actorAccessToken
+    : await getValidMicrosoftAccessToken(stored.ownerId);
+  if (!ownerAccessToken) throw new Error("De eigenaar heeft geen geldige Microsoft-agendakoppeling.");
+  await deleteGraphEvent(ownerAccessToken, stored.outlookEventId);
+  return { eventId: stored.outlookEventId };
+}
+
 export async function recordOutlookSyncFailure(
   actorId: string,
   items: Array<Pick<CoachingIntervention, "id"> | Pick<ContactMoment, "id">>,

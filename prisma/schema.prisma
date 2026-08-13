@@ -1161,6 +1161,13 @@ model Intervention {
   approvedByRepAt                DateTime?
   approvedByRepId                String?
   deletedAt                      DateTime?
+  cancelledAt                    DateTime?
+  cancelledById                  String?
+  cancellationReason             String?                     @db.Text
+  cancelledPreviousStatus        InterventionStatus?
+  calendarCancellationPending    Boolean                     @default(false)
+  calendarCancellationError      String?                     @db.Text
+  notificationRecipientIdsJson   String?                     @db.LongText
   outlookEventId                 String?
   outlookICalUId                 String?
   outlookSyncStatus              OutlookSyncStatus           @default(NOT_SYNCED)
@@ -1964,6 +1971,7 @@ model NotificationDelivery {
   originalCc      String?   @db.Text
   originalBcc     String?   @db.Text
   actualTo        String?   @db.Text
+  message         String?   @db.Text
   error           String?   @db.Text
   sentAt          DateTime?
   createdAt       DateTime  @default(now())

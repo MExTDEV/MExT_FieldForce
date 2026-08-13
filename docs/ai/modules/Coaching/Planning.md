@@ -94,6 +94,10 @@ FieldForce items may synchronise to Outlook when the integration is configured.
 
 The FieldForce record remains the business source of truth.
 
+Een geannuleerde Begeleiding is geen actief Planning-item. De historische
+record blijft raadpleegbaar via de modulehistoriek; een Outlook-annulering
+gebruikt altijd de opgeslagen Graph-event-ID en niet onderwerp of datum.
+
 Do not create duplicate FieldForce records when synchronisation retries.
 
 When a Begeleiding is planned from FieldForce, the saved FieldForce record is

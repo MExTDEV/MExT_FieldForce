@@ -33,6 +33,10 @@ const templateKeys: Partial<Record<AppNotificationType, { title: Parameters<type
     title: "notifications.coaching.planned.title",
     body: "notifications.coaching.planned.body",
   },
+  COACHING_CANCELLED: {
+    title: "notifications.coaching.cancelled.title",
+    body: "notifications.coaching.cancelled.body",
+  },
   COACHING_APPROVAL_CONFIRMED: {
     title: "notifications.coachingApproval.confirmed.title",
     body: "notifications.coachingApproval.confirmed.body",

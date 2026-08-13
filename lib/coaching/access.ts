@@ -38,6 +38,17 @@ export function canEditFutureCoachingPlanning(
     canManageCoaching(currentUser, intervention);
 }
 
+export function canCancelFutureCoaching(
+  currentUser: MockUser,
+  intervention: CoachingIntervention,
+  today = localDateKey(),
+) {
+  return intervention.status === "gepland" &&
+    (intervention.plannedDate ?? "") > today &&
+    !intervention.actualStartedAt &&
+    canManageCoaching(currentUser, intervention);
+}
+
 export function coachingOpenHref(
   currentUser: MockUser,
   intervention: CoachingIntervention,

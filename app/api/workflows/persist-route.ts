@@ -273,7 +273,7 @@ async function createCoachingPlannedNotifications(
 ) {
   const plannedCoachings = (patch.interventions ?? []).filter((coaching) =>
     coaching.status === "gepland" &&
-    coaching.notifyRepresentative &&
+    (coaching.notifyRepresentative || coaching.notifyCoachedRepresentative || coaching.notifyCoachedTeamLeaders || coaching.notifyExecutorTeamLeaders) &&
     !coaching.deletedAt &&
     shouldNotifyCoachingPlanning(coaching, coachingBefore.get(coaching.id))
   );
@@ -288,17 +288,46 @@ async function createCoachingPlannedNotifications(
         { representativeId: { in: targetKeys } },
       ],
     },
-    select: { id: true, representativeId: true },
+    select: { id: true, representativeId: true, teamId: true },
   });
   const usersById = new Map(targetUsers.map((user) => [user.id, user]));
   const usersByRepresentativeId = new Map(
     targetUsers.flatMap((user) => user.representativeId ? [[user.representativeId, user] as const] : [])
   );
+  const ownerIds = [...new Set(plannedCoachings.map((coaching) => coaching.ownerId).filter(Boolean))];
+  const ownerUsers = await prisma.user.findMany({
+    where: { id: { in: ownerIds }, active: true },
+    select: { id: true, teamId: true },
+  });
+  const ownerById = new Map(ownerUsers.map((user) => [user.id, user]));
+  const teamIds = [...new Set([...targetUsers, ...ownerUsers].map((user) => user.teamId).filter((id): id is string => Boolean(id)))];
+  const teams = await prisma.team.findMany({
+    where: { id: { in: teamIds } },
+    select: { id: true, primaryLeaderId: true, leaders: { select: { userId: true } } },
+  });
+  const leaderIdsByTeam = new Map(teams.map((team) => [team.id, new Set([
+    ...(team.primaryLeaderId ? [team.primaryLeaderId] : []),
+    ...team.leaders.map((leader) => leader.userId),
+  ])]));
 
   for (const coaching of plannedCoachings) {
     const targetUser = usersById.get(coaching.representativeId)
       ?? usersByRepresentativeId.get(coaching.representativeId);
-    if (!targetUser || targetUser.id === actorId) continue;
+    const ownerUser = ownerById.get(coaching.ownerId);
+    if (!targetUser) continue;
+    const recipientUserIds = new Set<string>();
+    if (coaching.notifyRepresentative || coaching.notifyCoachedRepresentative) recipientUserIds.add(targetUser.id);
+    if (coaching.notifyCoachedTeamLeaders && targetUser.teamId) {
+      for (const id of leaderIdsByTeam.get(targetUser.teamId) ?? []) recipientUserIds.add(id);
+    }
+    if (coaching.notifyExecutorTeamLeaders && ownerUser?.teamId) {
+      for (const id of leaderIdsByTeam.get(ownerUser.teamId) ?? []) recipientUserIds.add(id);
+    }
+    const notifiedUserIds = [...recipientUserIds].filter((id) => id !== actorId);
+    await prisma.intervention.update({
+      where: { id: coaching.id },
+      data: { notificationRecipientIdsJson: JSON.stringify(notifiedUserIds) },
+    });
 
     const eventKey = [
       "COACHING_PLANNED",
@@ -309,29 +338,31 @@ async function createCoachingPlannedNotifications(
       coaching.startTime ?? "",
       coaching.endTime ?? "",
     ].join(":");
-    await createInAppNotification(prisma, {
-      type: "COACHING_PLANNED",
-      recipientUserId: targetUser.id,
-      entityId: coaching.id,
-      eventKey,
-      triggeredByUserId: actorId,
-      sourceModule: "BEGELEIDINGEN",
-    });
-    await sendWorkflowMailSafely({
-      type: "COACHING_PLANNED",
-      recipientUserId: targetUser.id,
-      triggeredByUserId: actorId,
-      entityTitle: coaching.title,
-      linkUrl: `/begeleidingen/${coaching.id}`,
-      context: {
-        sourceModule: "BEGELEIDINGEN",
-        entityType: "Intervention",
+    for (const recipientUserId of notifiedUserIds) {
+      await createInAppNotification(prisma, {
+        type: "COACHING_PLANNED",
+        recipientUserId,
         entityId: coaching.id,
-        eventKey,
-        reason: "Begeleiding gepland",
-        sentAt: new Date(coaching.updatedAt ?? coaching.createdAt),
-      },
-    });
+        eventKey: `${eventKey}:${recipientUserId}`,
+        triggeredByUserId: actorId,
+        sourceModule: "BEGELEIDINGEN",
+      });
+      await sendWorkflowMailSafely({
+        type: "COACHING_PLANNED",
+        recipientUserId,
+        triggeredByUserId: actorId,
+        entityTitle: coaching.title,
+        linkUrl: `/begeleidingen/${coaching.id}`,
+        context: {
+          sourceModule: "BEGELEIDINGEN",
+          entityType: "Intervention",
+          entityId: coaching.id,
+          eventKey: `${eventKey}:${recipientUserId}`,
+          reason: "Begeleiding gepland",
+          sentAt: new Date(coaching.updatedAt ?? coaching.createdAt),
+        },
+      });
+    }
   }
 }
 

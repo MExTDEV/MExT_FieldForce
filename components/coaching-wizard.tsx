@@ -33,6 +33,7 @@ import {
   type PreparationScoreRow,
 } from "@/lib/coaching/preparation-reference";
 import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
+import { defaultCoachingDate } from "@/lib/coaching/business-days";
 import { canCreateCoachingIntervention } from "@/lib/permissions";
 import { translate } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n";
@@ -101,7 +102,7 @@ export function CoachingWizard() {
     actorId: user.id,
     representativeId: "",
     ownerId: user.id,
-    plannedDate: isPlanningDateParam(planningDate) ? planningDate! : new Date().toISOString().slice(0, 10),
+    plannedDate: isPlanningDateParam(planningDate) ? planningDate! : defaultCoachingDate(),
     startTime: "09:00",
     endTime: "11:00",
     notifyRepresentative: false,
@@ -160,7 +161,7 @@ export function CoachingWizard() {
       id: existing.id,
       representativeId: existing.representativeId,
       ownerId: existing.ownerId,
-      plannedDate: existing.plannedDate ?? new Date().toISOString().slice(0, 10),
+      plannedDate: existing.plannedDate ?? defaultCoachingDate(),
       startTime: existing.startTime ?? "09:00",
       endTime: existing.endTime ?? "11:00",
       notifyRepresentative: existing.notifyRepresentative ?? false,

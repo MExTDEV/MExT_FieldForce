@@ -37,6 +37,7 @@ import {
 } from "@/lib/server/criterion-scopes";
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { loadContactMomentPhotosByInterventionIds } from "@/lib/server/contact-moment-photos";
+import { defaultCoachingDate } from "@/lib/coaching/business-days";
 
 type JsonArray = string[];
 
@@ -111,15 +112,16 @@ export async function loadWorkflowStateFromDatabase(
   }
   for (const audit of auditLogs) {
     const entries = auditByIntervention.get(audit.entityId) ?? [];
+    const newValue = parseAuditValue(audit.newValue);
     entries.push({
       id: audit.id,
       at: audit.createdAt.toISOString(),
       userId: audit.userId,
       userName: `${audit.user.firstName} ${audit.user.lastName}`.trim(),
       action: audit.action,
-      summary: auditSummary(audit.action),
+      summary: auditSummary(audit.action, newValue),
       oldValue: parseAuditValue(audit.oldValue),
-      newValue: parseAuditValue(audit.newValue),
+      newValue,
     });
     auditByIntervention.set(audit.entityId, entries);
   }
@@ -190,6 +192,13 @@ export async function loadWorkflowStateFromDatabase(
         preparationReferenceCoachingId: item.preparationReferenceCoachingId ?? undefined,
         historicAccessSettings: item.historicAccessSettings ?? undefined,
         deletedAt: item.deletedAt?.toISOString(),
+        cancelledAt: item.cancelledAt?.toISOString(),
+        cancelledById: item.cancelledById ?? undefined,
+        cancellationReason: item.cancellationReason ?? undefined,
+        cancelledPreviousStatus: item.cancelledPreviousStatus ? fromInterventionStatus(item.cancelledPreviousStatus) : undefined,
+        calendarCancellationPending: item.calendarCancellationPending,
+        calendarCancellationError: item.calendarCancellationError ?? undefined,
+        notificationRecipientIds: parseJsonArray(item.notificationRecipientIdsJson ?? ""),
         outlookEventId: item.outlookEventId ?? undefined,
         outlookICalUId: item.outlookICalUId ?? undefined,
         outlookSyncStatus: item.outlookSyncStatus,
@@ -989,7 +998,8 @@ function interventionData(
   const baseDate =
     date ??
     ("plannedDate" in item ? item.plannedDate : undefined) ??
-    ("date" in item ? item.date : undefined);
+    ("date" in item ? item.date : undefined) ??
+    (type === "BEGELEIDING" && "status" in item && item.status === "gepland" ? defaultCoachingDate() : undefined);
   return {
     id,
     type,
@@ -1043,6 +1053,13 @@ function interventionData(
     approvedByRepAt: "approvedByRepAt" in item ? dateFromString(item.approvedByRepAt) : undefined,
     approvedByRepId: "approvedByRepId" in item ? item.approvedByRepId : undefined,
     deletedAt: "deletedAt" in item ? dateFromString(item.deletedAt) : undefined,
+    cancelledAt: "cancelledAt" in item ? dateFromString(item.cancelledAt) : undefined,
+    cancelledById: "cancelledById" in item ? item.cancelledById : undefined,
+    cancellationReason: "cancellationReason" in item ? item.cancellationReason : undefined,
+    cancelledPreviousStatus: "cancelledPreviousStatus" in item && item.cancelledPreviousStatus ? toInterventionStatus(item.cancelledPreviousStatus) : undefined,
+    calendarCancellationPending: "calendarCancellationPending" in item ? item.calendarCancellationPending : undefined,
+    calendarCancellationError: "calendarCancellationError" in item ? item.calendarCancellationError : undefined,
+    notificationRecipientIdsJson: "notificationRecipientIds" in item ? JSON.stringify(item.notificationRecipientIds ?? []) : undefined,
   };
 }
 
@@ -1123,8 +1140,12 @@ function parseAuditValue(value: string | null): Record<string, unknown> | undefi
   }
 }
 
-function auditSummary(action: string) {
+function auditSummary(action: string, newValue?: Record<string, unknown>) {
   const labels: Record<string, string> = {
+    "coaching.cancelled": `Begeleiding geannuleerd.${typeof newValue?.reason === "string" ? ` Reden: ${newValue.reason}` : ""}`,
+    "coaching.cancellation_outlook_succeeded": "Outlook-afspraak geannuleerd.",
+    "coaching.cancellation_outlook_failed": "Outlook-annulering mislukt; opnieuw proberen vereist.",
+    "coaching.cancelled_notifications": "Annuleringsnotificaties verwerkt.",
     "coaching.reopened": "Afgewerkte begeleiding opnieuw geopend voor aanpassing.",
     "coaching.sent_for_approval": "Begeleiding naar de vertegenwoordiger verstuurd ter akkoord.",
     "coaching.approved_by_representative": "Vertegenwoordiger bevestigde voor akkoord.",

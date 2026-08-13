@@ -404,3 +404,18 @@ Before changing status logic:
 - add migration or compatibility handling where required.
 
 Do not add a new variant to bypass an existing inconsistency.
+
+## Annulering vóór de start
+
+Een toekomstige `GEPLAND`-begeleiding kan door een bevoegde planner of
+manager binnen de bestaande scope worden geannuleerd. De server controleert
+status, startvelden, datum en beheerrechten; een vertegenwoordiger krijgt
+hierdoor geen verwijderrecht. Annulering is soft delete naar `GEANNULEERD` en
+legt uitvoerder, tijdstip, vorige status en reden vast.
+
+De record blijft in historie en audit zichtbaar, maar valt uit actieve
+Planning-, Dashboard- en uitvoerlijsten. Een gekoppeld Outlook-event wordt op
+basis van de opgeslagen event-ID door de organisator geannuleerd. Bij een
+Graph-fout blijft `calendarCancellationPending` actief zodat dezelfde actie
+veilig opnieuw kan worden geprobeerd; notificaties worden per event key
+idempotent verwerkt.
