@@ -258,6 +258,14 @@ headers across pages and split long comments without leaving the printable
 area. Missing circles, tables or all history use local empty states and do not
 block planning or export.
 
+All Begeleiding PDF exports reuse the current shared Performance Circle SVG and
+the same `buildPerformanceWheelData` dataset used by the screen. This applies
+to the performance-evolution export, the preparation PDF and the professional
+report export. The PDF circle includes the category ring and percentages,
+criterion labels, current and comparison lines, trend colours and the shared
+legend. PDF labels are translated in Dutch, French and German; missing or
+non-applicable values remain neutral and do not become a misleading zero.
+
 ---
 
 # Seven-step execution report

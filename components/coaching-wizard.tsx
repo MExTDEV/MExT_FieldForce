@@ -769,6 +769,24 @@ function PreparationStep({
   const [exportError, setExportError] = useState<string>();
   const [activeTab, setActiveTab] = useState<"algemeen" | "prestatiecirkel" | "scoretabellen">("algemeen");
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+  const wheelLabels = {
+    ariaKapstok: t("coaching.performance.competencyWheel"),
+    ariaGeneral: t("coaching.performance.generalWheel"),
+    previous: t("coaching.performance.previousShort"),
+    current: t("coaching.performance.currentShort"),
+    tooltipHelp: t("coaching.performance.wheelHelp"),
+    currentMeasurement: t("coaching.performance.currentMeasurement"),
+    previousMeasurement: t("coaching.performance.previousMeasurement"),
+    noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
+    better: t("coaching.performance.better"),
+    worse: t("coaching.performance.worse"),
+    equal: t("coaching.performance.equal"),
+    first: t("coaching.performance.firstMeasurement"),
+    green: t("coaching.performance.green"),
+    red: t("coaching.performance.red"),
+    darkBlue: t("coaching.performance.darkBlue"),
+    blue: t("coaching.performance.blue"),
+  };
   const selected = referenceData?.selected;
   const latest = referenceData?.latest;
   const selectedHasCircle = Boolean(selected?.history.criterionScores.some((row) => row.scored !== false));
@@ -961,6 +979,7 @@ function PreparationStep({
                     coachings={[selected.history]}
                     notScoredLabel={t("coaching.performance.notScored")}
                     totalScoreLabel={t("coaching.performance.totalScore")}
+                    labels={wheelLabels}
                   />
                   <p className="mt-3 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
                     <Info className="h-4 w-4 text-brand-700" />
@@ -989,6 +1008,7 @@ function PreparationStep({
               coachings={[latest.history]}
               notScoredLabel={t("coaching.performance.notScored")}
               totalScoreLabel={t("coaching.performance.totalScore")}
+              labels={wheelLabels}
             />
           </div>
         </div>

@@ -28,6 +28,24 @@ export function PerformanceEvolution({
 }) {
   const { language } = useSession();
   const t = (key: TranslationKey) => translate(language, key);
+  const wheelLabels = {
+    ariaKapstok: t("coaching.performance.competencyWheel"),
+    ariaGeneral: t("coaching.performance.generalWheel"),
+    previous: t("coaching.performance.previousShort"),
+    current: t("coaching.performance.currentShort"),
+    tooltipHelp: t("coaching.performance.wheelHelp"),
+    currentMeasurement: t("coaching.performance.currentMeasurement"),
+    previousMeasurement: t("coaching.performance.previousMeasurement"),
+    noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
+    better: t("coaching.performance.better"),
+    worse: t("coaching.performance.worse"),
+    equal: t("coaching.performance.equal"),
+    first: t("coaching.performance.firstMeasurement"),
+    green: t("coaching.performance.green"),
+    red: t("coaching.performance.red"),
+    darkBlue: t("coaching.performance.darkBlue"),
+    blue: t("coaching.performance.blue"),
+  };
   const initialIndex = Math.max(
     0,
     initialCoachingId ? coachings.findIndex((item) => item.id === initialCoachingId) : coachings.length - 1
@@ -83,6 +101,33 @@ export function PerformanceEvolution({
         svgElement,
         notScoredLabel: t("coaching.performance.notScored"),
         totalScoreLabel: t("coaching.performance.totalScore"),
+        labels: {
+          title: t("coaching.performance.competencyWheel"),
+          coaching: t("coaching.performance.moment"),
+          comparisonWith: t("coaching.performance.compareWith"),
+          firstMeasurementDescription: t("coaching.performance.noPrevious"),
+          legend: t("coaching.performance.legend"),
+          currentMeasurement: t("coaching.performance.currentMeasurement"),
+          previousMeasurement: t("coaching.performance.previousMeasurement"),
+          noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
+          better: t("coaching.performance.better"),
+          worse: t("coaching.performance.worse"),
+          equal: t("coaching.performance.equal"),
+          first: t("coaching.performance.firstMeasurement"),
+          green: t("coaching.performance.green"),
+          red: t("coaching.performance.red"),
+          darkBlue: t("coaching.performance.darkBlue"),
+          blue: t("coaching.performance.blue"),
+          criterion: t("coaching.performance.criterion"),
+          previous: t("coaching.performance.previousShort"),
+          current: t("coaching.performance.currentShort"),
+          difference: t("coaching.performance.difference"),
+          trend: t("coaching.performance.trend"),
+          continuation: t("coaching.performance.continuation"),
+          exportDate: t("coaching.performance.exportDate"),
+          page: t("coaching.performance.page"),
+          of: t("coaching.performance.of"),
+        },
         preview,
       });
       if (result.previewUrl) {
@@ -240,6 +285,7 @@ export function PerformanceEvolution({
               coachings={coachings}
               notScoredLabel={t("coaching.performance.notScored")}
               totalScoreLabel={t("coaching.performance.totalScore")}
+              labels={wheelLabels}
             />
             <p className="mt-4 flex items-center justify-center gap-2 text-center text-xs text-slate-500">
               <Info className="h-4 w-4 text-brand-700" />
