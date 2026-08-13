@@ -6,6 +6,8 @@ Deze map bevat de bronassets voor de gecombineerde gebruikershandleiding, het pr
 
 - `output/docx/MExT_FieldForce_Complete_Handleiding.docx`
 - `output/pdf/MExT_FieldForce_Complete_Handleiding.pdf`
+- `output/docx/MExT_FieldForce_Coaching_Handleiding.docx`
+- `output/pdf/MExT_FieldForce_Coaching_Handleiding.pdf`
 
 De DOCX bevat een dynamische Word-inhoudsopgave en de instelling om velden bij openen bij te werken. De PDF wordt rechtstreeks uit dezelfde hoofdstukfuncties opgebouwd en bevat een klikbare inhoudsopgave en PDF-bladwijzers.
 
@@ -17,6 +19,8 @@ Voer vanuit de repositoryroot uit:
 python scripts/build-fieldforce-complete-manual.py
 python scripts/build-fieldforce-complete-manual-pdf.py
 python scripts/qa-fieldforce-complete-manual.py
+python scripts/build-coaching-manual.py
+python scripts/build-coaching-manual-pdf.py
 ```
 
 De drie scripts gebruiken alleen lokale broncode, documentatie en afbeeldingen. Zij wijzigen geen database, featureflag, ontwikkelserver of productieomgeving.
@@ -51,6 +55,9 @@ Een scherm waarop een module niet actief is, is bewust zo gelabeld. Voor de hand
 - visuele contactbladen van alle PDF-pagina's onder `tmp/manual-qa`.
 
 De map `tmp/manual-qa` is controle-output en geen publicatie-artefact.
+
+De zelfstandige Coaching-handleiding gebruikt dezelfde onderhouden Coaching-sectie
+als de gecombineerde handleiding, maar publiceert alleen de Coaching-module.
 
 ## Bekende verificatiegrens
 

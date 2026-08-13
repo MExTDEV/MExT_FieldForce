@@ -4,7 +4,7 @@ Date: 2026-07-14
 
 ## Purpose
 
-FieldForce stores outbound mail configuration in `AppSetting` records. The settings are managed from `Beheer -> Instellingen -> Mail`.
+FieldForce stores outbound mail configuration in `AppSetting` records. The settings are managed from `Beheer -> Instellingen -> Mail -> Beheer`. Volledige transactionele mailontwerpen en versies staan onder `Beheer -> Instellingen -> Mail -> Templates`.
 
 The existing `MAIL TEST` safety switch remains the routing guard for outbound mail.
 
@@ -43,9 +43,11 @@ versies worden opgeslagen in `MailType`, `MailTemplate` en
 globaal en tenslotte de veilige systeemfallback. De ontvangerstaal is NL, FR of
 DE; ontbrekende vertalingen vallen terug op NL.
 
-Country-branding en voetregels worden versieerbaar opgeslagen in
-`MailCountryProfile`, `MailFooter` en `MailFooterVersion`. De beheer-API en UI
-controleren de mailrechten en de effectieve country-scope server-side.
+Volledige mailontwerpen worden per mailtype, land en taal als versieerbare
+`MailTemplateVersion` opgeslagen. De oude footergegevens blijven tijdelijk
+behouden voor veilige migratie, maar zijn geen afzonderlijke gebruikersflow
+meer. De beheer-API en UI controleren de mailrechten en de effectieve
+country-scope server-side.
 
 Na `npm run db:migrate:deploy` moet `npm run db:seed:config` worden uitgevoerd
 om de centrale catalogus, parameterdefinities en nieuwe rolrechten te vullen.
@@ -89,7 +91,13 @@ Implemented:
 - SMTP host, port, security protocol, authentication type, username, password status, from address, from name and reply-to address.
 - MAIL TEST moved under the Mail section.
 - A `Testmail versturen` action sends one translated, centrally styled test message to the stored `MAIL_TEST_RECIPIENT` through the stored SMTP configuration.
+- The template list marks each language green when a saved template version exists and gray when that language has not yet been formatted; the tooltip distinguishes both states.
+- Full mail designs can be edited and published per mailtype, country and language; the design contains the header, body and footer.
+- Each full mail design stores its background, card, header, text, footer and link colours; these are rendered in the editor preview and the outgoing HTML mail.
+- Mail designs can be saved in the reusable design library. Applying a saved design copies its header, footer and colours to another mail while preserving that mail's own content.
+- The WYSIWYG editor accepts image URLs and uploads through the existing `MailAsset` storage model. Uploaded images are served from a public, opaque asset URL so mail clients can load them; the editor stores width and height with a responsive `height:auto` style and can preserve the original aspect ratio while inserting.
 - The test button is unavailable while settings are incomplete, unsaved or another mail-settings action is running.
+- The template editor has a separate current-design test action below the design editor. It renders the selected mailtype, country, language, subject, preheader and unsaved design directly; the version-history test action remains available for stored versions.
 - API validation for email addresses, SMTP port, auth mode and production confirmation.
 - Settings stored in `AppSetting` without a schema migration.
 - SMTP transport dependency and central send service in `lib/server/mail-service.ts`.

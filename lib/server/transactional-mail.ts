@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
+import { defaultMailDesignStyles, parseMailDesign, type MailDesignStyles } from "@/lib/mail-design";
 import { type Language } from "@/lib/types";
 
 export const transactionalMailLanguages: Language[] = ["nl", "fr", "de"];
@@ -187,6 +188,7 @@ export function renderTransactionalTemplate(input: {
   preheader?: string | null;
   bodyHtml: string;
   parameters: MailParameters;
+  headerHtml?: string;
   footerHtml?: string;
   senderName?: string;
   logoUrl?: string;
@@ -203,11 +205,13 @@ export function renderTransactionalTemplate(input: {
   });
   const subject = render(input.subject);
   const preheader = render(input.preheader ?? "");
-  const body = sanitizeRichText(render(input.bodyHtml, true));
-  const footer = sanitizeRichText(render(input.footerHtml ?? defaultFooter(input.language), true));
+  const design = parseMailDesign(input.bodyHtml);
+  const body = sanitizeRichText(render(design?.bodyHtml ?? input.bodyHtml, true));
+  const header = sanitizeRichText(render(design?.headerHtml ?? input.headerHtml ?? "", true));
+  const footer = sanitizeRichText(render(design?.footerHtml ?? input.footerHtml ?? defaultFooter(input.language), true));
   const title = subject;
-  const html = uniformMailLayout({ language: input.language, senderName: input.senderName ?? "MExT FieldForce", logoUrl: input.logoUrl, preheader, title, body, footer });
-  const text = [preheader, richTextToPlainText(body), richTextToPlainText(footer)].filter(Boolean).join("\n\n");
+  const html = uniformMailLayout({ language: input.language, senderName: input.senderName ?? "MExT FieldForce", logoUrl: input.logoUrl, preheader, title, header, body, footer, styles: design?.styles ?? defaultMailDesignStyles });
+  const text = [preheader, richTextToPlainText(header), richTextToPlainText(body), richTextToPlainText(footer)].filter(Boolean).join("\n\n");
   if (/{{\s*[a-zA-Z0-9_.]+\s*}}/.test(subject) || /{{\s*[a-zA-Z0-9_.]+\s*}}/.test(body)) {
     throw new Error("De gerenderde mail bevat een oningevulde parameter.");
   }
@@ -239,9 +243,10 @@ function formatParameter(value: MailParameterValue, dataType?: string, language:
   return String(value);
 }
 
-function uniformMailLayout(input: { language: Language; senderName: string; logoUrl?: string; preheader: string; title: string; body: string; footer: string }) {
+function uniformMailLayout(input: { language: Language; senderName: string; logoUrl?: string; preheader: string; title: string; header: string; body: string; footer: string; styles: MailDesignStyles }) {
   const logo = input.logoUrl && /^(https?:\/\/|\/)/i.test(input.logoUrl) ? `<img src="${escapeHtml(input.logoUrl)}" alt="${escapeHtml(input.senderName)}" style="max-height:42px;max-width:180px;display:block;margin-bottom:10px;" />` : "";
-  return `<!doctype html><html lang="${input.language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a;"><div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(input.preheader)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;"><tr><td align="center" style="padding:24px 12px;"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;"><tr><td style="background:#0f766e;padding:22px 28px;color:#ffffff;font-size:20px;font-weight:700;">${logo}${escapeHtml(input.senderName)}</td></tr><tr><td style="padding:28px;"><h1 style="margin:0 0 18px;font-size:24px;line-height:1.25;">${input.title}</h1><div style="font-size:16px;line-height:1.6;">${input.body}</div></td></tr><tr><td style="border-top:1px solid #e2e8f0;padding:20px 28px;color:#475569;font-size:13px;line-height:1.5;">${input.footer}</td></tr></table></td></tr></table></body></html>`;
+  const headerContent = input.header || `${logo}${escapeHtml(input.senderName)}`;
+  return `<!doctype html><html lang="${input.language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>.fieldforce-mail a{color:${input.styles.linkColor};}</style></head><body style="margin:0;background:${input.styles.backgroundColor};font-family:Arial,Helvetica,sans-serif;color:${input.styles.bodyTextColor};"><div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(input.preheader)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:${input.styles.backgroundColor};"><tr><td align="center" style="padding:24px 12px;"><table class="fieldforce-mail" role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:${input.styles.cardColor};overflow:hidden;"><tr><td style="background:${input.styles.headerColor};padding:22px 28px;color:${input.styles.headerTextColor};font-size:20px;font-weight:700;">${headerContent}</td></tr><tr><td style="padding:28px;color:${input.styles.bodyTextColor};"><h1 style="margin:0 0 18px;font-size:24px;line-height:1.25;color:${input.styles.bodyTextColor};">${input.title}</h1><div style="font-size:16px;line-height:1.6;color:${input.styles.bodyTextColor};">${input.body}</div></td></tr><tr><td style="border-top:1px solid ${input.styles.backgroundColor};padding:20px 28px;background:${input.styles.footerColor};color:${input.styles.footerTextColor};font-size:13px;line-height:1.5;">${input.footer}</td></tr></table></td></tr></table></body></html>`;
 }
 
 function defaultFooter(language: Language) {

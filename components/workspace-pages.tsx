@@ -58,7 +58,6 @@ import { PlanningCalendar } from "@/components/planning-calendar";
 import { ConfigurationManagement } from "@/components/configuration-management";
 import { SettingsManagement } from "@/components/settings-management";
 import { TransactionalMailManagement } from "@/components/transactional-mail-management";
-import { MailBrandingManagement } from "@/components/mail-branding-management";
 import { SessionFailure } from "@/components/session-state";
 import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
 import { RichTextRenderer } from "@/components/rich-text-renderer";
@@ -314,7 +313,7 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
     return <ActionPoints />;
   }
   if (path === "planning") return <Planning />;
-  if (segments[0] === "beheer") return <Management section={segments[1]} settingsPage={segments[2]} />;
+  if (segments[0] === "beheer") return <Management section={segments[1]} settingsPage={segments.slice(2).join("/")} />;
   if (path === "begeleidingen") {
     return <InterventionList kind={path} />;
   }
@@ -6769,7 +6768,9 @@ function Management({ section, settingsPage }: { section?: string; settingsPage?
   const normalizedSection = section === "instellingen"
     ? settingsPage === "profiel"
       ? "profiel"
-      : settingsPage === "mail"
+      : settingsPage === "mail/templates"
+        ? "mailTemplates"
+        : settingsPage === "mail"
         ? "mail"
         : undefined
     : section;
@@ -6783,7 +6784,8 @@ function Management({ section, settingsPage }: { section?: string; settingsPage?
   if (resolvedSection === "gebruikers") return <UsersManagementPage />;
   if (resolvedSection === "modules") return <ModuleManagement />;
   if (resolvedSection === "log") return <ManagementLog />;
-  if (resolvedSection === "mail") return <div className="space-y-8"><SettingsManagement page="mail" /><TransactionalMailManagement /><MailBrandingManagement /></div>;
+  if (resolvedSection === "mail") return <SettingsManagement page="mail" />;
+  if (resolvedSection === "mailTemplates") return <TransactionalMailManagement />;
   if (resolvedSection === "profiel") return <SettingsManagement page="profile" />;
   if (["teams", "rollen", "kpis", "kapstok", "starterEvaluations"].includes(resolvedSection)) {
     return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok" | "starterEvaluations"} />;

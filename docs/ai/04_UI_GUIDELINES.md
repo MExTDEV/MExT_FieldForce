@@ -613,6 +613,14 @@ Rules:
 
 ---
 
+# SalesDay Mijn agenda
+
+The SalesDay agenda is a compact operational list for today's appointments. It uses a dedicated header with the business date and appointment actions, followed by five day indicators: total appointments, appointments still to execute, completed appointments, no-time outcomes and absent customers.
+
+Appointment rows stay wide on tablets and show, in one scan, the time range, customer/prospect type, ERP identifier, planning status, customer name, address, contact details and the primary open action. Documents linked to an appointment may appear as a secondary status strip inside the row. The open appointment list remains ordered by the ERP-provided sequence and keeps touch targets at least 40px high.
+
+---
+
 # AI Implementation Rules
 
 Before changing UI, an AI assistant must check:

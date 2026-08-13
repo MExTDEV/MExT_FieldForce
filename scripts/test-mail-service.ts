@@ -9,6 +9,8 @@ import {
 import { buildWorkflowMailTemplate } from "@/lib/server/mail-templates";
 import type { MailRuntimeSettings } from "@/lib/server/mail-settings";
 import { defaultTransactionalMail, renderTransactionalTemplate, validateTemplateContent } from "@/lib/server/transactional-mail";
+import { buildMailDesign } from "@/lib/mail-design";
+import { sanitizeRichText } from "@/lib/rich-text";
 
 const settings: MailRuntimeSettings = {
   mailTest: {
@@ -245,6 +247,51 @@ async function main() {
   });
   assert.match(escaped.html, /&lt;Sofie&gt;/);
   assert.doesNotMatch(escaped.html, /javascript:/i);
+
+  const branded = renderTransactionalTemplate({
+    type: "COACHING_PLANNED",
+    language: "nl",
+    subject: "Headercontrole",
+    headerHtml: "<p><strong>Belgische header</strong></p>",
+    bodyHtml: "<p>Inhoud</p>",
+    footerHtml: "<p>Footer</p>",
+    parameters: {},
+  });
+  assert.match(branded.html, /Belgische header/);
+  assert.match(branded.text, /Belgische header/);
+
+  const fullDesign = renderTransactionalTemplate({
+    type: "COACHING_PLANNED",
+    language: "nl",
+    subject: "Volledig ontwerp",
+    bodyHtml: buildMailDesign({
+      headerHtml: "<p><strong>BE header</strong></p>",
+      bodyHtml: "<p>BE inhoud</p>",
+      footerHtml: "<p>BE footer</p>",
+      styles: {
+        backgroundColor: "#111827",
+        cardColor: "#fef3c7",
+        headerColor: "#7c3aed",
+        headerTextColor: "#fefce8",
+        bodyTextColor: "#1f2937",
+        footerColor: "#e0e7ff",
+        footerTextColor: "#312e81",
+        linkColor: "#be123c",
+      },
+    }),
+    parameters: {},
+  });
+  assert.match(fullDesign.html, /BE header/);
+  assert.match(fullDesign.html, /BE inhoud/);
+  assert.match(fullDesign.html, /BE footer/);
+  assert.match(fullDesign.html, /background:#111827/);
+  assert.match(fullDesign.html, /background:#7c3aed/);
+  assert.match(fullDesign.html, /color:#be123c/);
+
+  const sizedImage = sanitizeRichText('<p><img src="https://cdn.example.test/banner.png" alt="Banner" width="640" height="360"></p>');
+  assert.match(sizedImage, /width="640"/);
+  assert.match(sizedImage, /height="360"/);
+  assert.match(sizedImage, /height:auto/);
 
   console.log("Centrale mailservice routeert via MAIL TEST en logt geen mailbody.");
 }

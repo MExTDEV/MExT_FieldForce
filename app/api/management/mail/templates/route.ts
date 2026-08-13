@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   return handleApi("api/management/mail/templates:get", async () => {
     const actor = await requireAuthenticatedUser(new URL(request.url).searchParams.get("actorId"));
-    return { templates: await listMailTemplateRows(actor) };
+    const country = new URL(request.url).searchParams.get("country") as "BE" | "NL" | "DE" | null;
+    return { templates: await listMailTemplateRows(actor, country ?? actor.country) };
   }, "E-mailsjablonen konden niet worden geladen.");
 }
 

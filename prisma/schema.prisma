@@ -688,6 +688,7 @@ model User {
   inventoryConsumablesRequests        InventoryConsumablesRequest[]            @relation("InventoryConsumablesRequestActor")
   inventoryCarrierCounts              InventoryCarrierCount[]                  @relation("InventoryCarrierCountActor")
   mailTemplateVersionsCreated         MailTemplateVersion[]                    @relation("MailTemplateVersionCreatedBy")
+  mailDesignsCreated                  MailDesign[]                             @relation("MailDesignCreatedBy")
   mailFooterVersionsCreated           MailFooterVersion[]                       @relation("MailFooterVersionCreatedBy")
   mailAssetsUploaded                  MailAsset[]                               @relation("MailAssetUploadedBy")
   createdAt                           DateTime                                 @default(now())
@@ -3819,6 +3820,19 @@ model MailTemplateVersion {
 
   @@unique([templateId, language, version])
   @@index([templateId, language, status])
+}
+
+model MailDesign {
+  id          String   @id @default(cuid())
+  name        String
+  bodyHtml    String   @db.LongText
+  createdById String?
+  createdBy   User?    @relation("MailDesignCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([createdAt])
 }
 
 model MailCountryProfile {
