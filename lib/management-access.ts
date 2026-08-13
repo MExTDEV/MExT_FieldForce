@@ -72,6 +72,7 @@ export const managementSections: ManagementSectionDefinition[] = [
     href: "/beheer/instellingen/mail",
     navKey: "nav.mail",
     permission: "menu.coaching.settings",
+    requiredPermissions: ["mail.templates.view"],
   },
   {
     section: "profiel",

@@ -38,6 +38,7 @@ export async function POST(
         teamId: true,
         country: true,
         plannedAt: true,
+        startTime: true,
         endTime: true,
         representative: { select: { firstName: true, lastName: true, role: true, email: true } },
         approval: { select: { representativeId: true } },
@@ -110,6 +111,9 @@ async function remindApproval(
     title: string;
     status: string;
     representativeId: string;
+    plannedAt: Date | null;
+    startTime: string | null;
+    endTime: string | null;
     approval: { representativeId: string } | null;
   },
   actorId: string
@@ -164,6 +168,11 @@ async function remindApproval(
       triggeredByUserId: actorId,
       entityTitle: coaching.title,
       linkUrl: `/begeleidingen/${coaching.id}`,
+      parameters: {
+        "coaching.date": coaching.plannedAt,
+        "coaching.startTime": coaching.startTime,
+        "coaching.endTime": coaching.endTime,
+      },
       context: {
         sourceModule: "BEGELEIDINGEN",
         entityType: "Intervention",

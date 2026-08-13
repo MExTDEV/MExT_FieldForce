@@ -59,6 +59,8 @@ export async function POST(
         teamId: true,
         country: true,
         plannedAt: true,
+        startTime: true,
+        endTime: true,
         sentForApprovalAt: true,
         sentForApprovalById: true,
         approvedByRepAt: true,
@@ -112,6 +114,9 @@ export async function POST(
         interventionId: id,
         recipientUserId: coaching.representativeId,
         title: coaching.title,
+        plannedAt: coaching.plannedAt,
+        startTime: coaching.startTime,
+        endTime: coaching.endTime,
         sentAt: now,
       });
     } else {
@@ -247,6 +252,9 @@ async function sendCoachingApprovalMailSafely(input: {
   interventionId: string;
   recipientUserId: string;
   title: string;
+  plannedAt: Date | null;
+  startTime: string | null;
+  endTime: string | null;
   sentAt: Date;
 }) {
   try {
@@ -256,6 +264,11 @@ async function sendCoachingApprovalMailSafely(input: {
       triggeredByUserId: input.actorId,
       entityTitle: input.title,
       linkUrl: `/begeleidingen/${input.interventionId}`,
+      parameters: {
+        "coaching.date": input.plannedAt,
+        "coaching.startTime": input.startTime,
+        "coaching.endTime": input.endTime,
+      },
       context: {
         sourceModule: "BEGELEIDINGEN",
         entityType: "Intervention",

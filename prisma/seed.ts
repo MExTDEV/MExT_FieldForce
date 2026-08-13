@@ -24,6 +24,7 @@ import {
 } from "../lib/kpi-settings";
 import { listPermissionOverrides } from "../lib/role-permissions";
 import { ensureStarterEvaluationConfiguration } from "../lib/server/starter-evaluations";
+import { ensureMailTemplateCatalog } from "../lib/server/mail-template-store";
 let developmentManagedUsers: typeof import("../lib/development-seed").developmentManagedUsers;
 let developmentTeamOptions: typeof import("../lib/development-seed").developmentTeamOptions;
 let developmentRepresentatives: typeof import("../lib/mock-data").representatives;
@@ -120,6 +121,7 @@ async function main() {
   await prisma.appModule.createMany({
     data: [...appModules],
   });
+  await ensureMailTemplateCatalog();
   await seedActionPointTargetTypes();
   await seedKpiReferenceData();
   await seedPermissions();
@@ -416,6 +418,7 @@ async function seedConfiguration() {
       create: appModule,
     });
   }
+  await ensureMailTemplateCatalog();
   await seedPermissions();
   await seedActionPointTargetTypes();
   await seedKpiReferenceData();
