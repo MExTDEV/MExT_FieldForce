@@ -1103,7 +1103,7 @@ function Dashboard() {
                   <p className="mt-1 text-xs capitalize text-slate-500">{item.type.replace("_", " ")} · {item.owner}</p>
                 </div>
                 <StatusBadge status={item.status} />
-                {item.coaching && canCancelFutureCoaching(user, item.coaching) && <DashboardCoachingCancel intervention={item.coaching} />}
+                {item.coaching && canCancelFutureCoaching(user, item.coaching) && <CoachingCancellationAction intervention={item.coaching} />}
               </div>
             ))}
           </div>
@@ -1131,7 +1131,7 @@ function Dashboard() {
   );
 }
 
-function DashboardCoachingCancel({ intervention }: { intervention: CoachingIntervention }) {
+function CoachingCancellationAction({ intervention }: { intervention: CoachingIntervention }) {
   const { managedUsers, language } = useSession();
   const { cancelCoaching } = useWorkflow();
   const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
@@ -1156,8 +1156,8 @@ function DashboardCoachingCancel({ intervention }: { intervention: CoachingInter
   }
   return (
     <>
-      <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-700" aria-label={t("coaching.cancel.open")} onClick={(event) => { event.stopPropagation(); setOpen(true); }}>
-        <MoreHorizontal className="h-5 w-5" />
+      <button type="button" className="inline-flex shrink-0 items-center justify-center rounded-lg bg-transparent px-2.5 py-1.5 text-sm font-bold text-rose-700 hover:bg-rose-50" aria-label={t("coaching.cancel.open")} onClick={(event) => { event.stopPropagation(); setOpen(true); }}>
+        {t("coaching.cancel.remove")}
       </button>
       {open && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby={`cancel-title-${intervention.id}`}>
         <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -4916,6 +4916,7 @@ type InterventionListRow = CoachingScopeGroupItem & {
   detailHref?: string;
   openLabel: string;
   editPlanningHref?: string;
+  coaching?: CoachingIntervention;
 };
 
 function InterventionList({ kind }: { kind: string }) {
@@ -4979,6 +4980,7 @@ function InterventionList({ kind }: { kind: string }) {
           detailHref: `/begeleidingen/${item.id}`,
           openLabel: t("coaching.list.viewReport"),
           editPlanningHref: undefined,
+          coaching: undefined,
         };
       })
     : [];
@@ -5043,6 +5045,7 @@ function InterventionList({ kind }: { kind: string }) {
         executionAt: executionTimestamp(`${item.plannedDate ?? item.updatedAt.slice(0, 10)}T${item.startTime ?? "00:00"}`),
         outlookSyncStatus: item.outlookSyncStatus,
         syncError: item.syncError,
+        coaching: item,
       };
     })
     : [];
@@ -5238,7 +5241,7 @@ function InterventionList({ kind }: { kind: string }) {
     const timeLabel = [item.startTime, item.endTime].filter(Boolean).join(" - ");
     const rowClass = `grid gap-3 p-3.5 transition sm:grid-cols-[minmax(220px,1.5fr)_minmax(135px,0.65fr)_minmax(185px,0.85fr)_auto] sm:items-center sm:px-4 ${item.detailHref ? "hover:bg-brand-50/40" : ""}`;
     const actionClass = `inline-flex items-center gap-1 text-sm font-bold ${item.detailHref ? "text-brand-700" : "text-slate-400"}`;
-    const content = (
+    const details = (
       <>
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div>
@@ -5261,20 +5264,27 @@ function InterventionList({ kind }: { kind: string }) {
             )}
           </div>
         </div>
-        <span className={actionClass}>
-          {item.openLabel}
-          {item.detailHref && <ChevronRight className="h-4 w-4" />}
-        </span>
       </>
     );
+    const cancelAction = item.coaching && canCancelFutureCoaching(user, item.coaching)
+      ? <CoachingCancellationAction intervention={item.coaching} />
+      : null;
+    const actions = (
+      <div className="flex items-center justify-end gap-3">
+        {item.detailHref ? (
+          <Link href={item.detailHref} className={actionClass}>
+            {item.openLabel}
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        ) : <span className={actionClass}>{item.openLabel}</span>}
+        {cancelAction}
+      </div>
+    );
 
-    return item.detailHref ? (
-      <Link key={item.id} href={item.detailHref} className={rowClass}>
-        {content}
-      </Link>
-    ) : (
+    return (
       <div key={item.id} className={rowClass}>
-        {content}
+        {item.detailHref ? <Link href={item.detailHref} className="contents">{details}</Link> : details}
+        {actions}
       </div>
     );
   }
