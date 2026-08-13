@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/mail-service";
 import { buildWorkflowMailTemplate } from "@/lib/server/mail-templates";
 import type { MailRuntimeSettings } from "@/lib/server/mail-settings";
+import { defaultTransactionalMail, renderTransactionalTemplate, validateTemplateContent } from "@/lib/server/transactional-mail";
 
 const settings: MailRuntimeSettings = {
   mailTest: {
@@ -214,6 +215,36 @@ async function main() {
   assert.match(confirmedTemplate.text, /De begeleide gebruiker heeft de begeleiding voor akkoord bevestigd/);
   assert.match(confirmedTemplate.text, /Begeleiding Yoni/);
   assert.match(confirmedTemplate.text, /Actie door: Yoni Peeters/);
+
+  for (const language of ["nl", "fr", "de"] as const) {
+    const transactional = defaultTransactionalMail({
+      type: "COACHING_PLANNED",
+      language,
+      parameters: {
+        "recipient.firstName": "Sofie",
+        "recipient.fullName": "Sofie Peeters",
+        "actor.fullName": "Jonas Janssen",
+        "entity.title": "Begeleiding Sofie",
+        "action.url": "/begeleidingen/coaching-1",
+        "coaching.date": new Date("2026-09-15T08:30:00.000Z"),
+        "coaching.startTime": "09:30",
+      },
+    });
+    assert.doesNotMatch(transactional.subject, /{{/);
+    assert.doesNotMatch(transactional.html, /{{/);
+    assert.match(transactional.html, /FieldForce/);
+  }
+  assert.throws(() => validateTemplateContent("COACHING_PLANNED", "{{unknown.value}}", "", "<p>tekst</p>"), /Onbekende parameters/);
+  assert.throws(() => validateTemplateContent("COACHING_PLANNED", "Onderwerp {{entity.title}}", "", "<a href=\"javascript:alert(1)\">{{action.url}}</a>"), /onveilige/);
+  const escaped = renderTransactionalTemplate({
+    type: "COACHING_PLANNED",
+    language: "nl",
+    subject: "Hallo {{recipient.firstName}}",
+    bodyHtml: "<p>{{entity.title}}</p><a href=\"{{action.url}}\">open</a>",
+    parameters: { "recipient.firstName": "<Sofie>", "entity.title": "<Dossier>", "action.url": "/begeleidingen/1" },
+  });
+  assert.match(escaped.html, /&lt;Sofie&gt;/);
+  assert.doesNotMatch(escaped.html, /javascript:/i);
 
   console.log("Centrale mailservice routeert via MAIL TEST en logt geen mailbody.");
 }

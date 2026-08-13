@@ -3,7 +3,7 @@ import fr from "@/locales/fr.json";
 import de from "@/locales/de.json";
 import type { Language } from "@/lib/types";
 
-const dictionaries = { nl, fr, de } as const;
+const dictionaries: Record<Language, Partial<Record<TranslationKey, string>>> = { nl, fr, de };
 
 export type TranslationKey = keyof typeof nl;
 

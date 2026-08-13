@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
+import type { Country, Language } from "@/lib/types";
 
 export const mailTestSettingKey = "MAIL_TEST";
 export const mailTestRecipientSettingKey = "MAIL_TEST_RECIPIENT";
@@ -206,6 +207,11 @@ export async function logMailDelivery(input: {
   routed: RoutedMail;
   context: MailRoutingContext;
   error?: string;
+  templateVersionId?: string;
+  templateLanguage?: Language;
+  templateCountry?: Country;
+  correlationId?: string;
+  providerResult?: string;
 }) {
   if (input.routed.mailTestActive) {
     console.info("Original recipients overridden because MAIL TEST is enabled.", {
@@ -242,6 +248,12 @@ export async function logMailDelivery(input: {
       originalCc: input.routed.original.cc.join(", "),
       originalBcc: input.routed.original.bcc.join(", "),
       actualTo: input.routed.envelope.to.join(", "),
+      templateVersionId: input.templateVersionId,
+      templateLanguage: input.templateLanguage,
+      templateCountry: input.templateCountry,
+      redirected: input.routed.mailTestActive,
+      correlationId: input.correlationId,
+      providerResult: input.providerResult,
       error: input.error,
       sentAt: input.status === "sent" ? input.context.sentAt ?? new Date() : null,
     },
@@ -255,6 +267,12 @@ export async function logMailDelivery(input: {
       originalCc: input.routed.original.cc.join(", "),
       originalBcc: input.routed.original.bcc.join(", "),
       actualTo: input.routed.envelope.to.join(", "),
+      templateVersionId: input.templateVersionId,
+      templateLanguage: input.templateLanguage,
+      templateCountry: input.templateCountry,
+      redirected: input.routed.mailTestActive,
+      correlationId: input.correlationId,
+      providerResult: input.providerResult,
       error: input.error,
       sentAt: input.status === "sent" ? input.context.sentAt ?? new Date() : null,
       updatedAt: new Date(),

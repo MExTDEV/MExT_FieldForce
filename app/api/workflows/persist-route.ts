@@ -353,6 +353,11 @@ async function createCoachingPlannedNotifications(
         triggeredByUserId: actorId,
         entityTitle: coaching.title,
         linkUrl: `/begeleidingen/${coaching.id}`,
+        parameters: {
+          "coaching.date": coaching.plannedDate,
+          "coaching.startTime": coaching.startTime,
+          "coaching.endTime": coaching.endTime,
+        },
         context: {
           sourceModule: "BEGELEIDINGEN",
           entityType: "Intervention",

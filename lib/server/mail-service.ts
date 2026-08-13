@@ -19,8 +19,11 @@ import {
   type RoutedMail,
 } from "@/lib/server/mail-test";
 import type { AppNotificationType } from "@/lib/notifications";
-import type { Language } from "@/lib/types";
+import type { Country, Language } from "@/lib/types";
 import { getCurrentImpersonationMailContext } from "@/lib/server/impersonation";
+import { newMailCorrelationId } from "@/lib/server/transactional-mail";
+import { resolveTransactionalMail } from "@/lib/server/mail-template-store";
+import { transactionalMailTypes, type MailParameters, type TransactionalMailType } from "@/lib/server/transactional-mail";
 
 export type OutboundMail = {
   recipientUserId: string;
@@ -32,18 +35,23 @@ export type OutboundMail = {
   fromEmail?: string;
   fromName?: string;
   replyToEmail?: string;
+  templateVersionId?: string;
+  templateLanguage?: Language;
+  templateCountry?: Country;
+  correlationId?: string;
   impersonation?: { sessionId: string; actorName: string; effectiveUserName: string } | null;
 };
 
 export type MailTransport = Pick<Transporter, "sendMail">;
 
 export type WorkflowEventMailInput = {
-  type: AppNotificationType;
+  type: AppNotificationType | TransactionalMailType;
   recipientUserId: string;
   triggeredByUserId?: string;
   entityTitle?: string;
   linkUrl?: string;
   contentHtml?: string;
+  parameters?: MailParameters;
   context: MailRoutingContext;
 };
 
@@ -80,7 +88,7 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
   const [recipient, actor, mailTestActive, mailTestRecipient, impersonation] = await Promise.all([
     prisma.user.findUnique({
       where: { id: input.recipientUserId },
-      select: { email: true, language: true },
+      select: { email: true, firstName: true, lastName: true, country: true, language: true },
     }),
     input.triggeredByUserId
       ? prisma.user.findUnique({
@@ -96,14 +104,32 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
     return { status: "skipped" as const, reason: "Ontvanger heeft geen e-mailadres." };
   }
   const actorName = actor ? `${actor.firstName} ${actor.lastName}`.trim() : undefined;
-  const template = buildWorkflowMailTemplate({
-    type: input.type,
-    language: recipient.language,
-    actorName,
-    entityTitle: input.entityTitle,
-    linkUrl: input.linkUrl,
-    contentHtml: input.contentHtml,
-  });
+  const transactionalTemplate = transactionalMailTypes.includes(input.type as TransactionalMailType)
+    ? await resolveTransactionalMail({
+        type: input.type as TransactionalMailType,
+        language: recipient.language,
+        country: recipient.country,
+        globalSenderName: settings.smtp.defaultFromName,
+        globalReplyToEmail: settings.smtp.defaultReplyToEmail,
+        parameters: {
+          ...(input.parameters ?? {}),
+          "recipient.firstName": recipient.firstName,
+          "recipient.fullName": `${recipient.firstName} ${recipient.lastName}`.trim(),
+          "actor.fullName": actorName,
+          "entity.title": input.entityTitle,
+          "action.url": input.linkUrl,
+          "action.message": input.contentHtml,
+        },
+      })
+    : undefined;
+  const template = transactionalTemplate ?? buildWorkflowMailTemplate({
+        type: input.type as AppNotificationType,
+        language: recipient.language,
+        actorName,
+        entityTitle: input.entityTitle,
+        linkUrl: input.linkUrl,
+        contentHtml: input.contentHtml,
+      });
   const transporter = nodemailer.createTransport(buildSmtpTransportOptions(settings));
   await sendFieldForceMailWithTransport({
     input: {
@@ -112,7 +138,12 @@ export async function sendWorkflowEventMail(input: WorkflowEventMailInput) {
       subject: template.subject,
       text: template.text,
       html: template.html,
-      replyToEmail: actor?.email,
+      replyToEmail: actor?.email || transactionalTemplate?.replyToEmail,
+      fromName: transactionalTemplate?.senderName,
+      templateVersionId: transactionalTemplate?.templateVersionId,
+      templateLanguage: recipient.language,
+      templateCountry: recipient.country,
+      correlationId: input.context.eventKey || newMailCorrelationId(),
       context: input.context,
       impersonation,
     },
@@ -185,6 +216,11 @@ export async function sendFieldForceMailWithTransport({
       status: "sent",
       routed,
       context: input.context,
+      templateVersionId: input.templateVersionId,
+      templateLanguage: input.templateLanguage,
+      templateCountry: input.templateCountry,
+      correlationId: input.correlationId,
+      providerResult: providerResult(info),
     });
     return { routed, info };
   } catch (error) {
@@ -195,9 +231,20 @@ export async function sendFieldForceMailWithTransport({
       routed,
       context: input.context,
       error: error instanceof Error ? error.message : "Onbekende mailfout.",
+      templateVersionId: input.templateVersionId,
+      templateLanguage: input.templateLanguage,
+      templateCountry: input.templateCountry,
+      correlationId: input.correlationId,
     });
     throw error;
   }
+}
+
+function providerResult(info: unknown) {
+  if (!info || typeof info !== "object") return undefined;
+  const messageId = "messageId" in info && typeof info.messageId === "string" ? info.messageId : undefined;
+  const response = "response" in info && typeof info.response === "string" ? info.response : undefined;
+  return messageId || response ? JSON.stringify({ messageId, response }) : undefined;
 }
 
 export function buildSmtpTransportOptions(settings: MailRuntimeSettings) {

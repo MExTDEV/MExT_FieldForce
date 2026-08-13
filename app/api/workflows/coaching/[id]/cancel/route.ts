@@ -248,6 +248,12 @@ async function sendCancellationNotifications(input: {
         entityTitle: input.intervention.title,
         linkUrl: `/begeleidingen/${input.intervention.id}`,
         contentHtml: `<p>${escapeHtml(message).replaceAll("\n", "<br />")}</p>`,
+        parameters: {
+          "coaching.date": input.intervention.plannedAt,
+          "coaching.startTime": input.intervention.startTime,
+          "coaching.endTime": input.intervention.endTime,
+          "coaching.reason": input.reason,
+        },
         context: { sourceModule: "BEGELEIDINGEN", entityType: "Intervention", entityId: input.intervention.id, eventKey, reason: "Begeleiding geannuleerd", sentAt: input.cancelledAt },
       });
       if (result.status === "sent") emailSent += 1;

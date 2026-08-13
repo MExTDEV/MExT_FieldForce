@@ -47,6 +47,18 @@ enum Language {
   de
 }
 
+enum MailTemplateScopeLevel {
+  GLOBAL
+  COUNTRY
+  MODULE
+  MODULE_COUNTRY
+}
+
+enum MailTemplateVersionStatus {
+  DRAFT
+  PUBLISHED
+}
+
 enum TeamLeaderType {
   PRIMARY
   EXTRA
@@ -675,6 +687,9 @@ model User {
   inventoryReceipts                   InventoryReceipt[]                       @relation("InventoryReceiptActor")
   inventoryConsumablesRequests        InventoryConsumablesRequest[]            @relation("InventoryConsumablesRequestActor")
   inventoryCarrierCounts              InventoryCarrierCount[]                  @relation("InventoryCarrierCountActor")
+  mailTemplateVersionsCreated         MailTemplateVersion[]                    @relation("MailTemplateVersionCreatedBy")
+  mailFooterVersionsCreated           MailFooterVersion[]                       @relation("MailFooterVersionCreatedBy")
+  mailAssetsUploaded                  MailAsset[]                               @relation("MailAssetUploadedBy")
   createdAt                           DateTime                                 @default(now())
   updatedAt                           DateTime                                 @updatedAt
 
@@ -1976,10 +1991,20 @@ model NotificationDelivery {
   sentAt          DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  templateVersionId String?
+  templateLanguage  Language?
+  templateCountry   Country?
+  redirected        Boolean   @default(false)
+  correlationId     String?
+  providerResult    String?   @db.Text
+  retryCount        Int       @default(0)
+  templateVersion   MailTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
 
   @@unique([eventKey, recipientUserId, channel])
   @@index([recipientUserId, createdAt])
   @@index([entityType, entityId])
+  @@index([templateVersionId, createdAt])
+  @@index([correlationId])
 }
 
 model CoachingChangeLog {
@@ -3712,6 +3737,162 @@ model AppModule {
   actief    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  mailTypes MailType[]
 
   @@map("app_modules")
+}
+
+model MailType {
+  id                    String                    @id @default(cuid())
+  key                   String                    @unique
+  moduleCode            String
+  functionalNameNl      String
+  descriptionNl         String                    @db.Text
+  triggerDescriptionNl  String                    @db.Text
+  systemFallbackKey     String
+  active                Boolean                   @default(true)
+  module                AppModule                 @relation(fields: [moduleCode], references: [code], onUpdate: Cascade)
+  parameterDefinitions  MailParameterDefinition[]
+  templates             MailTemplate[]
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  @@index([moduleCode, active])
+}
+
+model MailParameterDefinition {
+  id             String   @id @default(cuid())
+  mailTypeId     String
+  key            String
+  labelNl        String
+  descriptionNl  String   @db.Text
+  dataType       String
+  exampleValue   String?  @db.Text
+  required       Boolean  @default(false)
+  formatter      String?
+  sortOrder      Int      @default(0)
+  mailType       MailType @relation(fields: [mailTypeId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([mailTypeId, key])
+  @@index([mailTypeId, sortOrder])
+}
+
+model MailTemplate {
+  id             String               @id @default(cuid())
+  mailTypeId     String
+  scopeLevel     MailTemplateScopeLevel
+  scopeKey       String
+  country        Country?
+  moduleCode     String?
+  mailType       MailType             @relation(fields: [mailTypeId], references: [id], onDelete: Cascade)
+  versions       MailTemplateVersion[]
+  assets         MailTemplateAsset[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([mailTypeId, scopeKey])
+  @@index([scopeLevel, country, moduleCode])
+}
+
+model MailTemplateVersion {
+  id                String                    @id @default(cuid())
+  templateId        String
+  language          Language
+  version           Int
+  status            MailTemplateVersionStatus @default(DRAFT)
+  subject           String
+  preheader         String?
+  bodyHtml          String                    @db.LongText
+  parameterKeysJson String                    @db.LongText
+  changeNote        String?                   @db.Text
+  createdById       String?
+  publishedAt       DateTime?
+  restoredFromId    String?
+  template          MailTemplate              @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy         User?                     @relation("MailTemplateVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  restoredFrom      MailTemplateVersion?      @relation("MailTemplateVersionRestore", fields: [restoredFromId], references: [id], onDelete: SetNull)
+  restoredVersions  MailTemplateVersion[]      @relation("MailTemplateVersionRestore")
+  deliveries        NotificationDelivery[]
+  createdAt         DateTime                  @default(now())
+
+  @@unique([templateId, language, version])
+  @@index([templateId, language, status])
+}
+
+model MailCountryProfile {
+  id            String              @id @default(cuid())
+  country       Country             @unique
+  senderName    String?
+  replyToEmail  String?
+  supportEmail  String?
+  supportPhone  String?
+  legalTextJson String?             @db.LongText
+  logoAssetId   String?
+  logoAsset     MailAsset?          @relation("MailCountryProfileLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
+  footers       MailFooter[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+model MailFooter {
+  id        String              @id @default(cuid())
+  profileId String
+  language  Language
+  versions  MailFooterVersion[]
+  profile   MailCountryProfile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@unique([profileId, language])
+}
+
+model MailFooterVersion {
+  id               String                    @id @default(cuid())
+  footerId         String
+  version          Int
+  status           MailTemplateVersionStatus @default(DRAFT)
+  bodyHtml         String                    @db.LongText
+  changeNote       String?                   @db.Text
+  createdById      String?
+  publishedAt      DateTime?
+  restoredFromId   String?
+  footer           MailFooter                @relation(fields: [footerId], references: [id], onDelete: Cascade)
+  createdBy        User?                     @relation("MailFooterVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  restoredFrom     MailFooterVersion?        @relation("MailFooterVersionRestore", fields: [restoredFromId], references: [id], onDelete: SetNull)
+  restoredVersions MailFooterVersion[]       @relation("MailFooterVersionRestore")
+  createdAt        DateTime                  @default(now())
+
+  @@unique([footerId, version])
+  @@index([footerId, status])
+}
+
+model MailAsset {
+  id           String              @id @default(cuid())
+  storageKey   String              @unique
+  publicUrl    String
+  originalName String
+  mimeType     String
+  byteSize     Int
+  altText      String
+  active       Boolean             @default(true)
+  uploadedById String?
+  uploadedBy   User?               @relation("MailAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  logoProfiles MailCountryProfile[] @relation("MailCountryProfileLogo")
+  templates    MailTemplateAsset[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([active, createdAt])
+}
+
+model MailTemplateAsset {
+  templateId String
+  assetId    String
+  template   MailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  asset      MailAsset    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@id([templateId, assetId])
+  @@index([assetId])
 }

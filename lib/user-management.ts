@@ -112,6 +112,20 @@ export const fieldForceBasePermissionGroups: {
     ],
   },
   {
+    title: "Transactionele e-mail",
+    description: "Templates, landinstellingen, publicatie en audit van uitgaande e-mails.",
+    permissions: [
+      { key: "mail.templates.view", label: "E-mailsjablonen bekijken" },
+      { key: "mail.templates.edit", label: "Concepten aanmaken en wijzigen" },
+      { key: "mail.templates.test", label: "Testmails verzenden" },
+      { key: "mail.templates.publish", label: "Templates publiceren" },
+      { key: "mail.templates.restore", label: "Versies herstellen" },
+      { key: "mail.countrySettings.manage", label: "Landfooters en landinstellingen beheren" },
+      { key: "mail.globalSettings.manage", label: "Globale mailinstellingen beheren" },
+      { key: "mail.audit.view", label: "Mailaudit bekijken" },
+    ],
+  },
+  {
     title: "Contractcalculatie",
     description: "Beheeracties voor artikelen, Excel-import en contractmodellen.",
     permissions: [
@@ -236,6 +250,21 @@ const internalMenuPermissions: FieldForcePermissionKey[] = [
   "menu.service.interventions",
 ];
 
+const mailCountryPermissions: FieldForcePermissionKey[] = [
+  "mail.templates.view",
+  "mail.templates.edit",
+  "mail.templates.test",
+  "mail.countrySettings.manage",
+];
+
+const mailGlobalPermissions: FieldForcePermissionKey[] = [
+  ...mailCountryPermissions,
+  "mail.templates.publish",
+  "mail.templates.restore",
+  "mail.globalSettings.manage",
+  "mail.audit.view",
+];
+
 export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
   REPRESENTATIVE: {
     permissions: permissions(
@@ -306,6 +335,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "kpisCreate",
       "kpisManage",
       "kpiTargetsManage",
+      ...mailCountryPermissions,
       ...internalMenuPermissions
     ),
   },
@@ -346,6 +376,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "kpisCreate",
       "kpisManage",
       "kpiTargetsManage",
+      ...mailCountryPermissions,
       ...internalMenuPermissions
     ),
   },
@@ -376,6 +407,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "kpisCreate",
       "kpisManage",
       "kpiTargetsManage",
+      ...mailGlobalPermissions,
       ...internalMenuPermissions,
       "menu.coaching.log"
     ),
@@ -420,6 +452,7 @@ export const roleTemplates: Record<Role, Pick<ManagedUser, "permissions">> = {
       "contractImportsManage",
       "contractModelsManage",
       "inventory.manage",
+      ...mailGlobalPermissions,
       ...internalMenuPermissions,
       "menu.coaching.teams",
       "menu.coaching.kpis",

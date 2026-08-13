@@ -35,6 +35,21 @@ explicit confirmation word `PRODUCTIE`.
 - `MAIL_DEFAULT_FROM_NAME`: default sender display name.
 - `MAIL_DEFAULT_REPLY_TO_EMAIL`: default reply-to address.
 
+## Transactional mail templates
+
+Transactionele e-mailtypes, toegelaten parameters, scope-erfenis en gepubliceerde
+versies worden opgeslagen in `MailType`, `MailTemplate` en
+`MailTemplateVersion`. De effectieve volgorde is module+land, land, module,
+globaal en tenslotte de veilige systeemfallback. De ontvangerstaal is NL, FR of
+DE; ontbrekende vertalingen vallen terug op NL.
+
+Country-branding en voetregels worden versieerbaar opgeslagen in
+`MailCountryProfile`, `MailFooter` en `MailFooterVersion`. De beheer-API en UI
+controleren de mailrechten en de effectieve country-scope server-side.
+
+Na `npm run db:migrate:deploy` moet `npm run db:seed:config` worden uitgevoerd
+om de centrale catalogus, parameterdefinities en nieuwe rolrechten te vullen.
+
 ## Security
 
 - The SMTP password is write-only in the UI.
@@ -50,6 +65,7 @@ explicit confirmation word `PRODUCTIE`.
 - The settings test action reads the SMTP configuration and test recipient again on the server; unsaved browser values are never used for delivery.
 - The test action requires management access and refuses delivery while the stored SMTP configuration is incomplete.
 - The original route is retained only as delivery metadata and in the MAIL TEST warning; it is used as the SMTP envelope only when both runtime and deployment environment are production and MAIL TEST was explicitly disabled.
+- Delivery metadata includes the selected template version, recipient language/country, correlation id, redirect flag and provider result without storing the rendered mail body.
 - Workflow messages always use the configured FieldForce sender. When a triggering user exists, that user's stored e-mail address overrides the global reply-to address so replies return to the original sender.
 
 ## Incident root cause
