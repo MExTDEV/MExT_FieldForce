@@ -5,6 +5,7 @@ import {
   deleteContactMomentPhoto,
   getContactMomentPhotoForRequest,
 } from "@/lib/server/contact-moment-photos";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string; photoId: string }> }
 ) {
   try {
+    await requireAppModuleEnabled("CONTACTMOMENTEN");
     const actorId = new URL(request.url).searchParams.get("actorId");
     const { id, photoId } = await params;
     const { photo, bytes } = await getContactMomentPhotoForRequest(id, photoId, actorId);
@@ -40,6 +42,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; photoId: string }> }
 ) {
   try {
+    await requireAppModuleEnabled("CONTACTMOMENTEN");
     const actorId = new URL(request.url).searchParams.get("actorId");
     const { id, photoId } = await params;
     return NextResponse.json(await deleteContactMomentPhoto(id, photoId, actorId));

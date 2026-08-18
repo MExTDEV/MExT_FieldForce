@@ -4,6 +4,7 @@ import {
   requirePermission,
 } from "@/lib/server/authenticated-user";
 import { loadHistoricalScoreComparison } from "@/lib/server/coaching-historical-comparison";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export async function GET(
   request: Request,
@@ -13,6 +14,7 @@ export async function GET(
     const { id } = await context.params;
     const params = new URL(request.url).searchParams;
     const actor = await requireAuthenticatedUser(params.get("actorId"));
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
     return loadHistoricalScoreComparison({
       actor,

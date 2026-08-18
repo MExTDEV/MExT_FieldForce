@@ -35,6 +35,33 @@ export function calculateAverageScorePercentage(values: OfficialCoachingScoreVal
   return averagePercent(values);
 }
 
+export function coachingScorePercentage(value: OfficialCoachingScoreValue | undefined) {
+  if (value === undefined || value === null || value === "nvt" || value === "NVT") {
+    return undefined;
+  }
+  return normalizePerformanceScore(value);
+}
+
+export function formatCoachingScorePercentage(
+  value: OfficialCoachingScoreValue | undefined,
+  notScoredLabel = "—",
+) {
+  const percentage = coachingScorePercentage(value);
+  return percentage === undefined ? notScoredLabel : `${percentage}%`;
+}
+
+export function formatCoachingScoreDifference(
+  current: OfficialCoachingScoreValue | undefined,
+  previous: OfficialCoachingScoreValue | undefined,
+  emptyLabel = "—",
+) {
+  const currentPercentage = coachingScorePercentage(current);
+  const previousPercentage = coachingScorePercentage(previous);
+  if (currentPercentage === undefined || previousPercentage === undefined) return emptyLabel;
+  const difference = currentPercentage - previousPercentage;
+  return `${difference > 0 ? "+" : ""}${difference}%`;
+}
+
 function averagePercent(values: OfficialCoachingScoreValue[]) {
   const scored = values.flatMap((value) => {
     if (value === null || value === "nvt" || value === "NVT") return [];

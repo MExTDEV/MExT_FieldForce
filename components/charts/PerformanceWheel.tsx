@@ -139,6 +139,7 @@ export function PerformanceWheel({
       <div className={`mx-auto w-full ${compact ? "max-w-[360px]" : "max-w-[1040px]"}`}>
         <svg
           data-testid="performance-wheel-svg"
+          fontFamily="Helvetica"
           viewBox={`${-VIEWBOX_HORIZONTAL_MARGIN} ${VIEWBOX_VERTICAL_MARGIN} ${SIZE + VIEWBOX_HORIZONTAL_MARGIN * 2} ${SIZE - VIEWBOX_VERTICAL_MARGIN * 2}`}
           className="h-auto w-full"
           role="img"

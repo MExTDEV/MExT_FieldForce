@@ -186,8 +186,18 @@ import {
   calculateAverageScorePercentage,
   calculateCoachingDossierScore,
   calculateOfficialCoachingScore,
+  coachingScorePercentage,
+  formatCoachingScoreDifference,
+  formatCoachingScorePercentage,
 } from "@/lib/coaching/score";
 import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
+import {
+  isActivePlannedCoaching,
+  matchesCoachingOverviewPeriod,
+  matchesCoachingOverviewStatus,
+  type CoachingOverviewPeriodFilter,
+  type CoachingOverviewStatusFilter,
+} from "@/lib/coaching/overview-filters";
 import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
 import {
   hasHtmlMarkup,
@@ -226,7 +236,7 @@ const handledHelpRequestStatuses = new Set([
 
 export function WorkspacePage({ segments }: { segments: string[] }) {
   const { user, loading: sessionLoading, error: sessionError } = useSession();
-  const { isModuleEnabled } = useModules();
+  const { isModuleEnabled, loading: modulesLoading } = useModules();
   const salesDayFeatures = useSalesDayFeatures();
   const salesDayDeviceRuntime = useSalesDayDeviceRuntime();
   const path = segments.join("/");
@@ -240,6 +250,9 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   }
   if (!user.id) {
     return <EmptyState title={translate(user.language, "app.access.loginRequiredTitle")} description={translate(user.language, "app.access.loginRequiredDescription")} />;
+  }
+  if (routeModule && modulesLoading) {
+    return <EmptyState title={translate(user.language, "app.session.loadingTitle")} description={translate(user.language, "app.session.loadingDescription")} />;
   }
   if (routeModule && !isModuleEnabled(routeModule.code)) {
     return <ModuleInactive moduleName={translate(user.language, routeModule.navKey as TranslationKey)} language={user.language} />;
@@ -1033,7 +1046,7 @@ function Dashboard() {
   const attentionRequiredCount = attentionSections.todo.length;
   const metrics = [
     coachingEnabled && user.role === "REPRESENTATIVE" && { label: t("coaching.dashboard.myCoachings"), value: scopedInterventions.length, icon: ClipboardCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
-    coachingEnabled && { label: t("coaching.dashboard.plannedCoachings"), value: scopedInterventions.filter((item) => item.status === "gepland").length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
+    coachingEnabled && { label: t("coaching.dashboard.plannedCoachings"), value: scopedInterventions.filter((item) => isActivePlannedCoaching({ status: item.status, plannedDate: item.plannedDate ?? item.updatedAt.slice(0, 10) }, localDateKey())).length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
     actionPointsEnabled && { label: t("coaching.dashboard.openActions"), value: openActionCount, icon: Target, tone: "bg-amber-50 text-amber-700", href: "/actiepunten" },
     contactsEnabled && { label: t("coaching.dashboard.openContacts"), value: scopedContacts.filter((item) => item.status !== "afgesloten").length, icon: Phone, tone: "bg-sky-50 text-sky-700", href: "/contactmomenten" },
     contactsEnabled && { label: t("coaching.dashboard.waitingVtInput"), value: scopedContacts.filter((item) => item.status === "wacht_op_vt_input").length, icon: Contact, tone: "bg-violet-50 text-violet-700", href: "/contactmomenten" },
@@ -3005,6 +3018,7 @@ function CoachingDossierDetail({
   const [local, setLocal] = useState(intervention);
   const [message, setMessage] = useState<string>();
   const [openAppointmentId, setOpenAppointmentId] = useState<string>();
+  const [newAppointmentDraft, setNewAppointmentDraft] = useState<CoachingAppointment>();
   const [isExportingReport, setIsExportingReport] = useState(false);
   const [reportMessage, setReportMessage] = useState<{ type: "success" | "error"; text: string }>();
   const [transitioning, setTransitioning] = useState(false);
@@ -3433,9 +3447,24 @@ function CoachingDossierDetail({
   }
 
   function addAppointment() {
-    const appointment = emptyAppointment(appointmentCriteria);
-    setLocal((current) => ({ ...current, appointments: [...(current.appointments ?? []), appointment] }));
-    setOpenAppointmentId(appointment.id);
+    setNewAppointmentDraft((current) => current ?? emptyAppointment(appointmentCriteria));
+  }
+
+  function confirmNewAppointment() {
+    if (!newAppointmentDraft) return;
+    setLocal((current) => ({
+      ...current,
+      appointments: [...(current.appointments ?? []), newAppointmentDraft],
+    }));
+    setOpenAppointmentId(newAppointmentDraft.id);
+    setNewAppointmentDraft(undefined);
+  }
+
+  function updateNewAppointmentScore(index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) {
+    setNewAppointmentDraft((current) => current ? {
+      ...current,
+      scores: current.scores.map((score, scoreIndex) => scoreIndex === index ? { ...score, ...patch } : score),
+    } : current);
   }
 
   function updateAppointment(id: string, patch: Partial<CoachingAppointment>) {
@@ -3629,9 +3658,31 @@ function CoachingDossierDetail({
       <section id="coaching-step-5" className={activeStep === 5 ? "card p-5 sm:p-6" : "hidden"}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.appointments")}</h2>
-          {!readOnly && <button type="button" className="btn-secondary" onClick={addAppointment}><Plus className="h-4 w-4" /> {t("coaching.report.appointmentAdd")}</button>}
+          {!readOnly && <button type="button" className="btn-secondary" disabled={Boolean(newAppointmentDraft)} onClick={addAppointment}><Plus className="h-4 w-4" /> {t("coaching.report.appointmentAdd")}</button>}
         </div>
         <div className="mt-4 space-y-3">
+          {newAppointmentDraft && (
+            <div className="rounded-2xl border-2 border-brand-200 bg-brand-50/40 p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("coaching.report.newAppointment")}</p>
+                  <p className="mt-1 text-sm text-slate-600">{t("coaching.report.appointmentDraftDescription")}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setNewAppointmentDraft(undefined)}>{t("coaching.report.cancel")}</button>
+                  <button type="button" className="btn-primary py-2 text-xs" onClick={confirmNewAppointment}>{t("coaching.report.saveAppointment")}</button>
+                </div>
+              </div>
+              <AppointmentEditor
+                appointment={newAppointmentDraft}
+                readOnly={false}
+                historicalScores={historicalScoreLookup}
+                t={t}
+                onChange={(patch) => setNewAppointmentDraft((current) => current ? { ...current, ...patch } : current)}
+                onScoreChange={updateNewAppointmentScore}
+              />
+            </div>
+          )}
           {appointments.map((appointment, index) => (
             <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -3665,7 +3716,7 @@ function CoachingDossierDetail({
               </div>
             </div>
           ))}
-          {appointments.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("coaching.report.noAppointmentsAdded")}</p>}
+          {appointments.length === 0 && !newAppointmentDraft && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("coaching.report.noAppointmentsAdded")}</p>}
         </div>
       </section>
 
@@ -4440,11 +4491,12 @@ function ReadOnlyWorkflowScoreTable({ scores }: { scores: WorkflowScore[] }) {
   return (
     <div className="mt-4 space-y-2">
       {scores.map((score) => {
-        const current = score.value === "NVT" ? undefined : score.value;
-        const trend = scoreTrend(current, score.previousScore);
+        const current = coachingScorePercentage(score.value);
+        const previous = coachingScorePercentage(score.previousScore);
+        const trend = scoreTrend(current, previous);
         return <div key={`${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_105px_minmax(180px,1.2fr)] sm:items-center">
           <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{score.focus || "Algemeen"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{score.criterion}</p></div>
-          <div><p className="text-sm font-bold text-slate-950">{current === undefined ? "N.v.t." : `${current}%`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {score.previousScore}%</p>}</div>
+          <div><p className="text-sm font-bold text-slate-950">{current === undefined ? "N.v.t." : `${current}%`}</p>{previous !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} · vorige {previous}%</p>}</div>
           <OptionalCoachingRemark value={score.description} className="min-h-5 text-sm leading-5 text-slate-600" />
         </div>;
       })}
@@ -4675,7 +4727,7 @@ function HistoricalScoreComparisonPanel({
                 {selected.scores.map((score) => (
                   <div key={score.key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                     <span className="text-sm font-semibold text-slate-700">{score.label ?? score.key}</span>
-                    <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-brand-800 ring-1 ring-slate-200">{score.score} / 5</span>
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-brand-800 ring-1 ring-slate-200">{formatCoachingScorePercentage(score.score)}</span>
                   </div>
                 ))}
                 {!selected.scores.length && <p className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">{t("coaching.preparation.noScores")}</p>}
@@ -4705,7 +4757,7 @@ function ScoreSection({ title, scores, readOnly, idPrefix, comparisonCategory, h
             {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
             <div className="flex flex-wrap gap-2">
               {options.map((option) => (
-                <button key={option} type="button" disabled={readOnly} onClick={() => onChange(index, { score: option })} className={`rounded-lg border px-3 py-2 text-sm font-bold ${item.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{option === "nvt" ? "NVT" : option}</button>
+                <button key={option} type="button" disabled={readOnly} onClick={() => onChange(index, { score: option })} className={`rounded-lg border px-3 py-2 text-sm font-bold ${item.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{option === "nvt" ? "NVT" : formatCoachingScorePercentage(option)}</button>
               ))}
             </div>
             {showComparison && <ScoreDifferenceCell current={item.score} previous={previousScore} t={t} />}
@@ -4762,7 +4814,7 @@ function AppointmentEditor({
                   onClick={() => onScoreChange(index, { score: option })}
                   className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${score.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}
                 >
-                  {option === "nvt" ? "NVT" : option}
+                  {option === "nvt" ? "NVT" : formatCoachingScorePercentage(option)}
                 </button>
               ))}
             </div>
@@ -4780,13 +4832,15 @@ function HistoricalScoreCell({ score, t }: { score?: number; t: (key: Translatio
   return (
     <div>
       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("coaching.scores.previousScore")}</p>
-      <p className="mt-1 text-sm font-bold text-slate-700">{score === undefined ? "-" : score}</p>
+      <p className="mt-1 text-sm font-bold text-slate-700">{formatCoachingScorePercentage(score, "-")}</p>
     </div>
   );
 }
 
 function ScoreDifferenceCell({ current, previous, t }: { current: CoachingSimpleScore["score"]; previous?: number; t: (key: TranslationKey) => string }) {
-  const difference = typeof current === "number" && previous !== undefined ? current - previous : undefined;
+  const currentPercentage = coachingScorePercentage(current);
+  const previousPercentage = coachingScorePercentage(previous);
+  const difference = currentPercentage !== undefined && previousPercentage !== undefined ? currentPercentage - previousPercentage : undefined;
   const tone = difference === undefined
     ? "bg-slate-100 text-slate-600"
     : difference > 0
@@ -4796,9 +4850,7 @@ function ScoreDifferenceCell({ current, previous, t }: { current: CoachingSimple
         : "bg-slate-200 text-slate-700";
   const label = difference === undefined
     ? (previous === undefined ? t("coaching.scores.noPreviousScore") : "-")
-    : difference > 0
-      ? `+${difference}`
-      : String(difference);
+    : formatCoachingScoreDifference(current, previous);
   return (
     <div>
       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("coaching.scores.difference")}</p>
@@ -4927,6 +4979,8 @@ function InterventionList({ kind }: { kind: string }) {
   const { representatives } = useRepresentatives();
   const { dataset: performanceDataset } = usePerformance();
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CoachingOverviewStatusFilter>("all");
+  const [periodFilter, setPeriodFilter] = useState<CoachingOverviewPeriodFilter>("all");
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string> | null>(null);
   const normalizedSearchTerm = normalizeCoachingSearchText(searchTerm);
   const isSearchActive = Boolean(normalizedSearchTerm);
@@ -5055,9 +5109,11 @@ function InterventionList({ kind }: { kind: string }) {
     ...workflowRows,
     ...historicalRows.filter((item) => !workflowIds.has(item.id)),
   ]);
-  const filteredRows = isSearchActive
-    ? allRows.filter((item) => matchesCoachingSearch(item.searchText, normalizedSearchTerm))
-    : allRows;
+  const filteredRows = allRows.filter((item) =>
+    (!isSearchActive || matchesCoachingSearch(item.searchText, normalizedSearchTerm)) &&
+    matchesCoachingOverviewStatus(item, statusFilter, todayKey) &&
+    matchesCoachingOverviewPeriod(item, periodFilter, todayKey)
+  );
   const todayRows = filteredRows
     .filter((item) =>
       !completedCoachingStatuses.has(item.status) &&
@@ -5067,11 +5123,18 @@ function InterventionList({ kind }: { kind: string }) {
     .sort((left, right) => left.executionAt - right.executionAt);
   const plannedRows = filteredRows
     .filter((item) =>
-      !completedCoachingStatuses.has(item.status) &&
-      item.status !== "geannuleerd" &&
+      item.status === "gepland" &&
       item.plannedDate > todayKey
     )
     .sort((left, right) => left.executionAt - right.executionAt);
+  const activeSectionIds = new Set([...todayRows, ...plannedRows].map((item) => item.id));
+  const incompleteRows = filteredRows
+    .filter((item) =>
+      !completedCoachingStatuses.has(item.status) &&
+      item.status !== "geannuleerd" &&
+      !activeSectionIds.has(item.id)
+    )
+    .sort((left, right) => right.executionAt - left.executionAt);
   const completedRows = filteredRows
     .filter((item) => completedCoachingStatuses.has(item.status) || item.status === "geannuleerd")
     .sort((left, right) => right.executionAt - left.executionAt);
@@ -5083,8 +5146,9 @@ function InterventionList({ kind }: { kind: string }) {
   );
   const todayGroupIds = groupIdsForSection("today", todayRows);
   const plannedGroupIds = groupIdsForSection("future", plannedRows);
+  const incompleteGroupIds = groupIdsForSection("incomplete", incompleteRows);
   const completedGroupIds = groupIdsForSection("completed", completedRows);
-  const allGroupIds = new Set([...todayGroupIds, ...plannedGroupIds, ...completedGroupIds]);
+  const allGroupIds = new Set([...todayGroupIds, ...plannedGroupIds, ...incompleteGroupIds, ...completedGroupIds]);
   const filteredGroupIdsKey = [...allGroupIds].sort().join("|");
   const filteredGroupIdsRef = useRef<Set<string>>(new Set());
   const previousFilteredGroupIdsKeyRef = useRef("");
@@ -5306,7 +5370,7 @@ function InterventionList({ kind }: { kind: string }) {
         description={current.description}
         actions={can(user, "intervention:create") ? <Link href={kind === "begeleidingen" ? "/begeleidingen/nieuw" : "#"} className="btn-primary"><Plus className="h-4 w-4" /> {t("coaching.list.newCoaching")}</Link> : undefined}
       />
-      <div className="card p-4"><div className="flex flex-wrap items-center gap-3"><label className="relative min-w-[min(100%,18rem)] flex-1"><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field w-full pl-10 pr-10" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder={t("coaching.list.search")} aria-label={t("coaching.list.search")} />{searchTerm && <button type="button" className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => updateSearchTerm("")} aria-label={t("coaching.list.clearSearch")}><X className="h-4 w-4" /></button>}</label><select className="field md:w-[180px]"><option>{t("coaching.list.allStatuses")}</option><option>{t("coaching.list.planned")}</option><option>{t("coaching.list.closed")}</option></select><select className="field md:w-[180px]"><option>{t("coaching.list.next30Days")}</option><option>{t("coaching.list.thisQuarter")}</option></select>{allScopeGroups.enabled && <div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(true)}><ChevronDown className="h-4 w-4" /> {t("coaching.list.expandAll")}</button><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(false)}><ChevronRight className="h-4 w-4" /> {t("coaching.list.collapseAll")}</button></div>}</div></div>
+      <div className="card p-4"><div className="flex flex-wrap items-center gap-3"><label className="relative min-w-[min(100%,18rem)] flex-1"><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field w-full pl-10 pr-10" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder={t("coaching.list.search")} aria-label={t("coaching.list.search")} />{searchTerm && <button type="button" className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => updateSearchTerm("")} aria-label={t("coaching.list.clearSearch")}><X className="h-4 w-4" /></button>}</label><select className="field md:w-[180px]" aria-label={t("coaching.list.statusFilter")} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as CoachingOverviewStatusFilter)}><option value="all">{t("coaching.list.allStatuses")}</option><option value="planned">{t("coaching.list.planned")}</option><option value="closed">{t("coaching.list.closed")}</option></select><select className="field md:w-[180px]" aria-label={t("coaching.list.periodFilter")} value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value as CoachingOverviewPeriodFilter)}><option value="all">{t("coaching.list.allPeriods")}</option><option value="next30Days">{t("coaching.list.next30Days")}</option><option value="thisQuarter">{t("coaching.list.thisQuarter")}</option></select>{allScopeGroups.enabled && <div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(true)}><ChevronDown className="h-4 w-4" /> {t("coaching.list.expandAll")}</button><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(false)}><ChevronRight className="h-4 w-4" /> {t("coaching.list.collapseAll")}</button></div>}</div></div>
       {isSearchActive && filteredRows.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm font-semibold text-slate-600">{t("coaching.list.noSearchResults")}</div>}
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -5330,6 +5394,18 @@ function InterventionList({ kind }: { kind: string }) {
           <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{plannedRows.length}</span>
         </div>
         {renderRows(plannedRows, t("coaching.list.emptyFuture"), "future")}
+      </section>
+
+      <section className="space-y-4 border-t border-slate-200 pt-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow mb-1">{t("coaching.list.incomplete")}</p>
+            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.incompleteTitle")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.incompleteDescription")}</p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">{incompleteRows.length}</span>
+        </div>
+        {renderRows(incompleteRows, t("coaching.list.emptyIncomplete"), "incomplete")}
       </section>
 
       <section className="space-y-4 border-t border-slate-200 pt-6">

@@ -263,3 +263,22 @@ Where recorded:
 - `npx next build` passed using the existing generated client.
 
 Browser-based visual validation remained outside Codex because the local development server is externally managed.
+
+---
+
+# Coaching try-out P1 corrections
+
+Completed locally: 18 August 2026
+
+Implemented:
+
+- centralized server-side module activation guards for workflow mutations and direct Coaching/Contactmoment endpoints;
+- inactive-module filtering in the shared workflow response and safe client loading state;
+- functional status and period filters for Begeleidingen;
+- a visible `Onvolledige begeleidingen` section for expired planning and other active dossiers;
+- current/future-only Dashboard counting for planned Begeleidingen;
+- shared percentage presentation for current, historical and difference scores;
+- unique, non-overlapping strongest/improvement criteria in professional PDFs;
+- one supported PDF font family, word-safe headings and percentage appointment tables;
+- explicit appointment-draft confirmation before the report autosave queue receives a new record;
+- P1 regression coverage in `scripts/test-coaching-p1-regressions.ts`.

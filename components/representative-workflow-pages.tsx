@@ -20,6 +20,7 @@ import { translate, type TranslationKey } from "@/lib/i18n";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { isBlankRichText } from "@/lib/rich-text";
 import type { ApprovalStatus, WorkflowApproval } from "@/lib/types";
+import { formatCoachingScorePercentage } from "@/lib/coaching/score";
 
 export function MyReflectionsPage({ id }: { id?: string }) {
   const { user, language } = useSession();
@@ -429,16 +430,16 @@ function ReportDetail({
             <CompactScoreGroup title={t("representativeReport.generalScores")} scores={intervention.dossier!.generalScores.map((score) => ({
               key: score.criterion,
               label: score.criterion,
-              value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
-              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+              value: score.score === "nvt" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.score),
+              previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
             }))} />
           )}
           {(intervention.dossier?.personalityScores.length ?? 0) > 0 && (
             <CompactScoreGroup title={t("representativeReport.personalityScores")} scores={intervention.dossier!.personalityScores.map((score) => ({
               key: score.criterion,
               label: score.criterion,
-              value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
-              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+              value: score.score === "nvt" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.score),
+              previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
             }))} />
           )}
           {intervention.scores.length > 0 && (
@@ -446,8 +447,8 @@ function ReportDetail({
               key: `${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`,
               label: score.criterion,
               context: score.focus,
-              value: score.value === "NVT" ? t("representativeReport.notApplicable") : `${score.value}%`,
-              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore}%`),
+              value: score.value === "NVT" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.value),
+              previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
             }))} />
           )}
           {(intervention.appointments ?? []).filter((appointment) => !appointment.isDeleted).map((appointment, index) => (
@@ -457,8 +458,8 @@ function ReportDetail({
               scores={appointment.scores.map((score) => ({
                 key: score.criterion,
                 label: score.criterion,
-                value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
-                previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+                value: score.score === "nvt" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.score),
+                previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
               }))}
             />
           ))}

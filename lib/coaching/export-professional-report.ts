@@ -21,6 +21,8 @@ import {
   normalizePerformanceScore,
 } from "@/lib/performance-data";
 import { isBlankRichText, richTextToPlainText, richTextToStructuredPlainText } from "@/lib/rich-text";
+import { rankUniqueScoreInsights } from "@/lib/coaching/pdf-score-insights";
+import { formatCoachingScoreDifference, formatCoachingScorePercentage } from "@/lib/coaching/score";
 
 export type ProfessionalCoachingReportInput = {
   intervention: CoachingIntervention;
@@ -338,7 +340,7 @@ export async function exportProfessionalCoachingReport(
 ): Promise<ProfessionalCoachingReportResult> {
   const { jsPDF } = await import("jspdf");
   await import("svg2pdf.js");
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", putOnlyUsedFonts: true });
   const logo = input.logoDataUrl ?? await loadLogoDataUrl();
   const appointments = (input.intervention.appointments ?? []).filter((item) => !item.isDeleted);
 
@@ -475,12 +477,12 @@ function drawGeneralPage(pdf: Pdf, input: ProfessionalCoachingReportInput) {
   drawCompactKeyValueList(pdf, t.preparation, rightValues.length ? rightValues : [[t.summary, "-"]], 108, 49, 86, 148);
 
   const rows = collectScoreRows(input.intervention);
-  const sorted = [...rows].sort((left, right) => right.current - left.current);
+  const insights = rankUniqueScoreInsights(rows.map((row) => ({ criterion: row.criterion, score: row.current, scored: row.scored })));
   const openActions = input.intervention.actionPoints.filter((action) => !["afgerond", "behaald", "geannuleerd"].includes(action.status));
   const cardY = 205;
   const cardWidth = (CONTENT_WIDTH - 8) / 3;
-  drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => row.criterion), MARGIN, cardY, cardWidth, GREEN);
-  drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => row.criterion), MARGIN + cardWidth + 4, cardY, cardWidth, RED);
+  drawInsightCard(pdf, t.strongest, insights.strongest.map((row) => row.criterion), MARGIN, cardY, cardWidth, GREEN);
+  drawInsightCard(pdf, t.improvements, insights.improvements.map((row) => row.criterion), MARGIN + cardWidth + 4, cardY, cardWidth, RED);
   drawInsightCard(pdf, t.openActions, [`${openActions.length}`, ...openActions.slice(0, 2).map((action) => action.due ? formatDate(action.due, input.language) : action.title)], MARGIN + (cardWidth + 4) * 2, cardY, cardWidth, AMBER);
 }
 
@@ -497,6 +499,7 @@ async function drawPerformancePage(
   if (input.performanceWheelSvg) {
     const svgClone = input.performanceWheelSvg.cloneNode(true) as SVGSVGElement;
     svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    svgClone.setAttribute("font-family", "Helvetica");
     svgClone.setAttribute("width", "1000");
     svgClone.setAttribute("height", "1000");
     await pdf.svg(svgClone, { x: 14, y: 42, width: 182, height: 132 });
@@ -524,12 +527,12 @@ async function drawPerformancePage(
     input.performanceWheelSvg ? 3 : 2
   );
 
-  const sorted = [...scoredRows].sort((left, right) => right.current - left.current);
+  const insights = rankUniqueScoreInsights(scoredRows.map((row) => ({ criterion: row.criterion, score: row.current })));
   if (input.performanceWheelSvg) {
     drawPerformanceLegend(pdf, t, 231, Boolean(wheelData.comparisonInterventionId));
   } else {
-    drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 163, 86, GREEN);
-    drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), 108, 163, 86, RED);
+    drawInsightCard(pdf, t.strongest, insights.strongest.map((row) => `${row.criterion} (${scoreLabel(row.score)})`), MARGIN, 163, 86, GREEN);
+    drawInsightCard(pdf, t.improvements, insights.improvements.map((row) => `${row.criterion} (${scoreLabel(row.score)})`), 108, 163, 86, RED);
   }
 
   const distribution = [
@@ -542,15 +545,15 @@ async function drawPerformancePage(
   if (input.performanceWheelSvg) {
     addWhitePage(pdf);
     drawSectionHeading(pdf, `${t.performance} - ${t.summary}`, fullName(input.representative));
-    drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 50, 86, GREEN);
-    drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), 108, 50, 86, RED);
+    drawInsightCard(pdf, t.strongest, insights.strongest.map((row) => `${row.criterion} (${scoreLabel(row.score)})`), MARGIN, 50, 86, GREEN);
+    drawInsightCard(pdf, t.improvements, insights.improvements.map((row) => `${row.criterion} (${scoreLabel(row.score)})`), 108, 50, 86, RED);
     drawInsightCard(pdf, t.distribution, distribution, MARGIN, 108, 56, BLUE);
     drawInsightCard(pdf, t.categoryEvolution, categoryEvolution.slice(0, 5), 76, 108, 75, MID_BLUE);
-    drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), 155, 108, 39, AMBER);
+    drawInsightCard(pdf, t.coachingPriorities, insights.improvements.map((row, index) => `${index + 1}. ${row.criterion}`), 155, 108, 39, AMBER);
   } else {
     drawInsightCard(pdf, t.distribution, distribution, MARGIN, 218, 56, BLUE);
     drawInsightCard(pdf, t.categoryEvolution, categoryEvolution.slice(0, 5), 76, 218, 75, MID_BLUE);
-    drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), 155, 218, 39, AMBER);
+    drawInsightCard(pdf, t.coachingPriorities, insights.improvements.map((row, index) => `${index + 1}. ${row.criterion}`), 155, 218, 39, AMBER);
   }
 }
 
@@ -658,8 +661,11 @@ function drawAppointment(
     y = drawAppointmentScores(pdf, input, appointment.scores, y, `${t.appointment} ${index + 1}`);
   }
 
-  const scored = appointment.scores.filter((score) => score.score !== "nvt");
-  const ranked = [...scored].sort((left, right) => Number(right.score) - Number(left.score));
+  const appointmentInsights = rankUniqueScoreInsights(appointment.scores.map((score) => ({
+    criterion: score.criterion,
+    score: score.score === "nvt" ? 0 : Number(score.score) * 20,
+    scored: score.score !== "nvt",
+  })));
   const comments = appointment.scores.filter((score) => !isBlankRichText(score.comment));
   if (y + 38 > CONTENT_BOTTOM) {
     addWhitePage(pdf);
@@ -672,7 +678,7 @@ function drawAppointment(
   drawInsightCard(
     pdf,
     t.strongest,
-    ranked.slice(0, 3).map((score) => `${score.criterion} (${score.score}/5)`),
+    appointmentInsights.strongest.map((score) => `${score.criterion} (${scoreLabel(score.score)})`),
     MARGIN,
     y,
     width,
@@ -682,7 +688,7 @@ function drawAppointment(
   drawInsightCard(
     pdf,
     t.improvements,
-    ranked.slice(-3).reverse().map((score) => `${score.criterion} (${score.score}/5)`),
+    appointmentInsights.improvements.map((score) => `${score.criterion} (${scoreLabel(score.score)})`),
     MARGIN + width + 4,
     y,
     width,
@@ -707,6 +713,7 @@ function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: 
   const wheelData = input.performanceWheelData ?? buildReportWheelData(input);
   const scoredRows = rows.filter((row) => row.scored !== false);
   const sorted = [...scoredRows].sort((left, right) => right.current - left.current);
+  const insights = rankUniqueScoreInsights(scoredRows.map((row) => ({ criterion: row.criterion, score: row.current })));
   const actions = input.intervention.actionPoints.filter((action) => !["afgerond", "behaald", "geannuleerd"].includes(action.status));
   drawCompactKeyValueList(pdf, t.summary, [
     [t.average, formatPerformancePercentage(wheelData.totalPercentage, t.noScore)],
@@ -718,9 +725,9 @@ function drawConclusion(pdf: Pdf, input: ProfessionalCoachingReportInput, rows: 
   ], MARGIN, 49, CONTENT_WIDTH, 42, 3);
 
   const cardWidth = (CONTENT_WIDTH - 8) / 3;
-  drawInsightCard(pdf, t.strongest, sorted.slice(0, 3).map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN, 98, cardWidth, GREEN);
-  drawInsightCard(pdf, t.improvements, sorted.slice(-3).reverse().map((row) => `${row.criterion} (${scoreLabel(row.current)})`), MARGIN + cardWidth + 4, 98, cardWidth, RED);
-  drawInsightCard(pdf, t.coachingPriorities, sorted.slice(-3).reverse().map((row, index) => `${index + 1}. ${row.criterion}`), MARGIN + (cardWidth + 4) * 2, 98, cardWidth, AMBER);
+  drawInsightCard(pdf, t.strongest, insights.strongest.map((row) => `${row.criterion} (${scoreLabel(row.score)})`), MARGIN, 98, cardWidth, GREEN);
+  drawInsightCard(pdf, t.improvements, insights.improvements.map((row) => `${row.criterion} (${scoreLabel(row.score)})`), MARGIN + cardWidth + 4, 98, cardWidth, RED);
+  drawInsightCard(pdf, t.coachingPriorities, insights.improvements.map((row, index) => `${index + 1}. ${row.criterion}`), MARGIN + (cardWidth + 4) * 2, 98, cardWidth, AMBER);
 
   drawInsightCard(pdf, t.openActions, actions.slice(0, 5).map((action) => `${action.title}${action.due ? ` - ${formatDate(action.due, input.language)}` : ""}`), MARGIN, 153, 117, MID_BLUE);
   const nextCoaching = !isBlankRichText(input.intervention.dossier?.individualAttentionPoint)
@@ -1032,11 +1039,13 @@ function drawAppointmentScores(pdf: Pdf, input: ProfessionalCoachingReportInput,
     pdf.text(criterionLines, MARGIN + 40, y + 5);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(SLATE_700);
-    pdf.text(score.previousScore === undefined ? "-" : `${score.previousScore}/5`, MARGIN + 83, y + 5);
-    pdf.text(score.score === "nvt" ? "-" : `${score.score}/5`, MARGIN + 100, y + 5);
-    const difference = score.score === "nvt" || score.previousScore === undefined ? undefined : Number(score.score) - score.previousScore;
+    pdf.text(formatCoachingScorePercentage(score.previousScore, "-"), MARGIN + 83, y + 5);
+    pdf.text(formatCoachingScorePercentage(score.score, "-"), MARGIN + 100, y + 5);
+    const difference = score.score === "nvt" || score.previousScore === undefined
+      ? undefined
+      : Number(score.score) * 20 - score.previousScore * 20;
     pdf.setTextColor(difference === undefined || difference === 0 ? MID_BLUE : difference > 0 ? GREEN : RED);
-    pdf.text(difference === undefined ? "-" : difference > 0 ? `+${difference}` : String(difference), MARGIN + 117, y + 5);
+    pdf.text(formatCoachingScoreDifference(score.score, score.previousScore, "-"), MARGIN + 117, y + 5);
     if (commentLines.length) {
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(7.1);
@@ -1175,18 +1184,35 @@ function drawInsightCard(pdf: Pdf, title: string, lines: string[], x: number, y:
   pdf.setFillColor(color);
   pdf.roundedRect(x, y, 2.5, height, 1.2, 1.2, "F");
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(7.3);
+  fitSingleLineFont(pdf, title.toUpperCase(), width - 10, 7.3, 4.8);
   pdf.setTextColor(color);
-  pdf.text(title.toUpperCase(), x + 6, y + 7, { maxWidth: width - 10 });
+  pdf.text(title.toUpperCase(), x + 6, y + 7);
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(6.8);
   pdf.setTextColor(SLATE_700);
   const display = lines.length ? lines : ["-"];
   const maximumLines = height < 40 ? 3 : 5;
   display.slice(0, maximumLines).forEach((line, index) => {
     const prefix = /^\d+[./]/.test(line) ? "" : "- ";
-    pdf.text(`${prefix}${line}`, x + 6, y + 15 + index * 6, { maxWidth: width - 10 });
+    const value = `${prefix}${line}`;
+    fitSingleLineFont(pdf, value, width - 10, 6.8, 4.4);
+    pdf.text(value, x + 6, y + 15 + index * 6);
   });
+}
+
+function fitSingleLineFont(
+  pdf: Pdf,
+  text: string,
+  maxWidth: number,
+  preferredSize: number,
+  minimumSize: number,
+) {
+  let size = preferredSize;
+  pdf.setFontSize(size);
+  while (size > minimumSize && pdf.getTextWidth(text) > maxWidth) {
+    size = Math.max(minimumSize, size - 0.2);
+    pdf.setFontSize(size);
+  }
+  return size;
 }
 
 function categoryEvolutionLines(rows: ScoreRow[]) {
@@ -1281,9 +1307,9 @@ function drawTableHeader(pdf: Pdf, headers: string[], widths: number[], y: numbe
   let x = MARGIN;
   headers.forEach((header, index) => {
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(7.3);
+    fitSingleLineFont(pdf, header.toUpperCase(), widths[index] - 6, 7.3, 4.8);
     pdf.setTextColor("#FFFFFF");
-    pdf.text(header.toUpperCase(), x + 3, y + 6, { maxWidth: widths[index] - 6 });
+    pdf.text(header.toUpperCase(), x + 3, y + 6);
     x += widths[index];
   });
   return y + 9;

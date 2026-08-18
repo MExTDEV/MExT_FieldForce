@@ -40,6 +40,8 @@ import {
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { historicalStatuses } from "@/lib/server/coaching-historical-comparison";
 import { coachingReportIssues } from "@/lib/coaching/report-form";
+import { moduleForWorkflowRoute } from "@/lib/coaching/workflow-module-access";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -50,6 +52,9 @@ export async function persistWorkflowPatch(
     const payload = (await request.json()) as WorkflowPersistencePatch;
     const selectedPatch = selectPatch(payload);
     const actor = await requireAuthenticatedUser(actorIdFromPatch(selectedPatch));
+    const moduleCode = moduleForWorkflowRoute(routeName);
+    if (!moduleCode) forbidden("Onbekende workflowroute.");
+    await requireAppModuleEnabled(moduleCode);
     requireWorkflowPermission(routeName, actor);
     const interventionPatch = selectedPatch.interventions ?? [];
     const hasCoachings = interventionPatch.length > 0;

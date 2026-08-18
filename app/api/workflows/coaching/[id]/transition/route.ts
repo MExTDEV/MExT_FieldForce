@@ -20,6 +20,7 @@ import {
 } from "@/lib/coaching/approval-notifications";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { coachingReportIssues } from "@/lib/coaching/report-form";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 type CoachingTransition = "reopen" | "send_for_approval" | "approve";
 
@@ -33,6 +34,7 @@ export async function POST(
     const { id } = await context.params;
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
     const payload = await request.json() as { action?: CoachingTransition };
     if (!payload.action || !["reopen", "send_for_approval", "approve"].includes(payload.action)) {

@@ -34,6 +34,13 @@ clear action restores the complete overview. Management groupings expose
 country, team and user chevrons with shared `Alles uitklappen` and
 `Alles inklappen` controls; individual groups remain independently toggleable.
 
+The status filter has explicit `Alle statussen`, `Gepland` and `Afgesloten`
+values. `Gepland` includes only current or future records whose actual status is
+`GEPLAND`; historical completed records never remain visible under that filter.
+The period filter has `Alle periodes`, `Komende 30 dagen` and `Dit kwartaal`.
+Expired planned records and other active records outside today/future are shown
+under `Onvolledige begeleidingen` instead of disappearing between sections.
+
 ---
 
 # Open Mode
@@ -305,6 +312,12 @@ A failed request keeps the local value and browser draft, shows a non-blocking
 error and offers retry. Refreshing an editable report restores and resubmits a
 newer unsent browser draft.
 
+Creating an appointment is a two-stage operation. `Afspraak toevoegen` opens a
+separate local appointment draft that is not part of the autosaved Begeleiding.
+Only the explicit `Afspraak opslaan` confirmation inserts the appointment into
+the report and triggers normal autosave. Cancelling the draft therefore never
+persists an empty appointment.
+
 General and personality scores use three distinct values:
 
 - null plus notApplicable = false: no explicit selection yet;
@@ -349,6 +362,10 @@ Score rows show:
 - the current editable score according to the existing lifecycle and permission rules;
 - a textual difference, using positive, negative, equal or missing-score states.
 
+Historical, current and difference values use the shared percentage formatter
+throughout the execution wizard, representative report, completed detail and
+PDF. Raw `x/5` values are not presented in these views.
+
 Criteria are matched through the stored score key built from the historical category/focus and criterion label. Where stable criterion identifiers are available in the stored score source, the existing score persistence remains authoritative; deleted or inactive criteria must not make historical records unreadable. Historical criteria that no longer exist in the current form are ignored for current input layout.
 
 The Performance Circle in the execution score area uses the current unsaved form state as the current line and the selected previous Begeleiding as a dashed historical line with a legend. The selector updates the score tables and Performance Circle together.
@@ -380,6 +397,13 @@ always calculated from the selected historical Begeleiding. The professional rep
 PDF has a technically necessary vector renderer instead of mounting the browser SVG;
 it consumes the same viewmodel and therefore uses the same order, percentages,
 labels and trend colours.
+
+Professional PDF score tables and appointment summaries use percentages. The
+strongest and improvement cards rank normalized, unique criteria and never show
+the same criterion in both cards. Empty input, one criterion and all-equal
+scores have deterministic no-duplicate states. PDF text uses only the supported
+Helvetica family, including cloned Performance Circle SVG text, and card/table
+headings shrink to a safe single line instead of splitting words internally.
 
 Kapstok-groepering gebruikt de opgeslagen `HistoricalCriterionScore.focus`-waarde
 voor ieder criterium, met `focusNames` uit de actuele of opgeslagen kapstokconfiguratie

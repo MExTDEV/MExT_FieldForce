@@ -8,6 +8,7 @@ import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
 import { isCoachingApprovalManagerRole } from "@/lib/coaching/access";
 import { isPendingCoachingApprovalStatus } from "@/lib/coaching/approval-actions";
 import { Prisma } from "@prisma/client";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 const reminderCooldownMs = 10 * 60 * 1000;
 
@@ -20,6 +21,7 @@ export async function POST(
   return handleApi("api/workflows/coaching/actions", async () => {
     const { id } = await context.params;
     const actor = await requireAuthenticatedUser(new URL(request.url).searchParams.get("actorId"));
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
     const payload = await request.json() as { action?: CoachingAction };
     if (!payload.action || !["remind_approval", "not_executed"].includes(payload.action)) {

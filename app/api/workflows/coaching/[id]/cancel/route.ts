@@ -10,6 +10,7 @@ import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
 import { prisma } from "@/lib/server/db";
 import { translate } from "@/lib/i18n";
 import type { Language } from "@/lib/types";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export async function POST(
   request: Request,
@@ -18,6 +19,7 @@ export async function POST(
   return handleApi("api/workflows/coaching/cancel", async () => {
     const { id } = await context.params;
     const actor = await requireAuthenticatedUser(new URL(request.url).searchParams.get("actorId"));
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
     const payload = await request.json().catch(() => ({})) as { reason?: unknown };
     const requestedReason = typeof payload.reason === "string" ? payload.reason.trim() : "";

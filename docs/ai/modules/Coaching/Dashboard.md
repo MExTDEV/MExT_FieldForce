@@ -52,6 +52,11 @@ Management widgets are shown only when:
 - the effective permission allows it;
 - the user has sufficient scope.
 
+The `Geplande begeleidingen` metric counts only records with status `GEPLAND`
+whose planned date is today or later. Expired planned records remain actionable
+under `Onvolledige begeleidingen` in the Begeleidingen overview and are not
+presented as current planning.
+
 Examples may include:
 
 - Coaching priorities;
