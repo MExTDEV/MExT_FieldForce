@@ -51,6 +51,30 @@ assert.equal(concept.intervention.scores.length, 1);
 assert.equal(concept.intervention.actionPoints.length, 1);
 assert.equal(concept.state.reflections.length, 0);
 
+const planned = saveCoaching(empty, {
+  ...input,
+  ownerId: "user-leader-be",
+  plannedDate: "2026-08-18",
+  startTime: "09:00",
+  endTime: "11:00",
+  notifyRepresentative: true,
+  notifyCoachedRepresentative: true,
+  notifyCoachedTeamLeaders: true,
+  notifyExecutorTeamLeaders: true,
+}, "gepland", representatives);
+assert.equal(planned.intervention.plannedDate, "2026-08-18");
+assert.equal(planned.intervention.notifyRepresentative, true);
+assert.equal(planned.intervention.notifyCoachedRepresentative, true);
+assert.equal(planned.intervention.notifyCoachedTeamLeaders, true);
+assert.equal(planned.intervention.notifyExecutorTeamLeaders, true);
+assert.throws(() => saveCoaching(empty, {
+  ...input,
+  ownerId: "user-leader-be",
+  plannedDate: "",
+  startTime: "09:00",
+  endTime: "11:00",
+}, "gepland", representatives), /geldige datum/);
+
 const finalized = saveCoaching(
   concept.state,
   { ...input, id: concept.intervention.id },

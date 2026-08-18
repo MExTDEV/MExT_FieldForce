@@ -50,6 +50,7 @@ import {
   type RetrainingInput,
   type SalesTrainingInput,
 } from "@/lib/workflow-engine";
+import { isPendingCoachingApprovalStatus } from "@/lib/coaching/approval-actions";
 
 const initialState: WorkflowState = {
   interventions: [],
@@ -353,7 +354,7 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
       return user.role === "REPRESENTATIVE" &&
         [user.id, user.representativeId].includes(approval.representativeId) &&
         !approval.status &&
-        ["wacht_op_akkoord", "verzonden_ter_akkoord"].includes(intervention?.status ?? "");
+        isPendingCoachingApprovalStatus(intervention?.status);
     }), [state.approvals, state.interventions]);
 
   const visibleContactMoments = useCallback(

@@ -358,7 +358,9 @@ export async function loadWorkflowStateFromDatabase(
       }
     }
 
-    if (item.reflection) {
+    // Approval reflection is the canonical flow. Do not expose a legacy reflection
+    // task beside it, otherwise one dossier can look both complete and incomplete.
+    if (item.reflection && !item.approval) {
       state.reflections.push({
         id: item.reflection.id,
         interventionId: item.id,

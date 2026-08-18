@@ -62,7 +62,35 @@ export function requestMetadata(request: Request) {
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return;
-  if (new URL(origin).host !== new URL(request.url).host) forbidden("Ongeldige aanvraagbron.");
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    forbidden("Ongeldige aanvraagbron.");
+  }
+
+  const requestUrl = new URL(request.url);
+  const forwardedHost = firstForwardedHeaderValue(request.headers.get("x-forwarded-host"));
+  const allowedHosts = new Set(
+    [requestUrl.host, forwardedHost]
+      .filter((host): host is string => Boolean(host))
+      .map((host) => host.toLowerCase())
+  );
+  if (!allowedHosts.has(originUrl.host.toLowerCase())) {
+    forbidden("Ongeldige aanvraagbron.");
+  }
+
+  const forwardedProto = firstForwardedHeaderValue(request.headers.get("x-forwarded-proto"));
+  const expectedProtocol = forwardedHost && forwardedProto
+    ? `${forwardedProto.toLowerCase()}:`
+    : requestUrl.protocol.toLowerCase();
+  if (originUrl.protocol.toLowerCase() !== expectedProtocol) {
+    forbidden("Ongeldige aanvraagbron.");
+  }
+}
+
+function firstForwardedHeaderValue(value: string | null) {
+  return value?.split(",")[0]?.trim() || undefined;
 }
 
 export async function listImpersonationCandidates(actor: MockUser) {

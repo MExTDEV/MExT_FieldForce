@@ -166,10 +166,10 @@ export const fieldForceBasePermissionKeys = fieldForceBasePermissionGroups.flatM
   (group) => group.permissions.map((permission) => permission.key)
 );
 
-export const fieldForcePermissionKeys = [
+export const fieldForcePermissionKeys = [...new Set([
   ...fieldForceBasePermissionKeys,
   ...menuPermissionKeys,
-];
+])];
 
 const emptyPermissions = (): Record<FieldForcePermissionKey, boolean> =>
   Object.fromEntries(

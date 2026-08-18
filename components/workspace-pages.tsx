@@ -1,6970 +1,3095 @@
-ï»¿"use client";
-
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowRight,
-  BookOpenCheck,
-  CalendarCheck,
-  Check,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  CircleHelp,
-  ClipboardCheck,
-  Clock3,
-  Contact,
-  FileDown,
-  Filter,
-  GraduationCap,
-  LoaderCircle,
-  Mail,
-  MapPin,
-  MoreHorizontal,
-  Phone,
-  Plus,
-  RefreshCw,
-  Search,
-  Save,
-  Sparkles,
-  Target,
-  Users,
-  UsersRound,
-  X,
-} from "lucide-react";
-import { useSession } from "@/components/session-provider";
-import { useConfiguration } from "@/components/configuration-provider";
-import { useWorkflow } from "@/components/workflow-provider";
-import { usePersonalCriteria } from "@/components/personal-criteria-provider";
-import { usePerformance } from "@/components/performance-provider";
-import { useModules } from "@/components/module-provider";
-import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
-import { useSalesDayDeviceRuntime } from "@/components/salesday/device-runtime-provider";
-import { SalesDayWorkspace } from "@/components/salesday/salesday-workspace";
-import { useRepresentatives } from "@/components/representatives-provider";
-import { MyReflectionsPage, MyReportsPage } from "@/components/representative-workflow-pages";
-import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/contact-help-workflows";
-import { TrainingWorkflowPage } from "@/components/training-workflows";
-import { ReportingDashboard } from "@/components/reporting-dashboard";
-import { SmartDashboardPanel, SmartTeamHeatmap } from "@/components/smart-coaching-dashboard";
-import { ActivityHistoryCard } from "@/components/activity-history-card";
-import { ImpersonationHistory } from "@/components/impersonation-history";
-import { PerformanceEvolution } from "@/components/performance-evolution";
-import { PerformanceWheel } from "@/components/charts/PerformanceWheel";
-import { UsersManagementPage } from "@/components/user-management";
-import { PlanningCalendar } from "@/components/planning-calendar";
-import { ConfigurationManagement } from "@/components/configuration-management";
-import { SettingsManagement } from "@/components/settings-management";
-import { TransactionalMailManagement } from "@/components/transactional-mail-management";
-import { SessionFailure } from "@/components/session-state";
-import { Avatar, EmptyState, PageHeader, StatusBadge, Trend } from "@/components/ui";
-import { RichTextRenderer } from "@/components/rich-text-renderer";
-import {
-  can,
-  canAccessRepresentative,
-  canViewTeamDashboard,
-  roleLabels,
-} from "@/lib/permissions";
-import {
-  canAccessManagementSection,
-  getDefaultManagementSection,
-} from "@/lib/management-access";
-import {
-  canAccessCoachingModuleNavigation,
-  canAccessDashboard,
-  canAccessMyTeamNavigation,
-} from "@/lib/navigation-access";
-import { buildReportingDataset, filterReportingDataset, emptyReportingFilters, reportingUserName } from "@/lib/reporting";
-import { buildSmartCoaching } from "@/lib/smart-coaching";
-import {
-  buildDashboardAttentionSections,
-  type DashboardAttentionItem,
-  type DashboardAttentionSections,
-} from "@/lib/dashboard-attention";
-import {
-  getVisibleRepresentatives,
-  getVisibleWorkflowState,
-} from "@/lib/data-access";
-import { moduleForRoute } from "@/lib/modules";
-import {
-  canStartStarterEvaluation,
-  formatStarterEvaluationDateInput,
-} from "@/lib/starter-evaluations";
-import { isPlanningDateParam } from "@/lib/planning-create-options";
-import { representativeLevelBadgeClass } from "@/lib/representative-levels";
-import {
-  getFicheTimelineItemTypes,
-  getVisibleFicheSections,
-  getVisibleFicheTabs,
-  type FicheSectionId,
-  type FicheTabId,
-  type FicheTimelineItemType,
-} from "@/lib/my-team-fiche-visibility";
-import {
-  coachingById,
-  coachingsForRepresentative,
-  criterionScoresFromRows,
-  hasCoachingScoreData,
-  latestHistoricalCoaching,
-  latestScoredCoaching,
-  mergeCriterionScores,
-  normalizePerformanceScore,
-  performanceTrend,
-  representativeForCoaching,
-} from "@/lib/performance-data";
-import type { HistoricalCoaching } from "@/lib/performance-data";
-import {
-  buildPerformanceWheelData,
-  formatPerformancePercentage,
-  getPerformanceWheelData,
-  type PerformanceWheelData,
-} from "@/lib/performance/performance-wheel";
-import {
-  actionPointHref,
-  buildRepresentativeActivities,
-  isOpenRepresentativeActionPoint,
-  type RepresentativeActivity,
-} from "@/lib/representative-activity";
-import {
-  buildHistoricalScoreLookup,
-  historicalScoreKey,
-  type HistoricalComparisonResponse,
-  type HistoricalScoreReference,
-} from "@/lib/coaching/historical-comparison";
-import { groupAppointmentScores } from "@/lib/coaching/appointment-scores";
-import { translate, type TranslationKey } from "@/lib/i18n";
-import {
-  ACTION_POINT_CLOSE_REASONS,
-  type ActionPointCloseReason,
-} from "@/lib/action-points/close-reasons";
-import {
-  canShowPlannedCoachingIndicator,
-  type MyTeamMember,
-} from "@/lib/my-team";
-import type { ActionPointProductOption, ActionPointTargetTypeOption, CoachingAppointment, CoachingDossier, CoachingIntervention, CoachingSimpleScore, MockUser, PersonalCoachingCriterion, Representative, RepresentativeLevel, ScopedActionDefinition, WorkflowActionPoint, WorkflowScore } from "@/lib/types";
-import {
-  canCancelFutureCoaching,
-  canEditFutureCoachingPlanning,
-  canManageCoaching,
-  coachingOpenHref,
-  representativeApprovalHref,
-} from "@/lib/coaching/access";
-import {
-  canRemindCoachingApproval,
-  isPendingCoachingApprovalStatus,
-} from "@/lib/coaching/approval-actions";
-import {
-  buildCoachingScopeGroups,
-  type CoachingScopeCountryGroup,
-  type CoachingScopeGroupItem,
-  type CoachingScopeTeamGroup,
-} from "@/lib/coaching/scope-groups";
-import {
-  coachingGroupKey,
-  collectCoachingGroupIds,
-  coachingSectionGroupKey,
-  matchesCoachingSearch,
-  normalizeCoachingSearchText,
-} from "@/lib/coaching/overview-list";
-import {
-  canOpenCoachingDetail,
-  completedCoachingStatuses,
-  dedupeById,
-  localDateKey,
-} from "@/lib/coaching/visibility";
-import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
-import {
-  coachingReportIssues,
-  parseCoachingReportDraft,
-  serializeCoachingReportDraft,
-  type CoachingReportIssue,
-  type CoachingReportStepId,
-} from "@/lib/coaching/report-form";
-import {
-  calculateAverageScorePercentage,
-  calculateCoachingDossierScore,
-  calculateOfficialCoachingScore,
-} from "@/lib/coaching/score";
-import { isScheduledCoachingEndPast } from "@/lib/coaching/schedule";
-import { toPersistableCoachingActionPoints } from "@/lib/coaching/action-point-persistence";
-import {
-  hasHtmlMarkup,
-  isBlankRichText,
-  richTextToPlainText,
-} from "@/lib/rich-text";
-import {
-  actionPointScopeLabel,
-  canAccessActionPointsOverview,
-  canCloseConcreteActionPoint,
-  canCreateActionPointDefinition,
-  canManageActionPointDefinitions,
-  canManageScopedActionDefinition,
-  canViewActionPointUserTab,
-  groupActionPointsByRepresentative,
-  groupActionPointsByScope,
-  splitActionPointSections,
-  type ActionPointOverviewItem,
-  type ActionPointScopeGroup,
-  type ActionPointUserGroup,
-} from "@/lib/action-points/visibility";
-
-const newHelpRequestStatuses = new Set(["open", "nieuw"]);
-const untreatedHelpRequestStatuses = new Set(["open", "nieuw", "in_behandeling"]);
-const handledHelpRequestStatuses = new Set([
-  "begeleiding",
-  "contactmoment",
-  "retraining",
-  "salestraining",
-  "gesloten",
-  "ingetrokken",
-  "afgesloten",
-  "geannuleerd",
-  "vervolgactie_gepland",
-]);
-
-export function WorkspacePage({ segments }: { segments: string[] }) {
-  const { user, loading: sessionLoading, error: sessionError } = useSession();
-  const { isModuleEnabled } = useModules();
-  const salesDayFeatures = useSalesDayFeatures();
-  const salesDayDeviceRuntime = useSalesDayDeviceRuntime();
-  const path = segments.join("/");
-  const routeModule = moduleForRoute(segments[0] ?? "");
-
-  if (sessionLoading) {
-    return <EmptyState title={translate("nl", "app.session.loadingTitle")} description={translate("nl", "app.session.loadingDescription")} />;
-  }
-  if (sessionError) {
-    return <SessionFailure />;
-  }
-  if (!user.id) {
-    return <EmptyState title={translate(user.language, "app.access.loginRequiredTitle")} description={translate(user.language, "app.access.loginRequiredDescription")} />;
-  }
-  if (routeModule && !isModuleEnabled(routeModule.code)) {
-    return <ModuleInactive moduleName={translate(user.language, routeModule.navKey as TranslationKey)} language={user.language} />;
-  }
-  if (routeModule && !canAccessCoachingModuleNavigation(user, routeModule.code)) {
-    return <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "app.access.moduleDeniedDescription").replace("{module}", translate(user.language, routeModule.navKey as TranslationKey))} />;
-  }
-
-  if (path === "dashboard") {
-    return canAccessDashboard(user)
-      ? <Dashboard />
-      : <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "app.access.dashboardDeniedDescription")} />;
-  }
-  if (path === "mijn-gegevens") return <MyProfilePage />;
-  if (path === "taken-vandaag") return <TodayTasksPage />;
-  if (segments[0] === "salesday" && salesDayFeatures.loading) {
-    return <EmptyState title={translate(user.language, "salesday.access.loading")} description={translate(user.language, "salesday.access.loadingDescription")} />;
-  }
-  if (segments[0] === "salesday" && !salesDayFeatures.isEnabled("SALESDAY")) {
-    return <EmptyState title={translate(user.language, "salesday.access.disabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
-  }
-  if (segments[0] === "salesday" && user.role === "REPRESENTATIVE" && salesDayDeviceRuntime.phase === "INITIALIZING") {
-    return <EmptyState title={translate(user.language, "salesday.device.initializing")} description={translate(user.language, "salesday.device.initializingDescription")} />;
-  }
-  if (segments[0] === "salesday" && user.role === "REPRESENTATIVE" && salesDayDeviceRuntime.phase === "REPLACEMENT_REQUIRED") {
-    return <EmptyState title={translate(user.language, "salesday.device.replacementRequired")} description={translate(user.language, "salesday.device.replacementDescription")} />;
-  }
-  if (segments[0] === "salesday" && user.role === "REPRESENTATIVE" && salesDayDeviceRuntime.phase === "ERROR") {
-    return <EmptyState title={translate(user.language, "salesday.device.error")} description={translate(user.language, "salesday.device.errorDescription")} />;
-  }
-  if (segments[0] === "salesday" && segments[1] === "mijn-voorraad" && !salesDayFeatures.isEnabled("INVENTORY")) {
-    return <EmptyState title={translate(user.language, "salesday.access.inventoryDisabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
-  }
-  if (segments[0] === "salesday") return <SalesDayWorkspace section={segments[1]} appointmentId={segments[2]} />;
-  if (segments[0] === "pst") return <PlaceholderWorkspace title="PST" description="Deze module wordt later geÃ¯ntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
-  if (segments[0] === "contract") return <PlaceholderWorkspace title="Contract" description="Deze module wordt later geÃ¯ntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
-  if (segments[0] === "service") return <PlaceholderWorkspace title="Service" description="Deze module wordt later geÃ¯ntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
-  if (segments[0] === "mijn-team") {
-    if (!isModuleEnabled("BEGELEIDINGEN") || !canAccessMyTeamNavigation(user)) {
-      return <EmptyState title={translate(user.language, "myTeam.page.accessTitle")} description={translate(user.language, "myTeam.page.navigationAccessDescription")} />;
-    }
-    if (segments[1] === "gebruiker" && segments[2]) {
-      return <TeamMemberDetail id={segments[2]} />;
-    }
-    return segments[1]
-      ? <RepresentativeDetail id={segments[1]} teamMode />
-      : <MyTeamPage />;
-  }
-  if (segments[0] === "mijn-reflecties") return <MyReflectionsPage id={segments[1]} />;
-  if (segments[0] === "mijn-verslagen") return <MyReportsPage id={segments[1]} />;
-  if (segments[0] === "contactmomenten") return <ContactMomentsPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
-  if (segments[0] === "hulpaanvragen") return <HelpRequestsWorkflowPage id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
-  if (segments[0] === "tussentijdse-evaluaties") return <StarterEvaluationsPage evaluationId={segments[1]} />;
-  if (segments[0] === "retrainingen") return <TrainingWorkflowPage kind="retraining" id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
-  if (segments[0] === "sales-trainingen") return <TrainingWorkflowPage kind="sales_training" id={segments[1] === "nieuw" ? undefined : segments[1]} isNew={segments[1] === "nieuw"} />;
-  if (segments[0] === "rapportering") return <ReportingDashboard section={segments[1]} />;
-  if (segments[0] === "vertegenwoordigers" && segments[1]) return <RepresentativeDetail id={segments[1]} />;
-  if (segments[0] === "begeleidingen" && segments[1]) return <CoachingDetail id={segments[1]} />;
-  if (path === "vertegenwoordigers") {
-    if (user.role === "REPRESENTATIVE") {
-      return user.representativeId
-        ? <RepresentativeDetail id={user.representativeId} />
-        : <EmptyState title={translate(user.language, "myTeam.page.noProfileTitle")} description={translate(user.language, "myTeam.page.noProfileDescription")} />;
-    }
-    return <RepresentativesList />;
-  }
-  if (path === "actiepunten") {
-    if (!can(user, "modulePreparation") || !can(user, "menu.coaching.actionPoints")) {
-      return <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "app.access.actionPointsDeniedDescription")} />;
-    }
-    return <ActionPoints />;
-  }
-  if (path === "planning") return <Planning />;
-  if (segments[0] === "beheer") return <Management section={segments[1]} settingsPage={segments.slice(2).join("/")} />;
-  if (path === "begeleidingen") {
-    return <InterventionList kind={path} />;
-  }
-
-  return <EmptyState title={translate(user.language, "app.access.pagePreparingTitle")} description={translate(user.language, "app.access.pagePreparingDescription")} />;
-}
-
-type StarterEvaluationCandidate = {
-  id: string;
-  name: string;
-  email: string;
-  initials: string;
-  avatarUrl: string;
-  representativeId: string;
-  representativeLevel: RepresentativeLevel | null;
-  country: string;
-  teamId?: string | null;
-  teamName: string;
-  starterStartDate: string;
-};
-
-type StarterEvaluationDetail = {
-  id: string;
-  status: string;
-  moment?: "MONTH_1_5" | "MONTH_3" | "MONTH_5" | null;
-  evaluationDate: string;
-  representativeName: string;
-  teamName: string;
-  country: string;
-  leaderName: string;
-  manualStartedByName: string;
-  sections: {
-    id: string;
-    title: string;
-    questions: {
-      id: string;
-      text: string;
-      answerType: string;
-      assignee: string;
-      required: boolean;
-      answers: Record<string, string>;
-    }[];
-  }[];
-};
-
-type StarterEvaluationProfileItem = {
-  id: string;
-  href: string;
-  moment: "MONTH_1_5" | "MONTH_3" | "MONTH_5" | null;
-  status: string;
-  evaluationDate: string;
-  approvedAt: string;
-  leaderName: string;
-  startedByName: string;
-};
-
-function StarterEvaluationsPage({ evaluationId }: { evaluationId?: string }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const canStart = canStartStarterEvaluation(user);
-  const startFromPlanning = searchParams.get("new") === "1";
-  const planningDate = searchParams.get("date");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [candidates, setCandidates] = useState<StarterEvaluationCandidate[]>([]);
-  const [loadingCandidates, setLoadingCandidates] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [selectedRepresentativeId, setSelectedRepresentativeId] = useState("");
-  const [evaluationDate, setEvaluationDate] = useState(() =>
-    isPlanningDateParam(planningDate) ? planningDate! : formatStarterEvaluationDateInput()
-  );
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
-  const [candidateReloadKey, setCandidateReloadKey] = useState(0);
-  const [error, setError] = useState("");
-  const [candidateError, setCandidateError] = useState("");
-  const [duplicateHref, setDuplicateHref] = useState("");
-  const [detail, setDetail] = useState<StarterEvaluationDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState("");
-  const [detailAnswers, setDetailAnswers] = useState<Record<string, string>>({});
-  const [detailSaving, setDetailSaving] = useState(false);
-  const [detailSaveMessage, setDetailSaveMessage] = useState<{ type: "success" | "error"; text: string }>();
-  const milestones = [
-    [t("starterEvaluations.milestone.month1_5"), t("starterEvaluations.milestone.month1_5.description")],
-    [t("starterEvaluations.milestone.month3"), t("starterEvaluations.milestone.month3.description")],
-    [t("starterEvaluations.milestone.month5"), t("starterEvaluations.milestone.month5.description")],
-  ];
-  const groupedCandidates = useMemo(() => groupStarterEvaluationCandidates(candidates), [candidates]);
-  const selectedCandidate = candidates.find((candidate) => candidate.id === selectedRepresentativeId);
-
-  useEffect(() => {
-    if (evaluationId || !startFromPlanning || !canStart) return;
-    setDialogOpen(true);
-  }, [canStart, evaluationId, startFromPlanning]);
-
-  useEffect(() => {
-    if (!dialogOpen) return;
-    const handle = window.setTimeout(() => setDebouncedQuery(query), 250);
-    return () => window.clearTimeout(handle);
-  }, [dialogOpen, query]);
-
-  useEffect(() => {
-    if (!dialogOpen || !canStart) return;
-    let cancelled = false;
-    setLoadingCandidates(true);
-    setCandidateError("");
-    fetch(`/api/starter-evaluations?actorId=${encodeURIComponent(user.id)}&q=${encodeURIComponent(debouncedQuery)}&limit=50`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json() as { candidates?: StarterEvaluationCandidate[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? t("starterEvaluations.manualStart.loadError"));
-        if (cancelled) return;
-        const next = payload.candidates ?? [];
-        setCandidates(next);
-        setActiveCandidateIndex(0);
-        setSelectedRepresentativeId((current) =>
-          current && next.some((candidate) => candidate.id === current)
-            ? current
-            : ""
-        );
-      })
-      .catch((cause) => {
-        if (!cancelled) setCandidateError(cause instanceof Error ? cause.message : t("starterEvaluations.manualStart.loadError"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingCandidates(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [canStart, candidateReloadKey, debouncedQuery, dialogOpen, t, user.id]);
-
-  useEffect(() => {
-    if (!evaluationId) return;
-    let cancelled = false;
-    setDetailLoading(true);
-    setDetailError("");
-    fetch(`/api/starter-evaluations/${encodeURIComponent(evaluationId)}?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json() as { evaluation?: StarterEvaluationDetail; error?: string };
-        if (!response.ok || !payload.evaluation) throw new Error(payload.error ?? t("starterEvaluations.detail.loadError"));
-        if (!cancelled) {
-          setDetail(payload.evaluation);
-          const answerRole = user.role === "REPRESENTATIVE" ? "REPRESENTATIVE" : "EVALUATOR";
-          setDetailAnswers(Object.fromEntries(
-            payload.evaluation.sections.flatMap((section) =>
-              section.questions.map((question) => [question.id, question.answers[answerRole] ?? ""])
-            )
-          ));
-        }
-      })
-      .catch((cause) => {
-        if (!cancelled) setDetailError(cause instanceof Error ? cause.message : t("starterEvaluations.detail.loadError"));
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [evaluationId, t, user.id, user.role]);
-
-  async function submitManualStart() {
-    if (!selectedRepresentativeId) {
-      setError(t("starterEvaluations.manualStart.representativeRequired"));
-      return;
-    }
-    if (!evaluationDate) {
-      setError(t("starterEvaluations.manualStart.dateRequired"));
-      return;
-    }
-    setSaving(true);
-    setError("");
-    setDuplicateHref("");
-    try {
-      const response = await fetch("/api/starter-evaluations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorId: user.id,
-          representativeId: selectedRepresentativeId,
-          evaluationDate,
-        }),
-      });
-      const payload = await response.json() as {
-        evaluation?: { id: string; href: string };
-        duplicate?: boolean;
-        href?: string;
-        error?: string;
-      };
-      if (response.status === 409 && payload.href) {
-        setDuplicateHref(payload.href);
-        setError(payload.error ?? t("starterEvaluations.manualStart.duplicate"));
-        return;
-      }
-      if (!response.ok || !payload.evaluation) {
-        throw new Error(payload.error ?? t("starterEvaluations.manualStart.error"));
-      }
-      setDialogOpen(false);
-      router.push(payload.evaluation.href);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("starterEvaluations.manualStart.error"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveStarterEvaluationAnswers() {
-    if (!detail) return;
-    setDetailSaving(true);
-    setDetailSaveMessage(undefined);
-    try {
-      const response = await fetch(`/api/starter-evaluations/${encodeURIComponent(detail.id)}?actorId=${encodeURIComponent(user.id)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          answers: Object.entries(detailAnswers).map(([questionId, value]) => ({ questionId, value })),
-        }),
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? t("starterEvaluations.detail.saveError"));
-      setDetailSaveMessage({ type: "success", text: t("starterEvaluations.detail.saved") });
-    } catch (error) {
-      setDetailSaveMessage({ type: "error", text: error instanceof Error ? error.message : t("starterEvaluations.detail.saveError") });
-    } finally {
-      setDetailSaving(false);
-    }
-  }
-
-  if (evaluationId) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-5">
-        <PageHeader
-          eyebrow={t("starterEvaluations.detail.eyebrow")}
-          title={t("starterEvaluations.detail.title")}
-          description={detail ? `${detail.representativeName} - ${formatShortDate(detail.evaluationDate)}` : t("starterEvaluations.detail.description")}
-          actions={
-            <Link href="/tussentijdse-evaluaties" className="btn-secondary">
-              {t("starterEvaluations.detail.back")}
-            </Link>
-          }
-        />
-        {detailLoading && (
-          <div className="rounded-lg border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-600 shadow-sm">
-            {t("starterEvaluations.detail.loading")}
-          </div>
-        )}
-        {detailError && (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
-            {detailError}
-          </div>
-        )}
-        {detail && (
-          <>
-            <section className="card p-5">
-              <div className="grid gap-4 md:grid-cols-4">
-                <SummaryValue label={t("starterEvaluations.detail.representative")} value={detail.representativeName} />
-                <SummaryValue label={t("starterEvaluations.detail.team")} value={detail.teamName || "-"} />
-                <SummaryValue label={t("starterEvaluations.detail.country")} value={detail.country} />
-                <SummaryValue label={t("starterEvaluations.detail.evaluator")} value={detail.leaderName || detail.manualStartedByName || "-"} />
-              </div>
-            </section>
-            <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-slate-950">{t("starterEvaluations.detail.formTitle")}</p>
-                <p className="text-xs text-slate-500">{t("starterEvaluations.detail.formDescription")}</p>
-              </div>
-              <button type="button" className="btn-primary" disabled={detailSaving} onClick={() => void saveStarterEvaluationAnswers()}>
-                {detailSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
-                {detailSaving ? t("starterEvaluations.detail.saving") : t("starterEvaluations.detail.save")}
-              </button>
-            </div>
-            {detailSaveMessage && (
-              <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${detailSaveMessage.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-                {detailSaveMessage.text}
-              </div>
-            )}
-            <div className="space-y-4">
-              {detail.sections.map((section, sectionIndex) => (
-                <section key={section.id} className="card overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("starterEvaluations.detail.section")} {sectionIndex + 1}</p>
-                    <h2 className="mt-1 text-lg font-bold text-slate-950">{section.title}</h2>
-                  </div>
-                  <div className="space-y-5 p-5">
-                    {section.questions.map((question) => (
-                      <StarterEvaluationAnswerField
-                        key={question.id}
-                        question={question}
-                        value={detailAnswers[question.id] ?? ""}
-                        disabled={detailSaving || question.assignee === "SYSTEM"}
-                        t={t}
-                        onChange={(value) => setDetailAnswers((current) => ({ ...current, [question.id]: value }))}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        title={t("starterEvaluations.title")}
-        description={t("starterEvaluations.description")}
-        actions={canStart && (
-          <button type="button" className="btn-primary" onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            {t("starterEvaluations.manualStart.button")}
-          </button>
-        )}
-      />
-      <div className="grid gap-4 lg:grid-cols-3">
-        {milestones.map(([title, description]) => (
-          <div key={title} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-50 text-brand-700">
-                <ClipboardCheck className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-950">{title}</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-bold text-slate-950">{t("starterEvaluations.automatic.title")}</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {t("starterEvaluations.automatic.description")}
-        </p>
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
-          {t("starterEvaluations.automatic.warning")}
-        </p>
-      </div>
-      {dialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div className="px-5 pt-5">
-                <h2 className="text-lg font-bold text-slate-950">{t("starterEvaluations.manualStart.title")}</h2>
-                <p className="mt-1 text-sm text-slate-600">{t("starterEvaluations.manualStart.description")}</p>
-              </div>
-              <button type="button" className="btn-ghost mr-5 mt-5 h-9 w-9 p-0" onClick={() => setDialogOpen(false)} aria-label={t("starterEvaluations.manualStart.cancel")}>
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-5 flex-1 space-y-4 overflow-y-auto px-5 pb-5">
-              <label className="block text-sm font-semibold text-slate-700">
-                {t("starterEvaluations.manualStart.representative")}
-                <div className="relative mt-2">
-                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input
-                    role="combobox"
-                    aria-expanded="true"
-                    aria-controls="starter-evaluation-candidates"
-                    aria-activedescendant={candidates[activeCandidateIndex]?.id ? `starter-candidate-${candidates[activeCandidateIndex].id}` : undefined}
-                    className="input pl-9"
-                    value={query}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setActiveCandidateIndex(0);
-                    }}
-                    onKeyDown={(event) => {
-                      if (!candidates.length) return;
-                      if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        setActiveCandidateIndex((current) => Math.min(current + 1, candidates.length - 1));
-                      }
-                      if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        setActiveCandidateIndex((current) => Math.max(current - 1, 0));
-                      }
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        setSelectedRepresentativeId(candidates[activeCandidateIndex]?.id ?? "");
-                      }
-                    }}
-                    placeholder={t("starterEvaluations.manualStart.searchPlaceholder")}
-                    disabled={saving}
-                  />
-                  {loadingCandidates && <LoaderCircle className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-slate-400" />}
-                </div>
-              </label>
-              <div id="starter-evaluation-candidates" role="listbox" className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                {candidateError && (
-                  <div className="space-y-3 px-3 py-3 text-sm">
-                    <p className="font-semibold text-rose-700">{candidateError}</p>
-                    <button type="button" className="btn-secondary" onClick={() => setCandidateReloadKey((current) => current + 1)} disabled={saving}>
-                      {t("starterEvaluations.manualStart.retry")}
-                    </button>
-                  </div>
-                )}
-                {!candidateError && loadingCandidates && !candidates.length && (
-                  <p className="px-3 py-3 text-sm font-semibold text-slate-500">
-                    {debouncedQuery ? t("starterEvaluations.manualStart.searchLoading") : t("starterEvaluations.manualStart.loading")}
-                  </p>
-                )}
-                {!candidateError && !loadingCandidates && candidates.length === 0 && (
-                  <p className="px-3 py-3 text-sm font-semibold text-slate-500">
-                    {debouncedQuery
-                      ? t("starterEvaluations.manualStart.noResultsFor").replace("{query}", debouncedQuery)
-                      : t("starterEvaluations.manualStart.noCandidatesInScope")}
-                  </p>
-                )}
-                {!candidateError && groupedCandidates.map((countryGroup) => (
-                  <div key={countryGroup.country}>
-                    <div className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                      {countryGroup.country}
-                    </div>
-                    {countryGroup.teams.map((teamGroup) => (
-                      <div key={`${countryGroup.country}-${teamGroup.teamName}`}>
-                        <div className="border-b border-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                          {teamGroup.teamName || t("starterEvaluations.manualStart.noTeam")}
-                        </div>
-                        {teamGroup.candidates.map((candidate) => {
-                          const selected = candidate.id === selectedRepresentativeId;
-                          const active = candidates[activeCandidateIndex]?.id === candidate.id;
-                          return (
-                            <button
-                              id={`starter-candidate-${candidate.id}`}
-                              role="option"
-                              aria-selected={selected}
-                              key={candidate.id}
-                              type="button"
-                              className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 ${selected ? "bg-brand-50" : active ? "bg-slate-50" : "hover:bg-slate-50"}`}
-                              onClick={() => setSelectedRepresentativeId(candidate.id)}
-                              disabled={saving}
-                            >
-                              <span className="flex min-w-0 items-center gap-3">
-                                <Avatar initials={candidate.initials || "VT"} src={candidate.avatarUrl} alt={candidate.name} className="h-10 w-10 text-xs" />
-                                <span className="min-w-0">
-                                  <span className="block truncate text-sm font-bold text-slate-950">{candidate.name}</span>
-                                  <span className="mt-0.5 block truncate text-xs text-slate-500">
-                                    {teamGroup.teamName || t("starterEvaluations.manualStart.noTeam")} - {candidate.country}
-                                  </span>
-                                  {candidate.email && <span className="mt-0.5 block truncate text-xs text-slate-400">{candidate.email}</span>}
-                                </span>
-                              </span>
-                              <span className="flex shrink-0 items-center gap-2">
-                                {candidate.representativeLevel && (
-                                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${representativeLevelBadgeClass[candidate.representativeLevel]}`}>
-                                    {t(`representativeLevel.${candidate.representativeLevel}` as TranslationKey)}
-                                  </span>
-                                )}
-                                {selected && <Check className="h-4 w-4 text-brand-700" />}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              {selectedCandidate && (
-                <p className="text-xs font-semibold text-slate-500">
-                  {t("starterEvaluations.manualStart.selected")}: {selectedCandidate.name}
-                </p>
-              )}
-              <label className="block space-y-2 text-sm font-semibold text-slate-700">
-                {t("starterEvaluations.manualStart.date")}
-                <input
-                  type="date"
-                  className="input"
-                  value={evaluationDate}
-                  onChange={(event) => setEvaluationDate(event.target.value)}
-                  disabled={saving}
-                />
-              </label>
-              {error && (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                  {error}
-                  {duplicateHref && (
-                    <Link href={duplicateHref} className="ml-2 underline" onClick={() => setDialogOpen(false)}>
-                      {t("starterEvaluations.manualStart.openExisting")}
-                    </Link>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
-              <button type="button" className="btn-secondary" onClick={() => setDialogOpen(false)} disabled={saving}>
-                {t("starterEvaluations.manualStart.cancel")}
-              </button>
-              <button type="button" className="btn-primary" onClick={submitManualStart} disabled={saving || loadingCandidates || !selectedRepresentativeId}>
-                {saving && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                {!saving && <ClipboardCheck className="h-4 w-4" />}
-                {saving ? t("starterEvaluations.manualStart.saving") : t("starterEvaluations.manualStart.submit")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StarterEvaluationAnswerField({
-  disabled,
-  onChange,
-  question,
-  t,
-  value,
-}: {
-  disabled: boolean;
-  onChange: (value: string) => void;
-  question: StarterEvaluationDetail["sections"][number]["questions"][number];
-  t: (key: TranslationKey) => string;
-  value: string;
-}) {
-  const label = `${question.text}${question.required ? " *" : ""}`;
-  const unsupported = ["SYSTEM", "LINKED_CRITERION", "ACTION_POINTS"].includes(question.answerType);
-  if (unsupported) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-bold text-slate-900">{label}</p>
-        <p className="mt-2 text-sm text-slate-500">{t("starterEvaluations.detail.automaticPlaceholder")}</p>
-      </div>
-    );
-  }
-  if (question.answerType === "BOOLEAN") {
-    return (
-      <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-        <input className="mt-1" type="checkbox" checked={value === "true"} disabled={disabled} onChange={(event) => onChange(event.target.checked ? "true" : "false")} />
-        <span className="font-semibold text-slate-900">{label}</span>
-      </label>
-    );
-  }
-  if (["NUMBER", "PERCENTAGE", "CURRENCY", "SCORE"].includes(question.answerType)) {
-    return <TextField label={label} type="number" value={value} disabled={disabled} onChange={onChange} />;
-  }
-  if (question.answerType === "DATE") {
-    return <TextField label={label} type="date" value={value} disabled={disabled} onChange={onChange} />;
-  }
-  return <RichTextEditor label={label} value={value} disabled={disabled} onChange={onChange} />;
-}
-
-function groupStarterEvaluationCandidates(candidates: StarterEvaluationCandidate[]) {
-  const countryGroups = new Map<string, Map<string, StarterEvaluationCandidate[]>>();
-  for (const candidate of candidates) {
-    const teamName = candidate.teamName || "";
-    if (!countryGroups.has(candidate.country)) countryGroups.set(candidate.country, new Map());
-    const teamGroups = countryGroups.get(candidate.country)!;
-    teamGroups.set(teamName, [...(teamGroups.get(teamName) ?? []), candidate]);
-  }
-  return [...countryGroups.entries()].map(([country, teamMap]) => ({
-    country,
-    teams: [...teamMap.entries()].map(([teamName, teamCandidates]) => ({
-      teamName,
-      candidates: teamCandidates,
-    })),
-  }));
-}
-
-function Dashboard() {
-  const { user, managedUsers, language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const dashboardLocale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
-  const { isModuleEnabled, modules } = useModules();
-  const { representatives } = useRepresentatives();
-  const { dataset: performanceDataset } = usePerformance();
-  const [dashboardDefinitions, setDashboardDefinitions] = useState<ScopedActionDefinition[]>([]);
-  const {
-    visibleInterventions,
-    visibleContactMoments,
-    visibleHelpRequests,
-    visibleRetrainings,
-    visibleSalesTrainings,
-    state,
-  } = useWorkflow();
-  const scopedRepresentatives = useMemo(
-    () => getVisibleRepresentatives(user, representatives),
-    [representatives, user]
-  );
-  const teamDashboardAllowed = canViewTeamDashboard(user);
-  const teamDashboardRepresentatives = useMemo(
-    () => teamDashboardAllowed ? getVisibleRepresentatives(user, representatives) : [],
-    [representatives, teamDashboardAllowed, user]
-  );
-  const coachingEnabled = isModuleEnabled("BEGELEIDINGEN");
-  const planningEnabled = isModuleEnabled("PLANNING");
-  const contactsEnabled = isModuleEnabled("CONTACTMOMENTEN");
-  const helpEnabled = isModuleEnabled("HULPAANVRAGEN");
-  const retrainingEnabled = isModuleEnabled("RETRAININGEN");
-  const salesTrainingEnabled = isModuleEnabled("SALESTRAININGEN");
-  const actionPointsEnabled = isModuleEnabled("ACTIEPUNTEN");
-  const scopedInterventions = useMemo(
-    () => coachingEnabled ? dedupeById(visibleInterventions(user)) : [],
-    [coachingEnabled, user, visibleInterventions],
-  );
-  const scopedContacts = useMemo(
-    () => contactsEnabled ? visibleContactMoments(user) : [],
-    [contactsEnabled, user, visibleContactMoments],
-  );
-  const scopedHelpRequests = useMemo(
-    () => helpEnabled ? visibleHelpRequests(user) : [],
-    [helpEnabled, user, visibleHelpRequests],
-  );
-  const scopedRetrainings = useMemo(
-    () => retrainingEnabled ? visibleRetrainings(user) : [],
-    [retrainingEnabled, user, visibleRetrainings],
-  );
-  const scopedSalesTrainings = useMemo(
-    () => salesTrainingEnabled ? visibleSalesTrainings(user) : [],
-    [salesTrainingEnabled, user, visibleSalesTrainings],
-  );
-  const attentionEnabled = coachingEnabled || contactsEnabled || helpEnabled || retrainingEnabled || salesTrainingEnabled;
-  const attentionSections = useMemo(
-    () => buildDashboardAttentionSections({
-      currentUser: user,
-      interventions: scopedInterventions,
-      contactMoments: scopedContacts,
-      helpRequests: scopedHelpRequests,
-      retrainings: scopedRetrainings,
-      salesTrainings: scopedSalesTrainings,
-      representativeName: (id) => {
-        const representative = representatives.find((person) => person.id === id);
-        return representative ? `${representative.firstName} ${representative.lastName}` : t("coaching.dashboard.unknown");
-      },
-      ownerName: (id) => id ? reportingUserName(id, managedUsers) : undefined,
-    }),
-    [
-      managedUsers,
-      representatives,
-      scopedContacts,
-      scopedHelpRequests,
-      scopedInterventions,
-      scopedRetrainings,
-      scopedSalesTrainings,
-      t,
-      user,
-    ],
-  );
-  const scopedState = useMemo(
-    () => getVisibleWorkflowState(user, state, representatives),
-    [representatives, state, user]
-  );
-  const smartResult = useMemo(() => {
-    const dataset = buildReportingDataset(scopedState, representatives, performanceDataset, managedUsers);
-    const scopedDataset = filterReportingDataset(dataset, scopedRepresentatives, emptyReportingFilters, managedUsers);
-    return buildSmartCoaching(scopedDataset, scopedState, undefined, managedUsers);
-  }, [managedUsers, performanceDataset, representatives, scopedState, scopedRepresentatives]);
-  useEffect(() => {
-    if (!actionPointsEnabled || !canAccessActionPointsOverview(user, modules)) {
-      setDashboardDefinitions([]);
-      return;
-    }
-    let cancelled = false;
-    void fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json() as { definitions?: ScopedActionDefinition[] };
-        if (!response.ok) throw new Error(t("actionPoints.loadError"));
-        if (!cancelled) setDashboardDefinitions(payload.definitions ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setDashboardDefinitions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [actionPointsEnabled, modules, t, user]);
-  const definitionOpenActionCount = useMemo(
-    () => splitActionPointSections(dashboardDefinitions.map((definition) => ({ ...definition, source: "definition" as const })))
-      .find((section) => section.id === "open")?.items.length ?? 0,
-    [dashboardDefinitions],
-  );
-  const scopedOtherMoments = planningEnabled ? [
-    ...scopedContacts.map((item) => ({ id: `contact-${item.id}`, type: "contactmoment", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? t("coaching.dashboard.unknown"), date: new Date(item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.ownerId, status: item.status })),
-    ...scopedRetrainings.map((item) => ({ id: `retraining-${item.id}`, type: "retraining", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? t("coaching.dashboard.unknown"), date: new Date(item.date || item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
-    ...scopedSalesTrainings.map((item) => ({ id: `sales-${item.id}`, type: "sales_training", person: t("coaching.dashboard.participants").replace("{count}", String(item.participantIds.length)), date: new Date(item.date || item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.date || item.updatedAt, owner: item.trainer || item.initiatorId, status: item.status })),
-    ...scopedHelpRequests.map((item) => ({ id: `help-${item.id}`, type: "hulpaanvraag", person: representatives.find((person) => person.id === item.representativeId)?.firstName ?? t("coaching.dashboard.unknown"), date: new Date(item.updatedAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }), sortAt: item.updatedAt, owner: item.requesterId, status: item.status })),
-  ] : [];
-  const upcomingMoments = dedupeById([
-    ...scopedInterventions
-      .filter((item) =>
-        !completedCoachingStatuses.has(item.status) &&
-        item.status !== "geannuleerd" &&
-        (item.plannedDate ?? item.updatedAt.slice(0, 10)) >= localDateKey()
-      )
-      .map((item) => {
-        const representative = representatives.find((person) => person.id === item.representativeId);
-        const sortAt = `${item.plannedDate ?? item.updatedAt.slice(0, 10)}T${item.startTime ?? "00:00"}`;
-        const personName = representative
-          ? `${representative.firstName} ${representative.lastName}`
-          : item.subject
-            ? `${item.subject.firstName} ${item.subject.lastName}`
-            : t("coaching.dashboard.unknown");
-        return {
-          id: `coaching-${item.id}`,
-          type: "begeleiding",
-          person: personName,
-          date: new Date(sortAt).toLocaleDateString(dashboardLocale, { day: "numeric", month: "short" }),
-          sortAt,
-          owner: reportingUserName(item.ownerId, managedUsers),
-          status: item.status,
-          coaching: item,
-        };
-      }),
-    ...scopedOtherMoments.map((item) => ({ ...item, coaching: undefined })),
-  ])
-    .sort((left, right) => left.sortAt.localeCompare(right.sortAt))
-    .slice(0, 5);
-  const openActionCount = actionPointsEnabled
-    ? smartResult.insights.reduce((total, insight) => total + insight.openActionCount, 0) + definitionOpenActionCount
-    : 0;
-  const awaitingApproval = scopedInterventions.filter((item) => ["wacht_op_akkoord", "verzonden_ter_akkoord"].includes(item.status));
-  const approvalCount = awaitingApproval.length;
-  const attentionRequiredCount = attentionSections.todo.length;
-  const metrics = [
-    coachingEnabled && user.role === "REPRESENTATIVE" && { label: t("coaching.dashboard.myCoachings"), value: scopedInterventions.length, icon: ClipboardCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
-    coachingEnabled && { label: t("coaching.dashboard.plannedCoachings"), value: scopedInterventions.filter((item) => item.status === "gepland").length, icon: CalendarCheck, tone: "bg-blue-50 text-blue-700", href: "/begeleidingen" },
-    actionPointsEnabled && { label: t("coaching.dashboard.openActions"), value: openActionCount, icon: Target, tone: "bg-amber-50 text-amber-700", href: "/actiepunten" },
-    contactsEnabled && { label: t("coaching.dashboard.openContacts"), value: scopedContacts.filter((item) => item.status !== "afgesloten").length, icon: Phone, tone: "bg-sky-50 text-sky-700", href: "/contactmomenten" },
-    contactsEnabled && { label: t("coaching.dashboard.waitingVtInput"), value: scopedContacts.filter((item) => item.status === "wacht_op_vt_input").length, icon: Contact, tone: "bg-violet-50 text-violet-700", href: "/contactmomenten" },
-    helpEnabled && { label: t("coaching.dashboard.newHelpRequests"), value: scopedHelpRequests.filter((item) => newHelpRequestStatuses.has(item.status)).length, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/hulpaanvragen" },
-    helpEnabled && { label: t("coaching.dashboard.noFollowUp"), value: scopedHelpRequests.filter((item) => !item.followUpType && untreatedHelpRequestStatuses.has(item.status) && !handledHelpRequestStatuses.has(item.status)).length, icon: Clock3, tone: "bg-amber-50 text-amber-700", href: "/hulpaanvragen" },
-    coachingEnabled && { label: t("coaching.dashboard.waitingApproval"), value: approvalCount, icon: ClipboardCheck, tone: "bg-fuchsia-50 text-fuchsia-700", href: user.role === "REPRESENTATIVE" && actionPointsEnabled ? "/mijn-verslagen" : "/begeleidingen" },
-    retrainingEnabled && { label: t("coaching.dashboard.plannedRetrainings"), value: scopedRetrainings.filter((item) => item.status === "gepland").length, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700", href: "/retrainingen" },
-    salesTrainingEnabled && { label: t("coaching.dashboard.plannedSalesTrainings"), value: scopedSalesTrainings.filter((item) => item.status === "gepland").length, icon: Sparkles, tone: "bg-cyan-50 text-cyan-700", href: "/sales-trainingen" },
-    (retrainingEnabled || salesTrainingEnabled) && { label: t("coaching.dashboard.openTrainings"), value: [...scopedRetrainings, ...scopedSalesTrainings].filter((item) => !["afgerond", "geannuleerd"].includes(item.status)).length, icon: BookOpenCheck, tone: "bg-blue-50 text-blue-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
-    (retrainingEnabled || salesTrainingEnabled) && { label: t("coaching.dashboard.trainingWithoutFollowUp"), value: scopedRetrainings.filter((item) => item.actionPoints.length === 0).length + scopedSalesTrainings.filter((item) => !item.followUpAction.trim()).length, icon: Target, tone: "bg-amber-50 text-amber-700", href: salesTrainingEnabled ? "/sales-trainingen" : "/retrainingen" },
-    attentionEnabled && { label: t("coaching.dashboard.attentionRequired"), value: attentionRequiredCount, icon: CircleHelp, tone: "bg-rose-50 text-rose-700", href: "/taken-vandaag" },
-  ].filter(Boolean) as { label: string; value: number; icon: typeof CalendarCheck; tone: string; href: string }[];
-
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        eyebrow={t("coaching.dashboard.eyebrow")}
-        title={t("coaching.dashboard.welcome")}
-        description={t("coaching.dashboard.description").replace("{name}", user.name.split(" ")[0])}
-        compact
-        actions={coachingEnabled && can(user, "intervention:create") ? (
-          <Link href="/begeleidingen/nieuw" className="btn-primary py-2">
-            <Plus className="h-4 w-4" /> {t("coaching.dashboard.newCoaching")}
-          </Link>
-        ) : undefined}
-      />
-
-      {attentionEnabled && <DashboardAttentionCard sections={attentionSections} t={t} />}
-
-      {actionPointsEnabled && <SmartDashboardPanel result={smartResult} personal={user.role === "REPRESENTATIVE"} />}
-
-      <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <Link
-              key={metric.label}
-              href={metric.href}
-              className="card group flex min-h-[72px] items-center gap-3 p-3 transition hover:-translate-y-0.5 hover:border-brand-100"
-            >
-              <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${metric.tone}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xl font-bold leading-none tracking-tight text-slate-950">{metric.value}</p>
-                <p className="mt-1 text-xs leading-4 text-slate-500">{metric.label}</p>
-              </div>
-              <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-700" />
-            </Link>
-          );
-        })}
-      </section>
-
-      {teamDashboardAllowed && actionPointsEnabled && <SmartTeamHeatmap result={smartResult} />}
-
-      <section className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
-        {planningEnabled && <div className="card overflow-hidden">
-          <SectionTitle title={t("coaching.dashboard.nextMoments")} subtitle={t("coaching.dashboard.nextMomentsDescription")} link="/planning" />
-          <div className="divide-y divide-slate-100">
-            {upcomingMoments.map((item) => (
-              <div key={item.id} className="flex items-center gap-4 px-5 py-4">
-                <div className="hidden h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-100 sm:flex">
-                  <span className="text-xs font-bold uppercase text-slate-400">{item.date.split(" ")[1]}</span>
-                  <span className="text-lg font-bold leading-none text-slate-800">{item.date.split(" ")[0]}</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-slate-900">{item.person}</p>
-                  <p className="mt-1 text-xs capitalize text-slate-500">{item.type.replace("_", " ")} Â· {item.owner}</p>
-                </div>
-                <StatusBadge status={item.status} />
-                {item.coaching && canCancelFutureCoaching(user, item.coaching) && <CoachingCancellationAction intervention={item.coaching} />}
-              </div>
-            ))}
-          </div>
-        </div>}
-
-        {teamDashboardAllowed && actionPointsEnabled && (
-          <div className="card overflow-hidden">
-            <SectionTitle title={t("coaching.dashboard.teamInView")} subtitle={t("coaching.dashboard.visibleRepresentatives").replace("{count}", String(teamDashboardRepresentatives.length))} link="/vertegenwoordigers" />
-            <div className="space-y-1 p-3">
-              {teamDashboardRepresentatives.slice(0, 5).map((representative) => (
-                <Link key={representative.id} href={`/vertegenwoordigers/${representative.id}`} className="flex items-center gap-3 rounded-xl p-3 transition hover:bg-slate-50">
-                  <Avatar initials={representative.initials} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-900">{representative.firstName} {representative.lastName}</p>
-                    <p className="truncate text-xs text-slate-500">{representative.team}</p>
-                  </div>
-                  <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${representative.levelColor}`}>{representative.level}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function CoachingCancellationAction({ intervention }: { intervention: CoachingIntervention }) {
-  const { managedUsers, language } = useSession();
-  const { cancelCoaching } = useWorkflow();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const representativeName = intervention.subject ? `${intervention.subject.firstName} ${intervention.subject.lastName}`.trim() : t("coaching.dashboard.unknown");
-  const dateTime = `${intervention.plannedDate ?? "-"} ${intervention.startTime ?? ""}${intervention.endTime ? ` - ${intervention.endTime}` : ""}`.trim();
-  async function handleCancel() {
-    if (!reason.trim() || busy) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      await cancelCoaching(intervention.id, reason.trim());
-      setOpen(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("coaching.cancel.error"));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <>
-      <button type="button" className="inline-flex shrink-0 items-center justify-center rounded-lg bg-transparent px-2.5 py-1.5 text-sm font-bold text-rose-700 hover:bg-rose-50" aria-label={t("coaching.cancel.open")} onClick={(event) => { event.stopPropagation(); setOpen(true); }}>
-        {t("coaching.cancel.remove")}
-      </button>
-      {open && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby={`cancel-title-${intervention.id}`}>
-        <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-          <div className="flex items-start justify-between gap-4">
-            <div><p className="eyebrow">{t("coaching.cancel.eyebrow")}</p><h2 id={`cancel-title-${intervention.id}`} className="mt-1 text-xl font-bold text-slate-950">{t("coaching.cancel.title")}</h2></div>
-            <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={() => setOpen(false)} aria-label={t("coaching.cancel.close")}><X className="h-5 w-5" /></button>
-          </div>
-          <div className="mt-4 space-y-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
-            <p><strong>{t("coaching.cancel.coachedUser")}:</strong> {representativeName}</p>
-            <p><strong>{t("coaching.cancel.dateTime")}:</strong> {dateTime}</p>
-            <p><strong>{t("coaching.cancel.coach")}:</strong> {reportingUserName(intervention.ownerId, managedUsers)}</p>
-          </div>
-          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{t("coaching.cancel.outlookWarning")}</p>
-          <label className="mt-4 block"><span className="mb-2 block text-sm font-bold text-slate-800">{t("coaching.cancel.reason")}</span><textarea className="field min-h-24 w-full" value={reason} onChange={(event) => setReason(event.target.value)} required disabled={busy} /></label>
-          {error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-          <div className="mt-5 flex justify-end gap-2"><button type="button" className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>{t("coaching.cancel.abort")}</button><button type="button" className="btn-primary bg-rose-700 hover:bg-rose-800 disabled:opacity-60" disabled={busy || !reason.trim()} onClick={() => void handleCancel()}>{busy ? t("coaching.cancel.deleting") : t("coaching.cancel.confirm")}</button></div>
-        </div>
-      </div>}
-    </>
-  );
-}
-
-const attentionIcons: Record<DashboardAttentionItem["type"], typeof ClipboardCheck> = {
-  begeleiding: ClipboardCheck,
-  contactmoment: Phone,
-  retraining: GraduationCap,
-  sales_training: Sparkles,
-  hulpaanvraag: CircleHelp,
-};
-
-function DashboardAttentionCard({ sections, link = "/taken-vandaag", t }: { sections: DashboardAttentionSections; link?: string | null; t: (key: TranslationKey) => string }) {
-  return (
-    <section className="card overflow-hidden">
-      <SectionTitle title={t("coaching.dashboard.attentionTitle")} subtitle={t("coaching.dashboard.attentionDescription")} link={link ?? undefined} />
-      <div className="grid gap-0 lg:grid-cols-2">
-        <DashboardAttentionColumn
-          title={t("coaching.dashboard.toDo")}
-          count={sections.todo.length}
-          items={sections.todo}
-          emptyMessage={t("coaching.dashboard.emptyToDo")}
-        />
-        <DashboardAttentionColumn
-          title={t("coaching.dashboard.done")}
-          count={sections.done.length}
-          items={sections.done}
-          emptyMessage={t("coaching.dashboard.emptyDone")}
-          done
-        />
-      </div>
-    </section>
-  );
-}
-
-function DashboardAttentionColumn({
-  title,
-  count,
-  items,
-  emptyMessage,
-  done = false,
-}: {
-  title: string;
-  count: number;
-  items: DashboardAttentionItem[];
-  emptyMessage: string;
-  done?: boolean;
-}) {
-  return (
-    <section className={`min-w-0 ${done ? "border-t border-slate-100 lg:border-l lg:border-t-0" : ""}`}>
-      <div className="flex items-center justify-between gap-3 bg-slate-50/70 px-5 py-3">
-        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${done ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-          {count}
-        </span>
-      </div>
-      <div className="divide-y divide-slate-100">
-        {items.length > 0 ? (
-          items.map((item) => <DashboardAttentionRow key={item.id} item={item} />)
-        ) : (
-          <p className="px-5 py-4 text-sm text-slate-500">{emptyMessage}</p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function DashboardAttentionRow({ item }: { item: DashboardAttentionItem }) {
-  const { language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const typeLabel = {
-    begeleiding: t("coaching.list.coachings"),
-    contactmoment: t("contactHelp.contact.pageTitle"),
-    retraining: t("coaching.training.retraining"),
-    sales_training: t("coaching.training.salesTraining"),
-    hulpaanvraag: t("contactHelp.help.pageTitle"),
-  }[item.type];
-  const Icon = attentionIcons[item.type];
-  const content = (
-    <>
-      <div className="flex w-20 shrink-0 items-center gap-2 text-xs font-bold text-slate-500">
-        <Clock3 className="h-3.5 w-3.5" />
-        <span className="truncate">{item.timeLabel === "Hele dag" ? t("coaching.dashboard.allDay") : item.timeLabel}</span>
-      </div>
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-slate-950">{item.title}</p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {typeLabel} Â· {item.subtitle}{item.owner ? ` Â· ${item.owner}` : ""}
-        </p>
-      </div>
-      <StatusBadge status={item.status} />
-    </>
-  );
-  const className = "flex min-h-[68px] items-center gap-3 px-5 py-3 transition hover:bg-slate-50";
-
-  if (item.href) {
-    return <Link href={item.href} className={className}>{content}</Link>;
-  }
-
-  return <div className={className}>{content}</div>;
-}
-
-function MyTeamPage() {
-  const { user } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const { modules } = useModules();
-  const { error, loading, members } = useMyTeamMembers();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const countries = useMemo(() => groupMyTeamMembers(members), [members]);
-  const showPlannedCoachingIndicator = canShowPlannedCoachingIndicator(user, modules);
-
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(`mext:my-team:collapsed:${user.id}`);
-      if (stored) setCollapsed(new Set(JSON.parse(stored) as string[]));
-    } catch {
-      setCollapsed(new Set());
-    }
-  }, [user.id]);
-
-  function toggle(key: string) {
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      window.localStorage.setItem(`mext:my-team:collapsed:${user.id}`, JSON.stringify([...next]));
-      return next;
-    });
-  }
-
-  if (loading) return <EmptyState title={t("myTeam.page.loadingTitle")} description={t("myTeam.page.loadingDescription")} />;
-  if (error) return <EmptyState title={t("myTeam.page.errorTitle")} description={error} />;
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={t("myTeam.page.eyebrow")}
-        title={t("myTeam.page.title")}
-        description={t("myTeam.page.description")}
-      />
-      {members.length === 0 && <EmptyState title={t("myTeam.page.emptyTitle")} description={t("myTeam.page.emptyDescription")} />}
-
-      {countries.map(({ country, teams, count }) => {
-        const countryKey = `country:${country}`;
-        const countryOpen = !collapsed.has(countryKey);
-        return <section key={country} className="card overflow-hidden">
-          <button type="button" onClick={() => toggle(countryKey)} aria-expanded={countryOpen} className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5">
-            {countryOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
-            <div className="min-w-0 flex-1"><p className="eyebrow">{t("myTeam.page.country")}</p><h2 className="truncate text-lg font-bold text-slate-950">{countryName(country, user.language)}</h2></div>
-            <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{count} {count === 1 ? t("myTeam.page.personSingular") : t("myTeam.page.personPlural")}</span>
-          </button>
-          {countryOpen && <div className="space-y-3 border-t border-slate-100 p-3 sm:p-4">
-            {teams.map((team) => {
-              const teamKey = `team:${team.id}`;
-              const teamOpen = !collapsed.has(teamKey);
-              return <section key={team.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <button type="button" onClick={() => toggle(teamKey)} aria-expanded={teamOpen} className="flex w-full items-center gap-2.5 px-3 py-3 text-left transition hover:bg-slate-50 sm:px-4">
-                  {teamOpen ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
-                  <UsersRound className="h-4 w-4 text-brand-700" />
-                  <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{team.name}</h3>
-                  <span className="text-xs font-semibold text-slate-500">{team.members.length} {team.members.length === 1 ? t("myTeam.page.personSingular") : t("myTeam.page.personPlural")}</span>
-                </button>
-                {teamOpen && <div className="divide-y divide-slate-100 border-t border-slate-100">
-                  {team.members.map((member) => (
-                    <MyTeamMemberRow
-                      key={member.id}
-                      member={member}
-                      showPlannedCoachingIndicator={showPlannedCoachingIndicator}
-                      language={user.language}
-                    />
-                  ))}
-                </div>}
-              </section>;
-            })}
-          </div>}
-        </section>;
-      })}
-    </div>
-  );
-}
-
-function MyTeamMemberRow({
-  member,
-  showPlannedCoachingIndicator,
-  language,
-}: {
-  member: MyTeamMember;
-  showPlannedCoachingIndicator: boolean;
-  language: MockUser["language"];
-}) {
-  const t = (key: TranslationKey) => translate(language, key);
-  const hasPlannedCoaching = showPlannedCoachingIndicator && member.hasPlannedCoaching;
-  return <Link href={member.profileHref} className={`grid gap-3 p-3.5 transition sm:grid-cols-[minmax(210px,1.4fr)_minmax(125px,0.7fr)_minmax(145px,0.8fr)_auto] sm:items-center sm:px-4 ${hasPlannedCoaching ? "bg-sky-50/80 hover:bg-sky-50" : "hover:bg-brand-50/40"}`}>
-    <div className="flex min-w-0 items-center gap-3">
-      <Avatar initials={member.initials} />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5"><p className="truncate text-sm font-semibold text-slate-900">{member.firstName} {member.lastName}</p>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">{t("myTeam.page.teamLeader")}</span>}{hasPlannedCoaching && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">{t("myTeam.page.plannedCoaching")}</span>}</div>
-        <p className="mt-0.5 text-xs text-slate-500">{translate(language, `impersonation.role.${member.role}` as TranslationKey)}</p>
-      </div>
-    </div>
-    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.overallScore")}</p><p className="mt-1 text-sm font-bold text-slate-800">{member.role !== "REPRESENTATIVE" ? "â€”" : member.overallScore === undefined ? t("myTeam.page.noScore") : formatPerformancePercentage(member.overallScore, t("coaching.performance.notScored"))}</p></div>
-    <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("myTeam.page.lastCoaching")}</p><p className="mt-1 text-sm text-slate-700">{member.role !== "REPRESENTATIVE" ? t("myTeam.page.notApplicable") : member.lastCoaching ? formatShortDate(member.lastCoaching, language) : t("myTeam.page.noCoaching")}</p></div>
-    <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-700">{t("myTeam.page.fiche")} <ChevronRight className="h-4 w-4" /></span>
-  </Link>;
-}
-
-function useMyTeamMembers() {
-  const { user } = useSession();
-  const [members, setMembers] = useState<MyTeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(undefined);
-    fetch(`/api/my-team?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json() as { members?: MyTeamMember[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? translate(user.language, "myTeam.page.errorTitle"));
-        if (active) setMembers(payload.members ?? []);
-      })
-      .catch((cause) => {
-        if (!active) return;
-        setMembers([]);
-        setError(cause instanceof Error ? cause.message : translate(user.language, "myTeam.page.errorTitle"));
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [user.id]);
-  return { members, loading, error };
-}
-
-function groupMyTeamMembers(members: MyTeamMember[]) {
-  const countries = new Map<string, Map<string, { id: string; name: string; members: MyTeamMember[] }>>();
-  for (const member of members) {
-    const teams = countries.get(member.country) ?? new Map();
-    const team = teams.get(member.teamId) ?? { id: member.teamId, name: member.team, members: [] };
-    team.members.push(member);
-    teams.set(member.teamId, team);
-    countries.set(member.country, teams);
-  }
-  return [...countries.entries()].map(([country, teams]) => ({
-    country,
-    teams: [...teams.values()],
-    count: new Set([...teams.values()].flatMap((team) => team.members.map((member) => member.id))).size,
-  }));
-}
-
-function TeamMemberDetail({ id }: { id: string }) {
-  const { user } = useSession();
-  const { members, loading, error } = useMyTeamMembers();
-  const member = members.find((item) => item.id === id);
-  if (loading) return <EmptyState title={translate(user.language, "myTeam.page.memberLoadingTitle")} description={translate(user.language, "myTeam.page.memberLoadingDescription")} />;
-  if (error || !member) return <EmptyState title={translate(user.language, "myTeam.page.accessTitle")} description={error ?? translate(user.language, "myTeam.page.memberAccessDescription")} />;
-  return <div className="space-y-5">
-    <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">â† {translate(user.language, "myTeam.page.back")}</Link>
-    <div className="card p-5 sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar initials={member.initials} className="h-16 w-16 text-lg" />
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-extrabold text-slate-950">{member.firstName} {member.lastName}</h1>{member.isTeamLeader && <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{translate(user.language, "myTeam.page.teamLeader")}</span>}</div><p className="mt-1 text-sm text-slate-500">{translate(user.language, `impersonation.role.${member.role}` as TranslationKey)} Â· {member.team} Â· {countryName(member.country, user.language)}</p></div>
-      </div>
-    </div>
-  </div>;
-}
-
-function countryName(country: string, language: MockUser["language"] = "nl") {
-  const names = {
-    BE: { nl: "BelgiÃ«", fr: "Belgique", de: "Belgien" },
-    NL: { nl: "Nederland", fr: "Pays-Bas", de: "Niederlande" },
-    DE: { nl: "Duitsland", fr: "Allemagne", de: "Deutschland" },
-  } as const;
-  return names[country as keyof typeof names]?.[language] ?? country;
-}
-
-function localeForLanguage(language: MockUser["language"]) {
-  return language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
-}
-
-function localizedRepresentativeLevel(
-  level: Representative["level"],
-  t: (key: TranslationKey) => string,
-) {
-  const keys: Partial<Record<Representative["level"], TranslationKey>> = {
-    Starter: "representativeLevel.STARTER",
-    "Sales Executive": "representativeLevel.SALES_EXECUTIVE",
-    Professional: "representativeLevel.PROFESSIONAL",
-    Expert: "representativeLevel.EXPERT",
-    Vertegenwoordiger: "impersonation.role.REPRESENTATIVE",
-  };
-  const key = keys[level];
-  return key ? t(key) : level;
-}
-
-function initialFicheTabFromHash(): FicheTabId {
-  if (typeof window === "undefined") return "overview";
-  return normalizeFicheTabId(window.location.hash.slice(1));
-}
-
-function normalizeFicheTabId(value: string): FicheTabId {
-  const tabs: FicheTabId[] = [
-    "overview",
-    "performanceCircle",
-    "personalCriteria",
-    "actionPoints",
-    "helpRequests",
-    "coachings",
-    "kpis",
-    "evaluations",
-    "contactMoments",
-    "retrainings",
-    "salesTrainings",
-    "timeline",
-  ];
-  return tabs.includes(value as FicheTabId) ? value as FicheTabId : "overview";
-}
-
-function phoneHref(phone: string) {
-  return phone.replace(/[^\d+]/g, "");
-}
-
-function plainTextSummary(value: string, maxLength = 120) {
-  const text = hasHtmlMarkup(value) ? richTextToPlainText(value) : value;
-  const compact = text.replace(/\s+/g, " ").trim();
-  return compact.length > maxLength ? `${compact.slice(0, maxLength - 1).trimEnd()}â€¦` : compact;
-}
-
-function coachingPerformanceStatus(
-  coaching: HistoricalCoaching,
-  representativeView: boolean,
-  t: (key: TranslationKey) => string,
-) {
-  if (coaching.status === "akkoord_door_vertegenwoordiger") return t("myTeam.page.status.agreed");
-  if (coaching.status === "verzonden_ter_akkoord") return representativeView ? t("myTeam.page.status.toConfirm") : t("myTeam.page.status.sentForApproval");
-  if (coaching.wasReopened || coaching.status === "in_uitvoering") return t("myTeam.page.status.reopened");
-  return t("myTeam.page.status.completedWaiting");
-}
-
-function RepresentativesList() {
-  const { user } = useSession();
-  const { error, loading, representatives } = useRepresentatives();
-  const { dataset: performanceDataset } = usePerformance();
-  const [search, setSearch] = useState("");
-  const [country, setCountry] = useState("all");
-  const [team, setTeam] = useState("all");
-  const [level, setLevel] = useState("all");
-
-  const available = representatives.filter((representative) => canAccessRepresentative(user, representative));
-  const filtered = available.filter((representative) => {
-    const fullName = `${representative.firstName} ${representative.lastName}`.toLowerCase();
-    return (
-      fullName.includes(search.toLowerCase()) &&
-      (country === "all" || representative.country === country) &&
-      (team === "all" || representative.team === team) &&
-      (level === "all" || representative.level === level)
-    );
-  });
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Mensen"
-        title="Vertegenwoordigers"
-        description="Bekijk ontwikkeling, KPI's en volledige coachinghistoriek binnen jouw scope."
-        actions={<button className="btn-secondary"><Filter className="h-4 w-4" /> Exporteer selectie</button>}
-      />
-      {loading && <p className="text-sm text-slate-500">Vertegenwoordigers laden...</p>}
-      {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</p>}
-      <div className="card p-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_160px_200px_200px]">
-          <label className="relative">
-            <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} className="field pl-10" placeholder="Zoek op naam..." />
-          </label>
-          <select className="field" value={country} onChange={(event) => setCountry(event.target.value)}>
-            <option value="all">Alle landen</option>
-            <option value="BE">BelgiÃ«</option>
-            <option value="NL">Nederland</option>
-            <option value="DE">Duitsland</option>
-          </select>
-          <select className="field" value={team} onChange={(event) => setTeam(event.target.value)}>
-            <option value="all">Alle teams</option>
-            {[...new Set(available.map((item) => item.team))].map((item) => <option key={item}>{item}</option>)}
-          </select>
-          <select className="field" value={level} onChange={(event) => setLevel(event.target.value)}>
-            <option value="all">Alle niveaus</option>
-            {["Starter", "Vertegenwoordiger", "Professional", "Expert"].map((item) => <option key={item}>{item}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="card overflow-hidden">
-        <div className="hidden grid-cols-[minmax(220px,1.5fr)_1fr_80px_145px_110px_110px_40px] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 md:grid">
-          <span>Vertegenwoordiger</span><span>Team</span><span>Land</span><span>Laatste begeleiding</span><span>Evolutie</span><span>Actiepunten</span><span />
-        </div>
-        <div className="divide-y divide-slate-100">
-          {filtered.map((representative) => (
-            <Link
-              key={representative.id}
-              href={`/vertegenwoordigers/${representative.id}`}
-              className="grid gap-3 p-4 transition hover:bg-slate-50 md:grid-cols-[minmax(220px,1.5fr)_1fr_80px_145px_110px_110px_40px] md:items-center md:gap-4 md:px-5"
-            >
-              <div className="flex items-center gap-3">
-                <Avatar initials={representative.initials} />
-                <div>
-                  <p className="font-semibold text-slate-900">{representative.firstName} {representative.lastName}</p>
-                  <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${representative.levelColor}`}>{representative.level}</span>
-                </div>
-              </div>
-              <p className="text-sm text-slate-600">{representative.team}</p>
-              <p className="text-sm font-semibold text-slate-700">{representative.country}</p>
-              <p className="text-sm text-slate-600">{formatShortDate(latestHistoricalCoaching(performanceDataset, representative.id)?.date)}</p>
-              <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />
-              <p className="text-sm text-slate-600">
-                <span className="font-bold text-slate-900">
-                  {performanceDataset.historicalActionPoints.filter((item) =>
-                    item.representativeId === representative.id &&
-                    !["behaald", "niet_behaald"].includes(item.status)
-                  ).length}
-                </span> open
-              </p>
-              <ChevronRight className="hidden h-5 w-5 text-slate-300 md:block" />
-            </Link>
-          ))}
-          {filtered.length === 0 && <p className="p-10 text-center text-sm text-slate-500">Geen vertegenwoordigers gevonden met deze filters.</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RepresentativeDetail({ id, teamMode = false }: { id: string; teamMode?: boolean }) {
-  const { user } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const { error, loading, representatives } = useRepresentatives();
-  const { dataset: performanceDataset, error: performanceError } = usePerformance();
-  const { modules } = useModules();
-  const representative = representatives.find((item) => item.id === id);
-  const [tab, setTab] = useState<FicheTabId>(() => initialFicheTabFromHash());
-  const visibleSections = useMemo(
-    () => representative
-      ? getVisibleFicheSections({ user, representative, modules })
-      : new Set<FicheSectionId>(),
-    [modules, representative, user]
-  );
-  const visibleTabs = useMemo(
-    () => representative
-      ? getVisibleFicheTabs({ user, representative, modules })
-      : [],
-    [modules, representative, user]
-  );
-  const activeTab = visibleTabs.some((item) => item.id === tab)
-    ? tab
-    : visibleTabs[0]?.id ?? "overview";
-  const timelineItemTypes = useMemo(
-    () => getFicheTimelineItemTypes(visibleSections),
-    [visibleSections]
-  );
-  const showCoachings = visibleSections.has("coachings");
-  const showActionPoints = visibleSections.has("actionPoints");
-  const showPerformance = visibleSections.has("performanceCircle");
-  const showKpis = visibleSections.has("kpis");
-
-  function selectTab(nextTab: FicheTabId) {
-    setTab(nextTab);
-    if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${nextTab}`);
-    }
-  }
-
-  if (loading) {
-    return <EmptyState title={t("myTeam.page.representativeLoadingTitle")} description={t("myTeam.page.representativeLoadingDescription")} />;
-  }
-
-  if (error) {
-    return <EmptyState title={t("myTeam.page.databaseUnavailableTitle")} description={error} />;
-  }
-
-  if (!representative || !canAccessRepresentative(user, representative)) {
-    return <EmptyState title={t("myTeam.page.accessTitle")} description={t("myTeam.page.representativeAccessDescription")} />;
-  }
-
-  const latestCompletedCoaching = latestHistoricalCoaching(performanceDataset, representative.id);
-  const latestCoaching = latestScoredCoaching(performanceDataset, representative.id);
-  const latestWheel = latestCoaching
-    ? getPerformanceWheelData(representative.id, latestCoaching.id, "kapstok", undefined, performanceDataset.historicalCoachings)
-    : undefined;
-  const latestPercentage = latestWheel?.totalPercentage;
-  const scoredCoachings = coachingsForRepresentative(performanceDataset, representative.id).filter(hasCoachingScoreData);
-  const representativeRoleLabel = t("impersonation.role.REPRESENTATIVE");
-  const representativeLevelLabel = localizedRepresentativeLevel(representative.level, t);
-  const showLevelBadge = representative.level !== "Vertegenwoordiger";
-
-  return (
-    <div className="space-y-6">
-      {teamMode && <Link href="/mijn-team" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700">â† {t("myTeam.page.back")}</Link>}
-      <div className="card overflow-hidden">
-        <div className="bg-gradient-to-r from-brand-800 via-brand-700 to-blue-500 px-5 py-4 text-white sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Avatar initials={representative.initials} className="h-16 w-16 shrink-0 border-2 border-white/80 bg-white/95 text-lg text-brand-800 shadow-md" />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="min-w-0 break-words text-2xl font-extrabold leading-tight drop-shadow-sm sm:text-3xl">
-                  {representative.firstName} {representative.lastName}
-                </h1>
-                <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/25">{representativeRoleLabel}</span>
-                {showLevelBadge && <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${representative.levelColor}`}>{representativeLevelLabel}</span>}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-blue-50">
-                <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {representative.team}</span>
-                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {representative.country}</span>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-semibold text-white">
-                {representative.email && (
-                  <a className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" href={`mailto:${representative.email}`}>
-                    <Mail className="h-4 w-4" /> {representative.email}
-                  </a>
-                )}
-                {representative.phone && (
-                  <a className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" href={`tel:${phoneHref(representative.phone)}`}>
-                    <Phone className="h-4 w-4" /> {representative.phone}
-                  </a>
-                )}
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-              {showPerformance && <PerformanceTrendLabel value={performanceTrend(performanceDataset, representative.id)} />}
-              {showCoachings && can(user, "intervention:create") && <Link href="/begeleidingen/nieuw" className="btn-primary w-full justify-center bg-white text-brand-800 hover:bg-blue-50 sm:w-auto"><Plus className="h-4 w-4" /> Begeleiding</Link>}
-            </div>
-          </div>
-        </div>
-        <div className="mext-horizontal-scrollbar flex min-h-[58px] gap-1 overflow-x-auto border-t border-slate-100 px-4 pt-2">
-          {visibleTabs.map((item) => (
-            <button key={item.id} onClick={() => selectTab(item.id)} className={`min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold transition-colors ${activeTab === item.id ? "border-brand-700 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
-              {t(item.translationKey as TranslationKey)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {activeTab === "overview" && (
-        <>
-          {(showCoachings || showPerformance) && (
-            <section className={`grid gap-4 ${showCoachings && showPerformance ? "lg:grid-cols-[220px_1fr]" : ""}`}>
-              {showPerformance && (
-                <div className="card grid place-items-center p-5 text-center">
-                  {latestCoaching && latestPercentage !== undefined ? <PerformanceWheel
-                    representativeId={representative.id}
-                    currentInterventionId={latestCoaching.id}
-                    type="kapstok"
-                    coachings={performanceDataset.historicalCoachings}
-                    notScoredLabel={t("coaching.performance.notScored")}
-                    totalScoreLabel={t("coaching.performance.totalScore")}
-                    compact
-                  /> : <div><CircleHelp className="mx-auto h-10 w-10 text-amber-500" /><p className="mt-3 text-sm font-semibold text-slate-700">{latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")}</p></div>}
-                </div>
-              )}
-              {showCoachings && (
-                <div className="card p-5 sm:p-6">
-                  <p className="eyebrow">{t("myTeam.page.latestCoaching")}</p>
-                  {latestCoaching ? <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-bold text-slate-950">{showPerformance && latestPercentage !== undefined ? `${t("myTeam.page.overallScore")} ${formatPerformancePercentage(latestPercentage, t("coaching.performance.notScored"))}` : t("myTeam.page.latestCoaching")}</h2><p className="mt-2 text-sm text-slate-500">{formatShortDate(latestCoaching.date, user.language)} Â· {latestCoaching.ownerName}</p><div className="mt-3"><StatusBadge status={latestCoaching.status} label={coachingPerformanceStatus(latestCoaching, user.role === "REPRESENTATIVE", t)} /></div></div><Link href={`/begeleidingen/${latestCoaching.id}`} className="btn-secondary">{t("myTeam.page.openCoaching")} <ChevronRight className="h-4 w-4" /></Link></div> : latestCompletedCoaching ? <div className="mt-3"><p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{showPerformance ? t("myTeam.page.completedNoScore") : t("myTeam.page.completedAvailable")}</p><div className="mt-3"><StatusBadge status={latestCompletedCoaching.status} label={coachingPerformanceStatus(latestCompletedCoaching, user.role === "REPRESENTATIVE", t)} /></div></div> : <EmptyState title={t("myTeam.page.noCompletedCoachingTitle")} description={t("myTeam.page.noCompletedCoachingDescription")} />}
-                </div>
-              )}
-            </section>
-          )}
-          {showKpis && (
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {representative.kpis.map((kpi) => (
-                <div key={kpi.label} className="card p-5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-500">{kpi.label}</p>
-                    <Trend value={kpi.trend} />
-                  </div>
-                  <p className="mt-4 text-2xl font-bold text-slate-950">{kpi.value}</p>
-                  <p className="mt-1 text-xs text-slate-400">Doel {kpi.target}</p>
-                </div>
-              ))}
-            </section>
-          )}
-          <section className={`grid gap-5 ${showActionPoints ? "xl:grid-cols-[1.3fr_1fr]" : ""}`}>
-            {showActionPoints && <RepresentativeOpenActionPointsPanel representative={representative} />}
-            {(showCoachings || showActionPoints || visibleSections.has("contactMoments") || visibleSections.has("helpRequests") || visibleSections.has("retrainings") || visibleSections.has("salesTrainings") || visibleSections.has("evaluations")) && (
-              <RepresentativeActivityFeed representativeId={representative.id} visibleSections={visibleSections} />
-            )}
-          </section>
-        </>
-      )}
-      {performanceError && (showCoachings || showActionPoints || showPerformance || showKpis) && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{performanceError}</p>}
-      {activeTab === "performanceCircle" && (
-        scoredCoachings.length ? <PerformanceEvolution
-          coachings={scoredCoachings}
-          representativeName={`${representative.firstName} ${representative.lastName}`}
-        /> : <EmptyState title={t("myTeam.page.noScore")} description={latestCompletedCoaching ? t("myTeam.page.completedNoScore") : t("myTeam.page.noCompletedCoachingDescription")} />
-      )}
-      {activeTab === "personalCriteria" && <PersonalCriteriaPanel representative={representative} />}
-      {activeTab === "kpis" && <KpiPanel representativeId={representative.id} />}
-      {activeTab === "actionPoints" && <RepresentativeActionPointsPanel representative={representative} />}
-      {activeTab === "evaluations" && <RepresentativeEvaluationsPanel representativeId={representative.id} />}
-      {["coachings", "contactMoments", "retrainings", "salesTrainings", "helpRequests", "timeline"].includes(activeTab) && <TimelinePanel tab={activeTab} representativeId={representative.id} representativeName={representative.firstName} itemTypes={timelineItemTypesForTab(activeTab, timelineItemTypes)} />}
-    </div>
-  );
-}
-
-function PersonalCriteriaPanel({ representative }: { representative: Representative }) {
-  const { user } = useSession();
-  const { coachingFramework } = useConfiguration();
-  const personalCriteria = usePersonalCriteria();
-  const active = personalCriteria.activeForRepresentative(user, representative.id);
-  const inactive = personalCriteria
-    .visibleCriteria(user)
-    .filter((criterion) => criterion.representativeId === representative.id && !criterion.isActive);
-  const canManage = personalCriteria.canManageForRepresentative(user, representative);
-  const [editing, setEditing] = useState<PersonalCoachingCriterion | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    focusName: coachingFramework[0]?.name ?? "",
-  });
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string }>();
-
-  function openCreate() {
-    setEditing(null);
-    setForm({ title: "", description: "", focusName: coachingFramework[0]?.name ?? "" });
-    setMessage(undefined);
-    setFormOpen(true);
-  }
-
-  function openEdit(criterion: PersonalCoachingCriterion) {
-    setEditing(criterion);
-    setForm({
-      title: criterion.title,
-      description: criterion.description,
-      focusName: criterion.focusName,
-    });
-    setMessage(undefined);
-    setFormOpen(true);
-  }
-
-  function saveCriterion() {
-    const input = {
-      ...form,
-      representativeId: representative.id,
-    };
-    const result = editing
-      ? personalCriteria.updateCriterion(user, editing.id, input)
-      : personalCriteria.createCriterion(user, input);
-    if (!result.ok) {
-      setMessage({ type: "error", text: result.error });
-      return;
-    }
-    setMessage({ type: "success", text: translate(user.language, editing ? "myTeam.criteria.updated" : "myTeam.criteria.added") });
-    setEditing(null);
-    setForm({ title: "", description: "", focusName: coachingFramework[0]?.name ?? "" });
-    setFormOpen(false);
-  }
-
-  function deactivateCriterion(id: string) {
-    const result = personalCriteria.deactivateCriterion(user, id);
-    setMessage(result.ok
-      ? { type: "success", text: translate(user.language, "myTeam.criteria.deactivated") }
-      : { type: "error", text: result.error }
-    );
-  }
-
-  return (
-    <div id="overzicht" className="space-y-5 scroll-mt-24">
-      <div className="card p-5 sm:p-6">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-          <div>
-            <p className="eyebrow">{translate(user.language, "myTeam.criteria.eyebrow")}</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-950">{translate(user.language, "myTeam.criteria.title").replace("{name}", representative.firstName)}</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              {translate(user.language, "myTeam.criteria.description")}
-            </p>
-          </div>
-          {canManage && (
-            <button type="button" onClick={openCreate} className="btn-primary">
-              <Plus className="h-4 w-4" /> {translate(user.language, "myTeam.criteria.add")}
-            </button>
-          )}
-        </div>
-        {message && (
-          <div className={`mt-4 rounded-2xl border p-4 text-sm font-semibold ${
-            message.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-rose-200 bg-rose-50 text-rose-800"
-          }`}>
-            {message.text}
-          </div>
-        )}
-      </div>
-
-      {formOpen && canManage && (
-        <div className="card p-5 sm:p-6">
-          <div className="grid gap-4 md:grid-cols-[1fr_240px]">
-            <label>
-              <span className="mb-2 block text-sm font-semibold text-slate-700">{translate(user.language, "myTeam.criteria.name")}</span>
-              <input
-                className="field"
-                value={form.title}
-                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder={translate(user.language, "myTeam.criteria.namePlaceholder")}
-              />
-            </label>
-            <label>
-              <span className="mb-2 block text-sm font-semibold text-slate-700">{translate(user.language, "myTeam.criteria.frameworkPhase")}</span>
-              <select
-                className="field"
-                value={form.focusName}
-                onChange={(event) => setForm((current) => ({ ...current, focusName: event.target.value }))}
-              >
-                {coachingFramework.map((focus) => <option key={focus.name}>{focus.name}</option>)}
-              </select>
-            </label>
-          </div>
-          <label className="mt-4 block">
-            <span className="mb-2 block text-sm font-semibold text-slate-700">{translate(user.language, "myTeam.criteria.descriptionLabel")}</span>
-            <textarea
-              className="field min-h-28"
-              value={form.description}
-              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              placeholder={translate(user.language, "myTeam.criteria.descriptionPlaceholder")}
-            />
-          </label>
-          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button type="button" onClick={() => setFormOpen(false)} className="btn-secondary">{translate(user.language, "myTeam.criteria.cancel")}</button>
-            <button type="button" onClick={saveCriterion} className="btn-primary">{translate(user.language, "myTeam.criteria.save")}</button>
-          </div>
-        </div>
-      )}
-
-      <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-        <div className="card overflow-hidden">
-          <SectionTitle title={translate(user.language, "myTeam.criteria.fixedTitle")} subtitle={translate(user.language, "myTeam.criteria.fixedSubtitle")} />
-          <div className="grid gap-3 p-5">
-            {coachingFramework.map((focus) => (
-              <div key={focus.name} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <div className="flex items-center gap-2">
-                  <span className={`h-7 w-1.5 rounded-full ${focus.color}`} />
-                  <p className="font-bold text-brand-800">{focus.name}</p>
-                  <span className="ml-auto rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">{focus.criteria.length} {translate(user.language, "myTeam.criteria.fixedCount")}</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {focus.criteria.map((criterion) => (
-                    <span key={criterion} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                      {criterion}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="card overflow-hidden">
-            <SectionTitle title={translate(user.language, "myTeam.profile.tab.personalCriteria")} subtitle={translate(user.language, "myTeam.criteria.personalSubtitle").replace("{count}", String(active.length))} />
-            <div className="grid gap-3 p-5">
-              {active.map((criterion) => (
-                <PersonalCriterionCard
-                  key={criterion.id}
-                  criterion={criterion}
-                  canManage={canManage}
-                  onEdit={() => openEdit(criterion)}
-                  onDeactivate={() => deactivateCriterion(criterion.id)}
-                />
-              ))}
-              {active.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-                  {translate(user.language, "myTeam.criteria.empty")}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {inactive.length > 0 && (
-            <div className="card overflow-hidden opacity-80">
-              <SectionTitle title={translate(user.language, "myTeam.criteria.archivedTitle")} subtitle={translate(user.language, "myTeam.criteria.archivedSubtitle")} />
-              <div className="grid gap-3 p-5">
-                {inactive.map((criterion) => (
-                  <PersonalCriterionCard
-                    key={criterion.id}
-                    criterion={criterion}
-                    canManage={false}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function PersonalCriterionCard({
-  criterion,
-  canManage,
-  onEdit,
-  onDeactivate,
-}: {
-  criterion: PersonalCoachingCriterion;
-  canManage: boolean;
-  onEdit?: () => void;
-  onDeactivate?: () => void;
-}) {
-  const { language } = useSession();
-  const t = (key: TranslationKey) => translate(language, key);
-  return (
-    <article className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-brand-700 px-2.5 py-1 text-xs font-bold text-white">{t("myTeam.criteria.personalBadge")}</span>
-            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-brand-700">{criterion.focusName}</span>
-            {!criterion.isActive && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">{t("myTeam.criteria.inactiveBadge")}</span>}
-          </div>
-          <h3 className="mt-3 font-bold text-slate-950">{criterion.title}</h3>
-          {criterion.description && <p className="mt-1 text-sm leading-6 text-slate-600">{criterion.description}</p>}
-        </div>
-        {canManage && (
-          <div className="flex shrink-0 gap-2">
-            <button type="button" onClick={onEdit} className="btn-secondary py-2 text-xs">{t("myTeam.criteria.edit")}</button>
-            <button type="button" onClick={onDeactivate} className="btn-secondary py-2 text-xs text-rose-700">{t("myTeam.criteria.deactivate")}</button>
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function KpiPanel({ representativeId }: { representativeId: string }) {
-  const { language } = useSession();
-  const t = (key: TranslationKey) => translate(language, key);
-  const { dataset: performanceDataset } = usePerformance();
-  const snapshots = performanceDataset.monthlyKpiSnapshots.filter((item) => item.representativeId === representativeId);
-  const latest = snapshots.at(-1);
-  return (
-    <div className="card p-5 sm:p-6">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div><p className="eyebrow">{t("myTeam.kpi.lastMonths")}</p><h2 className="mt-1 text-xl font-bold">{t("myTeam.kpi.title")}</h2></div>
-        <select className="field max-w-48"><option>{t("myTeam.kpi.monthMay2026")}</option><option>{t("myTeam.kpi.monthApril2026")}</option></select>
-      </div>
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        {(latest?.values ?? []).map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-5">
-            <div className="flex items-center justify-between"><p className="font-semibold">{kpi.label}</p><p className="text-lg font-bold">{formatKpiValue(kpi.value, kpi.unit, language)}</p></div>
-            <div className="mt-6 flex h-24 items-end gap-2">
-              {snapshots.map((snapshot) => {
-                const value = snapshot.values.find((item) => item.label === kpi.label)?.value ?? 0;
-                const percentage = Math.min(100, Math.max(15, (value / kpi.target) * 82));
-                return <div key={snapshot.month} title={`${snapshot.month}: ${formatKpiValue(value, kpi.unit, language)}`} className="flex-1 self-end rounded-t-md bg-brand-700 opacity-80" style={{ height: `${percentage}%` }} />;
-              })}
-            </div>
-            <div className="mt-2 flex justify-between text-[10px] text-slate-400"><span>{t("myTeam.kpi.from")}</span><span>{t("myTeam.kpi.to")}</span></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function timelineItemTypesForTab(
-  tab: FicheTabId,
-  visibleItemTypes: FicheTimelineItemType[]
-): FicheTimelineItemType[] {
-  if (tab === "coachings") return visibleItemTypes.includes("begeleiding") ? ["begeleiding"] : [];
-  if (tab === "contactMoments") return visibleItemTypes.includes("contactmoment") ? ["contactmoment"] : [];
-  if (tab === "retrainings") return visibleItemTypes.includes("retraining") ? ["retraining"] : [];
-  if (tab === "salesTrainings") return visibleItemTypes.includes("sales_training") ? ["sales_training"] : [];
-  if (tab === "helpRequests") return visibleItemTypes.includes("hulpaanvraag") ? ["hulpaanvraag"] : [];
-  if (tab === "timeline") return visibleItemTypes;
-  return [];
-}
-
-function TimelinePanel({
-  tab,
-  representativeId,
-  representativeName,
-  itemTypes,
-}: {
-  tab: FicheTabId;
-  representativeId: string;
-  representativeName: string;
-  itemTypes: FicheTimelineItemType[];
-}) {
-  const { user, managedUsers } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const workflowApi = useWorkflow();
-  const { dataset: performanceDataset } = usePerformance();
-  const [busyActionId, setBusyActionId] = useState<string>();
-  const [actionError, setActionError] = useState<string>();
-  const [actionNotice, setActionNotice] = useState<string>();
-  const allowedTypes = new Set(itemTypes);
-  type TimelineItem = {
-    id: string;
-    type: string;
-    date: string;
-    title?: string;
-    owner: string;
-    status: string;
-    score?: number;
-    intervention?: CoachingIntervention;
-    lastApprovalReminderAt?: string;
-    canRemindApproval?: boolean;
-    canMarkNotExecuted?: boolean;
-    canContinue?: boolean;
-  };
-  const rawItems: TimelineItem[] = [
-    ...(allowedTypes.has("begeleiding")
-      ? [
-          ...performanceDataset.historicalCoachings
-            .filter((item) => item.representativeId === representativeId)
-            .map((item) => ({
-              id: item.id,
-              type: "begeleiding" as const,
-              date: item.date,
-              title: t("myTeam.profile.activity.coaching"),
-              owner: item.ownerName,
-              status: item.status,
-              score: item.overallScore,
-            })),
-          ...workflowApi.visibleInterventions(user)
-            .filter((item) => item.representativeId === representativeId)
-            .map((item) => {
-              const lastApprovalReminderAt = item.auditTrail
-                ?.filter((entry) => entry.action === "coaching.approval_reminded")
-                .sort((left, right) => right.at.localeCompare(left.at))[0]?.at;
-              const canManage = canManageCoaching(user, item);
-              return {
-                id: item.id,
-                type: "begeleiding" as const,
-                date: item.plannedDate ?? item.updatedAt,
-                title: item.title,
-                owner: reportingUserName(item.ownerId, managedUsers),
-                status: item.status,
-                score: item.dossier
-                  ? calculateTotalCoachingScore(item.dossier, item.appointments ?? [])
-                  : undefined,
-                intervention: item,
-                lastApprovalReminderAt,
-                canRemindApproval: canRemindCoachingApproval(user, item),
-                canMarkNotExecuted: canManage && item.status === "gepland" && isScheduledCoachingEndPast({
-                  plannedDate: item.plannedDate,
-                  endTime: item.endTime,
-                  country: item.country,
-                }),
-                canContinue: canManage && item.status === "in_uitvoering",
-              };
-            }),
-        ]
-      : []),
-    ...(allowedTypes.has("contactmoment")
-      ? [
-          ...performanceDataset.historicalContactMoments
-            .filter((item) => item.representativeId === representativeId)
-            .map((item) => ({ id: item.id, type: "contactmoment" as const, date: item.date, owner: item.reason, status: item.status })),
-          ...workflowApi.visibleContactMoments(user)
-            .filter((item) => item.representativeId === representativeId)
-            .map((item) => ({ id: item.id, type: "contactmoment" as const, date: item.updatedAt, owner: item.reason, status: item.status })),
-        ]
-      : []),
-    ...(allowedTypes.has("hulpaanvraag")
-      ? workflowApi.visibleHelpRequests(user)
-          .filter((item) => item.representativeId === representativeId)
-          .map((item) => ({ id: item.id, type: "hulpaanvraag" as const, date: item.updatedAt, owner: item.subject, status: item.status }))
-      : []),
-    ...(allowedTypes.has("retraining")
-      ? workflowApi.visibleRetrainings(user)
-          .filter((item) => item.representativeId === representativeId)
-          .map((item) => ({ id: item.id, type: "retraining" as const, date: item.updatedAt, owner: item.theme, status: item.status }))
-      : []),
-    ...(allowedTypes.has("sales_training")
-      ? workflowApi.visibleSalesTrainings(user)
-          .filter((item) => item.participantIds.includes(representativeId))
-          .map((item) => ({ id: item.id, type: "sales_training" as const, date: item.updatedAt, owner: item.theme, status: item.status }))
-      : []),
-    ...workflowApi.state.linkedInterventions
-      .filter((item) =>
-        item.representativeId === representativeId &&
-        allowedTypes.has(item.type)
-      )
-      .map((item) => ({ id: item.id, type: item.type, date: item.createdAt, owner: item.title, status: item.status })),
-  ];
-  const workflowItems = [...new Map([
-    ...rawItems.filter((item) => !item.intervention),
-    ...rawItems.filter((item) => item.intervention),
-  ].map((item) => [`${item.type}:${item.id}`, item] as const)).values()]
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  async function executeCoachingAction(item: TimelineItem, action: "remind_approval" | "not_executed") {
-    if (!item.intervention || busyActionId) return;
-    if (action === "not_executed" && !window.confirm(t("myTeam.profile.coachings.notExecutedConfirm"))) return;
-    setBusyActionId(`${item.id}:${action}`);
-    setActionError(undefined);
-    setActionNotice(undefined);
-    try {
-      const response = await fetch(`/api/workflows/coaching/${encodeURIComponent(item.id)}/actions?actorId=${encodeURIComponent(user.id)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const payload = await response.json() as { error?: string; mailStatus?: "sent" | "skipped" | "error" };
-      if (!response.ok) throw new Error(coachingActionErrorMessage(payload.error, t));
-      await workflowApi.refresh();
-      setActionNotice(action === "remind_approval"
-        ? payload.mailStatus === "error"
-          ? t("myTeam.profile.coachings.reminderMailError")
-          : t("myTeam.profile.coachings.reminderSent")
-        : t("myTeam.profile.coachings.notExecutedSuccess"));
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : t("myTeam.profile.coachings.actionError"));
-    } finally {
-      setBusyActionId(undefined);
-    }
-  }
-
-  const title = t(ficheTabTitleKey(tab));
-  const isCoachings = tab === "coachings";
-
-  return (
-    <div className="card overflow-hidden">
-      <SectionTitle title={title} subtitle={t("myTeam.profile.timeline.subtitle").replace("{name}", representativeName)} />
-      {actionError && isCoachings && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{actionError}</p>}
-      {actionNotice && isCoachings && <p className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">{actionNotice}</p>}
-      {isCoachings && workflowItems.length > 0 && (
-        <div className="hidden grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_minmax(190px,1fr)] gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
-          <span>{t("myTeam.profile.column.date")}</span>
-          <span>{t("myTeam.profile.column.responsible")}</span>
-          <span>{t("myTeam.profile.column.score")}</span>
-          <span>{t("myTeam.profile.column.status")}</span>
-          <span className="text-center">{t("myTeam.profile.column.actions")}</span>
-        </div>
-      )}
-      <div className="divide-y divide-slate-100">
-        {workflowItems.map((item) => isCoachings ? (
-          <div key={`${item.type}:${item.id}`} className="grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 md:grid-cols-[minmax(120px,0.8fr)_minmax(130px,1fr)_100px_120px_minmax(190px,1fr)] md:items-center md:gap-3">
-            <Link href={timelineItemHref(item.type, item.id)} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-              <span className="block font-semibold text-slate-800">{formatShortDate(item.date, user.language)}</span>
-              {item.title && <span className="block truncate text-xs text-slate-500">{item.title}</span>}
-            </Link>
-            <span className="truncate text-slate-600">{item.owner}</span>
-            <span className="font-bold text-slate-900">{formatOfficialCoachingScore(item.score)}</span>
-            <StatusBadge status={item.status} />
-            <div className="flex min-h-9 flex-wrap items-center justify-center gap-2 text-center">
-              {item.canRemindApproval && (
-                <button type="button" className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs" title={t("myTeam.profile.coachings.remindApproval")} aria-label={t("myTeam.profile.coachings.remindApproval")} onClick={() => void executeCoachingAction(item, "remind_approval")} disabled={busyActionId !== undefined}>
-                  {busyActionId === `${item.id}:remind_approval` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <><Mail className="h-4 w-4" /> <span>{t("myTeam.profile.coachings.remindApproval")}</span></>}
-                </button>
-              )}
-              {item.canMarkNotExecuted && (
-                <button type="button" className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs text-rose-700" onClick={() => void executeCoachingAction(item, "not_executed")} disabled={busyActionId !== undefined}>
-                  {busyActionId === `${item.id}:not_executed` ? <LoaderCircle className="h-4 w-4 animate-spin" /> : t("myTeam.profile.coachings.notExecuted")}
-                </button>
-              )}
-              {item.canContinue && <Link href={timelineItemHref(item.type, item.id)} className="btn-secondary whitespace-nowrap px-2.5 py-1.5 text-xs">{t("myTeam.profile.coachings.continue")}</Link>}
-              {!item.canRemindApproval && !item.canMarkNotExecuted && !item.canContinue && <span className="text-slate-400">â€”</span>}
-              {item.lastApprovalReminderAt && isPendingCoachingApprovalStatus(item.status) && <span className="basis-full text-center text-[11px] text-slate-500">{t("myTeam.profile.coachings.lastReminder")}: {formatDateTime(item.lastApprovalReminderAt)}</span>}
-            </div>
-          </div>
-        ) : (
-          <Link key={`${item.type}:${item.id}`} href={timelineItemHref(item.type, item.id)} className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700"><ClipboardCheck className="h-4 w-4" /></div>
-            <div className="min-w-0 flex-1"><p className="font-semibold capitalize text-slate-900">{t(ficheTimelineItemTypeKey(item.type))}</p><p className="mt-0.5 truncate text-xs text-slate-500">{formatShortDate(item.date, user.language)} Â· {item.owner}</p></div>
-            <StatusBadge status={item.status} />
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          </Link>
-        ))}
-        {workflowItems.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{isCoachings ? t("myTeam.profile.coachings.empty") : t("myTeam.profile.timeline.empty")}</p>}
-      </div>
-    </div>
-  );
-}
-
-function timelineItemHref(type: string, id: string) {
-  if (type === "begeleiding") return `/begeleidingen/${id}`;
-  if (type === "contactmoment") return `/contactmomenten/${id}`;
-  if (type === "hulpaanvraag") return `/hulpaanvragen/${id}`;
-  if (type === "retraining") return `/retrainingen/${id}`;
-  if (type === "sales_training") return `/sales-trainingen/${id}`;
-  return "/mijn-team";
-}
-
-function ficheTabTitleKey(tab: FicheTabId): TranslationKey {
-  return `myTeam.profile.tab.${tab}` as TranslationKey;
-}
-
-function ficheTimelineItemTypeKey(type: string): TranslationKey {
-  const keys: Record<string, TranslationKey> = {
-    begeleiding: "myTeam.profile.activity.coaching",
-    contactmoment: "myTeam.profile.activity.contactMoment",
-    hulpaanvraag: "myTeam.profile.activity.helpRequest",
-    retraining: "myTeam.profile.activity.retraining",
-    sales_training: "myTeam.profile.activity.salesTraining",
-    actionPoint: "myTeam.profile.activity.actionPoint",
-  };
-  return keys[type] ?? "myTeam.profile.activity.coaching";
-}
-
-function formatOfficialCoachingScore(score: number | undefined) {
-  if (score === undefined || !Number.isFinite(score)) return "â€”";
-  return `${Math.round(score)}%`;
-}
-
-function coachingActionErrorMessage(error: string | undefined, t: (key: TranslationKey) => string) {
-  return error ?? t("myTeam.profile.coachings.actionError");
-}
-
-function starterEvaluationMomentKey(moment: StarterEvaluationProfileItem["moment"]): TranslationKey {
-  if (moment === "MONTH_1_5") return "starterEvaluations.milestone.month1_5";
-  if (moment === "MONTH_3") return "starterEvaluations.milestone.month3";
-  if (moment === "MONTH_5") return "starterEvaluations.milestone.month5";
-  return "myTeam.profile.evaluations.manual";
-}
-
-function RepresentativeEvaluationsPanel({ representativeId }: { representativeId: string }) {
-  const { user } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const [evaluations, setEvaluations] = useState<StarterEvaluationProfileItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    fetch(`/api/starter-evaluations/profile?actorId=${encodeURIComponent(user.id)}&representativeId=${encodeURIComponent(representativeId)}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json() as { evaluations?: StarterEvaluationProfileItem[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? t("myTeam.profile.evaluations.loadError"));
-        setEvaluations(payload.evaluations ?? []);
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : t("myTeam.profile.evaluations.loadError"));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [representativeId, t, user.id]);
-
-  return (
-    <div className="card overflow-hidden">
-      <SectionTitle title={t("myTeam.profile.tab.evaluations")} subtitle={t("myTeam.profile.evaluations.subtitle")} />
-      {loading ? (
-        <p className="p-6 text-sm font-semibold text-slate-500">{t("myTeam.profile.evaluations.loading")}</p>
-      ) : error ? (
-        <p className="m-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>
-      ) : evaluations.length === 0 ? (
-        <p className="p-8 text-center text-sm text-slate-500">{t("myTeam.profile.evaluations.empty")}</p>
-      ) : (
-        <>
-          <div className="hidden grid-cols-[112px_minmax(120px,0.9fr)_minmax(130px,1fr)_120px_112px_44px] gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
-            <span>{t("myTeam.profile.column.date")}</span>
-            <span>{t("myTeam.profile.column.type")}</span>
-            <span>{t("myTeam.profile.column.responsible")}</span>
-            <span>{t("myTeam.profile.column.status")}</span>
-            <span>{t("myTeam.profile.column.approvedAt")}</span>
-            <span />
-          </div>
-          <div className="divide-y divide-slate-100">
-            {evaluations.map((evaluation) => (
-              <Link key={evaluation.id} href={evaluation.href} className="grid gap-2 px-4 py-2.5 text-sm transition hover:bg-slate-50 focus-visible:bg-brand-50 md:grid-cols-[112px_minmax(120px,0.9fr)_minmax(130px,1fr)_120px_112px_44px] md:items-center md:gap-3">
-                <span className="font-semibold text-slate-800">{formatShortDate(evaluation.evaluationDate, user.language)}</span>
-                <span className="truncate text-slate-600">{t(starterEvaluationMomentKey(evaluation.moment))}</span>
-                <span className="truncate text-slate-600">{evaluation.startedByName || evaluation.leaderName || "â€”"}</span>
-                <StatusBadge status={evaluation.status.toLowerCase()} />
-                <span className="text-slate-600">{evaluation.approvedAt ? formatShortDate(evaluation.approvedAt, user.language) : "â€”"}</span>
-                <ChevronRight className="hidden h-4 w-4 justify-self-end text-slate-300 md:block" />
-              </Link>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-type RepresentativeOpenAction = {
-  id: string;
-  concreteActionPointId: string;
-  title: string;
-  due?: string;
-  status: string;
-  progress?: number;
-};
-
-function RepresentativeOpenActionPointsPanel({ representative }: { representative: Representative }) {
-  const { user } = useSession();
-  const workflowApi = useWorkflow();
-  const { dataset, refresh: refreshPerformance } = usePerformance();
-  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
-  const [closingId, setClosingId] = useState<string>();
-  const [closeCandidate, setCloseCandidate] = useState<RepresentativeOpenAction>();
-  const [error, setError] = useState<string>();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-
-  const actions = useMemo(() => {
-    const workflowActions = workflowApi.visibleInterventions(user)
-      .filter((item) => item.representativeId === representative.id)
-      .flatMap((item) => item.actionPoints.map((action) => ({
-        id: action.id,
-        concreteActionPointId: action.id.includes(":") ? action.id.split(":")[0] : action.id,
-        title: plainTextSummary(action.title),
-        due: action.due,
-        status: action.status,
-        progress: undefined,
-      })));
-    const historicalActions = dataset.historicalActionPoints
-      .filter((item) => item.representativeId === representative.id)
-      .map((action) => ({
-        id: action.id,
-        concreteActionPointId: action.id,
-        title: plainTextSummary(action.title),
-        due: action.due,
-        status: action.status,
-        progress: action.progress,
-      }));
-    const unique = new Map<string, RepresentativeOpenAction>();
-    for (const action of [...workflowActions, ...historicalActions]) {
-      const existing = unique.get(action.concreteActionPointId);
-      if (!existing) {
-        unique.set(action.concreteActionPointId, action);
-      } else if (existing.progress === undefined && action.progress !== undefined) {
-        unique.set(action.concreteActionPointId, { ...existing, progress: action.progress });
-      }
-    }
-    return [...unique.values()]
-      .filter((action) => isOpenRepresentativeActionPoint(action.status) && !closedIds.has(action.concreteActionPointId))
-      .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
-  }, [closedIds, dataset.historicalActionPoints, representative.id, user, workflowApi]);
-
-  const canClose = canCloseConcreteActionPoint(user) &&
-    can(user, "menu.coaching.actionPoints") &&
-    canAccessRepresentative(user, representative);
-
-  async function closeAction(action: RepresentativeOpenAction, closedReason: ActionPointCloseReason, closedReasonExplanation: string) {
-    if (!canClose || closingId) return;
-    setClosingId(action.concreteActionPointId);
-    setError(undefined);
-    try {
-      const response = await fetch("/api/action-points/" + encodeURIComponent(action.concreteActionPointId) + "/close", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorId: user.id,
-          representativeId: representative.id,
-          closedReason,
-          closedReasonExplanation,
-        }),
-      });
-      const payload = await response.json() as { actionPoint?: { actionPointId: string }; error?: string };
-      if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? t("myTeam.profile.actionPoints.closeError"));
-      setClosedIds((current) => new Set(current).add(action.concreteActionPointId));
-      setCloseCandidate(undefined);
-      void Promise.all([workflowApi.refresh(), refreshPerformance()]);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("myTeam.profile.actionPoints.closeError"));
-    } finally {
-      setClosingId(undefined);
-    }
-  }
-
-  return (
-    <div className="card overflow-hidden">
-      <SectionTitle title={t("myTeam.profile.overview.openActionPoints")} subtitle={t("myTeam.profile.overview.openActionPointsSubtitle")} link="/actiepunten" linkLabel={t("myTeam.profile.overview.all")} />
-      {error && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{error}</p>}
-      <div className="divide-y divide-slate-100">
-        {actions.slice(0, 8).map((action) => (
-          <div key={action.concreteActionPointId} className="flex min-w-0 items-center gap-2 px-4 py-2.5 transition hover:bg-slate-50 sm:gap-3 sm:px-5">
-            <Link
-              href={actionPointHref(representative.id, action.concreteActionPointId)}
-              className="group min-w-0 flex-1 rounded-lg py-1 outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 group-hover:text-brand-800">{action.title}</p>
-                <span className="shrink-0 text-xs text-slate-500">{t("myTeam.profile.overview.due").replace("{date}", action.due ? formatShortDate(action.due, user.language) : t("myTeam.profile.overview.noDueDate"))}</span>
-                <StatusBadge status={action.status} />
-              </div>
-              {action.progress !== undefined && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div className="h-1.5 min-w-20 flex-1 rounded-full bg-slate-100" aria-label={String(action.progress) + "%"}>
-                    <div className="h-1.5 rounded-full bg-brand-700" style={{ width: Math.max(0, Math.min(100, action.progress)) + "%" }} />
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-500">{action.progress}%</span>
-                </div>
-              )}
-            </Link>
-            {canClose && (
-              <button
-                type="button"
-                className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-wait disabled:opacity-50"
-                onClick={() => {
-                  setError(undefined);
-                  setCloseCandidate(action);
-                }}
-                disabled={closingId !== undefined}
-                aria-label={t("myTeam.profile.overview.closeActionPoint") + ": " + action.title}
-              >
-                {closingId === action.concreteActionPointId ? <LoaderCircle className="h-4 w-4 animate-spin" /> : t("myTeam.profile.overview.closeActionPoint")}
-              </button>
-            )}
-            <Link href={actionPointHref(representative.id, action.concreteActionPointId)} aria-label={t("myTeam.profile.overview.openActionPoint")} className="shrink-0 rounded-lg p-1 text-slate-300 transition hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
-        ))}
-        {actions.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{t("myTeam.profile.overview.noOpenActionPoints")}</p>}
-      </div>
-      {closeCandidate && (
-        <ActionPointCloseDialog
-          itemTitle={closeCandidate.title}
-          error={error}
-          saving={closingId !== undefined}
-          onCancel={() => setCloseCandidate(undefined)}
-          onConfirm={(closedReason, closedReasonExplanation) => void closeAction(closeCandidate, closedReason, closedReasonExplanation)}
-        />
-      )}
-    </div>
-  );
-}
-
-function RepresentativeActivityFeed({ representativeId, visibleSections }: { representativeId: string; visibleSections: Set<FicheSectionId> }) {
-  const { user } = useSession();
-  const workflowApi = useWorkflow();
-  const { dataset } = usePerformance();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const [evaluations, setEvaluations] = useState<StarterEvaluationProfileItem[]>([]);
-  const [evaluationsLoading, setEvaluationsLoading] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(10);
-
-  useEffect(() => {
-    setVisibleCount(10);
-  }, [representativeId]);
-
-  useEffect(() => {
-    if (!visibleSections.has("evaluations")) {
-      setEvaluations([]);
-      return;
-    }
-    const controller = new AbortController();
-    setEvaluationsLoading(true);
-    fetch("/api/starter-evaluations/profile?actorId=" + encodeURIComponent(user.id) + "&representativeId=" + encodeURIComponent(representativeId), {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json() as { evaluations?: StarterEvaluationProfileItem[] };
-        if (!response.ok) throw new Error("Evaluaties konden niet worden geladen.");
-        setEvaluations(payload.evaluations ?? []);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setEvaluations([]);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setEvaluationsLoading(false);
-      });
-    return () => controller.abort();
-  }, [representativeId, user.id, visibleSections]);
-
-  const activities = useMemo(() => buildRepresentativeActivities({
-    representativeId,
-    coachings: visibleSections.has("coachings") ? dataset.historicalCoachings : [],
-    workflowCoachings: visibleSections.has("coachings") ? workflowApi.visibleInterventions(user) : [],
-    historicalActionPoints: visibleSections.has("actionPoints") ? dataset.historicalActionPoints : [],
-    contactMoments: visibleSections.has("contactMoments") ? workflowApi.visibleContactMoments(user) : [],
-    historicalContactMoments: visibleSections.has("contactMoments") ? dataset.historicalContactMoments : [],
-    helpRequests: visibleSections.has("helpRequests") ? workflowApi.visibleHelpRequests(user) : [],
-    retrainings: visibleSections.has("retrainings") ? workflowApi.visibleRetrainings(user) : [],
-    salesTrainings: visibleSections.has("salesTrainings") ? workflowApi.visibleSalesTrainings(user) : [],
-    evaluations: evaluations
-      .filter((evaluation) => Boolean(evaluation.evaluationDate))
-      .map((evaluation) => ({
-        id: evaluation.id,
-        date: evaluation.evaluationDate,
-        title: evaluation.moment ? t(starterEvaluationMomentKey(evaluation.moment)) : t("myTeam.profile.evaluations.manual"),
-        status: evaluation.status,
-        targetUrl: evaluation.href,
-      })),
-  }), [dataset, evaluations, representativeId, t, user, visibleSections, workflowApi]);
-
-  const displayedActivities = activities.slice(0, visibleCount);
-  return (
-    <div className="card overflow-hidden">
-      <SectionTitle title={t("myTeam.profile.overview.latestActivity")} subtitle={t("myTeam.profile.overview.latestActivitySubtitle")} />
-      <div className="divide-y divide-slate-100">
-        {displayedActivities.map((activity) => <RepresentativeActivityRow key={activity.id} activity={activity} language={user.language} t={t} />)}
-        {!displayedActivities.length && !evaluationsLoading && <p className="p-6 text-center text-sm text-slate-500">{t("myTeam.profile.overview.noActivity")}</p>}
-        {evaluationsLoading && !displayedActivities.length && <p className="p-4 text-center text-xs text-slate-500">{t("myTeam.profile.evaluations.loading")}</p>}
-      </div>
-      {activities.length > visibleCount && (
-        <div className="border-t border-slate-100 p-3 text-center">
-          <button type="button" className="btn-secondary px-3 py-2 text-xs" onClick={() => setVisibleCount((current) => current + 10)}>
-            {t("myTeam.profile.overview.moreActivity")}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RepresentativeActivityRow({ activity, language, t }: { activity: RepresentativeActivity; language: MockUser["language"]; t: (key: TranslationKey) => string }) {
-  return (
-    <Link href={activity.targetUrl} className="group flex min-w-0 items-center gap-3 px-4 py-2.5 transition hover:bg-slate-50 focus-visible:bg-brand-50 sm:px-5">
-      <RepresentativeActivityIcon type={activity.type} />
-      <time dateTime={activity.date} className="w-20 shrink-0 text-xs font-semibold text-slate-500 sm:w-24">{formatRepresentativeActivityDate(activity.date, language)}</time>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{representativeActivityTypeLabel(activity.type, t)}</p>
-        <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-brand-800">{activity.title}</p>
-      </div>
-      {activity.status && <StatusBadge status={activity.status} />}
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-brand-700" />
-    </Link>
-  );
-}
-
-function RepresentativeActivityIcon({ type }: { type: RepresentativeActivity["type"] }) {
-  const Icon = type === "coaching" ? ClipboardCheck
-    : type === "actionPoint" ? Target
-      : type === "contactMoment" ? Contact
-        : type === "helpRequest" ? CircleHelp
-          : type === "evaluation" ? CheckCircle2
-            : type === "retraining" ? GraduationCap
-              : Sparkles;
-  return <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700"><Icon className="h-4 w-4" /></span>;
-}
-
-function representativeActivityTypeLabel(type: RepresentativeActivity["type"], t: (key: TranslationKey) => string) {
-  const keys: Record<RepresentativeActivity["type"], TranslationKey> = {
-    coaching: "myTeam.profile.activity.coaching",
-    actionPoint: "myTeam.profile.activity.actionPoint",
-    contactMoment: "myTeam.profile.activity.contactMoment",
-    helpRequest: "myTeam.profile.activity.helpRequest",
-    evaluation: "myTeam.profile.activity.evaluation",
-    retraining: "myTeam.profile.activity.retraining",
-    salesTraining: "myTeam.profile.activity.salesTraining",
-  };
-  return t(keys[type]);
-}
-
-function formatRepresentativeActivityDate(value: string, language: MockUser["language"]) {
-  const locale = language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE";
-  return new Date(value).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function RepresentativeActionPointsPanel({ representative }: { representative: Representative }) {
-  const { user, managedUsers } = useSession();
-  const workflowApi = useWorkflow();
-  const { dataset } = usePerformance();
-  const [closeCandidate, setCloseCandidate] = useState<WorkflowActionPoint>();
-  const [closingId, setClosingId] = useState<string>();
-  const [closeError, setCloseError] = useState<string>();
-  const [closedOverrides, setClosedOverrides] = useState<Record<string, Pick<WorkflowActionPoint, "status" | "closedAt" | "closedByUserId" | "closedReason" | "closedReasonExplanation">>>({});
-  const workflowActions = workflowApi.visibleInterventions(user)
-    .filter((item) => item.representativeId === representative.id)
-    .flatMap((item) => item.actionPoints);
-  const historicalActions = dataset.historicalActionPoints.filter((item) => item.representativeId === representative.id);
-  const actions = dedupeById([...workflowActions, ...historicalActions]).map((action) => ({
-    ...action,
-    ...(closedOverrides[action.id] ?? {}),
-  }))
-    .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
-  const openActions = actions
-    .filter((action) => isOpenRepresentativeActionPoint(action.status))
-    .sort((left, right) => (left.due || "9999-12-31").localeCompare(right.due || "9999-12-31"));
-  const closedActions = actions
-    .filter((action) => !isOpenRepresentativeActionPoint(action.status))
-    .sort((left, right) => (right.closedAt ?? "").localeCompare(left.closedAt ?? ""));
-  const canClose = canCloseConcreteActionPoint(user) &&
-    can(user, "menu.coaching.actionPoints") &&
-    canAccessRepresentative(user, representative);
-
-  async function closeAction(action: WorkflowActionPoint, closedReason: ActionPointCloseReason, closedReasonExplanation: string) {
-    if (!canClose || closingId) return;
-    const actionPointId = action.id.includes(":") ? action.id.split(":")[0] : action.id;
-    setClosingId(action.id);
-    setCloseError(undefined);
-    try {
-      const response = await fetch(`/api/action-points/${encodeURIComponent(actionPointId)}/close`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorId: user.id,
-          representativeId: representative.id,
-          closedReason,
-          closedReasonExplanation,
-        }),
-      });
-      const payload = await response.json() as {
-        actionPoint?: {
-          status: "afgerond";
-          closedAt: string;
-          closedByUserId: string;
-          closedReason?: ActionPointCloseReason;
-          closedReasonExplanation?: string;
-        };
-        error?: string;
-      };
-      if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? translate(user.language, "myTeam.profile.actionPoints.closeError"));
-      setClosedOverrides((current) => ({
-        ...current,
-        [action.id]: payload.actionPoint!,
-      }));
-      setCloseCandidate(undefined);
-      void workflowApi.refresh();
-    } catch (cause) {
-      setCloseError(cause instanceof Error ? cause.message : translate(user.language, "myTeam.profile.actionPoints.closeError"));
-    } finally {
-      setClosingId(undefined);
-    }
-  }
-
-  function renderActionRows(items: typeof actions, emptyKey: TranslationKey) {
-    return (
-      <div className="divide-y divide-slate-100">
-        {items.map((action) => {
-          const canCloseAction = canClose && isOpenRepresentativeActionPoint(action.status);
-          const closedByName = action.closedByUserId ? reportingUserName(action.closedByUserId, managedUsers) : "";
-          const actionPointId = action.id.includes(":") ? action.id.split(":")[0] : action.id;
-          return (
-            <div key={action.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1">
-                <Link href={actionPointHref(representative.id, actionPointId)} className="block truncate text-sm font-semibold text-slate-900 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" title={action.title}>{plainTextSummary(action.title)}</Link>
-                <p className="mt-0.5 text-xs text-slate-500">{translate(user.language, "myTeam.profile.actionPoints.deadline")}: {action.due ? formatShortDate(action.due) : translate(user.language, "myTeam.profile.actionPoints.noDeadline")}</p>
-                {action.closedAt && <p className="mt-1 text-xs text-slate-500">{translate(user.language, "actionPoints.closedAt")}: {formatDateTime(action.closedAt)}{closedByName ? ` Â· ${translate(user.language, "actionPoints.closedBy")}: ${closedByName}` : ""}</p>}
-                {action.closedReason && <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">{translate(user.language, "actionPoints.closedReason")}:</span> {translate(user.language, actionPointCloseReasonKey(action.closedReason))}{action.closedReasonExplanation ? ` Â· ${action.closedReasonExplanation}` : ""}</p>}
-              </div>
-              <StatusBadge status={action.status} />
-              {canCloseAction && <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={() => { setCloseError(undefined); setCloseCandidate(action); }} disabled={closingId !== undefined}>{closingId === action.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : translate(user.language, "actionPoints.actions.close")}</button>}
-            </div>
-          );
-        })}
-        {items.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{translate(user.language, emptyKey)}</p>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="card overflow-hidden">
-      <SectionTitle title={translate(user.language, "myTeam.profile.tab.actionPoints")} subtitle={translate(user.language, "myTeam.profile.actionPoints.subtitle")} />
-      {closeError && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">{closeError}</p>}
-      <section>
-        <div className="border-y border-slate-100 bg-slate-50 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">{translate(user.language, "myTeam.profile.actionPoints.openTitle")}</h3></div>
-        {renderActionRows(openActions, "myTeam.profile.actionPoints.noOpen")}
-      </section>
-      <section className="border-t border-slate-200">
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">{translate(user.language, "myTeam.profile.actionPoints.closedTitle")}</h3></div>
-        {renderActionRows(closedActions, "myTeam.profile.actionPoints.noClosed")}
-      </section>
-      {closeCandidate && <ActionPointCloseDialog itemTitle={plainTextSummary(closeCandidate.title)} error={closeError} saving={closingId !== undefined} onCancel={() => setCloseCandidate(undefined)} onConfirm={(closedReason, closedReasonExplanation) => void closeAction(closeCandidate, closedReason, closedReasonExplanation)} />}
-    </div>
-  );
-}
-
-const actionPointCloseReasonKeys: Record<ActionPointCloseReason, TranslationKey> = {
-  GOAL_REACHED: "actionPoints.closeReason.goalReached",
-  NO_LONGER_APPLICABLE: "actionPoints.closeReason.noLongerApplicable",
-  RESOLVED_VIA_OTHER_ACTION: "actionPoints.closeReason.resolvedViaOtherAction",
-  NOT_FEASIBLE: "actionPoints.closeReason.notFeasible",
-  OTHER: "actionPoints.closeReason.other",
-};
-
-function actionPointCloseReasonKey(reason: ActionPointCloseReason) {
-  return actionPointCloseReasonKeys[reason];
-}
-
-function ActionPointCloseDialog({
-  itemTitle,
-  error,
-  saving,
-  onCancel,
-  onConfirm,
-}: {
-  itemTitle: string;
-  error?: string;
-  saving: boolean;
-  onCancel: () => void;
-  onConfirm: (reason: ActionPointCloseReason, explanation: string) => void;
-}) {
-  const { language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const [reason, setReason] = useState<ActionPointCloseReason | "">("");
-  const [explanation, setExplanation] = useState("");
-  const [validationError, setValidationError] = useState<string>();
-
-  function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedExplanation = explanation.trim();
-    if (!reason) {
-      setValidationError(t("actionPoints.closeDialog.reasonRequired"));
-      return;
-    }
-    if (reason === "OTHER" && !trimmedExplanation) {
-      setValidationError(t("actionPoints.closeDialog.explanationRequired"));
-      return;
-    }
-    setValidationError(undefined);
-    onConfirm(reason, trimmedExplanation);
-  }
-
-  return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/50 p-4">
-      <form className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onSubmit={submit}>
-        <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold text-slate-950">{t("actionPoints.closeDialog.title")}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{t("actionPoints.closeDialog.message")}</p>
-          <p className="mt-2 truncate text-sm font-semibold text-slate-900" title={itemTitle}>{itemTitle}</p>
-        </div>
-        <div className="space-y-4 p-5">
-          <label>
-            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("actionPoints.closeDialog.reasonLabel")} *</span>
-            <select className="field" value={reason} disabled={saving} onChange={(event) => { setReason(event.target.value as ActionPointCloseReason | ""); setValidationError(undefined); }}>
-              <option value="">{t("actionPoints.closeDialog.reasonPlaceholder")}</option>
-              {ACTION_POINT_CLOSE_REASONS.map((option) => <option key={option} value={option}>{t(actionPointCloseReasonKey(option))}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("actionPoints.closeDialog.explanationLabel")}{reason === "OTHER" ? " *" : ""}</span>
-            <textarea className="field min-h-24 resize-y" value={explanation} disabled={saving} maxLength={2000} placeholder={t("actionPoints.closeDialog.explanationPlaceholder")} onChange={(event) => { setExplanation(event.target.value); setValidationError(undefined); }} />
-            <span className="mt-1 block text-xs text-slate-400">{t("actionPoints.closeDialog.explanationHint")}</span>
-          </label>
-          {(validationError || error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{validationError ?? error}</p>}
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
-          <button type="button" className="btn-secondary" onClick={onCancel} disabled={saving}>{t("actionPoints.closeDialog.cancel")}</button>
-          <button type="submit" className="btn-primary" disabled={saving}>{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{t("actionPoints.closeDialog.confirm")}</button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function CoachingDetail({ id }: { id: string }) {
-  const { user, managedUsers, language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const { coachingFramework } = useConfiguration();
-  const { representatives } = useRepresentatives();
-  const { dataset: performanceDataset } = usePerformance();
-  const workflowApi = useWorkflow();
-  const historical = coachingById(performanceDataset, id);
-  const workflow = workflowApi.visibleInterventions(user).find((item) => item.id === id);
-  const approval = workflowApi.state.approvals.find((item) => item.interventionId === workflow?.id);
-  const representativeId = historical?.representativeId ?? workflow?.representativeId;
-  const representative = representatives.find((item) => item.id === representativeId) ?? (workflow?.subject ? coachingSubjectAsRepresentative(workflow.subject) : undefined);
-
-  if (!representative || (!workflow && !canAccessRepresentative(user, representative))) {
-    return <EmptyState title={t("coaching.detail.notFound")} description={t("coaching.detail.notFoundDescription")} />;
-  }
-
-  if (workflow) {
-    const approvalHref = representativeApprovalHref(user, workflow, approval?.id);
-    if (approvalHref) {
-      return <CoachingApprovalRedirect href={approvalHref} />;
-    }
-    if (!canOpenCoachingDetail(user, workflow)) {
-      return <EmptyState title={t("coaching.detail.unavailable")} description={t("coaching.detail.unavailableDescription")} />;
-    }
-    if (canEditFutureCoachingPlanning(user, workflow)) {
-      return <CoachingPlanningRedirect id={workflow.id} />;
-    }
-    return <CoachingDossierDetail intervention={workflow} representative={representative} workflowApi={workflowApi} />;
-  }
-
-  const history = coachingsForRepresentative(performanceDataset, representative.id);
-  const selected = historical ?? (workflow ? workflowCoachingAsHistory(workflow, coachingFramework, managedUsers, history.at(-1)) : undefined);
-  if (!selected) {
-    return <EmptyState title={t("coaching.detail.noScores")} description={t("coaching.detail.noScoresDescription")} />;
-  }
-  const coachings = historical
-    ? history
-    : [...history, selected].sort((a, b) => a.date.localeCompare(b.date));
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">â† {t("coaching.report.back")}</Link>
-        <StatusBadge status={historical?.status ?? "afgesloten"} />
-      </div>
-      <PageHeader
-        eyebrow={t("coaching.report.coachingType")}
-        title={`${representative.firstName} ${representative.lastName}`}
-        description={`${formatShortDate(selected.date)} Â· ${selected.ownerName} Â· ${selected.focusNames.join(", ")}`}
-      />
-      <PerformanceEvolution
-        coachings={coachings}
-        initialCoachingId={selected.id}
-        representativeName={`${representative.firstName} ${representative.lastName}`}
-        compact
-      />
-      <section className="card overflow-hidden">
-        <SectionTitle title={t("coaching.detail.scores")} subtitle={t("coaching.detail.scoresDescription")} />
-        <div className="grid gap-3 p-5 md:grid-cols-2">
-          {selected.criterionScores.map((score) => (
-            <div key={`${score.focus}-${score.criterion}`} className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{score.focus}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">{score.criterion}</p>
-              </div>
-              <span className="text-lg font-bold text-slate-950">{score.score}%</span>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function CoachingApprovalRedirect({ href }: { href: string }) {
-  const router = useRouter();
-  const { language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-
-  useEffect(() => {
-    router.replace(href);
-  }, [href, router]);
-
-  return <EmptyState title={t("coaching.report.approvalOpening")} description={t("coaching.report.approvalOpeningDescription")} />;
-}
-
-function CoachingPlanningRedirect({ id }: { id: string }) {
-  const router = useRouter();
-  const { language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-
-  useEffect(() => {
-    router.replace(`/begeleidingen/nieuw?id=${encodeURIComponent(id)}`);
-  }, [id, router]);
-
-  return <EmptyState title={t("coaching.report.planningOpening")} description={t("coaching.report.planningOpeningDescription")} />;
-}
-
-type WorkflowApi = ReturnType<typeof useWorkflow>;
-type CoachingWorkflowItem = WorkflowApi["state"]["interventions"][number];
-
-const dossierGeneralCriteria = [
-  "Stiptheid",
-  "Vertrekuur",
-  "Demokoffer",
-  "Draagtas met kofferproducten",
-  "Netheid wagen",
-  "Stockbeheer",
-  "Voorbereiding",
-  "Administratie",
-  "Tempo",
-  "Gebruik laptop",
-];
-
-const dossierPersonalityCriteria = [
-  "Uitstraling",
-  "Zelfzekerheid",
-  "Leiding in gesprek",
-  "Verstaanbaarheid",
-  "Overtuigend",
-  "Respect",
-  "Persoonlijke verzorging",
-];
-
-function defaultDossierState() {
-  return {
-    arrivalTime: "",
-    departureTime: "",
-    kilometers: "",
-    area: "",
-    sector: "",
-    groupAttentionPoints: ["", "", ""],
-    individualAttentionPoint: "",
-    generalScores: dossierGeneralCriteria.map((criterion) => ({ criterion, score: null, comment: "" })),
-    personalityScores: dossierPersonalityCriteria.map((criterion) => ({ criterion, score: null, comment: "" })),
-  };
-}
-
-function emptyAppointment(appointmentCriteria: string[]) {
-  return {
-    id: `appointment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    customer: "",
-    customerNumber: "",
-    place: "",
-    relationType: "prospect" as const,
-    appointmentType: "vast" as const,
-    arrivalTime: "",
-    departureTime: "",
-    activity: "",
-    scores: appointmentCriteria.map((criterion) => ({ criterion, score: "nvt" as const, comment: "" })),
-    remarks: "",
-  };
-}
-function coachingPersistenceInput(item: CoachingWorkflowItem, actorId: string) {
-  return {
-    id: item.id,
-    representativeId: item.representativeId,
-    initiatorId: actorId,
-    ownerId: item.ownerId,
-    plannedDate: item.plannedDate,
-    startTime: item.startTime,
-    endTime: item.endTime,
-    notifyRepresentative: item.notifyRepresentative,
-    subject: item.subject,
-    internalNotes: item.internalNotes,
-    focusNames: item.focusNames,
-    scores: item.scores,
-    actionPoints: toPersistableCoachingActionPoints(item.actionPoints),
-    dossier: item.dossier,
-    appointments: item.appointments,
-  };
-}
-
-function CoachingDossierDetail({
-  intervention,
-  representative,
-  workflowApi,
-}: {
-  intervention: CoachingWorkflowItem;
-  representative: Representative;
-  workflowApi: WorkflowApi;
-}) {
-  const { user, managedUsers } = useSession();
-  const router = useRouter();
-  const { coachingFramework } = useConfiguration();
-  const [local, setLocal] = useState(intervention);
-  const [message, setMessage] = useState<string>();
-  const [openAppointmentId, setOpenAppointmentId] = useState<string>();
-  const [isExportingReport, setIsExportingReport] = useState(false);
-  const [reportMessage, setReportMessage] = useState<{ type: "success" | "error"; text: string }>();
-  const [transitioning, setTransitioning] = useState(false);
-  const [historicalComparison, setHistoricalComparison] = useState<HistoricalComparisonResponse>({ options: [] });
-  const [historicalComparisonId, setHistoricalComparisonId] = useState("none");
-  const [historicalLoading, setHistoricalLoading] = useState(false);
-  const [historicalError, setHistoricalError] = useState<string>();
-  const [activeStep, setActiveStep] = useState<CoachingReportStepId>(1);
-  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">("saved");
-  const [saveError, setAutosaveError] = useState<string>();
-  const reportWheelRef = useRef<HTMLDivElement>(null);
-  const localRef = useRef(local);
-  const saveCoachingRef = useRef(workflowApi.saveCoachingStatus);
-  const autosaveTimerRef = useRef<number | undefined>(undefined);
-  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
-  const flushAutosaveRef = useRef<(force?: boolean) => Promise<boolean>>(async () => true);
-  const changeVersionRef = useRef(0);
-  const savedVersionRef = useRef(0);
-  const finalizeInFlightRef = useRef(false);
-  const lastObservedLocalRef = useRef(local);
-  const suppressAutosaveRef = useRef(false);
-  const draftRestoredRef = useRef(false);
-  const draftStorageKey = `fieldforce:coaching-report-draft:${local.id}:${user.id}`;
-  localRef.current = local;
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const wheelLabels = {
-    ariaKapstok: t("coaching.performance.competencyWheel"),
-    ariaGeneral: t("coaching.performance.generalWheel"),
-    previous: t("coaching.performance.previousShort"),
-    current: t("coaching.performance.currentShort"),
-    tooltipHelp: t("coaching.performance.wheelHelp"),
-    currentMeasurement: t("coaching.performance.currentMeasurement"),
-    previousMeasurement: t("coaching.performance.previousMeasurement"),
-    noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
-    better: t("coaching.performance.better"),
-    worse: t("coaching.performance.worse"),
-    equal: t("coaching.performance.equal"),
-    first: t("coaching.performance.firstMeasurement"),
-    green: t("coaching.performance.green"),
-    red: t("coaching.performance.red"),
-    darkBlue: t("coaching.performance.darkBlue"),
-    blue: t("coaching.performance.blue"),
-  };
-  const approval = workflowApi.state.approvals.find((item) => item.interventionId === local.id);
-  const updateActionTips = useCallback((actionId: string, tipsAndTricks: string) => {
-    setLocal((current) => ({
-      ...current,
-      actionPoints: current.actionPoints.map((item) => item.id === actionId ? { ...item, tipsAndTricks } : item),
-    }));
-  }, []);
-  const appointmentCriteria = coachingFramework
-    .filter((focus) => local.focusNames.includes(focus.name))
-    .flatMap((focus) => focus.criteria.map((criterion) => `${focus.name} - ${criterion}`));
-
-  const dossier = local.dossier ?? defaultDossierState();
-  const appointments = (local.appointments ?? []).filter((item) => !item.isDeleted);
-  const totalCoachingScore = calculateTotalCoachingScore(dossier, appointments);
-  const isCompleted = ["voltooid", "gefinaliseerd", "gesloten", "afgesloten"].includes(local.status);
-  const isApprovalLocked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(local.status);
-  const canManageCurrentCoaching = canManageCoaching(user, local);
-  const canManageCompleted = canManageCurrentCoaching;
-  const readOnly = !canManageCurrentCoaching || isApprovalLocked || isCompleted || local.status === "geannuleerd";
-  const validationIssues = useMemo(
-    () => coachingReportIssues({ dossier, actionPoints: local.actionPoints }),
-    [dossier, local.actionPoints]
-  );
-  const reportIsValid = validationIssues.length === 0;
-  const historicalScoreLookup = useMemo(
-    () => buildHistoricalScoreLookup(historicalComparison.selected?.scores ?? []),
-    [historicalComparison.selected?.scores]
-  );
-  const currentHistoricalCoaching = useMemo(
-    () => coachingInterventionAsHistory(local, dossier, appointments, reportingUserName(local.ownerId, managedUsers), totalCoachingScore),
-    [appointments, dossier, local, managedUsers, totalCoachingScore]
-  );
-  const comparisonWheelCoachings = historicalComparison.selected
-    ? [historicalComparison.selected.history, currentHistoricalCoaching]
-    : [currentHistoricalCoaching];
-  const reportWheelData = buildPerformanceWheelData({
-    current: currentHistoricalCoaching,
-    comparison: historicalComparison.selected?.history,
-    type: "kapstok",
-  });
-
-  useEffect(() => {
-    const interventionReadOnly = !canManageCoaching(user, intervention) ||
-      ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger", "voltooid", "gefinaliseerd", "gesloten", "afgesloten", "geannuleerd"].includes(intervention.status);
-    if (interventionReadOnly) {
-      setLocal(intervention);
-    }
-  }, [intervention, user]);
-
-  useEffect(() => {
-    if (draftRestoredRef.current || readOnly || typeof window === "undefined") return;
-    draftRestoredRef.current = true;
-    try {
-      const stored = window.localStorage.getItem(draftStorageKey);
-      if (!stored) return;
-      const draft = parseCoachingReportDraft<CoachingWorkflowItem>(stored);
-      if (!draft) {
-        window.localStorage.removeItem(draftStorageKey);
-        return;
-      }
-      if (draft.id === intervention.id && draft.updatedAt >= intervention.updatedAt) {
-        setLocal(draft);
-      }
-    } catch {
-      window.localStorage.removeItem(draftStorageKey);
-    }
-  }, [draftStorageKey, intervention.id, intervention.updatedAt, readOnly]);
-
-  async function flushAutosave(force = false): Promise<boolean> {
-    if (autosaveTimerRef.current !== undefined) {
-      window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = undefined;
-    }
-    if (readOnly) return true;
-
-    const activeSave = saveInFlightRef.current;
-    if (activeSave) {
-      const activeResult = await activeSave;
-      if (savedVersionRef.current < changeVersionRef.current) {
-        return flushAutosaveRef.current(force);
-      }
-      return activeResult;
-    }
-
-    const version = changeVersionRef.current;
-    if (!force && version <= savedVersionRef.current) return true;
-    const snapshot = localRef.current;
-    setSaveStatus("saving");
-    setAutosaveError(undefined);
-
-    const request = (async () => {
-      try {
-        await saveCoachingRef.current(
-          coachingPersistenceInput(snapshot, user.id),
-          "in_uitvoering"
-        );
-        savedVersionRef.current = Math.max(savedVersionRef.current, version);
-        if (version === changeVersionRef.current) {
-          if (localRef.current.status !== "in_uitvoering") {
-            const markedInProgress = { ...localRef.current, status: "in_uitvoering" as const };
-            suppressAutosaveRef.current = true;
-            localRef.current = markedInProgress;
-            setLocal(markedInProgress);
-          }
-          window.localStorage.removeItem(draftStorageKey);
-          setSaveStatus("saved");
-        }
-        return true;
-      } catch (error) {
-        setSaveStatus("error");
-        setAutosaveError(error instanceof Error ? error.message : t("coaching.report.saveError"));
-        return false;
-      }
-    })();
-
-    saveInFlightRef.current = request;
-    const result = await request;
-    if (saveInFlightRef.current === request) saveInFlightRef.current = null;
-    if (result && savedVersionRef.current < changeVersionRef.current) {
-      return flushAutosaveRef.current(force);
-    }
-    return result;
-  }
-  flushAutosaveRef.current = flushAutosave;
-
-  useEffect(() => {
-    localRef.current = local;
-    if (lastObservedLocalRef.current === local) return;
-    lastObservedLocalRef.current = local;
-    if (suppressAutosaveRef.current) {
-      suppressAutosaveRef.current = false;
-      return;
-    }
-    if (readOnly || typeof window === "undefined") return;
-
-    changeVersionRef.current += 1;
-    setSaveStatus("saving");
-    setAutosaveError(undefined);
-    try {
-      window.localStorage.setItem(draftStorageKey, serializeCoachingReportDraft(local));
-    } catch {
-      // Autosave remains available even when browser storage is unavailable.
-    }
-    if (autosaveTimerRef.current !== undefined) window.clearTimeout(autosaveTimerRef.current);
-    autosaveTimerRef.current = window.setTimeout(() => {
-      void flushAutosaveRef.current();
-    }, 650);
-    return () => {
-      if (autosaveTimerRef.current !== undefined) window.clearTimeout(autosaveTimerRef.current);
-    };
-  }, [draftStorageKey, local, readOnly]);
-
-  useEffect(() => () => {
-    if (autosaveTimerRef.current !== undefined) window.clearTimeout(autosaveTimerRef.current);
-  }, []);
-
-  const loadHistoricalComparison = useCallback(async (compareId?: string) => {
-    setHistoricalLoading(true);
-    setHistoricalError(undefined);
-    try {
-      const params = new URLSearchParams({ actorId: user.id });
-      if (compareId) params.set("compareId", compareId);
-      const response = await fetch(
-        `/api/workflows/coaching/${encodeURIComponent(local.id)}/historical-scores?${params.toString()}`,
-        { cache: "no-store" }
-      );
-      const payload = (await response.json()) as HistoricalComparisonResponse & { error?: string };
-      if (!response.ok) {
-        throw new Error(payload.error ?? t("coaching.scores.loadHistoricalError"));
-      }
-      setHistoricalComparison(payload);
-      setHistoricalComparisonId(payload.selectedId ?? "none");
-    } catch (error) {
-      setHistoricalComparison((current) => ({ ...current, selected: undefined, selectedId: undefined }));
-      setHistoricalError(error instanceof Error ? error.message : t("coaching.scores.loadHistoricalError"));
-      setHistoricalComparisonId("none");
-    } finally {
-      setHistoricalLoading(false);
-    }
-  }, [local.id, t, user.id]);
-
-  useEffect(() => {
-    void loadHistoricalComparison();
-  }, [loadHistoricalComparison]);
-
-  async function transition(action: "reopen" | "send_for_approval" | "approve") {
-    setTransitioning(true);
-    setMessage(undefined);
-    try {
-      const updated = await workflowApi.transitionCoaching(local.id, action);
-      setLocal(updated);
-      if (action === "send_for_approval") {
-        setMessage(t("coaching.report.transitionSent"));
-      } else {
-        setMessage(t("coaching.report.transitionApproved"));
-      }
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("coaching.report.transitionError"));
-    } finally {
-      setTransitioning(false);
-    }
-  }
-
-  async function downloadProfessionalReport(performanceWheelSvg?: SVGSVGElement, performanceWheelData = reportWheelData) {
-    setIsExportingReport(true);
-    setReportMessage(undefined);
-    try {
-      const previousIntervention = workflowApi.state.interventions
-        .filter((item) =>
-          item.id !== local.id &&
-          item.representativeId === local.representativeId &&
-          (item.plannedDate ?? item.createdAt) < (local.plannedDate ?? local.createdAt)
-        )
-        .sort((left, right) =>
-          (left.plannedDate ?? left.createdAt).localeCompare(right.plannedDate ?? right.createdAt)
-        )
-        .at(-1);
-      const { exportProfessionalCoachingReport } = await import(
-        "@/lib/coaching/export-professional-report"
-      );
-      const result = await exportProfessionalCoachingReport({
-        intervention: local,
-        previousIntervention,
-        approval,
-        representative,
-        leaderName: reportingUserName(local.ownerId, managedUsers),
-        language: user.language,
-        performanceWheelSvg: performanceWheelSvg ?? reportWheelRef.current?.querySelector<SVGSVGElement>('[data-testid="performance-wheel-svg"]') ?? undefined,
-        performanceWheelData,
-      });
-      void fetch(`/api/activity-history?actorId=${encodeURIComponent(user.id)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interventionId: local.id, action: "pdf_exported" }),
-      }).catch((auditError) => console.error("PDF-export kon niet worden gelogd", auditError));
-      setReportMessage({
-        type: "success",
-        text: `${t("coaching.report.exportSuccess")} (${result.pageCount} ${t("coaching.report.pages")}).`,
-      });
-    } catch (error) {
-      console.error("Professionele PDF-export mislukt", error);
-      setReportMessage({
-        type: "error",
-        text: t("coaching.report.exportError"),
-      });
-    } finally {
-      setIsExportingReport(false);
-    }
-  }
-
-  async function persist(status: "in_uitvoering" | "gesloten" | "gefinaliseerd" | "voltooid" | "geannuleerd") {
-    if (["gesloten", "gefinaliseerd", "voltooid"].includes(status)) {
-      const newActions = local.actionPoints.filter((action) => action.isNew && action.title.trim());
-      if (newActions.length < 1) {
-        setMessage(t("coaching.report.missingActionPoint"));
-        return;
-      }
-      if (newActions.some((action) => !action.tipsAndTricks?.trim() || !action.priority)) {
-        setMessage(t("coaching.report.missingActionFields"));
-        return;
-      }
-    }
-    try {
-      const saved = await workflowApi.saveCoachingStatus({
-        id: local.id,
-        representativeId: local.representativeId,
-        initiatorId: user.id,
-        ownerId: local.ownerId,
-        plannedDate: local.plannedDate,
-        startTime: local.startTime,
-        endTime: local.endTime,
-        notifyRepresentative: local.notifyRepresentative,
-        subject: local.subject,
-        internalNotes: local.internalNotes,
-        focusNames: local.focusNames,
-        scores: local.scores,
-        actionPoints: toPersistableCoachingActionPoints(local.actionPoints),
-        dossier: local.dossier,
-        appointments: local.appointments,
-      }, status);
-      setLocal(saved);
-      setMessage(
-        status === "gefinaliseerd"
-          ? t("coaching.report.finalizedMessage")
-          : status === "geannuleerd"
-            ? t("coaching.report.cancelledMessage")
-            : `Begeleiding opgeslagen als ${status.replace("_", " ")}.`
-      );
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("coaching.report.persistError"));
-    }
-  }
-
-  async function navigateToStep(step: CoachingReportStepId) {
-    await flushAutosaveRef.current();
-    setActiveStep(step);
-  }
-
-  async function navigateToIssue(issue: CoachingReportIssue) {
-    let targetId = `coaching-step-${issue.step}`;
-    if (issue.code === "general_score_missing" && issue.criterion) {
-      targetId = `coaching-general-score-${dossier.generalScores.findIndex((score) => score.criterion === issue.criterion)}`;
-    } else if (issue.code === "personality_score_missing" && issue.criterion) {
-      targetId = `coaching-personality-score-${dossier.personalityScores.findIndex((score) => score.criterion === issue.criterion)}`;
-    } else if (issue.actionId) {
-      targetId = `coaching-action-${issue.actionId}`;
-    }
-    await navigateToStep(issue.step);
-    window.setTimeout(() => {
-      const target = document.getElementById(targetId);
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
-      target?.querySelector<HTMLElement>("button, input, select, [contenteditable='true']")?.focus();
-    }, 0);
-  }
-  async function saveAndStay() {
-    setMessage(undefined);
-    const saved = await flushAutosaveRef.current(true);
-    if (saved) setMessage(t("coaching.report.saved"));
-  }
-
-  async function closeReport() {
-    setMessage(undefined);
-    const saved = await flushAutosaveRef.current(true);
-    if (saved) router.push("/begeleidingen");
-  }
-
-  async function finalizeAndSendForApproval() {
-    if (finalizeInFlightRef.current || transitioning) return;
-    if (!reportIsValid) {
-      setMessage(t("coaching.report.validationBlocked"));
-      return;
-    }
-    finalizeInFlightRef.current = true;
-    setTransitioning(true);
-    setMessage(undefined);
-    try {
-      const autosaved = await flushAutosaveRef.current();
-      if (!autosaved) return;
-      const completed = await saveCoachingRef.current(
-        coachingPersistenceInput(localRef.current, user.id),
-        "voltooid"
-      );
-      suppressAutosaveRef.current = true;
-      localRef.current = completed;
-      setLocal(completed);
-      const submitted = await workflowApi.transitionCoaching(completed.id, "send_for_approval");
-      suppressAutosaveRef.current = true;
-      localRef.current = submitted;
-      setLocal(submitted);
-      window.localStorage.removeItem(draftStorageKey);
-      setSaveStatus("saved");
-      setMessage(t("coaching.report.sentForApproval"));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("coaching.report.finalizeError"));
-    } finally {
-      finalizeInFlightRef.current = false;
-      setTransitioning(false);
-    }
-  }
-
-  function updateDossier(partial: Partial<typeof dossier>) {
-    setLocal((current) => ({ ...current, dossier: { ...(current.dossier ?? defaultDossierState()), ...partial } }));
-  }
-
-  function updateSimpleScore(group: "generalScores" | "personalityScores", index: number, patch: Partial<typeof dossier.generalScores[number]>) {
-    setLocal((current) => ({
-      ...current,
-      dossier: {
-        ...(current.dossier ?? defaultDossierState()),
-        [group]: (current.dossier ?? defaultDossierState())[group].map((score, scoreIndex) => scoreIndex === index ? { ...score, ...patch } : score),
-      },
-    }));
-  }
-
-  function addActionPoint() {
-    setLocal((current) => ({
-      ...current,
-      actionPoints: [
-        ...current.actionPoints,
-        { id: `action-${Date.now()}`, title: "", type: "vaardigheid", due: "", status: "open", owner: user.id, priority: "normaal", tipsAndTricks: "", isNew: true },
-      ],
-    }));
-  }
-
-  function addAppointment() {
-    const appointment = emptyAppointment(appointmentCriteria);
-    setLocal((current) => ({ ...current, appointments: [...(current.appointments ?? []), appointment] }));
-    setOpenAppointmentId(appointment.id);
-  }
-
-  function updateAppointment(id: string, patch: Partial<CoachingAppointment>) {
-    setLocal((current) => ({
-      ...current,
-      appointments: (current.appointments ?? []).map((item) => item.id === id ? { ...item, ...patch } : item),
-    }));
-  }
-
-  function updateAppointmentScore(id: string, index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) {
-    setLocal((current) => ({
-      ...current,
-      appointments: (current.appointments ?? []).map((item) =>
-        item.id === id
-          ? { ...item, scores: item.scores.map((score, scoreIndex) => scoreIndex === index ? { ...score, ...patch } : score) }
-          : item
-      ),
-    }));
-  }
-
-  function selectHistoricalComparison(compareId: string) {
-    setHistoricalComparisonId(compareId);
-    void loadHistoricalComparison(compareId);
-  }
-
-  function removeAppointment(id: string) {
-    setLocal((current) => ({
-      ...current,
-      appointments: (current.appointments ?? []).map((item) => item.id === id ? { ...item, isDeleted: true } : item),
-    }));
-    setOpenAppointmentId((current) => current === id ? undefined : current);
-  }
-
-  if (isCompleted || isApprovalLocked) {
-    return (
-      <CompletedCoachingSummary
-        intervention={local}
-        approval={approval}
-        representative={representative}
-        leaderName={reportingUserName(local.ownerId, managedUsers)}
-        totalScore={totalCoachingScore}
-        comparisonHistory={historicalComparison.selected?.history}
-        canManage={canManageCompleted}
-        showHistory={["ADMIN", "SUPER_ADMIN"].includes(user.role)}
-        isRepresentative={local.subject?.userId === user.id || local.representativeId === user.id || local.representativeId === user.representativeId}
-        isBusy={transitioning || isExportingReport}
-        message={message}
-        onSendForApproval={() => void transition("send_for_approval")}
-        onApprove={() => void transition("approve")}
-        onDownload={(performanceWheelSvg, performanceWheelData) => void downloadProfessionalReport(performanceWheelSvg, performanceWheelData)}
-        canDownload={can(user, "modulePdfExport")}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3" data-report-toolbar>
-        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">â† {t("coaching.report.back")}</Link>
-        <div className="flex flex-wrap items-center gap-2">
-          {can(user, "modulePdfExport") && (
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={isExportingReport}
-              onClick={() => void downloadProfessionalReport()}
-            >
-              {isExportingReport ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-              ) : (
-                <FileDown className="h-4 w-4" />
-              )}
-              {isExportingReport ? t("coaching.report.pdfCreating") : t("coaching.report.pdfDownload")}
-            </button>
-          )}
-          <StatusBadge status={local.status} />
-        </div>
-      </div>
-      <PageHeader
-        eyebrow={t("coaching.report.eyebrow")}
-        title={`${representative.firstName} ${representative.lastName}`}
-        description={`${formatShortDate(local.plannedDate)} Â· ${local.startTime ?? ""}-${local.endTime ?? ""} Â· ${reportingUserName(local.ownerId, managedUsers)}`}
-      />
-      <div className="sticky top-16 z-20 space-y-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <div className="flex items-start justify-between gap-3">
-          <CoachingReportStepper
-            activeStep={activeStep}
-            issues={validationIssues}
-            hasAppointments={appointments.length > 0}
-            hasActionPoints={local.actionPoints.length > 0}
-            reportIsValid={reportIsValid}
-            t={t}
-            onNavigate={(step) => void navigateToStep(step)}
-          />
-          <AutosaveStatus status={saveStatus} t={t} />
-        </div>
-        {saveStatus === "error" && (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
-            <span>{saveError ?? t("coaching.report.saveError")}</span>
-            <button type="button" className="btn-secondary bg-white py-1.5 text-xs" onClick={() => void flushAutosaveRef.current(true)}>
-              <RefreshCw className="h-3.5 w-3.5" /> {t("coaching.report.retry")}
-            </button>
-          </div>
-        )}
-      </div>
-      {message && <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm font-semibold text-brand-900">{message}</div>}
-      {reportMessage && (
-        <div className={`rounded-2xl border p-4 text-sm font-semibold ${
-          reportMessage.type === "success"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-            : "border-rose-200 bg-rose-50 text-rose-800"
-        }`}>
-          {reportMessage.text}
-        </div>
-      )}
-      <CoachingOutlookSyncStatus intervention={local} />
-
-      <div ref={reportWheelRef} aria-hidden="true" className="pointer-events-none fixed -left-[10000px] top-0 w-[1040px] opacity-0">
-        <PerformanceWheel
-          representativeId={currentHistoricalCoaching.representativeId}
-          currentInterventionId={currentHistoricalCoaching.id}
-          comparisonInterventionId={historicalComparison.selected?.history.id}
-          type="kapstok"
-          coachings={comparisonWheelCoachings}
-          notScoredLabel={t("coaching.performance.notScored")}
-          totalScoreLabel={t("coaching.performance.totalScore")}
-          labels={wheelLabels}
-        />
-      </div>
-
-      {activeStep === 7 && (
-      <section className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
-        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("coaching.report.totalScore")}</p>
-        <p className="mt-1 text-3xl font-black text-brand-950">{formatPercentage(totalCoachingScore)}</p>
-        <p className="mt-1 text-sm text-brand-800">{t("coaching.report.totalDescription")}</p>
-      </section>
-      )}
-
-      {activeStep === 1 && (
-        <section id="coaching-step-1" className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]">
-          <div className="card p-5 sm:p-6">
-            <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalData")}</h2>
-            <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-              <SummaryValue label={t("coaching.report.representative")} value={`${representative.firstName} ${representative.lastName}`} />
-              <SummaryValue label={t("coaching.report.coach")} value={reportingUserName(local.ownerId, managedUsers)} />
-              <SummaryValue label={t("coaching.report.date")} value={formatShortDate(local.plannedDate)} />
-              <SummaryValue label={t("coaching.report.plannedTime")} value={`${local.startTime ?? "--:--"} â€“ ${local.endTime ?? "--:--"}`} />
-              <SummaryValue label={t("coaching.report.team")} value={representative.team} />
-              <SummaryValue label={t("coaching.report.country")} value={representative.country} />
-              <SummaryValue label={t("coaching.report.level")} value={representative.level} />
-              <SummaryValue label={t("coaching.report.type")} value={t("coaching.report.coachingType")} />
-            </dl>
-          </div>
-          <div className="card p-5 sm:p-6">
-            <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.actualData")}</h2>
-            <div className="mt-4 space-y-4">
-              <TextField label={t("coaching.report.arrivalTime")} type="time" value={dossier.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => updateDossier({ arrivalTime })} />
-              <TextField label={t("coaching.report.departureTime")} type="time" value={dossier.departureTime} disabled={readOnly} onChange={(departureTime) => updateDossier({ departureTime })} />
-              <TextField label={t("coaching.report.kilometers")} value={dossier.kilometers} disabled={readOnly} onChange={(kilometers) => updateDossier({ kilometers })} />
-            </div>
-          </div>
-        </section>
-      )}
-
-      <div id="coaching-step-2" className={activeStep === 2 ? "space-y-5" : "hidden"}>
-      <section className="card p-5 sm:p-6">
-        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.step.preparation")}</h2>
-        <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.categories")}</p><p className="mt-1 text-xs text-slate-500">{t("coaching.report.categoriesDescription")}</p><div className="mt-3 flex flex-wrap gap-2">{coachingFramework.map((focus) => { const active = local.focusNames.includes(focus.name); return <button key={focus.name} type="button" disabled={readOnly} onClick={() => setLocal((current) => ({ ...current, focusNames: active ? current.focusNames.filter((name) => name !== focus.name) : [...current.focusNames, focus.name] }))} className={`rounded-full border px-3 py-2 text-xs font-bold ${active ? "border-brand-700 bg-brand-50 text-brand-800" : "border-slate-200 text-slate-500"}`}>{active ? "âœ“ " : "+ "}{focus.name}</button>; })}</div></div>
-        <div className="mt-4 grid gap-4 md:grid-cols-4">
-          {representative.kpis.map((kpi) => <ReadOnlyField key={kpi.label} label={kpi.label} value={`${kpi.value} / doel ${kpi.target}`} />)}
-        </div>
-      </section>
-
-      <HistoricalScoreComparisonPanel
-        t={t}
-        loading={historicalLoading}
-        error={historicalError}
-        options={historicalComparison.options}
-        selectedId={historicalComparisonId}
-        selected={historicalComparison.selected}
-        currentHistory={currentHistoricalCoaching}
-        wheelCoachings={comparisonWheelCoachings}
-        onSelect={selectHistoricalComparison}
-        onRetry={() => void loadHistoricalComparison(historicalComparisonId === "none" ? undefined : historicalComparisonId)}
-      />
-      </div>
-
-      <div id="coaching-step-3" className={activeStep === 3 ? "block" : "hidden"}><ScoreSection title={t("coaching.report.generalEvaluation")} scores={dossier.generalScores} readOnly={readOnly} idPrefix="coaching-general-score" comparisonCategory="Dossier:Algemeen" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("generalScores", index, patch)} /></div>
-      <div id="coaching-step-4" className={activeStep === 4 ? "block" : "hidden"}><ScoreSection title={t("coaching.report.personalityEvaluation")} scores={dossier.personalityScores} readOnly={readOnly} idPrefix="coaching-personality-score" comparisonCategory="Dossier:Persoonlijkheid" historicalScores={historicalScoreLookup} t={t} onChange={(index, patch) => updateSimpleScore("personalityScores", index, patch)} /></div>
-
-      <section id="coaching-step-5" className={activeStep === 5 ? "card p-5 sm:p-6" : "hidden"}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.appointments")}</h2>
-          {!readOnly && <button type="button" className="btn-secondary" onClick={addAppointment}><Plus className="h-4 w-4" /> {t("coaching.report.appointmentAdd")}</button>}
-        </div>
-        <div className="mt-4 space-y-3">
-          {appointments.map((appointment, index) => (
-            <div key={appointment.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{t("coaching.report.appointment")} {index + 1}</p>
-                  <h3 className="mt-1 text-lg font-bold text-slate-950">{appointment.customer || t("coaching.report.newAppointment")}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{appointment.arrivalTime || "--:--"} - {appointment.departureTime || "--:--"} Â· {t("coaching.report.averageScore")}: {formatPerformancePercentage(appointmentAverageScore(appointment), t("coaching.performance.notScored"))}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId((current) => current === appointment.id ? undefined : appointment.id)}>
-                    {openAppointmentId === appointment.id ? t("coaching.report.close") : t("coaching.report.open")}
-                  </button>
-                  {!readOnly && <button type="button" className="btn-secondary py-2 text-xs" onClick={() => setOpenAppointmentId(appointment.id)}>{t("coaching.report.edit")}</button>}
-                  {!readOnly && <button type="button" className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50" onClick={() => removeAppointment(appointment.id)}>{t("coaching.report.delete")}</button>}
-                </div>
-              </div>
-              {openAppointmentId === appointment.id && (
-                <AppointmentEditor
-                  appointment={appointment}
-                  readOnly={readOnly}
-                  historicalScores={historicalScoreLookup}
-                  t={t}
-                  onChange={(patch) => updateAppointment(appointment.id, patch)}
-                  onScoreChange={(scoreIndex, patch) => updateAppointmentScore(appointment.id, scoreIndex, patch)}
-                />
-              )}
-              <div className="hidden">
-                <TextField label="Klant" value={appointment.customer} disabled={readOnly} onChange={(customer) => setLocal((current) => ({ ...current, appointments: current.appointments!.map((item) => item.id === appointment.id ? { ...item, customer } : item) }))} />
-                <ReadOnlyField label="Type" value={`${appointment.relationType} Â· ${appointment.appointmentType}`} />
-                <TextField label="Activiteit" value={appointment.activity} disabled={readOnly} onChange={(activity) => setLocal((current) => ({ ...current, appointments: current.appointments!.map((item) => item.id === appointment.id ? { ...item, activity } : item) }))} />
-              </div>
-            </div>
-          ))}
-          {appointments.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("coaching.report.noAppointmentsAdded")}</p>}
-        </div>
-      </section>
-
-      <section id="coaching-step-6" className={activeStep === 6 ? "card p-5 sm:p-6" : "hidden"}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.actionPoints")}</h2>
-          {!readOnly && <button type="button" className="btn-secondary" onClick={addActionPoint}><Plus className="h-4 w-4" /> {t("coaching.report.addActionPoint")}</button>}
-        </div>
-        <div className="mt-4 grid gap-3">
-          {local.actionPoints.map((action, index) => (
-            <div id={`coaching-action-${action.id}`} key={action.id} className={`rounded-2xl border p-4 ${action.isNew ? "border-brand-200 bg-brand-50/40" : "border-slate-200 bg-slate-50"}`}>
-              <div className="grid gap-3 md:grid-cols-[1fr_150px_150px]">
-                {action.isNew ? <TextField label={`${t("coaching.report.title")} *`} value={action.title} disabled={readOnly} onChange={(title) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item) }))} /> : <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("coaching.report.actionPoint")}</p><p className="mt-2 font-bold text-slate-900">{action.title}</p><p className="mt-1 text-sm text-slate-500">{action.description}</p></div>}
-                <ReadOnlyField label={t("coaching.report.target")} value={action.targetValue === undefined ? t("coaching.report.noTarget") : String(action.targetValue)} />
-                {action.isNew ? <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{t("coaching.report.priority")} *</span><select disabled={readOnly} className="field" value={action.priority ?? "normaal"} onChange={(event) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, priority: event.target.value as "laag" | "normaal" | "hoog" } : item) }))}><option value="hoog">{t("priority.high")}</option><option value="normaal">{t("priority.normal")}</option><option value="laag">{t("priority.low")}</option></select></label> : <ReadOnlyField label={t("coaching.report.priority")} value={action.priority ?? "normaal"} />}
-              </div>
-              {!action.isNew && <div className="mt-3 max-w-xs"><TextField label={t("coaching.report.achievedScore")} type="number" value={action.achievedScore === undefined ? "" : String(action.achievedScore)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, achievedScore: value === "" ? undefined : Number(value) } : item) }))} /></div>}
-              {action.isNew && <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr]"><TextField label={t("coaching.report.optionalTarget")} type="number" value={action.targetValue === undefined ? "" : String(action.targetValue)} disabled={readOnly} onChange={(value) => setLocal((current) => ({ ...current, actionPoints: current.actionPoints.map((item, itemIndex) => itemIndex === index ? { ...item, targetValue: value === "" ? undefined : Number(value) } : item) }))} /><ActionTipsEditor actionId={action.id} value={action.tipsAndTricks ?? ""} disabled={readOnly} onChange={updateActionTips} /></div>}
-            </div>
-          ))}
-          {local.actionPoints.length === 0 && <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("coaching.report.noActionPointsAdded")}</p>}
-        </div>
-      </section>
-
-      {activeStep === 7 && <CoachingReportClosingSummary intervention={local} representative={representative} leaderName={reportingUserName(local.ownerId, managedUsers)} totalScore={totalCoachingScore} issues={validationIssues} t={t} onIssue={(issue) => void navigateToIssue(issue)} onStep={(step) => void navigateToStep(step)} />}
-      {activeStep === 7 && !readOnly && (
-        <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:justify-end">
-          {local.status === "gepland" && <button type="button" className="btn-secondary text-rose-700" onClick={() => persist("geannuleerd")}>{t("coaching.report.removeCoaching")}</button>}
-          <button type="button" className="btn-secondary" disabled={transitioning} onClick={() => void saveAndStay()}><Save className="h-4 w-4" /> {t("coaching.report.save")}</button>
-          <button type="button" className="btn-secondary" disabled={transitioning} onClick={() => void closeReport()}>{t("coaching.report.close")}</button>
-          <button type="button" className="btn-primary" disabled={!reportIsValid || transitioning} onClick={() => void finalizeAndSendForApproval()}>{transitioning && <LoaderCircle className="h-4 w-4 animate-spin" />}{transitioning ? t("coaching.report.finalizing") : t("coaching.report.finalizeAndSend")}</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CoachingReportStepper({
-  activeStep,
-  issues,
-  hasAppointments,
-  hasActionPoints,
-  reportIsValid,
-  t,
-  onNavigate,
-}: {
-  activeStep: CoachingReportStepId;
-  issues: CoachingReportIssue[];
-  hasAppointments: boolean;
-  hasActionPoints: boolean;
-  reportIsValid: boolean;
-  t: (key: TranslationKey) => string;
-  onNavigate: (step: CoachingReportStepId) => void;
-}) {
-  const steps: Array<{ id: CoachingReportStepId; label: TranslationKey }> = [
-    { id: 1, label: "coaching.report.step.general" },
-    { id: 2, label: "coaching.report.step.preparation" },
-    { id: 3, label: "coaching.report.step.generalEvaluation" },
-    { id: 4, label: "coaching.report.step.personality" },
-    { id: 5, label: "coaching.report.step.appointments" },
-    { id: 6, label: "coaching.report.step.actionPoints" },
-    { id: 7, label: "coaching.report.step.closing" },
-  ];
-
-  return (
-    <nav aria-label={t("coaching.report.steps")} className="min-w-0 flex-1 overflow-x-auto pb-1">
-      <ol className="flex min-w-max gap-2">
-        {steps.map((step) => {
-          const hasError = issues.some((issue) => issue.step === step.id) || (step.id === 7 && !reportIsValid);
-          const complete = !hasError && (
-            step.id <= 2 ||
-            [3, 4].includes(step.id) ||
-            (step.id === 5 && hasAppointments) ||
-            (step.id === 6 && hasActionPoints) ||
-            (step.id === 7 && reportIsValid)
-          );
-          const state = hasError ? "error" : complete ? "complete" : "incomplete";
-          const active = activeStep === step.id;
-          const Icon = state === "error" ? AlertTriangle : state === "complete" ? CheckCircle2 : MoreHorizontal;
-          const statusLabel = active
-            ? t("coaching.report.status.active")
-            : state === "error"
-              ? t("coaching.report.status.error")
-              : state === "complete"
-                ? t("coaching.report.status.complete")
-                : t("coaching.report.status.incomplete");
-          return (
-            <li key={step.id}>
-              <button
-                type="button"
-                aria-current={active ? "step" : undefined}
-                onClick={() => onNavigate(step.id)}
-                className={`flex min-h-14 items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${active ? "border-brand-700 bg-brand-50 text-brand-950 ring-2 ring-brand-100" : state === "error" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-slate-200 bg-white text-slate-700 hover:border-brand-300"}`}
-              >
-                <Icon className={`h-4 w-4 shrink-0 ${state === "error" ? "text-rose-600" : state === "complete" ? "text-emerald-600" : "text-slate-400"}`} />
-                <span>
-                  <span className="block text-[10px] font-bold uppercase tracking-wider opacity-70">{step.id}. {statusLabel}</span>
-                  <span className="block max-w-36 text-xs font-bold">{t(step.label)}</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
-  );
-}
-
-function AutosaveStatus({
-  status,
-  t,
-}: {
-  status: "saving" | "saved" | "error";
-  t: (key: TranslationKey) => string;
-}) {
-  const label = status === "saving"
-    ? t("coaching.report.saving")
-    : status === "error"
-      ? t("coaching.report.saveFailed")
-      : t("coaching.report.saved");
-  return (
-    <div role="status" className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-bold ${status === "error" ? "bg-rose-100 text-rose-800" : status === "saving" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
-      {status === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : status === "error" ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-      {label}
-    </div>
-  );
-}
-
-function CoachingReportClosingSummary({
-  intervention,
-  representative,
-  leaderName,
-  totalScore,
-  issues,
-  t,
-  onIssue,
-  onStep,
-}: {
-  intervention: CoachingWorkflowItem;
-  representative: Representative;
-  leaderName: string;
-  totalScore?: number;
-  issues: CoachingReportIssue[];
-  t: (key: TranslationKey) => string;
-  onIssue: (issue: CoachingReportIssue) => void;
-  onStep: (step: CoachingReportStepId) => void;
-}) {
-  const dossier = intervention.dossier ?? defaultDossierState();
-  const appointments = (intervention.appointments ?? []).filter((appointment) => !appointment.isDeleted);
-  const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
-  const currentWheel = buildPerformanceWheelData({ current: currentHistory, type: "kapstok" });
-  return (
-    <div id="coaching-step-7" className="space-y-5">
-      <section className="card p-5 sm:p-6">
-        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.performance")}</h2>
-        <div className="mt-4">
-          <PerformanceWheel
-            representativeId={currentHistory.representativeId}
-            currentInterventionId={currentHistory.id}
-            type="kapstok"
-            coachings={[currentHistory]}
-            notScoredLabel={t("coaching.performance.notScored")}
-            totalScoreLabel={t("coaching.performance.totalScore")}
-          />
-        </div>
-      </section>
-      <section className="card p-5 sm:p-6">
-        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.summary")}</h2>
-        <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryValue label={t("coaching.report.representative")} value={`${representative.firstName} ${representative.lastName}`} />
-          <SummaryValue label={t("coaching.report.coach")} value={leaderName} />
-          <SummaryValue label={t("coaching.report.date")} value={formatShortDate(intervention.plannedDate)} />
-          <SummaryValue label={t("coaching.report.arrivalTime")} value={dossier.arrivalTime || "--:--"} />
-          <SummaryValue label={t("coaching.report.appointments")} value={String(appointments.length)} />
-          <SummaryValue label={t("coaching.report.actionPoints")} value={String(intervention.actionPoints.length)} />
-          <SummaryValue label={t("coaching.report.totalScore")} value={formatPerformancePercentage(currentWheel.totalPercentage, t("coaching.performance.notScored"))} />
-          <SummaryValue label={t("coaching.report.missingRequired")} value={String(issues.length)} />
-        </dl>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="card p-5">
-          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(3)}>
-            <h3 className="font-bold text-slate-950">{t("coaching.report.generalEvaluation")}</h3>
-            <ChevronRight className="h-4 w-4 text-brand-700" />
-          </button>
-          <ReadOnlySimpleScoreTable scores={dossier.generalScores} />
-        </div>
-        <div className="card p-5">
-          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(4)}>
-            <h3 className="font-bold text-slate-950">{t("coaching.report.personalityEvaluation")}</h3>
-            <ChevronRight className="h-4 w-4 text-brand-700" />
-          </button>
-          <ReadOnlySimpleScoreTable scores={dossier.personalityScores} />
-        </div>
-        <div className="card p-5">
-          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(5)}>
-            <h3 className="font-bold text-slate-950">{t("coaching.report.appointments")}</h3>
-            <ChevronRight className="h-4 w-4 text-brand-700" />
-          </button>
-          <div className="mt-3 space-y-2">
-            {appointments.slice(0, 3).map((appointment) => <p key={appointment.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{appointment.customer || t("coaching.report.newAppointment")}</p>)}
-            {!appointments.length && <p className="text-sm text-slate-500">{t("coaching.report.noAppointments")}</p>}
-          </div>
-        </div>
-        <div className="card p-5">
-          <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => onStep(6)}>
-            <h3 className="font-bold text-slate-950">{t("coaching.report.actionPoints")}</h3>
-            <ChevronRight className="h-4 w-4 text-brand-700" />
-          </button>
-          <div className="mt-3 space-y-2">
-            {intervention.actionPoints.slice(0, 3).map((action) => <p key={action.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{action.title || t("coaching.report.untitledAction")}</p>)}
-            {!intervention.actionPoints.length && <p className="text-sm text-slate-500">{t("coaching.report.noActionPoints")}</p>}
-          </div>
-        </div>
-      </section>
-
-      {issues.length > 0 && (
-        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-rose-700" />
-            <h2 className="font-bold text-rose-950">{t("coaching.report.missingRequired")}</h2>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {issues.map((issue, index) => (
-              <button key={`${issue.code}:${issue.criterion ?? issue.actionId ?? index}`} type="button" className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-left text-sm font-semibold text-rose-800 ring-1 ring-rose-200" onClick={() => onIssue(issue)}>
-                <span>{coachingIssueLabel(issue, t)}</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function coachingIssueLabel(issue: CoachingReportIssue, t: (key: TranslationKey) => string) {
-  if (issue.code === "general_score_missing") {
-    return `${t("coaching.report.missingGeneralScore")}${issue.criterion ? `: ${issue.criterion}` : ""}`;
-  }
-  if (issue.code === "personality_score_missing") {
-    return `${t("coaching.report.missingPersonalityScore")}${issue.criterion ? `: ${issue.criterion}` : ""}`;
-  }
-  if (issue.code === "action_point_missing") return t("coaching.report.missingActionPoint");
-  if (issue.code === "action_point_title_missing") return t("coaching.report.missingActionTitle");
-  if (issue.code === "action_point_priority_missing") return t("coaching.report.missingActionPriority");
-  return t("coaching.report.missingActionTips");
-}
-function CompletedCoachingSummary({
-  intervention,
-  approval,
-  representative,
-  leaderName,
-  totalScore,
-  comparisonHistory,
-  canManage,
-  showHistory,
-  isRepresentative,
-  isBusy,
-  message,
-  onSendForApproval,
-  onApprove,
-  onDownload,
-  canDownload,
-}: {
-  intervention: CoachingWorkflowItem;
-  approval?: WorkflowApi["state"]["approvals"][number];
-  representative: Representative;
-  leaderName: string;
-  totalScore?: number;
-  comparisonHistory?: HistoricalCoaching;
-  canManage: boolean;
-  showHistory: boolean;
-  isRepresentative: boolean;
-  isBusy: boolean;
-  message?: string;
-  onSendForApproval: () => void;
-  onApprove: () => void;
-  onDownload: (performanceWheelSvg?: SVGSVGElement, performanceWheelData?: PerformanceWheelData) => void;
-  canDownload: boolean;
-}) {
-  const { user } = useSession();
-  const { coachingFramework } = useConfiguration();
-  const t = useCallback((key: TranslationKey) => translate(user.language, key), [user.language]);
-  const wheelLabels = {
-    ariaKapstok: t("coaching.performance.competencyWheel"),
-    ariaGeneral: t("coaching.performance.generalWheel"),
-    previous: t("coaching.performance.previousShort"),
-    current: t("coaching.performance.currentShort"),
-    tooltipHelp: t("coaching.performance.wheelHelp"),
-    currentMeasurement: t("coaching.performance.currentMeasurement"),
-    previousMeasurement: t("coaching.performance.previousMeasurement"),
-    noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
-    better: t("coaching.performance.better"),
-    worse: t("coaching.performance.worse"),
-    equal: t("coaching.performance.equal"),
-    first: t("coaching.performance.firstMeasurement"),
-    green: t("coaching.performance.green"),
-    red: t("coaching.performance.red"),
-    darkBlue: t("coaching.performance.darkBlue"),
-    blue: t("coaching.performance.blue"),
-  };
-  const [confirmation, setConfirmation] = useState<"send" | "approve">();
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [wheelOpen, setWheelOpen] = useState(false);
-  const [openAppointmentIds, setOpenAppointmentIds] = useState<Set<string>>(() => new Set());
-  const reportWheelRef = useRef<HTMLDivElement>(null);
-  const dossier = intervention.dossier ?? defaultDossierState();
-  const appointments = dedupeById(intervention.appointments ?? []).filter((item) => !item.isDeleted);
-  const currentHistory = coachingInterventionAsHistory(intervention, dossier, appointments, leaderName, totalScore);
-  const wheelCoachings = comparisonHistory ? [comparisonHistory, currentHistory] : [currentHistory];
-  const reportWheelData = buildPerformanceWheelData({
-    current: currentHistory,
-    comparison: comparisonHistory,
-    type: "kapstok",
-  });
-  const mainScoreRows = dedupeScoresByCriterion([...dossier.generalScores, ...dossier.personalityScores]);
-  const mainFormScore = calculateCoachingDossierScore(mainScoreRows.map((score) => score.score));
-  const workflowScoreRows = dedupeWorkflowScores(intervention.scores);
-  const generalRemarks = [
-    ...dossier.groupAttentionPoints.filter((item) => !isBlankRichText(item)).map((text, index) => ({ label: `Groepsaandachtspunt ${index + 1}`, text })),
-    ...(!isBlankRichText(dossier.individualAttentionPoint) ? [{ label: "Individueel aandachtspunt / conclusie", text: dossier.individualAttentionPoint }] : []),
-    ...mainScoreRows.filter((item) => !isBlankRichText(item.comment)).map((item) => ({ label: item.criterion, text: item.comment })),
-    ...workflowScoreRows.filter((item) => !isBlankRichText(item.description)).map((item) => ({ label: `${item.focus} Â· ${item.criterion}`, text: item.description! })),
-  ];
-  const latestAudit = [...(intervention.auditTrail ?? [])]
-    .sort((left, right) => right.at.localeCompare(left.at))[0];
-  const locked = ["verzonden_ter_akkoord", "akkoord_door_vertegenwoordiger"].includes(intervention.status);
-
-  function confirmTransition() {
-    if (confirmation === "send") onSendForApproval();
-    if (confirmation === "approve") onApprove();
-    setConfirmation(undefined);
-  }
-
-  function toggleAppointment(id: string) {
-    setOpenAppointmentIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/begeleidingen" className="text-sm font-semibold text-brand-700">â† {t("coaching.report.back")}</Link>
-        <div className="flex flex-wrap gap-2">
-          {canDownload && <button id="rapport" type="button" className="btn-secondary scroll-mt-24" disabled={isBusy} onClick={() => onDownload(reportWheelRef.current?.querySelector<SVGSVGElement>('[data-testid="performance-wheel-svg"]') ?? undefined, reportWheelData)}><FileDown className="h-4 w-4" /> {t("coaching.report.pdfReport")}</button>}
-          {canManage && !locked && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("send")}>{t("coaching.report.sendForApproval")}</button>}
-          {isRepresentative && intervention.status === "verzonden_ter_akkoord" && <button type="button" className="btn-primary" disabled={isBusy} onClick={() => setConfirmation("approve")}>{t("coaching.report.approve")}</button>}
-          <StatusBadge status={intervention.status} />
-        </div>
-      </div>
-
-      <PageHeader
-        eyebrow={t("coaching.report.completedEyebrow")}
-        title={`${representative.firstName} ${representative.lastName}`}
-        description={`${formatShortDate(intervention.plannedDate)} Â· ${intervention.startTime ?? "--:--"}-${intervention.endTime ?? "--:--"}`}
-        compact
-      />
-
-      {message && <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm font-semibold text-brand-900">{message}</div>}
-      <div ref={reportWheelRef} aria-hidden="true" className="pointer-events-none fixed -left-[10000px] top-0 w-[1040px] opacity-0">
-        <PerformanceWheel
-          representativeId={currentHistory.representativeId}
-          currentInterventionId={currentHistory.id}
-          comparisonInterventionId={comparisonHistory?.id}
-          type="kapstok"
-          coachings={wheelCoachings}
-          notScoredLabel={t("coaching.performance.notScored")}
-          totalScoreLabel={t("coaching.performance.totalScore")}
-          labels={wheelLabels}
-        />
-      </div>
-      {locked && (
-        <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm font-semibold text-fuchsia-900">
-          {intervention.status === "akkoord_door_vertegenwoordiger"
-            ? `${t("coaching.report.lockedApproved")}${intervention.approvedByRepAt ? ` ${t("coaching.report.on")} ${formatDateTime(intervention.approvedByRepAt)}` : ""}.`
-            : t("coaching.report.lockedSent")}
-        </div>
-      )}
-      {latestAudit && (
-        <p className="text-sm text-slate-500">
-          {t("coaching.report.lastEditedBy").replace("{date}", formatDateTime(latestAudit.at)).replace("{user}", latestAudit.userName ?? t("coaching.report.aUser"))}
-        </p>
-      )}
-
-      {!isRepresentative && intervention.sentForApprovalAt && (
-        <ApprovalReflectionReadOnly approval={approval} sentForApprovalAt={intervention.sentForApprovalAt} t={t} />
-      )}
-
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.55fr)]">
-        <div className="card p-5">
-          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalInfo")}</h2>
-          <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SummaryValue label={t("coaching.report.representative")} value={`${representative.firstName} ${representative.lastName}`} />
-            <SummaryValue label={t("coaching.report.coach")} value={leaderName} />
-            <SummaryValue label={t("coaching.report.team")} value={representative.team} />
-            <SummaryValue label={t("coaching.report.roleLevel")} value={`${t("coaching.report.representative")} Â· ${representative.level}`} />
-            <SummaryValue label={t("coaching.report.date")} value={formatShortDate(intervention.plannedDate)} />
-            <SummaryValue label={t("coaching.report.plannedTime")} value={`${intervention.startTime ?? "--:--"} â€“ ${intervention.endTime ?? "--:--"}`} />
-            <SummaryValue label={t("coaching.reporting.status")} value={<StatusBadge status={intervention.status} />} />
-            <SummaryValue label={t("coaching.report.effectiveArrivalDeparture")} value={`${dossier.arrivalTime || "--:--"} â€“ ${dossier.departureTime || "--:--"}`} />
-            <SummaryValue label={t("coaching.reporting.area")} value={dossier.area || "â€”"} />
-            <SummaryValue label={t("coaching.reporting.sector")} value={dossier.sector || "â€”"} />
-            <SummaryValue label={t("coaching.report.kilometers")} value={dossier.kilometers || "â€”"} />
-            <SummaryValue label={t("coaching.reporting.focus")} value={intervention.focusNames.length ? intervention.focusNames.join(", ") : t("coaching.report.focusNone")} />
-            <SummaryValue label={t("coaching.report.notified")} value={intervention.notifyRepresentative ? t("contactHelp.common.yes") : t("coaching.report.no")} />
-          </dl>
-        </div>
-        <div className="card flex min-w-0 flex-col justify-between p-5 sm:p-6">
-          <div>
-            <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.generalScore")}</h2>
-            {totalScore === undefined ? (
-              <p className="mt-5 text-base font-semibold text-slate-500">{t("coaching.report.noScoreAvailable")}</p>
-            ) : (
-              <p className="mt-3 text-5xl font-black tracking-tight text-brand-950">{formatPerformancePercentage(totalScore, t("coaching.report.noScoreAvailable"))}</p>
-            )}
-          </div>
-          <button
-            type="button"
-            className="btn-primary mt-8 w-full justify-center whitespace-normal text-center"
-            onClick={() => setWheelOpen(true)}
-          >
-            {t("coaching.report.openPerformanceWheel")}
-          </button>
-        </div>
-      </section>
-
-      <section id="opmerkingen" className="card scroll-mt-24 p-5">
-        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.summaryConclusion")}</h2>
-        <div className="mt-4 space-y-3">
-          {generalRemarks.map((remark) => <div key={`${remark.label}:${remark.text}`} className="rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{remark.label}</p><OptionalCoachingRemark value={remark.text} className="mt-1 text-sm leading-6 text-slate-700" /></div>)}
-          {!isRepresentative && !isBlankRichText(intervention.internalNotes) && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">{t("coaching.report.internalNote")}</p><OptionalCoachingRemark value={intervention.internalNotes} className="mt-1 text-sm leading-6 text-amber-900" /></div>}
-        </div>
-      </section>
-
-      <section id="scores" className="card scroll-mt-24 p-5">
-        <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.mainFormScores").replace("{score}", formatPerformancePercentage(mainFormScore, t("coaching.report.noScoreAvailable")))}</h2>
-        <ReadOnlySimpleScoreTable scores={mainScoreRows} />
-        <h3 className="mt-6 text-base font-bold text-slate-900">{t("coaching.report.detailedCriteria")}</h3>
-        <ReadOnlyWorkflowScoreTable scores={workflowScoreRows} />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div id="actiepunten" className="card scroll-mt-24 p-5">
-          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.actionPoints")}</h2>
-          <div className="mt-4 space-y-2">
-            {dedupeById(intervention.actionPoints).map((action) => <div key={action.id} className="rounded-xl bg-slate-50 px-4 py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{action.title}</p><p className="mt-1 text-xs text-slate-500">Deadline {action.due ? formatShortDate(action.due) : "niet ingesteld"} Â· prioriteit {action.priority ?? "normaal"}</p></div><StatusBadge status={action.status} /></div>{!isBlankRichText(action.description) && <RichTextRenderer value={action.description} className="mt-3 text-sm leading-6 text-slate-600" />}</div>)}
-            {intervention.actionPoints.length === 0 && <p className="text-sm text-slate-500">{t("coaching.report.noActionPointsAdded")}</p>}
-          </div>
-        </div>
-        <div className="card p-5">
-          <h2 className="text-lg font-bold text-slate-950">{t("coaching.report.agreementsWithin")}</h2>
-          <div className="mt-4 space-y-2">
-            {appointments.map((appointment, index) => {
-              const expanded = openAppointmentIds.has(appointment.id);
-              return <article key={`report-${appointment.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <button type="button" className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-slate-50" onClick={() => toggleAppointment(appointment.id)} aria-expanded={expanded}>
-                  <div className="grid h-10 min-w-16 place-items-center rounded-xl bg-brand-50 px-2 text-xs font-bold text-brand-800">{appointment.arrivalTime || "--:--"}</div>
-                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{index + 1}. {appointment.customer || t("coaching.report.unnamedAppointment")}</p><p className="mt-1 text-xs capitalize text-slate-500">{appointment.relationType} Â· {appointment.appointmentType} Â· {appointment.place || t("coaching.report.noLocation")}</p></div>
-                  <div className="hidden text-right sm:block"><p className="text-sm font-bold text-brand-800">{formatPerformancePercentage(appointmentAverageScore(appointment), t("coaching.performance.notScored"))}</p><p className="text-xs text-slate-400">{t("coaching.report.averageScore")}</p></div>
-                  <ChevronRight className={`h-5 w-5 shrink-0 text-slate-400 transition ${expanded ? "rotate-90" : ""}`} />
-                </button>
-                {expanded && <AppointmentReadOnlyReport appointment={appointment} coachingFramework={coachingFramework} t={t} />}
-              </article>;
-            })}
-            {appointments.length === 0 && <p className="text-sm text-slate-500">{t("coaching.report.noAppointmentsRegistered")}</p>}
-          </div>
-        </div>
-      </section>
-
-      {showHistory && (intervention.auditTrail?.length ?? 0) > 0 && (
-        <section className="card p-5">
-          <button type="button" className="flex w-full items-center justify-between text-left font-bold text-slate-950" onClick={() => setHistoryOpen((value) => !value)}>
-            {t("coaching.report.history")} <span>{historyOpen ? "âˆ’" : "+"}</span>
-          </button>
-          {historyOpen && <div className="mt-4 space-y-3">{intervention.auditTrail!.map((entry) => <div key={entry.id} className="border-l-2 border-brand-200 pl-4"><p className="text-sm font-semibold text-slate-800">{entry.summary}</p><p className="text-xs text-slate-500">{formatDateTime(entry.at)} Â· {entry.userName ?? entry.userId}</p></div>)}</div>}
-        </section>
-      )}
-
-      {confirmation && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 className="text-xl font-bold text-slate-950">{t("coaching.report.confirmation")}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              {confirmation === "send"
-                ? t("coaching.report.sendConfirmation")
-                : t("coaching.report.approveConfirmation")}
-            </p>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setConfirmation(undefined)}>{t("coaching.report.cancel")}</button><button type="button" className="btn-primary" onClick={confirmTransition}>{t("coaching.report.confirm")}</button></div>
-          </div>
-        </div>
-      )}
-      <PerformanceWheelDialog
-        open={wheelOpen}
-        onClose={() => setWheelOpen(false)}
-        title={t("coaching.report.performanceWheelModalTitle")}
-        closeLabel={t("coaching.report.closePerformanceWheel")}
-        representativeId={currentHistory.representativeId}
-        currentInterventionId={currentHistory.id}
-        comparisonInterventionId={comparisonHistory?.id}
-        coachings={wheelCoachings}
-        totalPercentageOverride={totalScore}
-        notScoredLabel={t("coaching.performance.notScored")}
-        totalScoreLabel={t("coaching.performance.totalScore")}
-        labels={{
-          noComparableScores: t("coaching.performance.noScores"),
-          noCriteria: t("coaching.performance.noCriteria"),
-          incomplete: t("coaching.performance.incomplete"),
-          ariaKapstok: t("coaching.performance.competencyWheel"),
-          ariaGeneral: t("coaching.performance.generalWheel"),
-          previous: t("coaching.performance.previousShort"),
-          current: t("coaching.performance.currentShort"),
-          tooltipHelp: t("coaching.performance.wheelHelp"),
-          currentMeasurement: t("coaching.performance.currentMeasurement"),
-          previousMeasurement: t("coaching.performance.previousMeasurement"),
-          noPreviousMeasurement: t("coaching.performance.noPreviousMeasurement"),
-          better: t("coaching.performance.better"),
-          worse: t("coaching.performance.worse"),
-          equal: t("coaching.performance.equal"),
-          first: t("coaching.performance.firstMeasurement"),
-          green: t("coaching.performance.green"),
-          red: t("coaching.performance.red"),
-          darkBlue: t("coaching.performance.darkBlue"),
-          blue: t("coaching.performance.blue"),
-        }}
-      />
-    </div>
-  );
-}
-
-function PerformanceWheelDialog({
-  open,
-  onClose,
-  title,
-  closeLabel,
-  representativeId,
-  currentInterventionId,
-  comparisonInterventionId,
-  coachings,
-  totalPercentageOverride,
-  notScoredLabel,
-  totalScoreLabel,
-  labels,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  closeLabel: string;
-  representativeId: string;
-  currentInterventionId: string;
-  comparisonInterventionId?: string;
-  coachings: HistoricalCoaching[];
-  totalPercentageOverride?: number;
-  notScoredLabel: string;
-  totalScoreLabel: string;
-  labels: Parameters<typeof PerformanceWheel>[0]["labels"];
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])"
-      );
-      if (!focusable?.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousActiveElement?.focus();
-    };
-  }, [onClose, open]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="performance-wheel-dialog-title"
-        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-[min(1500px,calc(100vw-1rem))] min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
-          <h2 id="performance-wheel-dialog-title" className="text-lg font-bold text-slate-950 sm:text-xl">{title}</h2>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            aria-label={closeLabel}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
-            onClick={onClose}
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6">
-          <PerformanceWheel
-            representativeId={representativeId}
-            currentInterventionId={currentInterventionId}
-            comparisonInterventionId={comparisonInterventionId}
-            type="kapstok"
-            coachings={coachings}
-            totalPercentageOverride={totalPercentageOverride}
-            notScoredLabel={notScoredLabel}
-            totalScoreLabel={totalScoreLabel}
-            labels={labels}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AppointmentReadOnlyReport({ appointment, coachingFramework, t }: { appointment: CoachingAppointment; coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"]; t: (key: TranslationKey) => string }) {
-  const scores = dedupeScoresByCriterion(appointment.scores);
-  return (
-    <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-5">
-      <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <SummaryValue label="Klant / prospect" value={appointment.customer || "Niet ingevuld"} />
-        <SummaryValue label="Klantnummer" value={appointment.customerNumber || "Niet ingevuld"} />
-        <SummaryValue label="Adres / locatie" value={appointment.place || "Niet ingevuld"} />
-        <SummaryValue label="Tijdstip" value={`${appointment.arrivalTime || "--:--"} â€“ ${appointment.departureTime || "--:--"}`} />
-        <SummaryValue label="Type" value={`${appointment.relationType} Â· ${appointment.appointmentType}`} />
-        <SummaryValue label={t("coaching.report.averageScore")} value={formatPerformancePercentage(appointmentAverageScore(appointment), t("coaching.performance.notScored"))} />
-      </dl>
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Resultaat / activiteit</p><p className="mt-2 text-sm leading-6 text-slate-700">{appointment.activity?.trim() || "Geen resultaat ingevuld."}</p></div>
-        <div className="rounded-xl bg-white p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Notities / opmerkingen</p><OptionalCoachingRemark value={appointment.remarks} className="mt-2 min-h-6 text-sm leading-6 text-slate-700" /></div>
-      </div>
-      <h4 className="mt-5 font-bold text-slate-900">{t("coaching.report.detailedScores")}</h4>
-      <ReadOnlyAppointmentScoreGroups scores={scores} coachingFramework={coachingFramework} t={t} />
-      <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">Geen afzonderlijk aan deze afspraak gekoppelde actiepunten geregistreerd.</div>
-    </div>
-  );
-}
-
-function ReadOnlyAppointmentScoreGroups({ scores, coachingFramework, t }: { scores: CoachingSimpleScore[]; coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"]; t: (key: TranslationKey) => string }) {
-  const groups = groupAppointmentScores(scores, coachingFramework);
-  if (groups.length === 0) return <p className="mt-4 text-sm text-slate-500">{t("coaching.report.noScoresRegistered")}</p>;
-  return (
-    <div className="mt-3 space-y-3">
-      {groups.map((group) => (
-        <section key={group.name} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
-            <h5 className="min-w-0 flex-1 break-words text-sm font-bold text-slate-900">{group.name}</h5>
-            <span className="shrink-0 text-sm font-bold text-brand-800">{formatPerformancePercentage(group.average, t("coaching.performance.notScored"))}</span>
-          </div>
-          <ReadOnlySimpleScoreTable scores={group.scores} splitCriterion />
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function OptionalCoachingRemark({ value, className }: { value?: string | null; className: string }) {
-  if (isBlankRichText(value)) return <div className={className} aria-hidden="true" />;
-  const text = value ?? "";
-  if (hasHtmlMarkup(text)) {
-    return <RichTextRenderer value={text} className={className} />;
-  }
-  return <p className={className}>{richTextToPlainText(text)}</p>;
-}
-
-function ApprovalReflectionReadOnly({
-  approval,
-  sentForApprovalAt,
-  t,
-}: {
-  approval?: WorkflowApi["state"]["approvals"][number];
-  sentForApprovalAt: string;
-  t: (key: TranslationKey) => string;
-}) {
-  const complete = approvalHasCompletedReflection(approval);
-  const rows = [
-    { label: t("approvalReflection.question.kpi"), value: approval?.reflectionKpiHtml },
-    { label: t("approvalReflection.question.learning"), value: approval?.reflectionLearningHtml },
-    { label: t("approvalReflection.question.goal"), value: approval?.reflectionGoalHtml },
-  ];
-
-  return (
-    <section className="card p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">{t("approvalReflection.sectionTitle")}</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {complete
-              ? t("approvalReflection.completedManager")
-              : `${t("approvalReflection.pendingManager")} ${t("approvalReflection.sentForApprovalAt")}: ${formatDateTime(sentForApprovalAt)}.`}
-          </p>
-        </div>
-        <StatusBadge status={complete ? "ingediend" : "wacht_op_akkoord"} />
-      </div>
-      <div className="mt-5 space-y-4">
-        {rows.map((row) => (
-          <div key={row.label} className="rounded-xl bg-slate-50 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-brand-700">{row.label}</p>
-            {isBlankRichText(row.value) ? (
-              <p className="mt-2 text-sm font-semibold text-slate-500">{t("approvalReflection.notFilled")}</p>
-            ) : (
-              <RichTextRenderer value={row.value} className="mt-2 text-sm leading-6 text-slate-700" />
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ReadOnlySimpleScoreTable({ scores, splitCriterion = false }: { scores: CoachingSimpleScore[]; splitCriterion?: boolean }) {
-  if (scores.length === 0) return <p className="mt-4 text-sm text-slate-500">Geen scores geregistreerd.</p>;
-  return (
-    <div className="mt-4 grid gap-2 md:grid-cols-2">
-      {scores.map((score) => {
-        const criterion = splitScoreCriterion(score.criterion);
-        const currentPercentage = score.score === null || score.score === "nvt" ? undefined : normalizePerformanceScore(score.score);
-        const previousPercentage = score.previousScore === undefined ? undefined : normalizePerformanceScore(score.previousScore);
-        const trend = scoreTrend(currentPercentage, previousPercentage);
-        return <div key={score.criterion} className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <p className="min-w-0 flex-1 break-words text-sm font-semibold text-slate-800">{splitCriterion ? criterion.detail : score.criterion}</p>
-            <div className="shrink-0 text-right">
-              <p className="text-sm font-bold text-slate-950">{currentPercentage === undefined ? (score.score === "nvt" ? "N.v.t." : "â€”") : `${currentPercentage}%`}</p>
-              {previousPercentage !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} Â· vorige {previousPercentage}%</p>}
-            </div>
-          </div>
-          {!isBlankRichText(score.comment) && <OptionalCoachingRemark value={score.comment} className="mt-1 text-sm leading-5 text-slate-600" />}
-        </div>;
-      })}
-    </div>
-  );
-}
-
-function ReadOnlyWorkflowScoreTable({ scores }: { scores: WorkflowScore[] }) {
-  if (scores.length === 0) return <p className="mt-4 text-sm text-slate-500">Geen gedetailleerde criteria geregistreerd.</p>;
-  return (
-    <div className="mt-4 space-y-2">
-      {scores.map((score) => {
-        const current = score.value === "NVT" ? undefined : score.value;
-        const trend = scoreTrend(current, score.previousScore);
-        return <div key={`${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`} className="grid gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:grid-cols-[minmax(150px,1fr)_105px_minmax(180px,1.2fr)] sm:items-center">
-          <div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{score.focus || "Algemeen"}</p><p className="mt-1 text-sm font-semibold text-slate-800">{score.criterion}</p></div>
-          <div><p className="text-sm font-bold text-slate-950">{current === undefined ? "N.v.t." : `${current}%`}</p>{score.previousScore !== undefined && <p className={`text-xs font-semibold ${trend.tone}`}>{trend.label} Â· vorige {score.previousScore}%</p>}</div>
-          <OptionalCoachingRemark value={score.description} className="min-h-5 text-sm leading-5 text-slate-600" />
-        </div>;
-      })}
-    </div>
-  );
-}
-
-function dedupeScoresByCriterion(scores: CoachingSimpleScore[]) {
-  return [...new Map(scores.map((score) => [score.criterion, score])).values()];
-}
-
-function dedupeWorkflowScores(scores: WorkflowScore[]) {
-  return [...new Map(scores.map((score) => [`${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`, score])).values()];
-}
-
-function splitScoreCriterion(value: string) {
-  const [group, ...detail] = value.split(/\s+-\s+/);
-  return { group: detail.length ? group : "Criterium", detail: detail.length ? detail.join(" - ") : group };
-}
-
-function scoreTrend(current?: number | "nvt" | null, previous?: number) {
-  if (typeof current !== "number" || previous === undefined) return { label: "", tone: "text-slate-500" };
-  if (current > previous) return { label: "â†‘ Beter", tone: "text-emerald-700" };
-  if (current < previous) return { label: "â†“ Lager", tone: "text-rose-700" };
-  return { label: "â†’ Gelijk", tone: "text-slate-600" };
-}
-
-function SummaryValue({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div><dt className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</dt><dd className="mt-1 text-sm font-semibold text-slate-800">{value}</dd></div>;
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("nl-BE", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
-}
-
-function TextField({ label, value, onChange, type = "text", disabled = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean }) {
-  return <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span><input type={type} className="field" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></label>;
-}
-
-function coachingSubjectAsRepresentative(subject: NonNullable<CoachingWorkflowItem["subject"]>): Representative {
-  return { id: subject.id, firstName: subject.firstName, lastName: subject.lastName, initials: subject.initials, country: subject.country, team: subject.team, teamId: subject.teamId, level: "Vertegenwoordiger", levelColor: "bg-brand-100 text-brand-800", lastCoaching: "Nog niet", openActions: 0, email: "", phone: "", kpis: [] };
-}
-
-const RichTextEditor = memo(function RichTextEditor({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const lastEmittedValue = useRef<string | undefined>(undefined);
-
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-
-    // A parent render after local typing must never rewrite the editable DOM:
-    // doing so destroys the browser selection and moves the caret to the start.
-    if (value === lastEmittedValue.current) {
-      lastEmittedValue.current = undefined;
-      return;
-    }
-    if (editor.innerHTML !== value) editor.innerHTML = value;
-  }, [value]);
-
-  const emitChange = useCallback(() => {
-    const nextValue = editorRef.current?.innerHTML ?? "";
-    lastEmittedValue.current = nextValue;
-    onChange(nextValue);
-  }, [onChange]);
-
-  const command = useCallback((name: string, commandValue?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(name, false, commandValue);
-  }, []);
-  const controls = [
-    ["B", "bold"], ["I", "italic"], ["U", "underline"], ["â€¢", "insertUnorderedList"],
-    ["1.", "insertOrderedList"], ["â†", "justifyLeft"], ["â†”", "justifyCenter"], ["â†’", "justifyRight"],
-  ] as const;
-  return <div><p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-    {!disabled && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 p-2">{controls.map(([text, name]) => <button key={name} type="button" title={name} className="grid h-8 min-w-8 place-items-center rounded-md px-2 text-xs font-bold hover:bg-white" onMouseDown={(event) => { event.preventDefault(); command(name); }}>{text}</button>)}<button type="button" className="h-8 rounded-md px-2 text-xs font-bold hover:bg-white" onMouseDown={(event) => { event.preventDefault(); const url = window.prompt("Link (https://â€¦)"); if (url) command("createLink", url); }}>Link</button><input type="color" title="Tekstkleur" className="h-8 w-8" onChange={(event) => command("foreColor", event.target.value)} /></div>}
-    <div ref={editorRef} className="rich-text-editor min-h-28 p-3 text-sm leading-6 outline-none" contentEditable={!disabled} suppressContentEditableWarning onInput={emitChange} />
-  </div></div>;
-});
-
-const ActionTipsEditor = memo(function ActionTipsEditor({ actionId, value, disabled, onChange }: {
-  actionId: string;
-  value: string;
-  disabled: boolean;
-  onChange: (actionId: string, value: string) => void;
-}) {
-  const handleChange = useCallback((nextValue: string) => onChange(actionId, nextValue), [actionId, onChange]);
-  return <RichTextEditor label="Tips & Tricks *" value={value} disabled={disabled} onChange={handleChange} />;
-});
-
-function CoachingOutlookSyncStatus({ intervention }: { intervention: CoachingWorkflowItem }) {
-  const label = intervention.outlookSyncStatus === "SYNCED"
-    ? "Gesynchroniseerd met Outlook"
-    : intervention.outlookSyncStatus === "ERROR"
-      ? "Outlook-syncfout"
-      : "Nog niet gesynchroniseerd met Outlook";
-  const tone = intervention.outlookSyncStatus === "SYNCED"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-    : intervention.outlookSyncStatus === "ERROR"
-      ? "border-rose-200 bg-rose-50 text-rose-800"
-      : "border-amber-200 bg-amber-50 text-amber-800";
-  return (
-    <div className={`rounded-2xl border p-4 text-sm ${tone}`}>
-      <p className="font-bold">{label}</p>
-      {intervention.lastSyncedAt && (
-        <p className="mt-1 text-xs opacity-80">Laatst gesynchroniseerd: {new Date(intervention.lastSyncedAt).toLocaleString("nl-BE")}</p>
-      )}
-      {intervention.syncError && <p className="mt-1 text-xs">{intervention.syncError}</p>}
-    </div>
-  );
-}
-
-function InlineOutlookSyncStatus({
-  status,
-  error,
-}: {
-  status: "NOT_SYNCED" | "SYNCED" | "ERROR";
-  error?: string;
-}) {
-  const label = status === "SYNCED" ? "Gesynchroniseerd" : status === "ERROR" ? "Sync-fout" : "Nog niet gesynchroniseerd";
-  const tone = status === "SYNCED"
-    ? "bg-emerald-100 text-emerald-800"
-    : status === "ERROR"
-      ? "bg-rose-100 text-rose-800"
-      : "bg-amber-100 text-amber-800";
-  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${tone}`} title={error ?? label}>{label}</span>;
-}
-
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 font-semibold text-slate-900">{value || "-"}</p></div>;
-}
-
-function HistoricalScoreComparisonPanel({
-  t,
-  loading,
-  error,
-  options,
-  selectedId,
-  selected,
-  currentHistory,
-  wheelCoachings,
-  onSelect,
-  onRetry,
-}: {
-  t: (key: TranslationKey) => string;
-  loading: boolean;
-  error?: string;
-  options: HistoricalComparisonResponse["options"];
-  selectedId: string;
-  selected?: HistoricalComparisonResponse["selected"];
-  currentHistory: HistoricalCoaching;
-  wheelCoachings: HistoricalCoaching[];
-  onSelect: (id: string) => void;
-  onRetry: () => void;
-}) {
-  return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="eyebrow">{t("coaching.scores.title")}</p>
-          <h2 className="mt-1 text-lg font-bold text-slate-950">{t("coaching.scores.representativeScores")}</h2>
-          {selected && (
-            <p className="mt-1 text-sm text-slate-500">
-              {t("coaching.scores.previousCoaching")}: {formatShortDate(selected.date)} - {selected.ownerName}
-            </p>
-          )}
-        </div>
-        {options.length > 0 ? (
-          <label className="min-w-0 text-xs font-semibold text-slate-500 lg:max-w-md">
-            {t("coaching.scores.compareWithPrevious")}
-            <select
-              className="field mt-1 w-full min-w-0"
-              value={selectedId}
-              disabled={loading}
-              onChange={(event) => onSelect(event.target.value)}
-            >
-              <option value="none">{t("coaching.scores.noComparison")}</option>
-              {options.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {formatShortDate(option.date)} - {option.ownerName} - {option.status}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-            {t("coaching.scores.noHistoricalScores")}
-          </p>
-        )}
-      </div>
-      <div className="space-y-4 p-5 sm:p-6">
-        {loading && (
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-            <LoaderCircle className="h-4 w-4 animate-spin" />
-            {t("coaching.scores.loadingHistoricalScores")}
-          </div>
-        )}
-        {error && (
-          <div role="alert" className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 sm:flex-row sm:items-center sm:justify-between">
-            <span>{error}</span>
-            <button type="button" className="btn-secondary bg-white py-2 text-xs" onClick={onRetry}>
-              {t("coaching.scores.retry")}
-            </button>
-          </div>
-        )}
-        {selected && !error && (
-          <>
-          <div>
-            <PerformanceWheel
-              representativeId={currentHistory.representativeId}
-              currentInterventionId={currentHistory.id}
-              comparisonInterventionId={selected.id}
-              type="kapstok"
-              coachings={wheelCoachings}
-              notScoredLabel={t("coaching.performance.notScored")}
-              totalScoreLabel={t("coaching.performance.totalScore")}
-            />
-          </div>
-            <div className="mt-5">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-bold text-slate-950">{t("coaching.report.historicalScores")}</h3>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={selected.status.toLowerCase()} />
-                  <span className="text-sm font-bold text-brand-800">{formatPercentage(selected.history.overallScore)}</span>
-                </div>
-              </div>
-              <div className="grid gap-2 lg:grid-cols-2">
-                {selected.scores.map((score) => (
-                  <div key={score.key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <span className="text-sm font-semibold text-slate-700">{score.label ?? score.key}</span>
-                    <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-brand-800 ring-1 ring-slate-200">{score.score} / 5</span>
-                  </div>
-                ))}
-                {!selected.scores.length && <p className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">{t("coaching.preparation.noScores")}</p>}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ScoreSection({ title, scores, readOnly, idPrefix, comparisonCategory, historicalScores, t, onChange }: { title: string; scores: CoachingSimpleScore[]; readOnly: boolean; idPrefix: string; comparisonCategory?: string; historicalScores?: ReadonlyMap<string, HistoricalScoreReference>; t: (key: TranslationKey) => string; onChange: (index: number, patch: { score?: CoachingSimpleScore["score"]; comment?: string }) => void }) {
-  const options = [0, 1, 2, 3, 4, 5, "nvt"] as const;
-  const showComparison = Boolean(comparisonCategory && historicalScores?.size);
-  return (
-    <section className="card p-5 sm:p-6">
-      <h2 className="text-lg font-bold text-slate-950">{title}</h2>
-      <div className="mt-4 grid gap-3">
-        {scores.map((item, index) => {
-          const previousScore = comparisonCategory
-            ? historicalScores?.get(historicalScoreKey(comparisonCategory, item.criterion))?.score
-            : undefined;
-          return (
-          <div id={`${idPrefix}-${index}`} key={item.criterion} aria-invalid={item.score === null} className={`grid gap-3 rounded-2xl border p-4 lg:items-center ${item.score === null ? "border-rose-300 bg-rose-50/70" : "border-slate-200 bg-slate-50"} ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_110px_minmax(260px,1.2fr)_100px_minmax(220px,1fr)]" : "lg:grid-cols-[220px_1fr_1.4fr]"}`}>
-            <div><p className="font-semibold text-slate-900">{item.criterion}</p>{item.score === null && <p className="mt-1 text-xs font-bold text-rose-700">{t("coaching.report.scoreRequired")}</p>}</div>
-            {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
-            <div className="flex flex-wrap gap-2">
-              {options.map((option) => (
-                <button key={option} type="button" disabled={readOnly} onClick={() => onChange(index, { score: option })} className={`rounded-lg border px-3 py-2 text-sm font-bold ${item.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{option === "nvt" ? "NVT" : option}</button>
-              ))}
-            </div>
-            {showComparison && <ScoreDifferenceCell current={item.score} previous={previousScore} t={t} />}
-            <input className="field" disabled={readOnly} placeholder={t("coaching.report.comment")} value={item.comment} onChange={(event) => onChange(index, { comment: event.target.value })} />
-          </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function AppointmentEditor({
-  appointment,
-  readOnly,
-  historicalScores,
-  t,
-  onChange,
-  onScoreChange,
-}: {
-  appointment: CoachingAppointment;
-  readOnly: boolean;
-  historicalScores?: ReadonlyMap<string, HistoricalScoreReference>;
-  t: (key: TranslationKey) => string;
-  onChange: (patch: Partial<CoachingAppointment>) => void;
-  onScoreChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void;
-}) {
-  const options = [1, 2, 3, 4, 5, "nvt"] as const;
-  const showComparison = Boolean(historicalScores?.size);
-  return (
-    <div className="mb-4 rounded-2xl border border-brand-100 bg-white p-4">
-      <div className="grid gap-3 md:grid-cols-5">
-        <TextField label="Klantnaam" value={appointment.customer} disabled={readOnly} onChange={(customer) => onChange({ customer })} />
-        <TextField label="Klantnummer" value={appointment.customerNumber ?? ""} disabled={readOnly} onChange={(customerNumber) => onChange({ customerNumber })} />
-        <TextField label="Plaats" value={appointment.place ?? ""} disabled={readOnly} onChange={(place) => onChange({ place })} />
-        <TextField label="Startuur" type="time" value={appointment.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => onChange({ arrivalTime })} />
-        <TextField label="Einduur" type="time" value={appointment.departureTime} disabled={readOnly} onChange={(departureTime) => onChange({ departureTime })} />
-      </div>
-      <div className="mt-4 grid gap-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Beoordeling afspraak</p>
-        {appointment.scores.map((score, index) => {
-          const { group, detail } = splitScoreCriterion(score.criterion);
-          const previousScore = historicalScores?.get(historicalScoreKey(group, detail))?.score;
-          return (
-          <div key={`${score.criterion}-${index}`} className={`grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:items-center ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_90px_260px_90px_minmax(220px,1fr)]" : "lg:grid-cols-[minmax(180px,1fr)_260px_minmax(220px,1fr)]"}`}>
-            <p className="text-sm font-semibold text-slate-900">{score.criterion}</p>
-            {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
-            <div className="flex flex-wrap gap-1.5">
-              {options.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  disabled={readOnly}
-                  onClick={() => onScoreChange(index, { score: option })}
-                  className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${score.score === option ? "border-brand-700 bg-brand-700 text-white" : "border-slate-200 bg-white text-slate-600"}`}
-                >
-                  {option === "nvt" ? "NVT" : option}
-                </button>
-              ))}
-            </div>
-            {showComparison && <ScoreDifferenceCell current={score.score} previous={previousScore} t={t} />}
-            <input className="field" disabled={readOnly} placeholder="Opmerking per criterium" value={score.comment} onChange={(event) => onScoreChange(index, { comment: event.target.value })} />
-          </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function HistoricalScoreCell({ score, t }: { score?: number; t: (key: TranslationKey) => string }) {
-  return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("coaching.scores.previousScore")}</p>
-      <p className="mt-1 text-sm font-bold text-slate-700">{score === undefined ? "-" : score}</p>
-    </div>
-  );
-}
-
-function ScoreDifferenceCell({ current, previous, t }: { current: CoachingSimpleScore["score"]; previous?: number; t: (key: TranslationKey) => string }) {
-  const difference = typeof current === "number" && previous !== undefined ? current - previous : undefined;
-  const tone = difference === undefined
-    ? "bg-slate-100 text-slate-600"
-    : difference > 0
-      ? "bg-emerald-100 text-emerald-800"
-      : difference < 0
-        ? "bg-rose-100 text-rose-800"
-        : "bg-slate-200 text-slate-700";
-  const label = difference === undefined
-    ? (previous === undefined ? t("coaching.scores.noPreviousScore") : "-")
-    : difference > 0
-      ? `+${difference}`
-      : String(difference);
-  return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("coaching.scores.difference")}</p>
-      <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${tone}`}>{label}</span>
-    </div>
-  );
-}
-
-function appointmentAverageScore(appointment: { scores: Array<{ score: CoachingSimpleScore["score"] }> }) {
-  return calculateAverageScorePercentage(appointment.scores.map((score) => score.score));
-}
-
-function calculateTotalCoachingScore(dossier: CoachingDossier, appointments: CoachingAppointment[]) {
-  return calculateOfficialCoachingScore({
-    dossierScores: [...dossier.generalScores, ...dossier.personalityScores].map((score) => score.score),
-    appointmentScores: appointments.map((appointment) => appointment.scores.map((score) => score.score)),
-  });
-}
-
-function coachingInterventionAsHistory(
-  intervention: CoachingWorkflowItem,
-  dossier: CoachingDossier,
-  appointments: CoachingAppointment[],
-  ownerName: string,
-  totalScore?: number
-): HistoricalCoaching {
-  const appointmentCriterionScores = criterionScoresFromRows(
-    appointments.flatMap((appointment) =>
-      appointment.scores.map((score) => ({
-        criterion: score.criterion,
-        score: score.score === "nvt" ? null : score.score,
-        notApplicable: score.score === "nvt",
-      }))
-    )
-  );
-  const workflowCriterionScores = intervention.scores.map((score) => ({
-    focus: score.focus,
-    criterion: score.criterion,
-    score: score.value === "NVT" ? 0 : normalizePerformanceScore(score.value),
-    scored: score.value !== "NVT",
-  }));
-  const dossierCriterionScores = [
-    ...dossier.generalScores.map((score) => ({ ...score, category: "Dossier:Algemeen" })),
-    ...dossier.personalityScores.map((score) => ({ ...score, category: "Dossier:Persoonlijkheid" })),
-  ].flatMap((score) =>
-    score.score === "nvt" || score.score === null
-      ? []
-      : [{
-        focus: score.category,
-        criterion: score.criterion,
-        score: normalizePerformanceScore(score.score),
-        scored: true,
-      }]
-  );
-  const criterionScores = mergeCriterionScores(appointmentCriterionScores, workflowCriterionScores, dossierCriterionScores);
-  const phaseScores = averageScoreDimensions(criterionScores
-    .filter((score) => score.scored !== false)
-    .map((score) => ({ label: score.focus, score: score.score })));
-
-  return {
-    id: intervention.id,
-    representativeId: intervention.representativeId,
-    date: intervention.plannedDate ?? intervention.createdAt.slice(0, 10),
-    ownerId: intervention.ownerId,
-    ownerName,
-    status: intervention.status,
-    overallScore: totalScore,
-    focusNames: [...new Set([
-      ...intervention.focusNames,
-      ...criterionScores.map((score) => score.focus),
-    ])],
-    phaseScores: phaseScores.length
-      ? phaseScores
-      : totalScore !== undefined
-        ? [{ label: "Algemene begeleiding", score: Math.round(totalScore) }]
-        : [],
-    generalScores: [...dossier.generalScores, ...dossier.personalityScores].flatMap((score) =>
-      score.score === "nvt" || score.score === null
-        ? []
-        : [{ label: score.criterion, score: normalizePerformanceScore(score.score), scored: true }]
-    ),
-    criterionScores,
-  };
-}
-
-function averageScoreDimensions(items: { label: string; score: number }[]) {
-  const grouped = new Map<string, number[]>();
-  for (const item of items) {
-    const current = grouped.get(item.label) ?? [];
-    current.push(item.score);
-    grouped.set(item.label, current);
-  }
-  return [...grouped.entries()].map(([label, values]) => ({
-    label,
-    score: Math.round(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)),
-  }));
-}
-
-function formatPercentage(value?: number) {
-  return value === undefined ? "-" : `${Math.round(value)}%`;
-}
-
-type InterventionListRow = CoachingScopeGroupItem & {
-  type: string;
-  searchText: string;
-  date: string;
-  owner: string;
-  status: string;
-  editable: boolean;
-  plannedDate: string;
-  startTime: string;
-  endTime: string;
-  executionAt: number;
-  outlookSyncStatus?: CoachingIntervention["outlookSyncStatus"];
-  syncError?: string;
-  detailHref?: string;
-  openLabel: string;
-  editPlanningHref?: string;
-  coaching?: CoachingIntervention;
-};
-
-function InterventionList({ kind }: { kind: string }) {
-  const { user, managedUsers, language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const { state, visibleInterventions } = useWorkflow();
-  const { representatives } = useRepresentatives();
-  const { dataset: performanceDataset } = usePerformance();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string> | null>(null);
-  const normalizedSearchTerm = normalizeCoachingSearchText(searchTerm);
-  const isSearchActive = Boolean(normalizedSearchTerm);
-  const labels: Record<string, { title: string; description: string; icon: typeof ClipboardCheck }> = {
-    begeleidingen: { title: t("coaching.list.coachings"), description: t("coaching.list.coachingsDescription"), icon: ClipboardCheck },
-    contactmomenten: { title: t("coaching.list.contacts"), description: t("coaching.list.contactsDescription"), icon: Phone },
-    retrainingen: { title: t("coaching.list.retrainings"), description: t("coaching.list.retrainingsDescription"), icon: GraduationCap },
-    "sales-trainingen": { title: t("coaching.list.salesTrainings"), description: t("coaching.list.salesTrainingsDescription"), icon: Sparkles },
-  };
-  const current = labels[kind];
-  const Icon = current.icon;
-  const todayKey = localDateKey();
-  const historicalRows: InterventionListRow[] = kind === "begeleidingen"
-    ? performanceDataset.historicalCoachings
-      .filter((item) => {
-        const representative = representatives.find((person) => person.id === item.representativeId);
-        return representative ? canAccessRepresentative(user, representative) : false;
-      })
-      .map((item) => {
-        const representative = representativeForCoaching(item, representatives)!;
-        return {
-          id: item.id,
-          type: "begeleiding",
-          searchText: [
-            representative.firstName,
-            representative.lastName,
-            item.ownerName,
-            item.date,
-            formatShortDate(item.date, language),
-            item.status,
-            t(`status.${item.status}` as TranslationKey),
-            representative.country,
-            countryName(representative.country, language),
-            representative.team,
-            ...item.focusNames,
-          ].join(" "),
-          person: `${representative.firstName} ${representative.lastName}`,
-          representativeId: representative.id,
-          country: representative.country,
-          teamId: representative.teamId,
-          team: representative.team,
-          date: formatShortDate(item.date, language),
-          owner: item.ownerName,
-          status: item.status,
-          editable: false,
-          plannedDate: item.date,
-          startTime: "",
-          endTime: "",
-          executionAt: executionTimestamp(item.date),
-          outlookSyncStatus: undefined,
-          syncError: undefined,
-          detailHref: `/begeleidingen/${item.id}`,
-          openLabel: t("coaching.list.viewReport"),
-          editPlanningHref: undefined,
-          coaching: undefined,
-        };
-      })
-    : [];
-  const workflowRows: InterventionListRow[] = kind === "begeleidingen"
-    ? visibleInterventions(user).map((item) => {
-      const representative = representatives.find((person) => person.id === item.representativeId);
-      const personName = representative
-        ? `${representative.firstName} ${representative.lastName}`
-        : item.subject
-          ? `${item.subject.firstName} ${item.subject.lastName}`
-          : t("coaching.list.unknown");
-      const approvalId = state.approvals.find((approval) => approval.interventionId === item.id)?.id;
-      const openHref = coachingOpenHref(user, item, todayKey, approvalId);
-      const editPlanningHref = canEditFutureCoachingPlanning(user, item, todayKey)
-        ? `/begeleidingen/nieuw?id=${encodeURIComponent(item.id)}`
-        : undefined;
-      const openLabel = editPlanningHref
-        ? t("coaching.list.editPlanning")
-        : completedCoachingStatuses.has(item.status)
-          ? t("coaching.list.viewReport")
-          : canManageCoaching(user, item)
-            ? t("coaching.list.openDossier")
-            : openHref
-              ? t("coaching.list.viewPreparation")
-              : t("coaching.list.scheduled");
-      return {
-        id: item.id,
-        type: "begeleiding",
-        searchText: [
-          personName,
-          item.title,
-          item.ownerId,
-          reportingUserName(item.ownerId, managedUsers),
-          item.country,
-          countryName(item.country, language),
-          representative?.team,
-          item.subject?.team,
-          item.teamId,
-          item.plannedDate,
-          formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10), language),
-          item.status,
-          t(`status.${item.status}` as TranslationKey),
-          ...item.focusNames,
-          item.internalNotes,
-          item.deviationReason,
-        ].filter(Boolean).join(" "),
-        person: personName,
-        representativeId: representative?.id ?? item.subject?.id ?? item.representativeId,
-        country: item.country,
-        teamId: representative?.teamId ?? item.subject?.teamId ?? item.teamId,
-        team: representative?.team ?? item.subject?.team ?? t("coaching.list.noTeam"),
-        date: formatShortDate(item.plannedDate ?? item.updatedAt.slice(0, 10), language),
-        owner: reportingUserName(item.ownerId, managedUsers),
-        status: item.status,
-        editable: Boolean(openHref),
-        detailHref: openHref,
-        openLabel,
-        editPlanningHref,
-        plannedDate: item.plannedDate ?? item.updatedAt.slice(0, 10),
-        startTime: item.startTime ?? "",
-        endTime: item.endTime ?? "",
-        executionAt: executionTimestamp(`${item.plannedDate ?? item.updatedAt.slice(0, 10)}T${item.startTime ?? "00:00"}`),
-        outlookSyncStatus: item.outlookSyncStatus,
-        syncError: item.syncError,
-        coaching: item,
-      };
-    })
-    : [];
-  const workflowIds = new Set(workflowRows.map((item) => item.id));
-  const allRows: InterventionListRow[] = dedupeById([
-    ...workflowRows,
-    ...historicalRows.filter((item) => !workflowIds.has(item.id)),
-  ]);
-  const filteredRows = isSearchActive
-    ? allRows.filter((item) => matchesCoachingSearch(item.searchText, normalizedSearchTerm))
-    : allRows;
-  const todayRows = filteredRows
-    .filter((item) =>
-      !completedCoachingStatuses.has(item.status) &&
-      item.status !== "geannuleerd" &&
-      item.plannedDate === todayKey
-    )
-    .sort((left, right) => left.executionAt - right.executionAt);
-  const plannedRows = filteredRows
-    .filter((item) =>
-      !completedCoachingStatuses.has(item.status) &&
-      item.status !== "geannuleerd" &&
-      item.plannedDate > todayKey
-    )
-    .sort((left, right) => left.executionAt - right.executionAt);
-  const completedRows = filteredRows
-    .filter((item) => completedCoachingStatuses.has(item.status) || item.status === "geannuleerd")
-    .sort((left, right) => right.executionAt - left.executionAt);
-
-  const allScopeGroups = buildCoachingScopeGroups(user, allRows);
-  const groupIdsForSection = (sectionKey: string, rows: InterventionListRow[]) => new Set(
-    [...collectCoachingGroupIds(buildCoachingScopeGroups(user, rows))]
-      .map((groupId) => coachingSectionGroupKey(sectionKey, groupId))
-  );
-  const todayGroupIds = groupIdsForSection("today", todayRows);
-  const plannedGroupIds = groupIdsForSection("future", plannedRows);
-  const completedGroupIds = groupIdsForSection("completed", completedRows);
-  const allGroupIds = new Set([...todayGroupIds, ...plannedGroupIds, ...completedGroupIds]);
-  const filteredGroupIdsKey = [...allGroupIds].sort().join("|");
-  const filteredGroupIdsRef = useRef<Set<string>>(new Set());
-  const previousFilteredGroupIdsKeyRef = useRef("");
-  if (previousFilteredGroupIdsKeyRef.current !== filteredGroupIdsKey) {
-    previousFilteredGroupIdsKeyRef.current = filteredGroupIdsKey;
-    filteredGroupIdsRef.current = new Set(allGroupIds);
-  }
-  useEffect(() => {
-    if (isSearchActive) {
-      setExpandedGroupIds(new Set(filteredGroupIdsRef.current));
-    }
-  }, [filteredGroupIdsKey, isSearchActive, normalizedSearchTerm]);
-  const isGroupOpen = (groupId: string) => expandedGroupIds === null || expandedGroupIds.has(groupId);
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroupIds((current) => {
-      const next = new Set(current);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
-  };
-  const setAllGroupsOpen = (open: boolean) => {
-    setExpandedGroupIds(open ? new Set(allGroupIds) : new Set());
-  };
-  const updateSearchTerm = (value: string) => {
-    setSearchTerm(value);
-    if (!normalizeCoachingSearchText(value)) setExpandedGroupIds(null);
-  };
-  const groupDomId = (groupId: string) => `coaching-group-${groupId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-
-  function renderRows(items: InterventionListRow[], emptyMessage: string, sectionKey: string) {
-    if (items.length === 0) {
-      if (isSearchActive) return null;
-      return (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-          {emptyMessage}
-        </div>
-      );
-    }
-
-    const scopeGroups = buildCoachingScopeGroups(user, items);
-    const scopedGroupKey = (groupId: string) => coachingSectionGroupKey(sectionKey, groupId);
-    const scopedGroupDomId = (groupId: string) => groupDomId(`${sectionKey}-${groupId}`);
-    if (scopeGroups.enabled) {
-      if (scopeGroups.showCountry) {
-        return (
-          <div className="space-y-4">
-            {scopeGroups.countries.map((country) => (
-              <section key={country.id} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-                <button
-                  type="button"
-                  className="flex w-full flex-wrap items-center gap-3 text-left"
-                  aria-expanded={isGroupOpen(scopedGroupKey(coachingGroupKey("country", country.id)))}
-                  aria-controls={scopedGroupDomId(coachingGroupKey("country", country.id))}
-                  onClick={() => toggleGroup(scopedGroupKey(coachingGroupKey("country", country.id)))}
-                >
-                  {isGroupOpen(scopedGroupKey(coachingGroupKey("country", country.id))) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
-                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-white text-brand-700 shadow-sm">
-                    <MapPin className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="eyebrow">{t("coaching.list.country")}</p>
-                    <h3 className="truncate text-base font-bold text-slate-950">{countryName(country.id, language)}</h3>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm">
-                    {countCountryItems(country)} {countCountryItems(country) === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
-                  </span>
-                </button>
-                {isGroupOpen(scopedGroupKey(coachingGroupKey("country", country.id))) && <div id={scopedGroupDomId(coachingGroupKey("country", country.id))} className="space-y-3">
-                  {country.teams.map((team) => renderTeamGroup(team, country.id, sectionKey))}
-                </div>}
-              </section>
-            ))}
-          </div>
-        );
-      }
-
-      return (
-        <div className="space-y-3">
-          {scopeGroups.countries.flatMap((country) => country.teams.map((team) => ({ countryId: country.id, team }))).map(({ countryId, team }) => renderTeamGroup(team, countryId, sectionKey))}
-        </div>
-      );
-    }
-
-    return (
-      <div className="card overflow-hidden">
-        <div className="divide-y divide-slate-100">
-          {items.map((item) => renderInterventionRow(item))}
-        </div>
-      </div>
-    );
-  }
-
-  function renderTeamGroup(team: CoachingScopeTeamGroup<InterventionListRow>, countryId: string, sectionKey: string) {
-    const count = countTeamItems(team);
-    const teamGroupId = coachingGroupKey("team", countryId, team.id);
-    const scopedTeamGroupId = coachingSectionGroupKey(sectionKey, teamGroupId);
-    const scopedGroupDomId = (groupId: string) => groupDomId(`${sectionKey}-${groupId}`);
-    return (
-      <section key={team.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <button
-          type="button"
-          className="flex w-full flex-wrap items-center gap-2.5 bg-white px-3 py-3 text-left sm:px-4"
-          aria-expanded={isGroupOpen(scopedTeamGroupId)}
-          aria-controls={scopedGroupDomId(teamGroupId)}
-          onClick={() => toggleGroup(scopedTeamGroupId)}
-        >
-          {isGroupOpen(scopedTeamGroupId) ? <ChevronDown className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-5 w-5 shrink-0 text-brand-700" aria-hidden="true" />}
-          <UsersRound className="h-4 w-4 text-brand-700" />
-          <div className="min-w-0 flex-1">
-            <p className="eyebrow">{t("coaching.list.team")}</p>
-            <h4 className="truncate text-sm font-bold text-slate-900">{team.name}</h4>
-          </div>
-          <span className="text-xs font-semibold text-slate-500">
-            {count} {count === 1 ? t("coaching.list.coaching") : t("coaching.list.coachingsCount")}
-          </span>
-        </button>
-        {isGroupOpen(scopedTeamGroupId) && <div id={scopedGroupDomId(teamGroupId)} className="space-y-3 border-t border-slate-100 bg-slate-50/45 p-3 sm:p-4">
-          {team.users.map((userGroup) => {
-            const userGroupId = coachingGroupKey("user", countryId, team.id, userGroup.id);
-            const scopedUserGroupId = coachingSectionGroupKey(sectionKey, userGroupId);
-            return (
-              <section key={userGroup.id} className="space-y-2">
-                <button
-                  type="button"
-                  className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
-                  aria-expanded={isGroupOpen(scopedUserGroupId)}
-                  aria-controls={scopedGroupDomId(userGroupId)}
-                  onClick={() => toggleGroup(scopedUserGroupId)}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {isGroupOpen(scopedUserGroupId) ? <ChevronDown className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />}
-                    <span className="truncate text-sm font-bold text-slate-900">{userGroup.name}</span>
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                    {userGroup.items.length}
-                  </span>
-                </button>
-                {isGroupOpen(scopedUserGroupId) && <div id={scopedGroupDomId(userGroupId)} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                  <div className="divide-y divide-slate-100">
-                    {userGroup.items.map((item) => renderInterventionRow(item))}
-                  </div>
-                </div>
-                }
-              </section>
-            );
-          })}
-        </div>
-        }
-      </section>
-    );
-  }
-
-  function renderInterventionRow(item: InterventionListRow) {
-    const timeLabel = [item.startTime, item.endTime].filter(Boolean).join(" - ");
-    const rowClass = `grid gap-3 p-3.5 transition sm:grid-cols-[minmax(220px,1.5fr)_minmax(135px,0.65fr)_minmax(185px,0.85fr)_auto] sm:items-center sm:px-4 ${item.detailHref ? "hover:bg-brand-50/40" : ""}`;
-    const actionClass = `inline-flex items-center gap-1 text-sm font-bold ${item.detailHref ? "text-brand-700" : "text-slate-400"}`;
-    const details = (
-      <>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900">{item.person}</p>
-            <p className="mt-0.5 truncate text-xs text-slate-500">{item.owner}</p>
-          </div>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Datum</p>
-          <p className="mt-1 text-sm text-slate-700">{item.date}</p>
-          {timeLabel && <p className="mt-0.5 text-xs text-slate-500">{timeLabel}</p>}
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <StatusBadge status={item.status} />
-            {item.outlookSyncStatus && (
-              <InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} />
-            )}
-          </div>
-        </div>
-      </>
-    );
-    const cancelAction = item.coaching && canCancelFutureCoaching(user, item.coaching)
-      ? <CoachingCancellationAction intervention={item.coaching} />
-      : null;
-    const actions = (
-      <div className="flex items-center justify-end gap-3">
-        {item.detailHref ? (
-          <Link href={item.detailHref} className={actionClass}>
-            {item.openLabel}
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        ) : <span className={actionClass}>{item.openLabel}</span>}
-        {cancelAction}
-      </div>
-    );
-
-    return (
-      <div key={item.id} className={rowClass}>
-        {item.detailHref ? <Link href={item.detailHref} className="contents">{details}</Link> : details}
-        {actions}
-      </div>
-    );
-  }
-
-  function countTeamItems(team: CoachingScopeTeamGroup<InterventionListRow>) {
-    return team.users.reduce((total, userGroup) => total + userGroup.items.length, 0);
-  }
-
-  function countCountryItems(country: CoachingScopeCountryGroup<InterventionListRow>) {
-    return country.teams.reduce((total, team) => total + countTeamItems(team), 0);
-  }
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={t("coaching.list.eyebrow")}
-        title={current.title}
-        description={current.description}
-        actions={can(user, "intervention:create") ? <Link href={kind === "begeleidingen" ? "/begeleidingen/nieuw" : "#"} className="btn-primary"><Plus className="h-4 w-4" /> {t("coaching.list.newCoaching")}</Link> : undefined}
-      />
-      <div className="card p-4"><div className="flex flex-wrap items-center gap-3"><label className="relative min-w-[min(100%,18rem)] flex-1"><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field w-full pl-10 pr-10" value={searchTerm} onChange={(event) => updateSearchTerm(event.target.value)} placeholder={t("coaching.list.search")} aria-label={t("coaching.list.search")} />{searchTerm && <button type="button" className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => updateSearchTerm("")} aria-label={t("coaching.list.clearSearch")}><X className="h-4 w-4" /></button>}</label><select className="field md:w-[180px]"><option>{t("coaching.list.allStatuses")}</option><option>{t("coaching.list.planned")}</option><option>{t("coaching.list.closed")}</option></select><select className="field md:w-[180px]"><option>{t("coaching.list.next30Days")}</option><option>{t("coaching.list.thisQuarter")}</option></select>{allScopeGroups.enabled && <div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(true)}><ChevronDown className="h-4 w-4" /> {t("coaching.list.expandAll")}</button><button type="button" className="btn-secondary whitespace-nowrap" onClick={() => setAllGroupsOpen(false)}><ChevronRight className="h-4 w-4" /> {t("coaching.list.collapseAll")}</button></div>}</div></div>
-      {isSearchActive && filteredRows.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm font-semibold text-slate-600">{t("coaching.list.noSearchResults")}</div>}
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow mb-1">{t("coaching.list.today")}</p>
-            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.todayTitle")}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.sortedByStart")}</p>
-          </div>
-          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{todayRows.length}</span>
-        </div>
-        {renderRows(todayRows, t("coaching.list.emptyToday"), "today")}
-      </section>
-
-      <section className="space-y-4 border-t border-slate-200 pt-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow mb-1">{t("coaching.list.future")}</p>
-            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.futureTitle")}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.sortedByDate")}</p>
-          </div>
-          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{plannedRows.length}</span>
-        </div>
-        {renderRows(plannedRows, t("coaching.list.emptyFuture"), "future")}
-      </section>
-
-      <section className="space-y-4 border-t border-slate-200 pt-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow mb-1">{t("coaching.list.history")}</p>
-            <h2 className="text-xl font-bold text-slate-950">{t("coaching.list.completedTitle")}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t("coaching.list.historyNewest")}</p>
-          </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{completedRows.length}</span>
-        </div>
-        {renderRows(completedRows, t("coaching.list.emptyCompleted"), "completed")}
-      </section>
-    </div>
-  );
-}
-
-function workflowCoachingAsHistory(
-  intervention: ReturnType<typeof useWorkflow>["state"]["interventions"][number],
-  coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"],
-  managedUsers: ReturnType<typeof useSession>["managedUsers"],
-  previous?: HistoricalCoaching
-): HistoricalCoaching {
-  const scoreByFocus = new Map<string, number[]>();
-  const appointmentCriterionScores = criterionScoresFromRows(
-    (intervention.appointments ?? [])
-      .filter((appointment) => !appointment.isDeleted)
-      .flatMap((appointment) => appointment.scores.map((score) => ({
-        criterion: score.criterion,
-        score: score.score === "nvt" ? null : score.score,
-        notApplicable: score.score === "nvt",
-      })))
-  );
-  const workflowCriterionScores = intervention.scores.map((score) => ({
-    focus: score.focus,
-    criterion: score.criterion,
-    score: score.value === "NVT" ? 0 : normalizePerformanceScore(score.value),
-    scored: score.value !== "NVT",
-  }));
-  const criterionScores = mergeCriterionScores(appointmentCriterionScores, workflowCriterionScores);
-  for (const score of criterionScores) {
-    if (score.scored === false) continue;
-    scoreByFocus.set(score.focus, [...(scoreByFocus.get(score.focus) ?? []), score.score]);
-  }
-  const phaseScores = coachingFramework.map((focus) => {
-    const values = scoreByFocus.get(focus.name);
-    const fallback = previous?.phaseScores.find((item) => item.label === focus.name)?.score ?? 50;
-    return {
-      label: focus.name,
-      score: values?.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : fallback,
-    };
-  });
-  return {
-    id: intervention.id,
-    representativeId: intervention.representativeId,
-    date: intervention.updatedAt.slice(0, 10),
-    ownerId: intervention.ownerId,
-    ownerName: reportingUserName(intervention.ownerId, managedUsers),
-    status: "afgesloten",
-    focusNames: [...new Set([...intervention.focusNames, ...criterionScores.map((score) => score.focus)])],
-    phaseScores,
-    generalScores: previous?.generalScores ?? [],
-    criterionScores,
-  };
-}
-
-function ActionPoints() {
-  return <ScopedActionPoints />;
-}
-
-type ActionDefinitionDraft = {
-  id?: string;
-  title: string;
-  tipsAndTricks: string;
-  targetValue: string;
-  priority: ScopedActionDefinition["priority"];
-  scope: ScopedActionDefinition["scope"];
-  country: string;
-  teamId: string;
-  userId: string;
-  validFrom: string;
-  validUntil: string;
-  active: boolean;
-  productIds: string[];
-};
-
-function ScopedActionPoints() {
-  const { user, managedUsers, language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const { modules } = useModules();
-  const { state } = useWorkflow();
-  const { dataset: performanceDataset } = usePerformance();
-  const { representatives } = useRepresentatives();
-  const [definitions, setDefinitions] = useState<ScopedActionDefinition[]>([]);
-  const [targetTypes, setTargetTypes] = useState<ActionPointTargetTypeOption[]>([]);
-  const [products, setProducts] = useState<ActionPointProductOption[]>([]);
-  const [error, setError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
-  const [formError, setFormError] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [activeActionTab, setActiveActionTab] = useState<"actions" | "users">("actions");
-  const [actionSearch, setActionSearch] = useState("");
-  const [userSearch, setUserSearch] = useState("");
-  const [productSearch, setProductSearch] = useState("");
-  const [draft, setDraft] = useState<ActionDefinitionDraft>();
-  const [detailAction, setDetailAction] = useState<ActionPointOverviewItem>();
-  const [closeCandidate, setCloseCandidate] = useState<ActionPointOverviewItem>();
-  const [closedWorkflowActions, setClosedWorkflowActions] = useState<Record<string, Pick<ActionPointOverviewItem, "status" | "closedAt" | "closedByUserId" | "closedByName" | "closedReason" | "closedReasonExplanation" | "updatedAt">>>({});
-  const allowed = canAccessActionPointsOverview(user, modules);
-  const canCreateDefinitions = canCreateActionPointDefinition(user);
-  const canManageDefinitions = canManageActionPointDefinitions(user);
-  const showActionPointUserTab = canViewActionPointUserTab(user);
-  const visibleActionTab = showActionPointUserTab ? activeActionTab : "actions";
-  const workflowActionItems = useMemo<ActionPointOverviewItem[]>(() => {
-    if (!allowed) return [];
-    const scopedState = getVisibleWorkflowState(user, state, representatives);
-    const scopedRepresentatives = getVisibleRepresentatives(user, representatives);
-    const dataset = buildReportingDataset(scopedState, representatives, performanceDataset, managedUsers);
-    const scopedDataset = filterReportingDataset(dataset, scopedRepresentatives, emptyReportingFilters, managedUsers);
-    return scopedDataset.actions.flatMap((action) => {
-      const representative = representatives.find((item) => item.id === action.representativeId);
-      if (!representative) return [];
-      const ownerName = action.ownerId ? reportingUserName(action.ownerId, managedUsers) : undefined;
-      const representativeName = `${representative.firstName} ${representative.lastName}`;
-      const actionPointId = action.id.includes(":") ? action.id.split(":")[0] : action.id;
-      const override = closedWorkflowActions[`${actionPointId}:${action.representativeId}`] ?? closedWorkflowActions[actionPointId];
-      return [{
-        id: `workflow:${action.id}:${action.representativeId}`,
-        source: "workflow",
-        status: override?.status ?? action.status,
-        due: action.due,
-        closedAt: override?.closedAt ?? action.closedAt,
-        closedByUserId: override?.closedByUserId ?? action.closedByUserId,
-        closedByName: override?.closedByName ?? (action.closedByUserId ? reportingUserName(action.closedByUserId, managedUsers) : undefined),
-        closedReason: override?.closedReason ?? action.closedReason,
-        closedReasonExplanation: override?.closedReasonExplanation ?? action.closedReasonExplanation,
-        title: action.title,
-        description: action.linkedKpi ? `KPI: ${action.linkedKpi}` : "",
-        tipsAndTricks: "",
-        priority: action.due && action.due < localDateKey() && !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(action.status) ? "hoog" : "normaal",
-        scope: "USER",
-        scopeKey: `USER:${action.representativeId}`,
-        country: representative.country,
-        teamId: representative.teamId,
-        userId: action.representativeId,
-        active: !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(action.status),
-        validFrom: action.updatedAt.slice(0, 10),
-        validUntil: action.due || undefined,
-        updatedAt: override?.updatedAt ?? action.updatedAt,
-        concreteActionPointId: actionPointId,
-        ownerName,
-        representativeId: action.representativeId,
-        representativeName,
-        originLabel: "Gekoppeld actiepunt",
-      }];
-    });
-  }, [allowed, closedWorkflowActions, managedUsers, performanceDataset, representatives, state, user]);
-  const actionPointItems = useMemo<ActionPointOverviewItem[]>(
-    () => [
-      ...definitions.map((definition) => ({ ...definition, source: "definition" as const })),
-      ...workflowActionItems,
-    ],
-    [definitions, workflowActionItems],
-  );
-  const sections = useMemo(() => splitActionPointSections(actionPointItems), [actionPointItems]);
-  const openActionPointItems = useMemo(
-    () => sections.find((section) => section.id === "open")?.items ?? [],
-    [sections],
-  );
-  const closedActionPointItems = useMemo(
-    () => canManageDefinitions || canCloseConcreteActionPoint(user) ? sections.find((section) => section.id === "closed")?.items ?? [] : [],
-    [canManageDefinitions, sections, user],
-  );
-  const filteredActionItems = openActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
-  const filteredClosedActionItems = closedActionPointItems.filter((item) => matchesActionPointSearch(item, actionSearch));
-  const actionScopeGroups = groupActionPointsByScope(filteredActionItems);
-  const closedActionScopeGroups = groupActionPointsByScope(filteredClosedActionItems);
-  const visibleActionPointRepresentatives = getVisibleRepresentatives(user, representatives);
-  const userGroups = showActionPointUserTab
-    ? groupActionPointsByRepresentative(openActionPointItems, visibleActionPointRepresentatives, managedUsers)
-      .flatMap((group) => {
-        const groupMatches = matchesText(`${group.title} ${group.subtitle}`, userSearch);
-        const items = groupMatches
-          ? group.items
-          : group.items.filter((item) => matchesActionPointSearch(item, userSearch));
-        return items.length ? [{ ...group, items }] : [];
-      })
-    : [];
-  const refresh = useCallback(async () => {
-    const response = await fetch(`/api/action-definitions?actorId=${encodeURIComponent(user.id)}`, { cache: "no-store" });
-    const payload = await response.json() as {
-      definitions?: ScopedActionDefinition[];
-      targetTypes?: ActionPointTargetTypeOption[];
-      products?: ActionPointProductOption[];
-      error?: string;
-    };
-    if (!response.ok) throw new Error(payload.error);
-    setDefinitions(payload.definitions ?? []);
-    setTargetTypes(payload.targetTypes ?? []);
-    setProducts(payload.products ?? []);
-  }, [user.id]);
-
-  useEffect(() => {
-    if (!allowed) return;
-    void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : t("actionPoints.loadError")));
-  }, [allowed, refresh]);
-
-  useEffect(() => {
-    if (!allowed || typeof window === "undefined") return;
-    const requestedId = new URLSearchParams(window.location.search).get("actionPointId");
-    if (!requestedId) return;
-    const match = actionPointItems.find((item) =>
-      item.concreteActionPointId === requestedId ||
-      item.id === requestedId ||
-      item.id.startsWith("workflow:" + requestedId + ":")
-    );
-    if (match) setDetailAction(match);
-  }, [actionPointItems, allowed]);
-
-  if (!allowed) {
-    return <EmptyState title={t("contactHelp.common.noRightsTitle")} description={t("actionPoints.noManageRights")} />;
-  }
-
-  return <div className="space-y-6">
-    <PageHeader
-      eyebrow={t("actionPoints.pageEyebrow")}
-      title={t("actionPoints.pageTitle")}
-      description={t("actionPoints.pageDescription")}
-      actions={canCreateDefinitions ? (
-        <button type="button" className="btn-primary" onClick={() => openCreateDialog()}>
-          <Plus className="h-4 w-4" /> {t("actionPoints.add")}
-        </button>
-      ) : undefined}
-    />
-    {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
-    {notice && <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{notice}</p>}
-
-    {showActionPointUserTab && <section className="card p-2">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {[
-          { id: "actions" as const, label: t("actionPoints.pageTitle"), count: filteredActionItems.length },
-          { id: "users" as const, label: t("actionPoints.usersTab"), count: userGroups.length },
-        ].map((tab) => {
-          const active = activeActionTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveActionTab(tab.id)}
-              className={`flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-bold transition ${active ? "bg-brand-700 text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-brand-50 hover:text-brand-800"}`}
-            >
-              <span>{tab.label}</span>
-              <span className={`rounded-full px-2.5 py-1 text-xs ${active ? "bg-white/20 text-white" : "bg-white text-brand-700"}`}>{tab.count}</span>
-            </button>
-          );
-        })}
-      </div>
-    </section>}
-
-    {visibleActionTab === "actions" ? renderActionsTab() : renderUsersTab()}
-    {detailAction && renderDetailModal(detailAction)}
-    {closeCandidate && renderCloseDialog(closeCandidate)}
-    {draft && renderActionDefinitionDialog()}
-  </div>;
-
-  function openCreateDialog() {
-    const scope = allowedTargetTypes()[0]?.code ?? "USER";
-    setProductSearch("");
-    setFormError(undefined);
-    setDraft(normalizeDraft({
-      title: "",
-      tipsAndTricks: "",
-      targetValue: "",
-      priority: "normaal",
-      scope,
-      country: "",
-      teamId: "",
-      userId: "",
-      validFrom: localDateKey(),
-      validUntil: "",
-      active: true,
-      productIds: [],
-    }));
-  }
-
-  function openEditDialog(item: ActionPointOverviewItem) {
-    setProductSearch("");
-    setFormError(undefined);
-    setDetailAction(undefined);
-    setDraft(normalizeDraft({
-      id: item.id,
-      title: item.title,
-      tipsAndTricks: item.tipsAndTricks || item.description,
-      targetValue: item.targetValue === undefined ? "" : String(item.targetValue),
-      priority: item.priority,
-      scope: item.scope,
-      country: item.country ?? "",
-      teamId: item.teamId ?? "",
-      userId: item.userId ?? "",
-      validFrom: item.validFrom,
-      validUntil: item.validUntil ?? "",
-      active: item.active,
-      productIds: item.productIds ?? [],
-    }));
-  }
-
-  function updateDraft(update: Partial<ActionDefinitionDraft>) {
-    setDraft((current) => current ? normalizeDraft({ ...current, ...update }) : current);
-  }
-
-  function normalizeDraft(value: ActionDefinitionDraft): ActionDefinitionDraft {
-    const allowedScopes = allowedTargetTypes().map((item) => item.code);
-    const scope = allowedScopes.includes(value.scope) ? value.scope : allowedScopes[0] ?? "USER";
-    const countries = countryOptions();
-    let country = value.country || countries[0] || user.country;
-    let teamId = value.teamId;
-    let userId = value.userId;
-
-    if (scope === "GLOBAL") {
-      return { ...value, scope, country: "", teamId: "", userId: "" };
-    }
-
-    if (scope === "COUNTRY") {
-      if (!countries.includes(country)) country = countries[0] ?? user.country;
-      return { ...value, scope, country, teamId: "", userId: "" };
-    }
-
-    if (scope === "TEAM") {
-      const teams = teamOptions(country);
-      if (!teams.some((team) => team.id === teamId)) {
-        teamId = teams[0]?.id ?? "";
-      }
-      const selectedTeam = teams.find((team) => team.id === teamId);
-      return { ...value, scope, country: selectedTeam?.country ?? country, teamId, userId: "" };
-    }
-
-    const users = userOptions(country, teamId);
-    if (!users.some((member) => member.id === userId)) {
-      userId = users[0]?.id ?? "";
-    }
-    const selectedUser = users.find((member) => member.id === userId);
-    return {
-      ...value,
-      scope: "USER",
-      country: selectedUser?.country ?? country,
-      teamId: selectedUser?.teamId ?? teamId,
-      userId,
-    };
-  }
-
-  function allowedTargetTypes() {
-    const activeTypes = targetTypes.filter((item) => item.isActive);
-    return activeTypes.filter((item) => {
-      if (user.role === "SALES_LEADER") return item.code === "USER";
-      if (["SALES_MANAGER", "COUNTRY_MANAGER"].includes(user.role)) return item.code !== "GLOBAL";
-      return canCreateDefinitions || canManageDefinitions;
-    });
-  }
-
-  function countryOptions() {
-    const countries = new Set<string>();
-    if (["GROUP_MANAGER", "SUPER_ADMIN", "ADMIN"].includes(user.role)) {
-      managedUsers.forEach((member) => countries.add(member.country));
-      countries.add(user.country);
-    } else if (user.countryAccess?.length) {
-      user.countryAccess.forEach((country) => countries.add(country));
-    } else {
-      countries.add(user.country);
-    }
-    return ["BE", "NL", "DE"].filter((country) => countries.has(country));
-  }
-
-  function teamOptions(country?: string) {
-    const countries = new Set(country ? [country] : countryOptions());
-    const teams = new Map<string, { id: string; name: string; country: string }>();
-    managedUsers
-      .filter((member) => member.active && member.teamId && countries.has(member.country))
-      .forEach((member) => {
-        if (!teams.has(member.teamId)) {
-          teams.set(member.teamId, { id: member.teamId, name: member.teamName || member.teamId, country: member.country });
-        }
-      });
-    return [...teams.values()].sort((left, right) =>
-      left.country.localeCompare(right.country, "nl-BE") || left.name.localeCompare(right.name, "nl-BE")
-    );
-  }
-
-  function userOptions(country?: string, teamId?: string) {
-    const countries = new Set(country ? [country] : countryOptions());
-    return managedUsers
-      .filter((member) => member.active && member.role === "REPRESENTATIVE")
-      .filter((member) => countries.has(member.country))
-      .filter((member) => !teamId || member.teamId === teamId)
-      .filter((member) => user.role !== "SALES_LEADER" || Boolean(user.teamId && member.teamId === user.teamId))
-      .sort((left, right) =>
-        left.country.localeCompare(right.country, "nl-BE") ||
-        left.teamName.localeCompare(right.teamName, "nl-BE") ||
-        left.lastName.localeCompare(right.lastName, "nl-BE") ||
-        left.firstName.localeCompare(right.firstName, "nl-BE")
-      );
-  }
-
-  async function saveDraft() {
-    if (!draft) return;
-    setSaving(true);
-    setFormError(undefined);
-    try {
-      const body = actionDefinitionPayload(draft);
-      const response = await fetch("/api/action-definitions", {
-        method: draft.id ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Actiepunt kon niet worden opgeslagen.");
-      await refresh();
-      setDraft(undefined);
-    } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : "Actiepunt kon niet worden opgeslagen.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function setDefinitionActive(item: ActionPointOverviewItem, active: boolean) {
-    const nextDraft = normalizeDraft({
-      id: item.id,
-      title: item.title,
-      tipsAndTricks: item.tipsAndTricks || item.description,
-      targetValue: item.targetValue === undefined ? "" : String(item.targetValue),
-      priority: item.priority,
-      scope: item.scope,
-      country: item.country ?? "",
-      teamId: item.teamId ?? "",
-      userId: item.userId ?? "",
-      validFrom: item.validFrom,
-      validUntil: item.validUntil ?? "",
-      active,
-      productIds: item.productIds ?? [],
-    });
-    setSaving(true);
-    setError(undefined);
-    setNotice(undefined);
-    try {
-      const response = await fetch("/api/action-definitions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(actionDefinitionPayload(nextDraft)),
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Actiepunt kon niet worden bijgewerkt.");
-      await refresh();
-      setDetailAction(undefined);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Actiepunt kon niet worden bijgewerkt.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function closeConcreteActionPoint(item: ActionPointOverviewItem, closedReason: ActionPointCloseReason, closedReasonExplanation: string) {
-    if (!item.concreteActionPointId) return;
-    setSaving(true);
-    setError(undefined);
-    try {
-      const response = await fetch(`/api/action-points/${encodeURIComponent(item.concreteActionPointId)}/close`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorId: user.id,
-          representativeId: item.representativeId,
-          closedReason,
-          closedReasonExplanation,
-        }),
-      });
-      const payload = await response.json() as {
-        actionPoint?: {
-          actionPointId: string;
-          representativeId: string;
-          status: "afgerond";
-          closedAt: string;
-          closedByUserId: string;
-          closedByName: string;
-          closedReason?: ActionPointCloseReason;
-          closedReasonExplanation?: string;
-        };
-        error?: string;
-      };
-      if (!response.ok || !payload.actionPoint) throw new Error(payload.error ?? translate(user.language, "actionPoints.closeError"));
-      const closedAction = payload.actionPoint;
-      const key = `${closedAction.actionPointId}:${closedAction.representativeId}`;
-      setClosedWorkflowActions((current) => ({
-        ...current,
-        [closedAction.actionPointId]: {
-          status: "afgerond",
-          closedAt: closedAction.closedAt,
-          closedByUserId: closedAction.closedByUserId,
-          closedByName: closedAction.closedByName,
-          closedReason: closedAction.closedReason,
-          closedReasonExplanation: closedAction.closedReasonExplanation,
-          updatedAt: closedAction.closedAt,
-        },
-        [key]: {
-          status: "afgerond",
-          closedAt: closedAction.closedAt,
-          closedByUserId: closedAction.closedByUserId,
-          closedByName: closedAction.closedByName,
-          closedReason: closedAction.closedReason,
-          closedReasonExplanation: closedAction.closedReasonExplanation,
-          updatedAt: closedAction.closedAt,
-        },
-      }));
-      setCloseCandidate(undefined);
-      setDetailAction((current) => current?.id === item.id ? {
-        ...current,
-        status: "afgerond",
-        active: false,
-        closedAt: closedAction.closedAt,
-        closedByUserId: closedAction.closedByUserId,
-        closedByName: closedAction.closedByName,
-        closedReason: closedAction.closedReason,
-        closedReasonExplanation: closedAction.closedReasonExplanation,
-        updatedAt: closedAction.closedAt,
-      } : current);
-      setNotice(translate(user.language, "actionPoints.closeSuccess"));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : translate(user.language, "actionPoints.closeError"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function actionDefinitionPayload(value: ActionDefinitionDraft) {
-    return {
-      actorId: user.id,
-      id: value.id,
-      title: value.title,
-      description: value.tipsAndTricks,
-      tipsAndTricks: value.tipsAndTricks,
-      targetValue: value.targetValue,
-      priority: value.priority,
-      scope: value.scope,
-      country: value.scope === "GLOBAL" ? undefined : value.country,
-      teamId: ["TEAM", "USER"].includes(value.scope) ? value.teamId : undefined,
-      userId: value.scope === "USER" ? value.userId : undefined,
-      validFrom: value.validFrom,
-      validUntil: value.validUntil || undefined,
-      active: value.active,
-      productIds: value.productIds,
-    };
-  }
-
-  function toggleGroup(key: string) {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  function renderActionsTab() {
-    return (
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow mb-1">{t("status.open")}</p>
-            <h2 className="text-xl font-bold text-slate-950">{t("actionPoints.pageTitle")}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t("actionPoints.groupedByTypeAndUser")}</p>
-          </div>
-          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{filteredActionItems.length}</span>
-        </div>
-        {renderSearchField(t("actionPoints.searchActions"), actionSearch, setActionSearch)}
-        {renderScopeGroups(actionScopeGroups, "actions", t("actionPoints.emptySearch"))}
-        {canManageDefinitions && (
-          <div className="pt-2">
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="eyebrow mb-1">{t("actionPoints.pageEyebrow")}</p>
-                <h3 className="text-lg font-bold text-slate-950">{t("actionPoints.inactive")}</h3>
-              </div>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{filteredClosedActionItems.length}</span>
-            </div>
-            {renderScopeGroups(closedActionScopeGroups, "closed-actions", t("actionPoints.emptySearch"))}
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  function renderUsersTab() {
-    return (
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow mb-1">{t("status.open")}</p>
-            <h2 className="text-xl font-bold text-slate-950">{t("actionPoints.usersTab")}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t("actionPoints.groupedByTypeAndUser")}</p>
-          </div>
-          <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{userGroups.length}</span>
-        </div>
-        {renderSearchField(t("actionPoints.searchUsers"), userSearch, setUserSearch)}
-        {renderUserGroups(userGroups, t("actionPoints.emptyUsers"))}
-      </section>
-    );
-  }
-
-  function renderSearchField(
-    placeholder: string,
-    value: string,
-    onChange: (value: string) => void,
-  ) {
-    return (
-      <label className="relative block">
-        <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-        <input
-          className="field pl-10"
-          placeholder={placeholder}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
-    );
-  }
-
-  function renderScopeGroups(
-    groups: ActionPointScopeGroup[],
-    keyPrefix: string,
-    emptyMessage: string,
-  ) {
-    if (groups.length === 0) {
-      return (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-          {emptyMessage}
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-3">
-        {groups.map((group) => {
-          const groupKey = `${keyPrefix}:${group.id}`;
-          const groupOpen = !collapsedGroups.has(groupKey);
-          const userSubGroups = actionPointUserSubGroups(group);
-          const visibleItemCount = userSubGroups.reduce((total, userGroup) => total + userGroup.items.length, 0);
-          return (
-            <section key={groupKey} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <button
-                type="button"
-                onClick={() => toggleGroup(groupKey)}
-                aria-expanded={groupOpen}
-                className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5"
-              >
-                {groupOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
-                <div className="min-w-0 flex-1">
-                  <p className="eyebrow">{t("actionPoints.pageTitle")}</p>
-                  <h3 className="truncate text-base font-bold text-slate-950">{t(actionPointScopeKey(group.id))}</h3>
-                </div>
-                <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{visibleItemCount}</span>
-              </button>
-              {groupOpen && (
-                <div className="divide-y divide-slate-100">
-                  {userSubGroups.map((userGroup) => renderNestedUserGroup(userGroup, `${groupKey}:user`))}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function actionPointUserSubGroups(group: ActionPointScopeGroup): ActionPointUserGroup[] {
-    const userGroups = groupActionPointsByRepresentative(group.items, visibleActionPointRepresentatives, managedUsers);
-    if (userGroups.length > 0) return userGroups;
-    return [{
-      id: `${group.id}:general`,
-      title: translate(user.language, "actionPoints.generalGroup"),
-      subtitle: translate(user.language, "actionPoints.noSpecificUser"),
-      items: group.items,
-    }];
-  }
-
-  function renderNestedUserGroup(group: ActionPointUserGroup, keyPrefix: string) {
-    const groupKey = `${keyPrefix}:${group.id}`;
-    const groupOpen = !collapsedGroups.has(groupKey);
-    return (
-      <section key={groupKey} className="bg-white">
-        <button
-          type="button"
-          onClick={() => toggleGroup(groupKey)}
-          aria-expanded={groupOpen}
-          className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition hover:bg-slate-50 sm:px-5"
-        >
-          {groupOpen ? <ChevronDown className="h-4 w-4 text-brand-700" /> : <ChevronRight className="h-4 w-4 text-brand-700" />}
-          <Avatar initials={initialsFromName(group.title)} className="h-8 w-8 text-[11px]" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-slate-400">{group.subtitle}</p>
-            <h4 className="truncate text-sm font-bold text-slate-950">{group.title}</h4>
-          </div>
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{group.items.length}</span>
-        </button>
-        {groupOpen && (
-          <div className="divide-y divide-slate-100 border-t border-slate-100 pl-4 sm:pl-8">
-            {group.items.map((item) => renderActionPointCard(item))}
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  function renderUserGroups(groups: ActionPointUserGroup[], emptyMessage: string) {
-    if (groups.length === 0) {
-      return (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-          {emptyMessage}
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-3">
-        {groups.map((group) => {
-          const groupKey = `users:${group.id}`;
-          const groupOpen = !collapsedGroups.has(groupKey);
-          return (
-            <section key={groupKey} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <button
-                type="button"
-                onClick={() => toggleGroup(groupKey)}
-                aria-expanded={groupOpen}
-                className="flex w-full items-center gap-3 bg-slate-50/80 px-4 py-3.5 text-left transition hover:bg-brand-50/60 sm:px-5"
-              >
-                {groupOpen ? <ChevronDown className="h-5 w-5 text-brand-700" /> : <ChevronRight className="h-5 w-5 text-brand-700" />}
-                <Avatar initials={initialsFromName(group.title)} className="h-9 w-9 text-xs" />
-                <div className="min-w-0 flex-1">
-                  <p className="eyebrow">{group.subtitle}</p>
-                  <h3 className="truncate text-base font-bold text-slate-950">{group.title}</h3>
-                </div>
-                <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800">{group.items.length}</span>
-              </button>
-              {groupOpen && (
-                <div className="divide-y divide-slate-100">
-                  {group.items.map((item) => renderActionPointCard(item))}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function renderActionPointCard(item: ActionPointOverviewItem) {
-    const scopeLabel = t(actionPointScopeKey(item.scope));
-    const status = item.status ?? (item.active ? "open" : "afgesloten");
-    const meta = actionPointMetaParts(item).join(" Â· ");
-    return (
-      <button
-        key={item.id}
-        type="button"
-        onClick={() => setDetailAction(item)}
-        className="flex min-h-[72px] w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 sm:px-5"
-      >
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-          <Target className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="min-w-0 truncate text-sm font-bold text-slate-950">{item.title}</h4>
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{scopeLabel}</span>
-              <StatusBadge status={status} />
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{t(actionPointPriorityKey(item.priority))}</span>
-            </div>
-          </div>
-          <p className="mt-1 truncate text-xs leading-4 text-slate-500">{meta}</p>
-        </div>
-        {item.targetValue !== undefined && (
-          <span className="hidden rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800 sm:inline-flex">
-            {t("actionPoints.targetValue")} {item.targetValue}
-          </span>
-        )}
-      </button>
-    );
-  }
-
-  function renderDetailModal(item: ActionPointOverviewItem) {
-    const canManageThis = item.source !== "workflow" && canManageScopedActionDefinition(user, item);
-    const canCloseThis = item.source === "workflow" &&
-      canCloseConcreteActionPoint(user) &&
-      item.concreteActionPointId &&
-      !["afgerond", "behaald", "niet_behaald", "geannuleerd"].includes(item.status ?? "");
-    const body = item.tipsAndTricks || item.description;
-    return (
-      <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
-        <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
-            <div className="min-w-0">
-              <p className="eyebrow mb-1">{actionPointSourceLabel(item)}</p>
-              <h2 className="text-xl font-bold text-slate-950">{item.title}</h2>
-              <p className="mt-1 text-sm text-slate-500">{actionPointScopeDetail(item)}</p>
-            </div>
-            <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDetailAction(undefined)} aria-label={t("actionPoints.closeDialog.cancel")}>
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="space-y-5 p-5">
-            <div className="flex flex-wrap gap-2">
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${scopeBadgeTone(item.scope)}`}>{t(actionPointScopeKey(item.scope))}</span>
-              <StatusBadge status={item.status ?? (item.active ? "open" : "afgesloten")} />
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityTone(item.priority)}`}>{t(actionPointPriorityKey(item.priority))}</span>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ReadOnlyField label={t("actionPoints.target")} value={actionPointScopeDetail(item)} />
-              <ReadOnlyField label={t("actionPoints.dateFrom")} value={actionPointDateLabel(item)} />
-              <ReadOnlyField label={t("actionPoints.owner")} value={item.ownerName || t("actionPoints.unassigned")} />
-              <ReadOnlyField label={t("actionPoints.targetValue")} value={item.targetValue === undefined ? t("actionPoints.noTarget") : String(item.targetValue)} />
-              {item.closedAt && <ReadOnlyField label={translate(user.language, "actionPoints.closedAt")} value={formatDateTime(item.closedAt)} />}
-              {item.closedByName && <ReadOnlyField label={translate(user.language, "actionPoints.closedBy")} value={item.closedByName} />}
-              {item.closedReason && <ReadOnlyField label={translate(user.language, "actionPoints.closedReason")} value={translate(user.language, actionPointCloseReasonKey(item.closedReason))} />}
-              {item.closedReasonExplanation && <ReadOnlyField label={translate(user.language, "actionPoints.closedReasonExplanation")} value={item.closedReasonExplanation} />}
-            </div>
-
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t("actionPoints.products")}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(item.products ?? []).length > 0
-                  ? item.products?.map((product) => <span key={product.id} className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800">{product.name}</span>)
-                  : <span className="text-sm text-slate-500">{t("actionPoints.noProducts")}</span>}
-              </div>
-            </div>
-
-            {!isBlankRichText(body) && (
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t("actionPoints.description")}</p>
-                <RichTextRenderer value={body} className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
-            {canManageThis && (
-              <>
-                <button type="button" className="btn-secondary" onClick={() => openEditDialog(item)} disabled={saving}>{t("actionPoints.edit")}</button>
-                <button
-                  type="button"
-                  className={item.active ? "btn-secondary text-rose-700" : "btn-primary"}
-                  onClick={() => void setDefinitionActive(item, !item.active)}
-                  disabled={saving}
-                >
-                  {item.active ? "Inactief zetten" : "Activeren"}
-                </button>
-              </>
-            )}
-            {canCloseThis && (
-              <button type="button" className="btn-primary" onClick={() => { setError(undefined); setCloseCandidate(item); }} disabled={saving}>
-                {translate(user.language, "actionPoints.actions.close")}
-              </button>
-            )}
-            <button type="button" className="btn-secondary" onClick={() => setDetailAction(undefined)}>{t("actionPoints.closeDialog.cancel")}</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderCloseDialog(item: ActionPointOverviewItem) {
-    return (
-      <ActionPointCloseDialog
-        itemTitle={item.title}
-        error={error}
-        saving={saving}
-        onCancel={() => setCloseCandidate(undefined)}
-        onConfirm={(closedReason, closedReasonExplanation) => void closeConcreteActionPoint(item, closedReason, closedReasonExplanation)}
-      />
-    );
-  }
-
-  function renderActionDefinitionDialog() {
-    if (!draft) return null;
-    const scopeOptions = allowedTargetTypes();
-    const countries = countryOptions();
-    const teams = teamOptions(draft.country);
-    const users = userOptions(draft.country, draft.teamId);
-    const visibleProducts = products
-      .filter((product) => product.active)
-      .filter((product) => draft.productIds.includes(product.id) || matchesText(product.name, productSearch))
-      .sort((left, right) =>
-        Number(draft.productIds.includes(right.id)) - Number(draft.productIds.includes(left.id)) ||
-        left.sortOrder - right.sortOrder ||
-        left.name.localeCompare(right.name, "nl-BE")
-      );
-
-    return (
-      <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
-        <form
-          className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void saveDraft();
-          }}
-        >
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
-            <div>
-              <p className="eyebrow mb-1">{t("actionPoints.pageTitle")}</p>
-              <h2 className="text-xl font-bold text-slate-950">{draft.id ? `${t("actionPoints.edit")} ${t("actionPoints.pageTitle").toLowerCase()}` : t("actionPoints.add")}</h2>
-            </div>
-            <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setDraft(undefined)} aria-label="Sluiten">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="space-y-5 p-5">
-            {formError && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{formError}</p>}
-            {scopeOptions.length === 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{t("actionPoints.noTypesAvailable")}</p>}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.name")}</span>
-                <input className="field" value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} disabled={saving} required />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.targetType")}</span>
-                <select
-                  className="field"
-                  value={draft.scope}
-                  onChange={(event) => updateDraft({ scope: event.target.value as ScopedActionDefinition["scope"] })}
-                  disabled={saving || scopeOptions.length === 0}
-                >
-                  {scopeOptions.map((targetType) => (
-                    <option key={targetType.id} value={targetType.code}>{t(actionPointScopeKey(targetType.code))}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {renderTargetFields(countries, teams, users)}
-
-            <RichTextEditor label={t("actionPoints.description")} value={draft.tipsAndTricks} disabled={saving} onChange={(value) => updateDraft({ tipsAndTricks: value })} />
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.dateFrom")}</span>
-                <input className="field" type="date" value={draft.validFrom} onChange={(event) => updateDraft({ validFrom: event.target.value })} disabled={saving} required />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.dateUntil")}</span>
-                <input className="field" type="date" value={draft.validUntil} onChange={(event) => updateDraft({ validUntil: event.target.value })} disabled={saving} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.targetValue")}</span>
-                <input className="field" type="number" min="0" step="0.01" value={draft.targetValue} onChange={(event) => updateDraft({ targetValue: event.target.value })} disabled={saving} placeholder={t("actionPoints.optional")} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.priority")}</span>
-                <select className="field" value={draft.priority} onChange={(event) => updateDraft({ priority: event.target.value as ScopedActionDefinition["priority"] })} disabled={saving}>
-                  <option value="laag">{t("actionPoints.priorityLow")}</option>
-                  <option value="normaal">{t("actionPoints.priorityNormal")}</option>
-                  <option value="hoog">{t("actionPoints.priorityHigh")}</option>
-                </select>
-              </label>
-            </div>
-
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-              <input type="checkbox" checked={draft.active} onChange={(event) => updateDraft({ active: event.target.checked })} disabled={saving} />
-              {t("actionPoints.active")}
-            </label>
-
-            <div>
-              <label className="block">
-                <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.products")}</span>
-                <span className="relative block">
-                  <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-                  <input className="field pl-10" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder={t("actionPoints.searchProducts")} disabled={saving} />
-                </span>
-              </label>
-              <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl border border-slate-200">
-                {visibleProducts.map((product) => (
-                  <label key={product.id} className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 last:border-b-0 hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={draft.productIds.includes(product.id)}
-                      onChange={(event) => {
-                        const productIds = event.target.checked
-                          ? [...draft.productIds, product.id]
-                          : draft.productIds.filter((id) => id !== product.id);
-                        updateDraft({ productIds: [...new Set(productIds)] });
-                      }}
-                      disabled={saving}
-                    />
-                    <span>{product.name}</span>
-                  </label>
-                ))}
-                {visibleProducts.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">{t("actionPoints.noProductsFound")}</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-5">
-            <button type="button" className="btn-secondary" onClick={() => setDraft(undefined)} disabled={saving}>{t("actionPoints.cancel")}</button>
-            <button type="submit" className="btn-primary" disabled={saving || scopeOptions.length === 0}>
-              {saving && <LoaderCircle className="h-4 w-4 animate-spin" />} {t("actionPoints.save")}
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  }
-
-  function renderTargetFields(
-    countries: string[],
-    teams: { id: string; name: string; country: string }[],
-    users: typeof managedUsers,
-  ) {
-    if (!draft) return null;
-    if (draft.scope === "GLOBAL") {
-      return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">{t("actionPoints.globalDescription")}</div>;
-    }
-    if (draft.scope === "COUNTRY") {
-      return (
-        <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.country")}</span>
-          <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value })} disabled={saving}>
-            {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
-          </select>
-        </label>
-      );
-    }
-    if (draft.scope === "TEAM") {
-      return (
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.country")}</span>
-            <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value, teamId: "" })} disabled={saving}>
-              {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.team")}</span>
-            <select className="field" value={draft.teamId} onChange={(event) => updateDraft({ teamId: event.target.value })} disabled={saving} required>
-              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-            </select>
-          </label>
-        </div>
-      );
-    }
-    return (
-      <div className="grid gap-4 md:grid-cols-3">
-        <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.country")}</span>
-          <select className="field" value={draft.country} onChange={(event) => updateDraft({ country: event.target.value, teamId: "", userId: "" })} disabled={saving || user.role === "SALES_LEADER"}>
-            {countries.map((country) => <option key={country} value={country}>{countryName(country)}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.team")}</span>
-          <select className="field" value={draft.teamId} onChange={(event) => updateDraft({ teamId: event.target.value, userId: "" })} disabled={saving || user.role === "SALES_LEADER"}>
-            <option value="">{t("activityHistory.allTeams")}</option>
-            {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-semibold text-slate-700">{t("actionPoints.user")}</span>
-          <select className="field" value={draft.userId} onChange={(event) => updateDraft({ userId: event.target.value })} disabled={saving} required>
-            {users.map((member) => <option key={member.id} value={member.id}>{member.firstName} {member.lastName}</option>)}
-          </select>
-        </label>
-      </div>
-    );
-  }
-
-  function actionPointScopeDetail(item: ActionPointOverviewItem) {
-    if (item.scope === "GLOBAL") return t("actionPoints.allAllowedUsers");
-    if (item.scope === "COUNTRY") return item.country ? countryName(item.country) : t("actionPoints.countryMissing");
-    if (item.scope === "TEAM") {
-      return managedUsers.find((member) => member.teamId === item.teamId)?.teamName ?? item.teamId ?? t("actionPoints.teamMissing");
-    }
-    if (item.representativeName) return item.representativeName;
-    const person = managedUsers.find((member) => member.id === item.userId || member.representativeId === item.userId);
-    return person ? `${person.firstName} ${person.lastName}` : item.userId ?? t("actionPoints.userMissing");
-  }
-
-  function actionPointDateLabel(item: ActionPointOverviewItem) {
-    if (item.source === "workflow") return item.due ? formatShortDate(item.due) : t("actionPoints.noDeadline");
-    return `${formatShortDate(item.validFrom)} ${t("actionPoints.until")} ${item.validUntil ? formatShortDate(item.validUntil) : t("actionPoints.undetermined")}`;
-  }
-
-  function actionPointSourceLabel(item: ActionPointOverviewItem) {
-    if (item.source === "workflow") return t("actionPoints.linkedOrigin");
-    return t("actionPoints.scopeOrigin");
-  }
-
-  function actionPointMetaParts(item: ActionPointOverviewItem) {
-    return [
-      actionPointSourceLabel(item),
-      actionPointScopeDetail(item),
-      item.source === "workflow" ? `${t("actionPoints.deadline")} ${actionPointDateLabel(item)}` : actionPointDateLabel(item),
-      item.ownerName ? `${t("actionPoints.owner")} ${item.ownerName}` : undefined,
-      richTextToPlainText(item.description).trim() || undefined,
-    ].filter(Boolean) as string[];
-  }
-
-  function matchesActionPointSearch(item: ActionPointOverviewItem, query: string) {
-    return matchesText([
-      item.title,
-      richTextToPlainText(item.description),
-      item.priority,
-      item.status,
-      actionPointScopeLabel(item.scope),
-      actionPointScopeDetail(item),
-      actionPointDateLabel(item),
-      actionPointSourceLabel(item),
-      item.ownerName,
-      item.representativeName,
-      item.country ? countryName(item.country) : "",
-      item.teamId,
-    ].filter(Boolean).join(" "), query);
-  }
-
-  function matchesText(value: string, query: string) {
-    const normalizedQuery = query.trim().toLocaleLowerCase("nl-BE");
-    if (!normalizedQuery) return true;
-    return value.toLocaleLowerCase("nl-BE").includes(normalizedQuery);
-  }
-
-  function initialsFromName(name: string) {
-    return name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase();
-  }
-}
-
-function scopeBadgeTone(scope: ScopedActionDefinition["scope"]) {
-  if (scope === "GLOBAL") return "bg-slate-100 text-slate-700";
-  if (scope === "COUNTRY") return "bg-blue-100 text-blue-800";
-  if (scope === "TEAM") return "bg-brand-50 text-brand-800";
-  return "bg-amber-100 text-amber-800";
-}
-
-function priorityTone(priority: ScopedActionDefinition["priority"]) {
-  if (priority === "hoog") return "bg-rose-100 text-rose-800";
-  if (priority === "laag") return "bg-slate-100 text-slate-700";
-  return "bg-amber-100 text-amber-800";
-}
-
-function priorityLabel(priority: ScopedActionDefinition["priority"]) {
-  if (priority === "hoog") return "Hoog";
-  if (priority === "laag") return "Laag";
-  return "Normaal";
-}
-
-function actionPointPriorityKey(priority: ScopedActionDefinition["priority"]): TranslationKey {
-  if (priority === "hoog") return "actionPoints.priorityHigh";
-  if (priority === "laag") return "actionPoints.priorityLow";
-  return "actionPoints.priorityNormal";
-}
-
-function actionPointScopeKey(scope: ScopedActionDefinition["scope"]): TranslationKey {
-  if (scope === "GLOBAL") return "actionPoints.global";
-  if (scope === "COUNTRY") return "actionPoints.country";
-  if (scope === "TEAM") return "actionPoints.team";
-  return "actionPoints.user";
-}
-
-// Legacy action-point screen retained until the final action-point lifecycle is defined.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function LegacyActionPoints() {
-  const { user } = useSession();
-  const { visibleInterventions, visibleContactMoments, visibleRetrainings, visibleSalesTrainings } = useWorkflow();
-  const { representatives } = useRepresentatives();
-  const { dataset: performanceDataset } = usePerformance();
-  const [status, setStatus] = useState("all");
-  const seededActions = performanceDataset.historicalActionPoints.flatMap((action) => {
-    const representative = representatives.find((item) => item.id === action.representativeId);
-    if (!representative || !canAccessRepresentative(user, representative)) return [];
-    return [{
-      id: action.id,
-      person: `${representative.firstName} ${representative.lastName}`,
-      title: action.title,
-      type: action.type,
-      priority: action.status === "achterstallig" ? "hoog" : "normaal",
-      status: action.status,
-      due: formatShortDate(action.due),
-      progress: action.progress,
-    }];
-  });
-  const workflowActions = visibleInterventions(user).flatMap((intervention) => {
-    const representative = representatives.find((item) => item.id === intervention.representativeId);
-    return intervention.actionPoints.map((action) => ({
-      id: action.id,
-      person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
-      title: action.title,
-      type: action.type,
-      priority: "normaal",
-      status: action.status,
-      due: action.due || "Geen datum",
-      progress: action.status === "behaald" ? 100 : action.status === "in_uitvoering" ? 50 : 10,
-    }));
-  });
-  const contactActions = visibleContactMoments(user).flatMap((contact) => {
-    const representative = representatives.find((item) => item.id === contact.representativeId);
-    return contact.actionPoints.map((action) => ({
-      id: action.id,
-      person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
-      title: action.title,
-      type: action.type,
-      priority: "normaal",
-      status: action.status,
-      due: action.due || "Geen datum",
-      progress: action.status === "behaald" ? 100 : action.status === "in_uitvoering" ? 50 : 10,
-    }));
-  });
-  const retrainingActions = visibleRetrainings(user).flatMap((retraining) => {
-    const representative = representatives.find((item) => item.id === retraining.representativeId);
-    return retraining.actionPoints.map((action) => ({
-      id: action.id,
-      person: representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend",
-      title: action.title,
-      type: action.type,
-      priority: "normaal",
-      status: action.status,
-      due: action.due || "Geen datum",
-      progress: action.status === "behaald" ? 100 : action.status === "in_uitvoering" ? 50 : 10,
-    }));
-  });
-  const trainingActions = visibleSalesTrainings(user).flatMap((training) =>
-    training.actionPoints.map((action) => ({
-      id: action.id,
-      person: action.scope === "group"
-        ? `${action.representativeIds.length} deelnemers`
-        : (() => {
-            const representative = representatives.find((item) => item.id === action.representativeIds[0]);
-            return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
-          })(),
-      title: action.title,
-      type: action.type,
-      priority: "normaal",
-      status: action.status,
-      due: action.due || "Geen datum",
-      progress: action.status === "behaald" ? 100 : action.status === "in_uitvoering" ? 50 : 10,
-    }))
-  );
-  const visible = [...workflowActions, ...contactActions, ...retrainingActions, ...trainingActions, ...seededActions].filter((item) => status === "all" || item.status === status);
-
-  return (
-    <div className="space-y-6">
-      <PageHeader eyebrow="Opvolging" title="Actiepunten" description="Concrete KPI-, vaardigheids- en gedragsafspraken met duidelijke eigenaars en deadlines." actions={<button className="btn-primary"><Plus className="h-4 w-4" /> Actiepunt</button>} />
-      <div className="card flex flex-col gap-3 p-4 sm:flex-row">
-        <label className="relative flex-1"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className="field pl-10" placeholder="Zoek actiepunt of vertegenwoordiger..." /></label>
-        <select className="field sm:max-w-52" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Alle statussen</option><option value="nieuw">Nieuw</option><option value="in_uitvoering">In uitvoering</option><option value="behaald">Behaald</option><option value="niet_behaald">Niet behaald</option><option value="achterstallig">Achterstallig</option></select>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {visible.map((item) => (
-          <article key={item.id} className="card p-5">
-            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-brand-700">{item.type} Â· {item.priority}</p><h2 className="mt-2 font-bold text-slate-950">{item.title}</h2><p className="mt-1 text-sm text-slate-500">{item.person} Â· tegen {item.due}</p></div><StatusBadge status={item.status} /></div>
-            <div className="mt-5"><div className="mb-2 flex justify-between text-xs font-semibold text-slate-500"><span>Voortgang</span><span>{item.progress}%</span></div><div className="h-2.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-700 transition-all" style={{ width: `${item.progress}%` }} /></div></div>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Planning() {
-  return <PlanningCalendar />;
-}
-
-function MyProfilePage() {
-  const { user, managedUsers } = useSession();
-  const profile = managedUsers.find((item) => item.id === user.id);
-  const initials = `${user.name.split(" ")[0]?.[0] ?? ""}${user.name.split(" ")[1]?.[0] ?? ""}`.toUpperCase();
-  const details = [
-    { label: "E-mailadres", value: user.email || profile?.email || "Onbekend" },
-    { label: "Rol", value: roleLabels[user.role] },
-    { label: "Land", value: user.country },
-    { label: "Team", value: profile?.teamName || "Geen team" },
-    { label: "Vertegenwoordiger", value: profile?.representativeId ? "Gekoppeld" : "Niet gekoppeld" },
-    { label: "Taal", value: user.language.toUpperCase() },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        eyebrow="Gebruiker"
-        title="Mijn gegevens"
-        description="Je persoonlijke profiel en accountgegevens in FieldForce."
-      />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="card p-5">
-          <div className="flex items-start gap-4">
-            <Avatar initials={initials} className="h-16 w-16 text-lg" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Profiel</p>
-              <h2 className="mt-1 text-2xl font-bold text-slate-950">{user.name}</h2>
-              <p className="mt-1 text-sm text-slate-500">{roleLabels[user.role]} Â· {user.country}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <StatusBadge status="open" label={roleLabels[user.role]} />
-                <StatusBadge status={profile?.active ? "open" : "geannuleerd"} label={profile?.active ? "Actief" : "Niet-actief"} />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {details.map((detail) => (
-              <div key={detail.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{detail.label}</p>
-                <p className="mt-2 break-words text-sm font-semibold text-slate-900">{detail.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Snelle acties</p>
-          <div className="mt-3 space-y-2">
-            <Link href="/dashboard" className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800">
-              Naar dashboard
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/mijn-team" className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800">
-              Mijn Team
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/begeleidingen" className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800">
-              Begeleidingen
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TodayTasksPage() {
-  const { user, managedUsers, language } = useSession();
-  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
-  const { isModuleEnabled } = useModules();
-  const {
-    visibleInterventions,
-    visibleContactMoments,
-    visibleHelpRequests,
-    visibleRetrainings,
-    visibleSalesTrainings,
-  } = useWorkflow();
-  const { representatives } = useRepresentatives();
-  const today = localDateKey();
-  const attentionSections = useMemo(
-    () => buildDashboardAttentionSections({
-      currentUser: user,
-      today,
-      interventions: isModuleEnabled("BEGELEIDINGEN") ? dedupeById(visibleInterventions(user)) : [],
-      contactMoments: isModuleEnabled("CONTACTMOMENTEN") ? visibleContactMoments(user) : [],
-      helpRequests: isModuleEnabled("HULPAANVRAGEN") ? visibleHelpRequests(user) : [],
-      retrainings: isModuleEnabled("RETRAININGEN") ? visibleRetrainings(user) : [],
-      salesTrainings: isModuleEnabled("SALESTRAININGEN") ? visibleSalesTrainings(user) : [],
-      representativeName: (id) => {
-        const representative = representatives.find((item) => item.id === id);
-        return representative ? `${representative.firstName} ${representative.lastName}` : "Onbekend";
-      },
-      ownerName: (id) => id ? reportingUserName(id, managedUsers) : undefined,
-    }),
-    [
-      isModuleEnabled,
-      managedUsers,
-      representatives,
-      today,
-      user,
-      visibleContactMoments,
-      visibleHelpRequests,
-      visibleInterventions,
-      visibleRetrainings,
-      visibleSalesTrainings,
-    ],
-  );
-  const todayItemCount = attentionSections.todo.length + attentionSections.done.length;
-
-  return (
-    <div className="space-y-4">
-      <PageHeader
-        eyebrow={t("coaching.dashboard.todayWorkday")}
-        title={t("coaching.dashboard.todayTasks")}
-        description={t("coaching.dashboard.todayTasksDescription")}
-      />
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.scheduledToday")}</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{todayItemCount}</p>
-          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.itemsOn")} {new Date(`${today}T12:00:00`).toLocaleDateString(language === "fr" ? "fr-BE" : language === "de" ? "de-DE" : "nl-BE")}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.toDo")}</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{attentionSections.todo.length}</p>
-          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.notCompletedItems")}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.done")}</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{attentionSections.done.length}</p>
-          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.completedOrSubmitted")}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t("coaching.dashboard.totalScope")}</p>
-          <p className="mt-3 text-3xl font-bold text-slate-950">{todayItemCount}</p>
-          <p className="mt-1 text-sm text-slate-500">{t("coaching.dashboard.visibleItemsToday")}</p>
-        </div>
-      </div>
-
-      <DashboardAttentionCard sections={attentionSections} link={null} t={t} />
-    </div>
-  );
-}
-
-function PlaceholderWorkspace({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="space-y-4">
-      <PageHeader eyebrow="Voorbereiding" title={title} description={description} />
-      <EmptyState title="Nog geen inhoud beschikbaar" description="Deze route is al gekoppeld aan het menu, maar de inhoud wordt later verder ingevuld." />
-    </div>
-  );
-}
-
-function Management({ section, settingsPage }: { section?: string; settingsPage?: string }) {
-  const { user } = useSession();
-  if (section === "instellingen" && !settingsPage) {
-    return <ManagementRedirect href="/beheer/instellingen/mail" />;
-  }
-  const normalizedSection = section === "instellingen"
-    ? settingsPage === "profiel"
-      ? "profiel"
-      : settingsPage === "mail/templates"
-        ? "mailTemplates"
-        : settingsPage === "mail"
-        ? "mail"
-        : undefined
-    : section;
-  const resolvedSection = section
-    ? normalizedSection && canAccessManagementSection(user, normalizedSection)
-      ? normalizedSection
-      : undefined
-    : getDefaultManagementSection(user);
-  if (!resolvedSection) return <ManagementRedirect />;
-
-  if (resolvedSection === "gebruikers") return <UsersManagementPage />;
-  if (resolvedSection === "modules") return <ModuleManagement />;
-  if (resolvedSection === "log") return <ManagementLog />;
-  if (resolvedSection === "mail") return <SettingsManagement page="mail" />;
-  if (resolvedSection === "mailTemplates") return <TransactionalMailManagement />;
-  if (resolvedSection === "profiel") return <SettingsManagement page="profile" />;
-  if (["teams", "rollen", "kpis", "kapstok", "starterEvaluations"].includes(resolvedSection)) {
-    return <ConfigurationManagement section={resolvedSection as "teams" | "rollen" | "kpis" | "kapstok" | "starterEvaluations"} />;
-  }
-  return <ManagementRedirect />;
-}
-
-function ManagementLog() {
-  const { user, language, managedUsers } = useSession();
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Beheer"
-        title="Log"
-        description="Actiehistoriek binnen je toegelaten scope, met dezelfde filters en paginatie als de vroegere dashboardweergave."
-      />
-      <ActivityHistoryCard user={user} />
-      {can(user, "audit.impersonation.read") && <ImpersonationHistory language={language} users={managedUsers} />}
-    </div>
-  );
-}
-
-function ManagementRedirect({ href = "/dashboard" }: { href?: string }) {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace(href);
-  }, [href, router]);
-
-  return null;
-}
-
-// Legacy management prototype retained while Beheer sections are consolidated.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function SimpleManagementList({ items, icon: Icon }: { items: string[]; icon: typeof Users }) {
-  return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((item, index) => <div key={item} className="card flex items-center gap-4 p-5"><div className="grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></div><div className="flex-1"><p className="font-semibold">{item}</p><p className="mt-1 text-xs text-slate-500">Actief Â· volgorde {index + 1}</p></div><button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><MoreHorizontal className="h-5 w-5" /></button></div>)}</div>;
-}
-
-// Legacy management prototype retained while Kapstok beheer lives in ConfigurationManagement.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function FrameworkManagement({ coachingFramework }: { coachingFramework: ReturnType<typeof useConfiguration>["coachingFramework"] }) {
-  return <div className="space-y-4">{coachingFramework.map((focus) => <div key={focus.name} className="card overflow-hidden"><div className="flex items-center gap-3 p-5"><div className={`h-10 w-2 rounded-full ${focus.color}`} /><div className="flex-1"><p className="font-bold">{focus.name}</p><p className="text-sm text-slate-500">{focus.criteria.length} criteria</p></div><button className="btn-secondary">Bewerken</button></div><div className="grid gap-2 border-t border-slate-100 bg-slate-50 p-4 sm:grid-cols-2">{focus.criteria.map((criterion, index) => <div key={criterion} className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700"><span className="mr-2 font-bold text-slate-400">{index + 1}.</span>{criterion}</div>)}</div></div>)}</div>;
-}
-
-function ModuleManagement() {
-  const { error, loading, modules, setModuleEnabled } = useModules();
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
-        <p className="font-bold text-slate-950">Gefaseerde activatie</p>
-        <p className="mt-1 text-sm text-slate-500">
-          Schakel modules aan of uit zonder codewijziging. Inactieve modules verdwijnen uit menu, dashboard en routes.
-        </p>
-        {loading && <p className="mt-2 text-sm text-slate-500">Modules laden...</p>}
-        {error && <p className="mt-2 text-sm font-semibold text-rose-700">{error}</p>}
-      </div>
-      <div className="divide-y divide-slate-100">
-        {modules.map((module) => (
-          <div key={module.code} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold text-slate-950">{module.name}</p>
-              <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-400">{module.code}</p>
-            </div>
-            <ModuleToggle
-              checked={module.enabled}
-              onChange={(checked) => setModuleEnabled(module.code, checked)}
-              label={module.name}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ModuleToggle({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={`${label} ${checked ? "deactiveren" : "activeren"}`}
-      onClick={() => onChange(!checked)}
-      className={`flex w-fit items-center gap-3 rounded-full border px-2 py-1 transition ${
-        checked ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-100"
-      }`}
-    >
-      <span className={`relative h-7 w-12 rounded-full transition ${checked ? "bg-emerald-600" : "bg-slate-300"}`}>
-        <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${checked ? "left-6" : "left-1"}`} />
-      </span>
-      <span className={`pr-2 text-sm font-bold ${checked ? "text-emerald-700" : "text-slate-500"}`}>
-        {checked ? "Actief" : "Inactief"}
-      </span>
-    </button>
-  );
-}
-
-function ModuleInactive({ moduleName, language }: { moduleName: string; language: MockUser["language"] }) {
-  return (
-    <EmptyState
-      title={translate(language, "app.access.moduleInactiveTitle")}
-      description={translate(language, "app.access.moduleInactiveDescription").replace("{module}", moduleName)}
-    />
-  );
-}
-
-function PerformanceTrendLabel({ value }: { value: -1 | 0 | 1 }) {
-  const label = value > 0 ? "Stijgend" : value < 0 ? "Dalend" : "Stabiel";
-  const style = value > 0
-    ? "bg-emerald-50 text-emerald-700"
-    : value < 0
-      ? "bg-rose-50 text-rose-700"
-      : "bg-slate-100 text-slate-600";
-  return (
-    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${style}`}>
-      <Trend value={value} /> {label}
-    </span>
-  );
-}
-
-function formatShortDate(value?: string, language: MockUser["language"] = "nl") {
-  if (!value) return "Nog niet";
-  return new Date(`${value}T12:00:00`).toLocaleDateString(localeForLanguage(language), {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function executionTimestamp(value?: string) {
-  if (!value) return Number.MAX_SAFE_INTEGER;
-  if (value.toLowerCase() === "vandaag") return new Date(2026, 5, 15, 12).getTime();
-
-  const directDate = new Date(value);
-  if (!Number.isNaN(directDate.getTime())) return directDate.getTime();
-
-  const match = value.toLowerCase().match(
-    /^(\d{1,2})\s+(jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec)\s+(\d{4})$/
-  );
-  if (!match) return Number.MAX_SAFE_INTEGER;
-
-  const monthIndex: Record<string, number> = {
-    jan: 0,
-    feb: 1,
-    mrt: 2,
-    apr: 3,
-    mei: 4,
-    jun: 5,
-    jul: 6,
-    aug: 7,
-    sep: 8,
-    okt: 9,
-    nov: 10,
-    dec: 11,
-  };
-  return new Date(Number(match[3]), monthIndex[match[2]], Number(match[1]), 12).getTime();
-}
-
-function formatKpiValue(value: number, unit: "%" | "EUR" | "count" | "minutes" | "hours" | "km" | "number", language: MockUser["language"] = "nl") {
-  const locale = localeForLanguage(language);
-  const formatted = value.toLocaleString(locale, { maximumFractionDigits: unit === "%" ? 1 : unit === "EUR" ? 0 : 2 });
-  if (unit === "%") return `${formatted}%`;
-  if (unit === "EUR") return `â‚¬ ${formatted}`;
-  if (unit === "minutes") return `${formatted} ${translate(language, "myTeam.kpi.unitMinutes")}`;
-  if (unit === "hours") return `${formatted} ${translate(language, "myTeam.kpi.unitHours")}`;
-  if (unit === "km") return `${formatted} ${translate(language, "myTeam.kpi.unitKm")}`;
-  return formatted;
-}
-
-function SectionTitle({ title, subtitle, link, linkLabel = "Alles" }: { title: string; subtitle: string; link?: string; linkLabel?: string }) {
-  return <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div>{link && <Link href={link} className="flex items-center gap-1 text-sm font-semibold text-brand-700">{linkLabel} <ArrowRight className="h-4 w-4" /></Link>}</div>;
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×_}ï„èµ©hºÚn¶X§zÍ{îïÈ\ÙHÛY[ŽÂ‚š[\Ü[šÈœ›ÛH›™^Û[šÈŽÂš[\ÜÈ\ÙT›Ý]\‹\ÙTÙX\˜Ú\˜[\ÈHœ›ÛH›™^Û˜]šYØ][ÛˆŽÂš[\ÜÈY[[Ë\ÙPØ[˜XÚË\ÙQY™™XÝ\ÙSY[[Ë\ÙT™Y‹\ÙTÝ]HHœ›ÛHœ™XXÝŽÂš[\ÜÂˆ\œ›ÝÔšYÚˆ›ÛÚÓÜ[ÚXÚËˆØ[[™\ÚXÚËˆÚXÚËˆÚXÚÐÚ\˜ÛL‹ˆ[\šX[™ÛKˆÚ]œ›Û‘ÝÛ‹ˆÚ]œ›Û”šYÚˆÚ\˜ÛR[ˆÛ\›Ø\™ÚXÚËˆÛØÚÌËˆÛÛXÝˆš[QÝÛ‹ˆš[\‹ˆÜ˜YX][ÛØ\ˆØY\Ú\˜ÛKˆXZ[ˆX\[‹ˆ[Ü™RÜš^›Û[ˆÛ™Kˆ\Ëˆ™Yœ™\ÚÝËˆÙX\˜ÚˆØ]™KˆÜ\šÛ\Ëˆ\™Ù]ˆ\Ù\œËˆ\Ù\œÔ›Ý[™ˆŸHœ›ÛH›XÚYK\™XXÝŽÂš[\ÜÈ\ÙTÙ\ÜÚ[ÛˆHœ›ÛHØÛÛ\Û™[ËÜÙ\ÜÚ[Û‹\›ÝšY\ˆŽÂš[\ÜÈ\ÙPÛÛ™šYÝ\˜][ÛˆHœ›ÛHØÛÛ\Û™[ËØÛÛ™šYÝ\˜][Û‹\›ÝšY\ˆŽÂš[\ÜÈ\ÙUÛÜšÙ›ÝÈHœ›ÛHØÛÛ\Û™[ËÝÛÜšÙ›ÝË\›ÝšY\ˆŽÂš[\ÜÈ\ÙT\œÛÛ˜[Üš]\šXHHœ›ÛHØÛÛ\Û™[ËÜ\œÛÛ˜[XÜš]\šXK\›ÝšY\ˆŽÂš[\ÜÈ\ÙT\™›Ü›X[˜ÙHHœ›ÛHØÛÛ\Û™[ËÜ\™›Ü›X[˜ÙK\›ÝšY\ˆŽÂš[\ÜÈ\ÙS[Ù[\ÈHœ›ÛHØÛÛ\Û™[ËÛ[Ù[K\›ÝšY\ˆŽÂš[\ÜÈ\ÙTØ[\Ñ^Q™X]\™\ÈHœ›ÛHØÛÛ\Û™[ËÜØ[\Ù^KÙ™X]\™K\›ÝšY\ˆŽÂš[\ÜÈ\ÙTØ[\Ñ^Q]šXÙT[[YHHœ›ÛHØÛÛ\Û™[ËÜØ[\Ù^KÙ]šXÙK\[[YK\›ÝšY\ˆŽÂš[\ÜÈØ[\Ñ^UÛÜšÜÜXÙHHœ›ÛHØÛÛ\Û™[ËÜØ[\Ù^KÜØ[\Ù^K]ÛÜšÜÜXÙHŽÂš[\ÜÈ\ÙT™\™\Ù[]]™\ÈHœ›ÛHØÛÛ\Û™[ËÜ™\™\Ù[]]™\Ë\›ÝšY\ˆŽÂš[\ÜÈ^T™Y›XÝ[ÛœÔYÙK^T™\ÜÔYÙHHœ›ÛHØÛÛ\Û™[ËÜ™\™\Ù[]]™K]ÛÜšÙ›ÝË\YÙ\ÈŽÂš[\ÜÈÛÛXÝ[ÛY[ÔYÙK[™\]Y\ÝÕÛÜšÙ›ÝÔYÙHHœ›ÛHØÛÛ\Û™[ËØÛÛXÝZ[]ÛÜšÙ›ÝÜÈŽÂš[\ÜÈ˜Z[š[™ÕÛÜšÙ›ÝÔYÙHHœ›ÛHØÛÛ\Û™[ËÝ˜Z[š[™Ë]ÛÜšÙ›ÝÜÈŽÂš[\ÜÈ™\Ü[™Ñ\Ú›Ø\™Hœ›ÛHØÛÛ\Û™[ËÜ™\Ü[™ËY\Ú›Ø\™ŽÂš[\ÜÈÛX\\Ú›Ø\™[™[ÛX\X[RX]X\Hœ›ÛHØÛÛ\Û™[ËÜÛX\XÛØXÚ[™ËY\Ú›Ø\™ŽÂš[\ÜÈXÝ]š]R\ÝÜžPØ\™Hœ›ÛHØÛÛ\Û™[ËØXÝ]š]KZ\ÝÜžKXØ\™ŽÂš[\ÜÈ[\\œÛÛ˜][Û’\ÝÜžHHœ›ÛHØÛÛ\Û™[ËÚ[\\œÛÛ˜][Û‹Z\ÝÜžHŽÂš[\ÜÈ\™›Ü›X[˜ÙQ]›Û][ÛˆHœ›ÛHØÛÛ\Û™[ËÜ\™›Ü›X[˜ÙKY]›Û][ÛˆŽÂš[\ÜÈ\™›Ü›X[˜ÙUÚY[Hœ›ÛHØÛÛ\Û™[ËØÚ\ËÔ\™›Ü›X[˜ÙUÚY[ŽÂš[\ÜÈ\Ù\œÓX[˜YÙ[Y[YÙHHœ›ÛHØÛÛ\Û™[ËÝ\Ù\‹[X[˜YÙ[Y[ŽÂš[\ÜÈ[›š[™ÐØ[[™\ˆHœ›ÛHØÛÛ\Û™[ËÜ[›š[™ËXØ[[™\ˆŽÂš[\ÜÈÛÛ™šYÝ\˜][Û“X[˜YÙ[Y[Hœ›ÛHØÛÛ\Û™[ËØÛÛ™šYÝ\˜][Û‹[X[˜YÙ[Y[ŽÂš[\ÜÈÙ][™ÜÓX[˜YÙ[Y[Hœ›ÛHØÛÛ\Û™[ËÜÙ][™ÜË[X[˜YÙ[Y[ŽÂš[\ÜÈ˜[œØXÝ[Û˜[XZ[X[˜YÙ[Y[Hœ›ÛHØÛÛ\Û™[ËÝ˜[œØXÝ[Û˜[[XZ[[X[˜YÙ[Y[ŽÂš[\ÜÈÙ\ÜÚ[Û‘˜Z[\™HHœ›ÛHØÛÛ\Û™[ËÜÙ\ÜÚ[Û‹\Ý]HŽÂš[\ÜÈ]˜]\‹[\TÝ]KYÙRXY\‹Ý]\Ð˜YÙK™[™Hœ›ÛHØÛÛ\Û™[ËÝZHŽÂš[\ÜÈšXÚ^™[™\™\ˆHœ›ÛHØÛÛ\Û™[ËÜšXÚ]^\™[™\™\ˆŽÂš[\ÜÂˆØ[‹ˆØ[XØÙ\ÜÔ™\™\Ù[]]™KˆØ[•šY]ÕX[Q\Ú›Ø\™ˆ›ÛSX™[ËŸHœ›ÛHÛX‹Ü\›Z\ÜÚ[ÛœÈŽÂš[\ÜÂˆØ[XØÙ\ÜÓX[˜YÙ[Y[ÙXÝ[Û‹ˆÙ]Y˜][X[˜YÙ[Y[ÙXÝ[Û‹ŸHœ›ÛHÛX‹ÛX[˜YÙ[Y[XXØÙ\ÜÈŽÂš[\ÜÂˆØ[XØÙ\ÜÐÛØXÚ[™Ó[Ù[S˜]šYØ][Û‹ˆØ[XØÙ\ÜÑ\Ú›Ø\™ˆØ[XØÙ\ÜÓ^UX[S˜]šYØ][Û‹ŸHœ›ÛHÛX‹Û˜]šYØ][Û‹XXØÙ\ÜÈŽÂš[\ÜÈZ[™\Ü[™Ñ]\Ù]š[\”™\Ü[™Ñ]\Ù][\T™\Ü[™Ñš[\œË™\Ü[™Õ\Ù\“˜[YHHœ›ÛHÛX‹Ü™\Ü[™ÈŽÂš[\ÜÈZ[ÛX\ÛØXÚ[™ÈHœ›ÛHÛX‹ÜÛX\XÛØXÚ[™ÈŽÂš[\ÜÂˆZ[\Ú›Ø\™][[Û”ÙXÝ[ÛœËˆ\H\Ú›Ø\™][[Û’][Kˆ\H\Ú›Ø\™][[Û”ÙXÝ[ÛœËŸHœ›ÛHÛX‹Ù\Ú›Ø\™X][[ÛˆŽÂš[\ÜÂˆÙ]š\ÚX›T™\™\Ù[]]™\ËˆÙ]š\ÚX›UÛÜšÙ›ÝÔÝ]KŸHœ›ÛHÛX‹Ù]KXXØÙ\ÜÈŽÂš[\ÜÈ[Ù[Q›Ü”›Ý]HHœ›ÛHÛX‹Û[Ù[\ÈŽÂš[\ÜÂˆØ[”Ý\Ý\\‘]˜[X][Û‹ˆ›Ü›X]Ý\\‘]˜[X][Û‘]R[œ]ŸHœ›ÛHÛX‹ÜÝ\\‹Y]˜[X][ÛœÈŽÂš[\ÜÈ\Ô[›š[™Ñ]T\˜[HHœ›ÛHÛX‹Ü[›š[™ËXÜ™X]K[Ü[ÛœÈŽÂš[\ÜÈ™\™\Ù[]]™S]™[˜YÙPÛ\ÜÈHœ›ÛHÛX‹Ü™\™\Ù[]]™K[]™[ÈŽÂš[\ÜÂˆÙ]šXÚU[Y[[™R][U\\ËˆÙ]š\ÚX›QšXÚTÙXÝ[ÛœËˆÙ]š\ÚX›QšXÚUXœËˆ\HšXÚTÙXÝ[Û’Yˆ\HšXÚUX’Yˆ\HšXÚU[Y[[™R][U\KŸHœ›ÛHÛX‹Û^K]X[KYšXÚK]š\ÚXš[]HŽÂš[\ÜÂˆÛØXÚ[™ÐžRYˆÛØXÚ[™ÜÑ›Ü”™\™\Ù[]]™KˆÜš]\š[Û”ØÛÜ™\Ñœ›ÛT›ÝÜËˆ\ÐÛØXÚ[™ÔØÛÜ™Q]Kˆ]\Ý\ÝÜšXØ[ÛØXÚ[™Ëˆ]\ÝØÛÜ™YÛØXÚ[™ËˆY\™ÙPÜš]\š[Û”ØÛÜ™\Ëˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™Kˆ\™›Ü›X[˜ÙU™[™ˆ™\™\Ù[]]™Q›ÜÛØXÚ[™ËŸHœ›ÛHÛX‹Ü\™›Ü›X[˜ÙKY]HŽÂš[\Ü\HÈ\ÝÜšXØ[ÛØXÚ[™ÈHœ›ÛHÛX‹Ü\™›Ü›X[˜ÙKY]HŽÂš[\ÜÂˆZ[\™›Ü›X[˜ÙUÚY[]Kˆ›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙKˆÙ]\™›Ü›X[˜ÙUÚY[]Kˆ\H\™›Ü›X[˜ÙUÚY[]KŸHœ›ÛHÛX‹Ü\™›Ü›X[˜ÙKÜ\™›Ü›X[˜ÙK]ÚY[ŽÂš[\ÜÂˆXÝ[Û”Ú[™Y‹ˆZ[™\™\Ù[]]™PXÝ]š]Y\Ëˆ\ÓÜ[”™\™\Ù[]]™PXÝ[Û”Ú[ˆ\H™\™\Ù[]]™PXÝ]š]KŸHœ›ÛHÛX‹Ü™\™\Ù[]]™KXXÝ]š]HŽÂš[\ÜÂˆZ[\ÝÜšXØ[ØÛÜ™SÛÚÝ\ˆ\ÝÜšXØ[ØÛÜ™RÙ^Kˆ\H\ÝÜšXØ[ÛÛ\\š\ÛÛ”™\ÜÛœÙKˆ\H\ÝÜšXØ[ØÛÜ™T™Y™\™[˜ÙKŸHœ›ÛHÛX‹ØÛØXÚ[™ËÚ\ÝÜšXØ[XÛÛ\\š\ÛÛˆŽÂš[\ÜÈÜ›Ý\\Ú[Y[ØÛÜ™\ÈHœ›ÛHÛX‹ØÛØXÚ[™ËØ\Ú[Y[\ØÛÜ™\ÈŽÂš[\ÜÈ˜[œÛ]K\H˜[œÛ][Û’Ù^HHœ›ÛHÛX‹ÚLNˆŽÂš[\ÜÂˆPÕSÓ—ÔÒS•ÐÓÔÑWÔ‘PTÓÓ”Ëˆ\HXÝ[Û”Ú[ÛÜÙT™X\ÛÛ‹ŸHœ›ÛHÛX‹ØXÝ[Û‹\Ú[ËØÛÜÙK\™X\ÛÛœÈŽÂš[\ÜÂˆØ[”ÚÝÔ[›™YÛØXÚ[™Ò[™XØ]Ü‹ˆ\H^UX[SY[X™\‹ŸHœ›ÛHÛX‹Û^K]X[HŽÂš[\Ü\HÈXÝ[Û”Ú[›ÙXÝÜ[Û‹XÝ[Û”Ú[\™Ù]\SÜ[Û‹ÛØXÚ[™Ð\Ú[Y[ÛØXÚ[™ÑÜÜÚY\‹ÛØXÚ[™Ò[\™[[Û‹ÛØXÚ[™ÔÚ[\TØÛÜ™K[ØÚÕ\Ù\‹\œÛÛ˜[ÛØXÚ[™ÐÜš]\š[Û‹™\™\Ù[]]™K™\™\Ù[]]™S]™[ØÛÜYXÝ[Û‘Yš[š][Û‹ÛÜšÙ›ÝÐXÝ[Û”Ú[ÛÜšÙ›ÝÔØÛÜ™HHœ›ÛHÛX‹Ý\\ÈŽÂš[\ÜÂˆØ[Ø[˜Ù[]\™PÛØXÚ[™ËˆØ[‘Y]]\™PÛØXÚ[™Ô[›š[™ËˆØ[“X[˜YÙPÛØXÚ[™ËˆÛØXÚ[™ÓÜ[’™Y‹ˆ™\™\Ù[]]™P\›Ý˜[™Y‹ŸHœ›ÛHÛX‹ØÛØXÚ[™ËØXØÙ\ÜÈŽÂš[\ÜÂˆØ[”™[Z[™ÛØXÚ[™Ð\›Ý˜[ˆ\Ô[™[™ÐÛØXÚ[™Ð\›Ý˜[Ý]\ËŸHœ›ÛHÛX‹ØÛØXÚ[™ËØ\›Ý˜[XXÝ[ÛœÈŽÂš[\ÜÂˆZ[ÛØXÚ[™ÔØÛÜQÜ›Ý\Ëˆ\HÛØXÚ[™ÔØÛÜPÛÝ[žQÜ›Ý\ˆ\HÛØXÚ[™ÔØÛÜQÜ›Ý\][Kˆ\HÛØXÚ[™ÔØÛÜUX[QÜ›Ý\ŸHœ›ÛHÛX‹ØÛØXÚ[™ËÜØÛÜKYÜ›Ý\ÈŽÂš[\ÜÂˆÛØXÚ[™ÑÜ›Ý\Ù^KˆÛÛXÝÛØXÚ[™ÑÜ›Ý\YËˆÛØXÚ[™ÔÙXÝ[Û‘Ü›Ý\Ù^KˆX]Ú\ÐÛØXÚ[™ÔÙX\˜Úˆ›Ü›X[^™PÛØXÚ[™ÔÙX\˜Ú^ŸHœ›ÛHÛX‹ØÛØXÚ[™ËÛÝ™\šY]Ë[\ÝŽÂš[\ÜÂˆØ[“Ü[ÛØXÚ[™Ñ]Z[ˆÛÛ\]YÛØXÚ[™ÔÝ]\Ù\ËˆY\PžRYˆØØ[]RÙ^KŸHœ›ÛHÛX‹ØÛØXÚ[™ËÝš\ÚXš[]HŽÂš[\ÜÈ\›Ý˜[\ÐÛÛ\]Y™Y›XÝ[ÛˆHœ›ÛHÛX‹ØÛØXÚ[™ËØ\›Ý˜[\™Y›XÝ[ÛˆŽÂš[\ÜÂˆÛØXÚ[™Ô™\Ü\ÜÝY\Ëˆ\œÙPÛØXÚ[™Ô™\Ü˜YˆÙ\šX[^™PÛØXÚ[™Ô™\Ü˜Yˆ\HÛØXÚ[™Ô™\Ü\ÜÝYKˆ\HÛØXÚ[™Ô™\ÜÝ\YŸHœ›ÛHÛX‹ØÛØXÚ[™ËÜ™\ÜY›Ü›HŽÂš[\ÜÂˆØ[Ý[]P]™\˜YÙTØÛÜ™T\˜Ù[YÙKˆØ[Ý[]PÛØXÚ[™ÑÜÜÚY\”ØÛÜ™KˆØ[Ý[]SÙ™šXÚX[ÛØXÚ[™ÔØÛÜ™KŸHœ›ÛHÛX‹ØÛØXÚ[™ËÜØÛÜ™HŽÂš[\ÜÈ\ÔØÚY[YÛØXÚ[™Ñ[™\ÝHœ›ÛHÛX‹ØÛØXÚ[™ËÜØÚY[HŽÂš[\ÜÈÔ\œÚ\ÝX›PÛØXÚ[™ÐXÝ[Û”Ú[ÈHœ›ÛHÛX‹ØÛØXÚ[™ËØXÝ[Û‹\Ú[\\œÚ\Ý[˜ÙHŽÂš[\ÜÂˆ\Ò[X\šÝ\ˆ\Ð›[šÔšXÚ^ˆšXÚ^ÔZ[•^ŸHœ›ÛHÛX‹ÜšXÚ]^ŽÂš[\ÜÂˆXÝ[Û”Ú[ØÛÜSX™[ˆØ[XØÙ\ÜÐXÝ[Û”Ú[ÓÝ™\šY]ËˆØ[ÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[ˆØ[Ü™X]PXÝ[Û”Ú[Yš[š][Û‹ˆØ[“X[˜YÙPXÝ[Û”Ú[Yš[š][ÛœËˆØ[“X[˜YÙTØÛÜYXÝ[Û‘Yš[š][Û‹ˆØ[•šY]ÐXÝ[Û”Ú[\Ù\•X‹ˆÜ›Ý\XÝ[Û”Ú[ÐžT™\™\Ù[]]™KˆÜ›Ý\XÝ[Û”Ú[ÐžTØÛÜKˆÜ]XÝ[Û”Ú[ÙXÝ[ÛœËˆ\HXÝ[Û”Ú[Ý™\šY]Ò][Kˆ\HXÝ[Û”Ú[ØÛÜQÜ›Ý\ˆ\HXÝ[Û”Ú[\Ù\‘Ü›Ý\ŸHœ›ÛHÛX‹ØXÝ[Û‹\Ú[ËÝš\ÚXš[]HŽÂ‚˜ÛÛœÝ™]Ò[™\]Y\ÝÝ]\Ù\ÈH™]ÈÙ]
+È›Ü[ˆ‹›šY]]È—JNÂ˜ÛÛœÝ[™X]Y[™\]Y\ÝÝ]\Ù\ÈH™]ÈÙ]
+È›Ü[ˆ‹›šY]]È‹š[—Ø™Z[™[[™È—JNÂ˜ÛÛœÝ[™Y[™\]Y\ÝÝ]\Ù\ÈH™]ÈÙ]
+Âˆ˜™YÙ[ZY[™È‹ˆ˜ÛÛXÝ[ÛY[‹ˆœ™]˜Z[š[™È‹ˆœØ[\Ý˜Z[š[™È‹ˆ™Ù\ÛÝ[ˆ‹ˆš[™Ù]›ÚÚÙ[ˆ‹ˆ˜Y™Ù\ÛÝ[ˆ‹ˆ™ÙX[›[Y\™‹ˆ™\›ÛØXÝYWÙÙ\[™‹—JNÂ‚™^Ü[˜Ý[ÛˆÛÜšÜÜXÙTYÙJÈÙYÛY[ÈNˆÈÙYÛY[ÎˆÝš[™Ö×HJHÂˆÛÛœÝÈ\Ù\‹ØY[™ÎˆÙ\ÜÚ[Û“ØY[™Ë\œ›ÜŽˆÙ\ÜÚ[Û‘\œ›ÜˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÈ\Ó[Ù[Q[˜X›YHH\ÙS[Ù[\Ê
+NÂˆÛÛœÝØ[\Ñ^Q™X]\™\ÈH\ÙTØ[\Ñ^Q™X]\™\Ê
+NÂˆÛÛœÝØ[\Ñ^Q]šXÙT[[YHH\ÙTØ[\Ñ^Q]šXÙT[[YJ
+NÂˆÛÛœÝ]HÙYÛY[Ëš›Ú[Š‹ÈŠNÂˆÛÛœÝ›Ý]S[Ù[HH[Ù[Q›Ü”›Ý]JÙYÛY[ÖÌHÏÈˆŠNÂ‚ˆYˆ
+Ù\ÜÚ[Û“ØY[™ÊHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J››‹˜\œÙ\ÜÚ[Û‹›ØY[™Õ]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J››‹˜\œÙ\ÜÚ[Û‹›ØY[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+Ù\ÜÚ[Û‘\œ›ÜŠHÂˆ™]\›ˆÙ\ÜÚ[Û‘˜Z[\™HÏŽÂˆBˆYˆ
+]\Ù\‹šY
+HÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË›ÙÚ[”™\]Z\™Y]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË›ÙÚ[”™\]Z\™Y\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+›Ý]S[Ù[H	‰ˆZ\Ó[Ù[Q[˜X›Y
+›Ý]S[Ù[K˜ÛÙJJHÂˆ™]\›ˆ[Ù[R[˜XÝ]™H[Ù[S˜[YO^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›Ý]S[Ù[K›˜]’Ù^H\È˜[œÛ][Û’Ù^J_H[™ÝXYÙO^Ý\Ù\‹›[™ÝXYÙ_HÏŽÂˆBˆYˆ
+›Ý]S[Ù[H	‰ˆXØ[XØÙ\ÜÐÛØXÚ[™Ó[Ù[S˜]šYØ][ÛŠ\Ù\‹›Ý]S[Ù[K˜ÛÙJJHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË™[šYY]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË›[Ù[Q[šYY\ØÜš\[ÛˆŠKœ™\XÙJžÛ[Ù[_H‹˜[œÛ]J\Ù\‹›[™ÝXYÙK›Ý]S[Ù[K›˜]’Ù^H\È˜[œÛ][Û’Ù^JJ_HÏŽÂˆB‚ˆYˆ
+]OOH™\Ú›Ø\™ŠHÂˆ™]\›ˆØ[XØÙ\ÜÑ\Ú›Ø\™
+\Ù\ŠBˆÈ\Ú›Ø\™Ï‚ˆˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË™[šYY]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË™\Ú›Ø\™[šYY\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+]OOH›ZZ›‹YÙYÙ]™[œÈŠH™]\›ˆ^T›Ùš[TYÙHÏŽÂˆYˆ
+]OOHZÙ[‹]˜[™XYÈŠH™]\›ˆÙ^U\ÚÜÔYÙHÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^Hˆ	‰ˆØ[\Ñ^Q™X]\™\Ë›ØY[™ÊHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K˜XØÙ\ÜË›ØY[™ÈŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K˜XØÙ\ÜË›ØY[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^Hˆ	‰ˆ\Ø[\Ñ^Q™X]\™\Ëš\Ñ[˜X›Y
+”ÐSTÑVHŠJHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K˜XØÙ\ÜË™\ØX›YŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K˜XØÙ\ÜË™\ØX›Y\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^Hˆ	‰ˆ\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘Hˆ	‰ˆØ[\Ñ^Q]šXÙT[[YKœ\ÙHOOH’S’UPSV’S‘ÈŠHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K™]šXÙKš[š]X[^š[™ÈŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K™]šXÙKš[š]X[^š[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^Hˆ	‰ˆ\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘Hˆ	‰ˆØ[\Ñ^Q]šXÙT[[YKœ\ÙHOOH”‘TPÑSQS•Ô‘TURT‘QŠHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K™]šXÙKœ™\XÙ[Y[™\]Z\™YŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K™]šXÙKœ™\XÙ[Y[\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^Hˆ	‰ˆ\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘Hˆ	‰ˆØ[\Ñ^Q]šXÙT[[YKœ\ÙHOOH‘T”“ÔˆŠHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K™]šXÙK™\œ›ÜˆŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K™]šXÙK™\œ›Ü‘\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^Hˆ	‰ˆÙYÛY[ÖÌWHOOH›ZZ›‹]›ÛÜœ˜XYˆ	‰ˆ\Ø[\Ñ^Q™X]\™\Ëš\Ñ[˜X›Y
+’S•‘S•Ô–HŠJHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K˜XØÙ\ÜËš[™[ÜžQ\ØX›YŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKœØ[\Ù^K˜XØÙ\ÜË™\ØX›Y\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ù^HŠH™]\›ˆØ[\Ñ^UÛÜšÜÜXÙHÙXÝ[Û^ÜÙYÛY[ÖÌW_H\Ú[Y[Y^ÜÙYÛY[ÖÌ—_HÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHœÝŠH™]\›ˆXÙZÛ\•ÛÜšÜÜXÙH]OH”Õˆ\ØÜš\[ÛH‘^™H[Ù[HÛÜ™]\ˆÙpëÛYÜ™Y\™[ˆšY[›Ü˜ÙKˆHY[K[[šÈ\È[›ÛÜ˜™\™ZY[ÈZ™[ZšÙH›Ý]KˆˆÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH˜ÛÛ˜XÝŠH™]\›ˆXÙZÛ\•ÛÜšÜÜXÙH]OHÛÛ˜XÝˆ\ØÜš\[ÛH‘^™H[Ù[HÛÜ™]\ˆÙpëÛYÜ™Y\™[ˆšY[›Ü˜ÙKˆHY[K[[šÈ\È[›ÛÜ˜™\™ZY[ÈZ™[ZšÙH›Ý]KˆˆÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHœÙ\šXÙHŠH™]\›ˆXÙZÛ\•ÛÜšÜÜXÙH]OH”Ù\šXÙHˆ\ØÜš\[ÛH‘^™H[Ù[HÛÜ™]\ˆÙpëÛYÜ™Y\™[ˆšY[›Ü˜ÙKˆHY[K[[šÈ\È[›ÛÜ˜™\™ZY[ÈZ™[ZšÙH›Ý]KˆˆÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH›ZZ›‹]X[HŠHÂˆYˆ
+Z\Ó[Ù[Q[˜X›Y
+‘QÑSRQS‘ÑSˆŠHXØ[XØÙ\ÜÓ^UX[S˜]šYØ][ÛŠ\Ù\ŠJHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK˜XØÙ\ÜÕ]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK›˜]šYØ][ÛXØÙ\ÜÑ\ØÜš\[ÛˆŠ_HÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌWHOOH™ÙXœZZÙ\ˆˆ	‰ˆÙYÛY[ÖÌ—JHÂˆ™]\›ˆX[SY[X™\‘]Z[Y^ÜÙYÛY[ÖÌ—_HÏŽÂˆBˆ™]\›ˆÙYÛY[ÖÌWBˆÈ™\™\Ù[]]™Q]Z[Y^ÜÙYÛY[ÖÌW_HX[S[ÙHÏ‚ˆˆ^UX[TYÙHÏŽÂˆBˆYˆ
+ÙYÛY[ÖÌHOOH›ZZ›‹\™Y›XÝY\ÈŠH™]\›ˆ^T™Y›XÝ[ÛœÔYÙHY^ÜÙYÛY[ÖÌW_HÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH›ZZ›‹]™\œÛYÙ[ˆŠH™]\›ˆ^T™\ÜÔYÙHY^ÜÙYÛY[ÖÌW_HÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH˜ÛÛXÝ[ÛY[[ˆŠH™]\›ˆÛÛXÝ[ÛY[ÔYÙHY^ÜÙYÛY[ÖÌWHOOH›šY]]ÈˆÈ[™Yš[™YˆÙYÛY[ÖÌW_H\Ó™]Ï^ÜÙYÛY[ÖÌWHOOH›šY]]ÈŸHÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHš[X[œ˜YÙ[ˆŠH™]\›ˆ[™\]Y\ÝÕÛÜšÙ›ÝÔYÙHY^ÜÙYÛY[ÖÌWHOOH›šY]]ÈˆÈ[™Yš[™YˆÙYÛY[ÖÌW_H\Ó™]Ï^ÜÙYÛY[ÖÌWHOOH›šY]]ÈŸHÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH\ÜÙ[Z™ÙKY]˜[X]Y\ÈŠH™]\›ˆÝ\\‘]˜[X][ÛœÔYÙH]˜[X][Û’Y^ÜÙYÛY[ÖÌW_HÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHœ™]˜Z[š[™Ù[ˆŠH™]\›ˆ˜Z[š[™ÕÛÜšÙ›ÝÔYÙHÚ[™Hœ™]˜Z[š[™ÈˆY^ÜÙYÛY[ÖÌWHOOH›šY]]ÈˆÈ[™Yš[™YˆÙYÛY[ÖÌW_H\Ó™]Ï^ÜÙYÛY[ÖÌWHOOH›šY]]ÈŸHÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHœØ[\Ë]˜Z[š[™Ù[ˆŠH™]\›ˆ˜Z[š[™ÕÛÜšÙ›ÝÔYÙHÚ[™HœØ[\×Ý˜Z[š[™ÈˆY^ÜÙYÛY[ÖÌWHOOH›šY]]ÈˆÈ[™Yš[™YˆÙYÛY[ÖÌW_H\Ó™]Ï^ÜÙYÛY[ÖÌWHOOH›šY]]ÈŸHÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOHœ˜\Ü\š[™ÈŠH™]\›ˆ™\Ü[™Ñ\Ú›Ø\™ÙXÝ[Û^ÜÙYÛY[ÖÌW_HÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH™\YÙ[ÛÛÜ™YÙ\œÈˆ	‰ˆÙYÛY[ÖÌWJH™]\›ˆ™\™\Ù[]]™Q]Z[Y^ÜÙYÛY[ÖÌW_HÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH˜™YÙ[ZY[™Ù[ˆˆ	‰ˆÙYÛY[ÖÌWJH™]\›ˆÛØXÚ[™Ñ]Z[Y^ÜÙYÛY[ÖÌW_HÏŽÂˆYˆ
+]OOH™\YÙ[ÛÛÜ™YÙ\œÈŠHÂˆYˆ
+\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘HŠHÂˆ™]\›ˆ\Ù\‹œ™\™\Ù[]]™RYˆÈ™\™\Ù[]]™Q]Z[Y^Ý\Ù\‹œ™\™\Ù[]]™RYHÏ‚ˆˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK››Ô›Ùš[U]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK››Ô›Ùš[Q\ØÜš\[ÛˆŠ_HÏŽÂˆBˆ™]\›ˆ™\™\Ù[]]™\Ó\ÝÏŽÂˆBˆYˆ
+]OOH˜XÝY\[[ˆŠHÂˆYˆ
+XØ[Š\Ù\‹›[Ù[T™\\˜][ÛˆŠHXØ[Š\Ù\‹›Y[K˜ÛØXÚ[™Ë˜XÝ[Û”Ú[ÈŠJHÂˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË™[šYY]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜË˜XÝ[Û”Ú[Ñ[šYY\ØÜš\[ÛˆŠ_HÏŽÂˆBˆ™]\›ˆXÝ[Û”Ú[ÈÏŽÂˆBˆYˆ
+]OOHœ[›š[™ÈŠH™]\›ˆ[›š[™ÈÏŽÂˆYˆ
+ÙYÛY[ÖÌHOOH˜™ZY\ˆŠH™]\›ˆX[˜YÙ[Y[ÙXÝ[Û^ÜÙYÛY[ÖÌW_HÙ][™ÜÔYÙO^ÜÙYÛY[ËœÛXÙJŠKš›Ú[Š‹ÈŠ_HÏŽÂˆYˆ
+]OOH˜™YÙ[ZY[™Ù[ˆŠHÂˆ™]\›ˆ[\™[[Û“\ÝÚ[™^Ü]HÏŽÂˆB‚ˆ™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜËœYÙT™\\š[™Õ]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜\˜XØÙ\ÜËœYÙT™\\š[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂŸB‚\HÝ\\‘]˜[X][ÛØ[™Y]HHÂˆYˆÝš[™ÎÂˆ˜[YNˆÝš[™ÎÂˆ[XZ[ˆÝš[™ÎÂˆ[š]X[ÎˆÝš[™ÎÂˆ]˜]\•\›ˆÝš[™ÎÂˆ™\™\Ù[]]™RYˆÝš[™ÎÂˆ™\™\Ù[]]™S]™[ˆ™\™\Ù[]]™S]™[[ÂˆÛÝ[žNˆÝš[™ÎÂˆX[RYÎˆÝš[™È[ÂˆX[S˜[YNˆÝš[™ÎÂˆÝ\\”Ý\]NˆÝš[™ÎÂŸNÂ‚\HÝ\\‘]˜[X][Û‘]Z[HÂˆYˆÝš[™ÎÂˆÝ]\ÎˆÝš[™ÎÂˆ[ÛY[Îˆ“SÓ•ÌWÍHˆ“SÓ•ÌÈˆ“SÓ•ÍHˆ[Âˆ]˜[X][Û‘]NˆÝš[™ÎÂˆ™\™\Ù[]]™S˜[YNˆÝš[™ÎÂˆX[S˜[YNˆÝš[™ÎÂˆÛÝ[žNˆÝš[™ÎÂˆXY\“˜[YNˆÝš[™ÎÂˆX[X[Ý\YžS˜[YNˆÝš[™ÎÂˆÙXÝ[ÛœÎˆÂˆYˆÝš[™ÎÂˆ]NˆÝš[™ÎÂˆ]Y\Ý[ÛœÎˆÂˆYˆÝš[™ÎÂˆ^ˆÝš[™ÎÂˆ[œÝÙ\•\NˆÝš[™ÎÂˆ\ÜÚYÛ™YNˆÝš[™ÎÂˆ™\]Z\™Yˆ›ÛÛX[ŽÂˆ[œÝÙ\œÎˆ™XÛÜ™Ýš[™ËÝš[™ÏŽÂˆV×NÂˆV×NÂŸNÂ‚\HÝ\\‘]˜[X][Û”›Ùš[R][HHÂˆYˆÝš[™ÎÂˆ™YŽˆÝš[™ÎÂˆ[ÛY[ˆ“SÓ•ÌWÍHˆ“SÓ•ÌÈˆ“SÓ•ÍHˆ[ÂˆÝ]\ÎˆÝš[™ÎÂˆ]˜[X][Û‘]NˆÝš[™ÎÂˆ\›Ý™Y]ˆÝš[™ÎÂˆXY\“˜[YNˆÝš[™ÎÂˆÝ\YžS˜[YNˆÝš[™ÎÂŸNÂ‚™[˜Ý[ÛˆÝ\\‘]˜[X][ÛœÔYÙJÈ]˜[X][Û’YNˆÈ]˜[X][Û’YÎˆÝš[™ÈJHÂˆÛÛœÝ›Ý]\ˆH\ÙT›Ý]\Š
+NÂˆÛÛœÝÙX\˜Ú\˜[\ÈH\ÙTÙX\˜Ú\˜[\Ê
+NÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂˆÛÛœÝØ[”Ý\HØ[”Ý\Ý\\‘]˜[X][ÛŠ\Ù\ŠNÂˆÛÛœÝÝ\œ›ÛT[›š[™ÈHÙX\˜Ú\˜[\Ë™Ù]
+›™]ÈŠHOOHŒHŽÂˆÛÛœÝ[›š[™Ñ]HHÙX\˜Ú\˜[\Ë™Ù]
+™]HŠNÂˆÛÛœÝÙX[ÙÓÜ[‹Ù]X[ÙÓÜ[—HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝØØ[™Y]\ËÙ]Ø[™Y]\×HH\ÙTÝ]OÝ\\‘]˜[X][ÛØ[™Y]V×OŠ×JNÂˆÛÛœÝÛØY[™ÐØ[™Y]\ËÙ]ØY[™ÐØ[™Y]\×HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÜØ]š[™ËÙ]Ø]š[™×HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÜÙ[XÝY™\™\Ù[]]™RYÙ]Ù[XÝY™\™\Ù[]]™RYHH\ÙTÝ]JˆŠNÂˆÛÛœÝÙ]˜[X][Û‘]KÙ]]˜[X][Û‘]WHH\ÙTÝ]J
+
+HO‚ˆ\Ô[›š[™Ñ]T\˜[J[›š[™Ñ]JHÈ[›š[™Ñ]HHˆ›Ü›X]Ý\\‘]˜[X][Û‘]R[œ]
+
+Bˆ
+NÂˆÛÛœÝÜ]Y\žKÙ]]Y\žWHH\ÙTÝ]JˆŠNÂˆÛÛœÝÙX›Ý[˜ÙY]Y\žKÙ]X›Ý[˜ÙY]Y\žWHH\ÙTÝ]JˆŠNÂˆÛÛœÝØXÝ]™PØ[™Y]R[™^Ù]XÝ]™PØ[™Y]R[™^HH\ÙTÝ]J
+NÂˆÛÛœÝØØ[™Y]T™[ØYÙ^KÙ]Ø[™Y]T™[ØYÙ^WHH\ÙTÝ]J
+NÂˆÛÛœÝÙ\œ›Ü‹Ù]\œ›Ü—HH\ÙTÝ]JˆŠNÂˆÛÛœÝØØ[™Y]Q\œ›Ü‹Ù]Ø[™Y]Q\œ›Ü—HH\ÙTÝ]JˆŠNÂˆÛÛœÝÙ\XØ]R™Y‹Ù]\XØ]R™Y—HH\ÙTÝ]JˆŠNÂˆÛÛœÝÙ]Z[Ù]]Z[HH\ÙTÝ]OÝ\\‘]˜[X][Û‘]Z[[Š[
+NÂˆÛÛœÝÙ]Z[ØY[™ËÙ]]Z[ØY[™×HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÙ]Z[\œ›Ü‹Ù]]Z[\œ›Ü—HH\ÙTÝ]JˆŠNÂˆÛÛœÝÙ]Z[[œÝÙ\œËÙ]]Z[[œÝÙ\œ×HH\ÙTÝ]O™XÛÜ™Ýš[™ËÝš[™ÏŠßJNÂˆÛÛœÝÙ]Z[Ø]š[™ËÙ]]Z[Ø]š[™×HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÙ]Z[Ø]™SY\ÜØYÙKÙ]]Z[Ø]™SY\ÜØYÙWHH\ÙTÝ]OÈ\NˆœÝXØÙ\ÜÈˆ™\œ›ÜˆŽÈ^ˆÝš[™ÈOŠ
+NÂˆÛÛœÝZ[\ÝÛ™\ÈHÂˆÝ
+œÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛWÍHŠK
+œÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛWÍK™\ØÜš\[ÛˆŠWKˆÝ
+œÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛÈŠK
+œÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛË™\ØÜš\[ÛˆŠWKˆÝ
+œÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛHŠK
+œÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛK™\ØÜš\[ÛˆŠWKˆNÂˆÛÛœÝÜ›Ý\YØ[™Y]\ÈH\ÙSY[[Ê
+
+HOˆÜ›Ý\Ý\\‘]˜[X][ÛØ[™Y]\ÊØ[™Y]\ÊKØØ[™Y]\×JNÂˆÛÛœÝÙ[XÝYØ[™Y]HHØ[™Y]\Ë™š[™
+
+Ø[™Y]JHOˆØ[™Y]KšYOOHÙ[XÝY™\™\Ù[]]™RY
+NÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+]˜[X][Û’Y\Ý\œ›ÛT[›š[™ÈXØ[”Ý\
+H™]\›ŽÂˆÙ]X[ÙÓÜ[ŠYJNÂˆKØØ[”Ý\]˜[X][Û’YÝ\œ›ÛT[›š[™×JNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+YX[ÙÓÜ[ŠH™]\›ŽÂˆÛÛœÝ[™HHÚ[™ÝËœÙ][Y[Ý]
+
+
+HOˆÙ]X›Ý[˜ÙY]Y\žJ]Y\žJKL
+NÂˆ™]\›ˆ
+
+HOˆÚ[™ÝË˜ÛX\•[Y[Ý]
+[™JNÂˆKÙX[ÙÓÜ[‹]Y\žWJNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+YX[ÙÓÜ[ˆXØ[”Ý\
+H™]\›ŽÂˆ]Ø[˜Ù[YH˜[ÙNÂˆÙ]ØY[™ÐØ[™Y]\ÊYJNÂˆÙ]Ø[™Y]Q\œ›ÜŠˆŠNÂˆ™]Ú
+Ø\KÜÝ\\‹Y]˜[X][ÛœÏØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_IœOIÙ[˜ÛÙUT’PÛÛ\Û™[
+X›Ý[˜ÙY]Y\žJ_I›[Z]MLÈØXÚNˆ››Ë\ÝÜ™HˆJBˆ[Š\Þ[˜È
+™\ÜÛœÙJHOˆÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈØ[™Y]\ÏÎˆÝ\\‘]˜[X][ÛØ[™Y]V×NÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\›ØY\œ›ÜˆŠJNÂˆYˆ
+Ø[˜Ù[Y
+H™]\›ŽÂˆÛÛœÝ™^H^[ØY˜Ø[™Y]\ÈÏÈ×NÂˆÙ]Ø[™Y]\Ê™^
+NÂˆÙ]XÝ]™PØ[™Y]R[™^
+
+NÂˆÙ]Ù[XÝY™\™\Ù[]]™RY
+
+Ý\œ™[
+HO‚ˆÝ\œ™[	‰ˆ™^œÛÛYJ
+Ø[™Y]JHOˆØ[™Y]KšYOOHÝ\œ™[
+BˆÈÝ\œ™[ˆˆˆ‚ˆ
+NÂˆJBˆ˜Ø]Ú
+
+Ø]\ÙJHOˆÂˆYˆ
+XØ[˜Ù[Y
+HÙ]Ø[™Y]Q\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\›ØY\œ›ÜˆŠJNÂˆJBˆ™š[˜[J
+
+HOˆÂˆYˆ
+XØ[˜Ù[Y
+HÙ]ØY[™ÐØ[™Y]\Ê˜[ÙJNÂˆJNÂˆ™]\›ˆ
+
+HOˆÂˆØ[˜Ù[YHYNÂˆNÂˆKØØ[”Ý\Ø[™Y]T™[ØYÙ^KX›Ý[˜ÙY]Y\žKX[ÙÓÜ[‹\Ù\‹šYJNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+Y]˜[X][Û’Y
+H™]\›ŽÂˆ]Ø[˜Ù[YH˜[ÙNÂˆÙ]]Z[ØY[™ÊYJNÂˆÙ]]Z[\œ›ÜŠˆŠNÂˆ™]Ú
+Ø\KÜÝ\\‹Y]˜[X][ÛœËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+]˜[X][Û’Y
+_OØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_XÈØXÚNˆ››Ë\ÝÜ™HˆJBˆ[Š\Þ[˜È
+™\ÜÛœÙJHOˆÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ]˜[X][ÛÎˆÝ\\‘]˜[X][Û‘]Z[È\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÈ\^[ØY™]˜[X][ÛŠH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+œÝ\\‘]˜[X][ÛœË™]Z[›ØY\œ›ÜˆŠJNÂˆYˆ
+XØ[˜Ù[Y
+HÂˆÙ]]Z[
+^[ØY™]˜[X][ÛŠNÂˆÛÛœÝ[œÝÙ\”›ÛHH\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘HˆÈ”‘T‘TÑS•UU‘Hˆˆ‘USPUÔˆŽÂˆÙ]]Z[[œÝÙ\œÊØš™XÝ™œ›ÛQ[šY\Êˆ^[ØY™]˜[X][Û‹œÙXÝ[ÛœË™›]X\
+
+ÙXÝ[ÛŠHO‚ˆÙXÝ[Û‹œ]Y\Ý[ÛœË›X\
+
+]Y\Ý[ÛŠHOˆÜ]Y\Ý[Û‹šY]Y\Ý[Û‹˜[œÝÙ\œÖØ[œÝÙ\”›ÛWHÏÈˆ—JBˆ
+Bˆ
+JNÂˆBˆJBˆ˜Ø]Ú
+
+Ø]\ÙJHOˆÂˆYˆ
+XØ[˜Ù[Y
+HÙ]]Z[\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+œÝ\\‘]˜[X][ÛœË™]Z[›ØY\œ›ÜˆŠJNÂˆJBˆ™š[˜[J
+
+HOˆÂˆYˆ
+XØ[˜Ù[Y
+HÙ]]Z[ØY[™Ê˜[ÙJNÂˆJNÂˆ™]\›ˆ
+
+HOˆÂˆØ[˜Ù[YHYNÂˆNÂˆKÙ]˜[X][Û’Y\Ù\‹šY\Ù\‹œ›ÛWJNÂ‚ˆ\Þ[˜È[˜Ý[ÛˆÝX›Z]X[X[Ý\
+
+HÂˆYˆ
+\Ù[XÝY™\™\Ù[]]™RY
+HÂˆÙ]\œ›ÜŠ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œ™\™\Ù[]]™T™\]Z\™YŠJNÂˆ™]\›ŽÂˆBˆYˆ
+Y]˜[X][Û‘]JHÂˆÙ]\œ›ÜŠ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\™]T™\]Z\™YŠJNÂˆ™]\›ŽÂˆBˆÙ]Ø]š[™ÊYJNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]\XØ]R™YŠˆŠNÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+‹Ø\KÜÝ\\‹Y]˜[X][ÛœÈ‹ÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÂˆXÝÜ’Yˆ\Ù\‹šYˆ™\™\Ù[]]™RYˆÙ[XÝY™\™\Ù[]]™RYˆ]˜[X][Û‘]KˆJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÂˆ]˜[X][ÛÎˆÈYˆÝš[™ÎÈ™YŽˆÝš[™ÈNÂˆ\XØ]OÎˆ›ÛÛX[ŽÂˆ™YÎˆÝš[™ÎÂˆ\œ›ÜÎˆÝš[™ÎÂˆNÂˆYˆ
+™\ÜÛœÙKœÝ]\ÈOOHH	‰ˆ^[ØYš™YŠHÂˆÙ]\XØ]R™YŠ^[ØYš™YŠNÂˆÙ]\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\™\XØ]HŠJNÂˆ™]\›ŽÂˆBˆYˆ
+\™\ÜÛœÙK›ÚÈ\^[ØY™]˜[X][ÛŠHÂˆ›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\™\œ›ÜˆŠJNÂˆBˆÙ]X[ÙÓÜ[Š˜[ÙJNÂˆ›Ý]\‹œ\Ú
+^[ØY™]˜[X][Û‹š™YŠNÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\™\œ›ÜˆŠJNÂˆHš[˜[HÂˆÙ]Ø]š[™Ê˜[ÙJNÂˆBˆB‚ˆ\Þ[˜È[˜Ý[ÛˆØ]™TÝ\\‘]˜[X][Û[œÝÙ\œÊ
+HÂˆYˆ
+Y]Z[
+H™]\›ŽÂˆÙ]]Z[Ø]š[™ÊYJNÂˆÙ]]Z[Ø]™SY\ÜØYÙJ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+Ø\KÜÝ\\‹Y]˜[X][ÛœËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+]Z[šY
+_OØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_XÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÂˆ[œÝÙ\œÎˆØš™XÝ™[šY\Ê]Z[[œÝÙ\œÊK›X\
+
+Ü]Y\Ý[Û’Y˜[YWJHOˆ
+È]Y\Ý[Û’Y˜[YHJJKˆJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+œÝ\\‘]˜[X][ÛœË™]Z[œØ]™Q\œ›ÜˆŠJNÂˆÙ]]Z[Ø]™SY\ÜØYÙJÈ\NˆœÝXØÙ\ÜÈ‹^ˆ
+œÝ\\‘]˜[X][ÛœË™]Z[œØ]™YŠHJNÂˆHØ]Ú
+\œ›ÜŠHÂˆÙ]]Z[Ø]™SY\ÜØYÙJÈ\Nˆ™\œ›Üˆ‹^ˆ\œ›Üˆ[œÝ[˜Ù[Ùˆ\œ›ÜˆÈ\œ›Ü‹›Y\ÜØYÙHˆ
+œÝ\\‘]˜[X][ÛœË™]Z[œØ]™Q\œ›ÜˆŠHJNÂˆHš[˜[HÂˆÙ]]Z[Ø]š[™Ê˜[ÙJNÂˆBˆB‚ˆYˆ
+]˜[X][Û’Y
+HÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›^X]]ÈX^]ËM^ÜXÙK^KMH‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+œÝ\\‘]˜[X][ÛœË™]Z[™^YXœ›ÝÈŠ_Bˆ]O^Ý
+œÝ\\‘]˜[X][ÛœË™]Z[]HŠ_Bˆ\ØÜš\[Û^Ù]Z[È	Ù]Z[œ™\™\Ù[]]™S˜[Y_HH	Ù›Ü›X]ÚÜ]J]Z[™]˜[X][Û‘]J_Xˆ
+œÝ\\‘]˜[X][ÛœË™]Z[™\ØÜš\[ÛˆŠ_BˆXÝ[ÛœÏ^Âˆ[šÈ™YH‹Ý\ÜÙ[Z™ÙKY]˜[X]Y\ÈˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žH‚ˆÝ
+œÝ\\‘]˜[X][ÛœË™]Z[˜˜XÚÈŠ_BˆÓ[šÏ‚ˆBˆÏ‚ˆÙ]Z[ØY[™È	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y[È›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HMH^\ÛH›Û\Ù[ZX›Û^\Û]KMŒÚYÝË\ÛH‚ˆÝ
+œÝ\\‘]˜[X][ÛœË™]Z[›ØY[™ÈŠ_BˆÙ]‚ˆ
+_BˆÙ]Z[\œ›Üˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y[È›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLM^\ÛH›Û\Ù[ZX›Û^\›ÜÙKMÌ‚ˆÙ]Z[\œ›ÜŸBˆÙ]‚ˆ
+_BˆÙ]Z[	‰ˆ
+ˆ‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËM‚ˆÝ[[X\žU˜[YHX™[^Ý
+œÝ\\‘]˜[X][ÛœË™]Z[œ™\™\Ù[]]™HŠ_H˜[YO^Ù]Z[œ™\™\Ù[]]™S˜[Y_HÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+œÝ\\‘]˜[X][ÛœË™]Z[X[HŠ_H˜[YO^Ù]Z[X[S˜[YH‹HŸHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+œÝ\\‘]˜[X][ÛœË™]Z[˜ÛÝ[žHŠ_H˜[YO^Ù]Z[˜ÛÝ[ž_HÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+œÝ\\‘]˜[X][ÛœË™]Z[™]˜[X]ÜˆŠ_H˜[YO^Ù]Z[›XY\“˜[YH]Z[›X[X[Ý\YžS˜[YH‹HŸHÏ‚ˆÙ]‚ˆÜÙXÝ[Û‚ˆ]ˆÛ\ÜÓ˜[YOHœÝXÚÞHÜM‹LŒ›^›^XÛÛØ\LÈ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]KÎMHLÈÚYÝË[È˜XÚÙ›ÜX›\ˆÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆÛNš\ÝYžKX™]ÙY[ˆ‚ˆ]‚ˆÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNMLžÝ
+œÝ\\‘]˜[X][ÛœË™]Z[™›Ü›U]HŠ_OÜ‚ˆÛ\ÜÓ˜[YOH^^È^\Û]KMLžÝ
+œÝ\\‘]˜[X][ÛœË™]Z[™›Ü›Q\ØÜš\[ÛˆŠ_OÜ‚ˆÙ]‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆ\ØX›Y^Ù]Z[Ø]š[™ßHÛÛXÚÏ^Ê
+HOˆ›ÚYØ]™TÝ\\‘]˜[X][Û[œÝÙ\œÊ
+_O‚ˆÙ]Z[Ø]š[™ÈÈØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏˆˆÛ\›Ø\™ÚXÚÈÛ\ÜÓ˜[YOHšMËMˆÏŸBˆÙ]Z[Ø]š[™ÈÈ
+œÝ\\‘]˜[X][ÛœË™]Z[œØ]š[™ÈŠHˆ
+œÝ\\‘]˜[X][ÛœË™]Z[œØ]™HŠ_BˆØ]Û‚ˆÙ]‚ˆÙ]Z[Ø]™SY\ÜØYÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YO^Ø›Ý[™YLž›Ü™\ˆMKLÈ^\ÛH›Û\Ù[ZX›Û	Ù]Z[Ø]™SY\ÜØYÙK\HOOHœÝXØÙ\ÜÈˆÈ˜›Ü™\‹Y[Y\˜[LŒ™ËY[Y\˜[ML^Y[Y\˜[Nˆˆ˜›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKML^\›ÜÙKMÌŸXO‚ˆÙ]Z[Ø]™SY\ÜØYÙK^BˆÙ]‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆÙ]Z[œÙXÝ[ÛœË›X\
+
+ÙXÝ[Û‹ÙXÝ[Û’[™^
+HOˆ
+ˆÙXÝ[ÛˆÙ^O^ÜÙXÝ[Û‹šYHÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\Û]KLL™Ë\Û]KMLMHKM‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^Xœ˜[™MÌžÝ
+œÝ\\‘]˜[X][ÛœË™]Z[œÙXÝ[ÛˆŠ_HÜÙXÝ[Û’[™^
+È_OÜ‚ˆˆÛ\ÜÓ˜[YOH›]LH^[È›ÛX›Û^\Û]KNMLžÜÙXÝ[Û‹]_OÚ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMHMH‚ˆÜÙXÝ[Û‹œ]Y\Ý[ÛœË›X\
+
+]Y\Ý[ÛŠHOˆ
+ˆÝ\\‘]˜[X][Û[œÝÙ\‘šY[ˆÙ^O^Ü]Y\Ý[Û‹šYBˆ]Y\Ý[Û^Ü]Y\Ý[ÛŸBˆ˜[YO^Ù]Z[[œÝÙ\œÖÜ]Y\Ý[Û‹šYHÏÈˆŸBˆ\ØX›Y^Ù]Z[Ø]š[™È]Y\Ý[Û‹˜\ÜÚYÛ™YHOOH”ÖTÕSHŸBˆ^ÝBˆÛÚ[™ÙO^Ê˜[YJHOˆÙ]]Z[[œÝÙ\œÊ
+Ý\œ™[
+HOˆ
+È‹‹˜Ý\œ™[Ü]Y\Ý[Û‹šYNˆ˜[YHJJ_BˆÏ‚ˆ
+J_BˆÙ]‚ˆÜÙXÝ[Û‚ˆ
+J_BˆÙ]‚ˆÏ‚ˆ
+_BˆÙ]‚ˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMH‚ˆYÙRXY\‚ˆ]O^Ý
+œÝ\\‘]˜[X][ÛœË]HŠ_Bˆ\ØÜš\[Û^Ý
+œÝ\\‘]˜[X][ÛœË™\ØÜš\[ÛˆŠ_BˆXÝ[ÛœÏ^ØØ[”Ý\	‰ˆ
+ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆÛÛXÚÏ^Ê
+HOˆÙ]X[ÙÓÜ[ŠYJ_O‚ˆ\ÈÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\˜]ÛˆŠ_BˆØ]Û‚ˆ
+_BˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÎ™ÜšYXÛÛËLÈ‚ˆÛZ[\ÝÛ™\Ë›X\
+
+Ý]K\ØÜš\[Û—JHOˆ
+ˆ]ˆÙ^O^Ý]_HÛ\ÜÓ˜[YOHœ›Ý[™Y[È›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HMÚYÝË\ÛH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYLLËLLXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È™ËXœ˜[™ML^Xœ˜[™MÌ‚ˆÛ\›Ø\™ÚXÚÈÛ\ÜÓ˜[YOHšMHËMHˆÏ‚ˆÙ]‚ˆ]‚ˆˆÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNMLžÝ]_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛHXY[™ËMˆ^\Û]KMŒžÙ\ØÜš\[ÛŸOÜ‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+J_BˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y[È›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HMHÚYÝË\ÛH‚ˆˆÛ\ÜÓ˜[YOH^X˜\ÙH›ÛX›Û^\Û]KNMLžÝ
+œÝ\\‘]˜[X][ÛœË˜]]ÛX]XË]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]Lˆ^\ÛHXY[™ËMˆ^\Û]KMŒ‚ˆÝ
+œÝ\\‘]˜[X][ÛœË˜]]ÛX]XË™\ØÜš\[ÛˆŠ_BˆÜ‚ˆÛ\ÜÓ˜[YOH›]LÈ›Ý[™Y[È›Ü™\ˆ›Ü™\‹X[X™\‹LŒ™ËX[X™\‹MLLÈKLˆ^\ÛH›Û\Ù[ZX›Û^X[X™\‹N‚ˆÝ
+œÝ\\‘]˜[X][ÛœË˜]]ÛX]XËØ\›š[™ÈŠ_BˆÜ‚ˆÙ]‚ˆÙX[ÙÓÜ[ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹ML›^][\ËXÙ[\ˆ\ÝYžKXÙ[\ˆ™Ë\Û]KNMLÍM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^X^ZVÎLšHËY[X^]ËLž›^XÛÛ›Ý[™Y^™Ë]Ú]HÚYÝËLž‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\M‚ˆ]ˆÛ\ÜÓ˜[YOHœMHMH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMŒžÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\™\ØÜš\[ÛˆŠ_OÜ‚ˆÙ]‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹YÚÜÝ\‹MH]MHNHËNHLˆÛÛXÚÏ^Ê
+HOˆÙ]X[ÙÓÜ[Š˜[ÙJ_H\šXK[X™[^Ý
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\˜Ø[˜Ù[Š_O‚ˆÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆØ]Û‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MH›^LHÜXÙK^KMÝ™\™›ÝË^KX]]ÈMH‹MH‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌ‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œ™\™\Ù[]]™HŠ_Bˆ]ˆÛ\ÜÓ˜[YOHœ™[]]™H]Lˆ‚ˆÙX\˜ÚÛ\ÜÓ˜[YOHœÚ[\‹Y]™[Ë[›Û™HXœÛÛ]HYLÈÜL‹HMËM^\Û]KMˆÏ‚ˆ[œ]ˆ›ÛOH˜ÛÛX›Ø›Þ‚ˆ\šXKY^[™YHYH‚ˆ\šXKXÛÛ›ÛÏHœÝ\\‹Y]˜[X][Û‹XØ[™Y]\È‚ˆ\šXKXXÝ]™Y\ØÙ[™[^ØØ[™Y]\ÖØXÝ]™PØ[™Y]R[™^OËšYÈÝ\\‹XØ[™Y]KIØØ[™Y]\ÖØXÝ]™PØ[™Y]R[™^KšYXˆ[™Yš[™YBˆÛ\ÜÓ˜[YOHš[œ]NH‚ˆ˜[YO^Ü]Y\ž_BˆÛÚ[™ÙO^Ê]™[
+HOˆÂˆÙ]]Y\žJ]™[\™Ù]˜[YJNÂˆÙ]XÝ]™PØ[™Y]R[™^
+
+NÂˆ_BˆÛ’Ù^QÝÛ^Ê]™[
+HOˆÂˆYˆ
+XØ[™Y]\Ë›[™Ý
+H™]\›ŽÂˆYˆ
+]™[šÙ^HOOH\œ›ÝÑÝÛˆŠHÂˆ]™[œ™]™[Y˜][
+
+NÂˆÙ]XÝ]™PØ[™Y]R[™^
+
+Ý\œ™[
+HOˆX]›Z[ŠÝ\œ™[
+ÈKØ[™Y]\Ë›[™ÝHJJNÂˆBˆYˆ
+]™[šÙ^HOOH\œ›ÝÕ\ŠHÂˆ]™[œ™]™[Y˜][
+
+NÂˆÙ]XÝ]™PØ[™Y]R[™^
+
+Ý\œ™[
+HOˆX]›X^
+Ý\œ™[HK
+JNÂˆBˆYˆ
+]™[šÙ^HOOH‘[\ˆŠHÂˆ]™[œ™]™[Y˜][
+
+NÂˆÙ]Ù[XÝY™\™\Ù[]]™RY
+Ø[™Y]\ÖØXÝ]™PØ[™Y]R[™^OËšYÏÈˆŠNÂˆBˆ_BˆXÙZÛ\^Ý
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œÙX\˜ÚXÙZÛ\ˆŠ_Bˆ\ØX›Y^ÜØ]š[™ßBˆÏ‚ˆÛØY[™ÐØ[™Y]\È	‰ˆØY\Ú\˜ÛHÛ\ÜÓ˜[YOH˜XœÛÛ]HšYÚLÈÜL‹HMËM[š[X]K\Ü[ˆ^\Û]KMˆÏŸBˆÙ]‚ˆÛX™[‚ˆ]ˆYHœÝ\\‹Y]˜[X][Û‹XØ[™Y]\Èˆ›ÛOH›\Ý›ÞˆÛ\ÜÓ˜[YOH›X^ZNÝ™\™›ÝË^KX]]È›Ý[™Y[È›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆØØ[™Y]Q\œ›Üˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈLÈKLÈ^\ÛH‚ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›Û^\›ÜÙKMÌžØØ[™Y]Q\œ›ÜŸOÜ‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^Ê
+HOˆÙ]Ø[™Y]T™[ØYÙ^J
+Ý\œ™[
+HOˆÝ\œ™[
+ÈJ_H\ØX›Y^ÜØ]š[™ßO‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œ™]žHŠ_BˆØ]Û‚ˆÙ]‚ˆ
+_BˆÈXØ[™Y]Q\œ›Üˆ	‰ˆØY[™ÐØ[™Y]\È	‰ˆXØ[™Y]\Ë›[™Ý	‰ˆ
+ˆÛ\ÜÓ˜[YOHœLÈKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KML‚ˆÙX›Ý[˜ÙY]Y\žHÈ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œÙX\˜ÚØY[™ÈŠHˆ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\›ØY[™ÈŠ_BˆÜ‚ˆ
+_BˆÈXØ[™Y]Q\œ›Üˆ	‰ˆ[ØY[™ÐØ[™Y]\È	‰ˆØ[™Y]\Ë›[™ÝOOH	‰ˆ
+ˆÛ\ÜÓ˜[YOHœLÈKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KML‚ˆÙX›Ý[˜ÙY]Y\žBˆÈ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\››Ô™\Ý[Ñ›ÜˆŠKœ™\XÙJžÜ]Y\ž_H‹X›Ý[˜ÙY]Y\žJBˆˆ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\››ÐØ[™Y]\Ò[”ØÛÜHŠ_BˆÜ‚ˆ
+_BˆÈXØ[™Y]Q\œ›Üˆ	‰ˆÜ›Ý\YØ[™Y]\Ë›X\
+
+ÛÝ[žQÜ›Ý\
+HOˆ
+ˆ]ˆÙ^O^ØÛÝ[žQÜ›Ý\˜ÛÝ[ž_O‚ˆ]ˆÛ\ÜÓ˜[YOHœÝXÚÞHÜL‹LL›Ü™\‹Xˆ›Ü™\‹\Û]KLL™Ë\Û]KMLLÈKLKH^VÌL\H›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚYH^\Û]KML‚ˆØÛÝ[žQÜ›Ý\˜ÛÝ[ž_BˆÙ]‚ˆØÛÝ[žQÜ›Ý\X[\Ë›X\
+
+X[QÜ›Ý\
+HOˆ
+ˆ]ˆÙ^O^Ø	ØÛÝ[žQÜ›Ý\˜ÛÝ[ž_KIÝX[QÜ›Ý\X[S˜[Y_XO‚ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\Û]KLLLÈKLH^^È›Û\Ù[ZX›Û^\Û]KML‚ˆÝX[QÜ›Ý\X[S˜[YH
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\››ÕX[HŠ_BˆÙ]‚ˆÝX[QÜ›Ý\˜Ø[™Y]\Ë›X\
+
+Ø[™Y]JHOˆÂˆÛÛœÝÙ[XÝYHØ[™Y]KšYOOHÙ[XÝY™\™\Ù[]]™RYÂˆÛÛœÝXÝ]™HHØ[™Y]\ÖØXÝ]™PØ[™Y]R[™^OËšYOOHØ[™Y]KšYÂˆ™]\›ˆ
+ˆ]Û‚ˆY^ØÝ\\‹XØ[™Y]KIØØ[™Y]KšYXBˆ›ÛOH›Ü[Ûˆ‚ˆ\šXK\Ù[XÝY^ÜÙ[XÝYBˆÙ^O^ØØ[™Y]KšYBˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YO^Ø›^ËY[][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\LÈ›Ü™\‹Xˆ›Ü™\‹\Û]KLLLÈKLÈ^[Y\Ý˜›Ü™\‹X‹L	ÜÙ[XÝYÈ˜™ËXœ˜[™MLˆˆXÝ]™HÈ˜™Ë\Û]KMLˆˆšÝ™\Ž˜™Ë\Û]KMLŸXBˆÛÛXÚÏ^Ê
+HOˆÙ]Ù[XÝY™\™\Ù[]]™RY
+Ø[™Y]KšY
+_Bˆ\ØX›Y^ÜØ]š[™ßBˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›^Z[‹]ËL][\ËXÙ[\ˆØ\LÈ‚ˆ]˜]\ˆ[š]X[Ï^ØØ[™Y]Kš[š]X[È••ŸHÜ˜Ï^ØØ[™Y]K˜]˜]\•\›H[^ØØ[™Y]K›˜[Y_HÛ\ÜÓ˜[YOHšLLËLL^^ÈˆÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›Z[‹]ËL‚ˆÜ[ˆÛ\ÜÓ˜[YOH˜›ØÚÈ[˜Ø]H^\ÛH›ÛX›Û^\Û]KNMLžØØ[™Y]K›˜[Y_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH›]LH›ØÚÈ[˜Ø]H^^È^\Û]KML‚ˆÝX[QÜ›Ý\X[S˜[YH
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\››ÕX[HŠ_HHØØ[™Y]K˜ÛÝ[ž_BˆÜÜ[‚ˆØØ[™Y]K™[XZ[	‰ˆÜ[ˆÛ\ÜÓ˜[YOH›]LH›ØÚÈ[˜Ø]H^^È^\Û]KMžØØ[™Y]K™[XZ[OÜÜ[ŸBˆÜÜ[‚ˆÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›^Úš[šËL][\ËXÙ[\ˆØ\Lˆ‚ˆØØ[™Y]Kœ™\™\Ù[]]™S]™[	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[LˆKLH^VÌL\H›ÛX›Û	Ü™\™\Ù[]]™S]™[˜YÙPÛ\ÜÖØØ[™Y]Kœ™\™\Ù[]]™S]™[_XO‚ˆÝ
+™\™\Ù[]]™S]™[‰ØØ[™Y]Kœ™\™\Ù[]]™S]™[X\È˜[œÛ][Û’Ù^J_BˆÜÜ[‚ˆ
+_BˆÜÙ[XÝY	‰ˆÚXÚÈÛ\ÜÓ˜[YOHšMËM^Xœ˜[™MÌˆÏŸBˆÜÜ[‚ˆØ]Û‚ˆ
+NÂˆJ_BˆÙ]‚ˆ
+J_BˆÙ]‚ˆ
+J_BˆÙ]‚ˆÜÙ[XÝYØ[™Y]H	‰ˆ
+ˆÛ\ÜÓ˜[YOH^^È›Û\Ù[ZX›Û^\Û]KML‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œÙ[XÝYŠ_NˆÜÙ[XÝYØ[™Y]K›˜[Y_BˆÜ‚ˆ
+_BˆX™[Û\ÜÓ˜[YOH˜›ØÚÈÜXÙK^KLˆ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌ‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\™]HŠ_Bˆ[œ]ˆ\OH™]H‚ˆÛ\ÜÓ˜[YOHš[œ]‚ˆ˜[YO^Ù]˜[X][Û‘]_BˆÛÚ[™ÙO^Ê]™[
+HOˆÙ]]˜[X][Û‘]J]™[\™Ù]˜[YJ_Bˆ\ØX›Y^ÜØ]š[™ßBˆÏ‚ˆÛX™[‚ˆÙ\œ›Üˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y[È›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLLÈKLˆ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKMÌ‚ˆÙ\œ›ÜŸBˆÙ\XØ]R™Yˆ	‰ˆ
+ˆ[šÈ™Y^Ù\XØ]R™YŸHÛ\ÜÓ˜[YOH›[Lˆ[™\›[™HˆÛÛXÚÏ^Ê
+HOˆÙ]X[ÙÓÜ[Š˜[ÙJ_O‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\›Ü[‘^\Ý[™ÈŠ_BˆÓ[šÏ‚ˆ
+_BˆÙ]‚ˆ
+_BˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^\ÝYžKY[™Ø\Lˆ›Ü™\‹]›Ü™\‹\Û]KLŒMHKM‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^Ê
+HOˆÙ]X[ÙÓÜ[Š˜[ÙJ_H\ØX›Y^ÜØ]š[™ßO‚ˆÝ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\˜Ø[˜Ù[Š_BˆØ]Û‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆÛÛXÚÏ^ÜÝX›Z]X[X[Ý\H\ØX›Y^ÜØ]š[™ÈØY[™ÐØ[™Y]\È\Ù[XÝY™\™\Ù[]]™RYO‚ˆÜØ]š[™È	‰ˆØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏŸBˆÈ\Ø]š[™È	‰ˆÛ\›Ø\™ÚXÚÈÛ\ÜÓ˜[YOHšMËMˆÏŸBˆÜØ]š[™ÈÈ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œØ]š[™ÈŠHˆ
+œÝ\\‘]˜[X][ÛœË›X[X[Ý\œÝX›Z]Š_BˆØ]Û‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆÝ\\‘]˜[X][Û[œÝÙ\‘šY[
+Âˆ\ØX›YˆÛÚ[™ÙKˆ]Y\Ý[Û‹ˆˆ˜[YKŸNˆÂˆ\ØX›Yˆ›ÛÛX[ŽÂˆÛÚ[™ÙNˆ
+˜[YNˆÝš[™ÊHOˆ›ÚYÂˆ]Y\Ý[ÛŽˆÝ\\‘]˜[X][Û‘]Z[ÈœÙXÝ[ÛœÈ—VÛ[X™\—VÈœ]Y\Ý[ÛœÈ—VÛ[X™\—NÂˆˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÎÂˆ˜[YNˆÝš[™ÎÂŸJHÂˆÛÛœÝX™[H	Ü]Y\Ý[Û‹^IÜ]Y\Ý[Û‹œ™\]Z\™YÈˆ
+ˆˆˆˆŸXÂˆÛÛœÝ[œÝ\ÜYHÈ”ÖTÕSH‹“S’ÑQÐÔ’UT’SÓˆ‹PÕSÓ—ÔÒS•È—Kš[˜ÛY\Ê]Y\Ý[Û‹˜[œÝÙ\•\JNÂˆYˆ
+[œÝ\ÜY
+HÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLŒ™Ë\Û]KMLM‚ˆÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNLžÛX™[OÜ‚ˆÛ\ÜÓ˜[YOH›]Lˆ^\ÛH^\Û]KMLžÝ
+œÝ\\‘]˜[X][ÛœË™]Z[˜]]ÛX]XÔXÙZÛ\ˆŠ_OÜ‚ˆÙ]‚ˆ
+NÂˆBˆYˆ
+]Y\Ý[Û‹˜[œÝÙ\•\HOOH“ÓÓPSˆŠHÂˆ™]\›ˆ
+ˆX™[Û\ÜÓ˜[YOH™›^][\Ë\Ý\Ø\LÈ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLM^\ÛH‚ˆ[œ]Û\ÜÓ˜[YOH›]LHˆ\OH˜ÚXÚØ›ÞˆÚXÚÙY^Ý˜[YHOOHYHŸH\ØX›Y^Ù\ØX›YHÛÚ[™ÙO^Ê]™[
+HOˆÛÚ[™ÙJ]™[\™Ù]˜ÚXÚÙYÈYHˆˆ™˜[ÙHŠ_HÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›Û^\Û]KNLžÛX™[OÜÜ[‚ˆÛX™[‚ˆ
+NÂˆBˆYˆ
+È“•SP‘Tˆ‹”TÑS•QÑH‹ÕT”‘SÖH‹”ÐÓÔ‘H—Kš[˜ÛY\Ê]Y\Ý[Û‹˜[œÝÙ\•\JJHÂˆ™]\›ˆ^šY[X™[^ÛX™[H\OH›[X™\ˆˆ˜[YO^Ý˜[Y_H\ØX›Y^Ù\ØX›YHÛÚ[™ÙO^ÛÛÚ[™Ù_HÏŽÂˆBˆYˆ
+]Y\Ý[Û‹˜[œÝÙ\•\HOOH‘UHŠHÂˆ™]\›ˆ^šY[X™[^ÛX™[H\OH™]Hˆ˜[YO^Ý˜[Y_H\ØX›Y^Ù\ØX›YHÛÚ[™ÙO^ÛÛÚ[™Ù_HÏŽÂˆBˆ™]\›ˆšXÚ^Y]ÜˆX™[^ÛX™[H˜[YO^Ý˜[Y_H\ØX›Y^Ù\ØX›YHÛÚ[™ÙO^ÛÛÚ[™Ù_HÏŽÂŸB‚™[˜Ý[ÛˆÜ›Ý\Ý\\‘]˜[X][ÛØ[™Y]\ÊØ[™Y]\ÎˆÝ\\‘]˜[X][ÛØ[™Y]V×JHÂˆÛÛœÝÛÝ[žQÜ›Ý\ÈH™]ÈX\Ýš[™ËX\Ýš[™ËÝ\\‘]˜[X][ÛØ[™Y]V×OŠ
+NÂˆ›Üˆ
+ÛÛœÝØ[™Y]HÙˆØ[™Y]\ÊHÂˆÛÛœÝX[S˜[YHHØ[™Y]KX[S˜[YHˆŽÂˆYˆ
+XÛÝ[žQÜ›Ý\Ëš\ÊØ[™Y]K˜ÛÝ[žJJHÛÝ[žQÜ›Ý\ËœÙ]
+Ø[™Y]K˜ÛÝ[žK™]ÈX\
+
+JNÂˆÛÛœÝX[QÜ›Ý\ÈHÛÝ[žQÜ›Ý\Ë™Ù]
+Ø[™Y]K˜ÛÝ[žJHNÂˆX[QÜ›Ý\ËœÙ]
+X[S˜[YKË‹‹ŠX[QÜ›Ý\Ë™Ù]
+X[S˜[YJHÏÈ×JKØ[™Y]WJNÂˆBˆ™]\›ˆË‹‹˜ÛÝ[žQÜ›Ý\Ë™[šY\Ê
+WK›X\
+
+ØÛÝ[žKX[SX\JHOˆ
+ÂˆÛÝ[žKˆX[\ÎˆË‹‹X[SX\™[šY\Ê
+WK›X\
+
+ÝX[S˜[YKX[PØ[™Y]\×JHOˆ
+ÂˆX[S˜[YKˆØ[™Y]\ÎˆX[PØ[™Y]\ËˆJJKˆJJNÂŸB‚™[˜Ý[Ûˆ\Ú›Ø\™
+
+HÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œË[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝ\Ú›Ø\™ØØ[HH[™ÝXYÙHOOH™œˆˆÈ™œ‹P‘Hˆˆ[™ÝXYÙHOOH™HˆÈ™KQHˆˆ››P‘HŽÂˆÛÛœÝÈ\Ó[Ù[Q[˜X›Y[Ù[\ÈHH\ÙS[Ù[\Ê
+NÂˆÛÛœÝÈ™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÙ\Ú›Ø\™Yš[š][ÛœËÙ]\Ú›Ø\™Yš[š][Ûœ×HH\ÙTÝ]OØÛÜYXÝ[Û‘Yš[š][Û–×OŠ×JNÂˆÛÛœÝÂˆš\ÚX›R[\™[[ÛœËˆš\ÚX›PÛÛXÝ[ÛY[Ëˆš\ÚX›R[™\]Y\ÝËˆš\ÚX›T™]˜Z[š[™ÜËˆš\ÚX›TØ[\Õ˜Z[š[™ÜËˆÝ]KˆHH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝØÛÜY™\™\Ù[]]™\ÈH\ÙSY[[Êˆ
+
+HOˆÙ]š\ÚX›T™\™\Ù[]]™\Ê\Ù\‹™\™\Ù[]]™\ÊKˆÜ™\™\Ù[]]™\Ë\Ù\—Bˆ
+NÂˆÛÛœÝX[Q\Ú›Ø\™[ÝÙYHØ[•šY]ÕX[Q\Ú›Ø\™
+\Ù\ŠNÂˆÛÛœÝX[Q\Ú›Ø\™™\™\Ù[]]™\ÈH\ÙSY[[Êˆ
+
+HOˆX[Q\Ú›Ø\™[ÝÙYÈÙ]š\ÚX›T™\™\Ù[]]™\Ê\Ù\‹™\™\Ù[]]™\ÊHˆ×KˆÜ™\™\Ù[]]™\ËX[Q\Ú›Ø\™[ÝÙY\Ù\—Bˆ
+NÂˆÛÛœÝÛØXÚ[™Ñ[˜X›YH\Ó[Ù[Q[˜X›Y
+‘QÑSRQS‘ÑSˆŠNÂˆÛÛœÝ[›š[™Ñ[˜X›YH\Ó[Ù[Q[˜X›Y
+”S“’S‘ÈŠNÂˆÛÛœÝÛÛXÝÑ[˜X›YH\Ó[Ù[Q[˜X›Y
+ÓÓ•PÕSÓQS•SˆŠNÂˆÛÛœÝ[[˜X›YH\Ó[Ù[Q[˜X›Y
+’SPS•”QÑSˆŠNÂˆÛÛœÝ™]˜Z[š[™Ñ[˜X›YH\Ó[Ù[Q[˜X›Y
+”‘URS’S‘ÑSˆŠNÂˆÛÛœÝØ[\Õ˜Z[š[™Ñ[˜X›YH\Ó[Ù[Q[˜X›Y
+”ÐSTÕRS’S‘ÑSˆŠNÂˆÛÛœÝXÝ[Û”Ú[Ñ[˜X›YH\Ó[Ù[Q[˜X›Y
+PÕQTS•SˆŠNÂˆÛÛœÝØÛÜY[\™[[ÛœÈH\ÙSY[[Êˆ
+
+HOˆÛØXÚ[™Ñ[˜X›YÈY\PžRY
+š\ÚX›R[\™[[ÛœÊ\Ù\ŠJHˆ×KˆØÛØXÚ[™Ñ[˜X›Y\Ù\‹š\ÚX›R[\™[[Ûœ×Kˆ
+NÂˆÛÛœÝØÛÜYÛÛXÝÈH\ÙSY[[Êˆ
+
+HOˆÛÛXÝÑ[˜X›YÈš\ÚX›PÛÛXÝ[ÛY[Ê\Ù\ŠHˆ×KˆØÛÛXÝÑ[˜X›Y\Ù\‹š\ÚX›PÛÛXÝ[ÛY[×Kˆ
+NÂˆÛÛœÝØÛÜY[™\]Y\ÝÈH\ÙSY[[Êˆ
+
+HOˆ[[˜X›YÈš\ÚX›R[™\]Y\ÝÊ\Ù\ŠHˆ×KˆÚ[[˜X›Y\Ù\‹š\ÚX›R[™\]Y\Ý×Kˆ
+NÂˆÛÛœÝØÛÜY™]˜Z[š[™ÜÈH\ÙSY[[Êˆ
+
+HOˆ™]˜Z[š[™Ñ[˜X›YÈš\ÚX›T™]˜Z[š[™ÜÊ\Ù\ŠHˆ×KˆÜ™]˜Z[š[™Ñ[˜X›Y\Ù\‹š\ÚX›T™]˜Z[š[™Ü×Kˆ
+NÂˆÛÛœÝØÛÜYØ[\Õ˜Z[š[™ÜÈH\ÙSY[[Êˆ
+
+HOˆØ[\Õ˜Z[š[™Ñ[˜X›YÈš\ÚX›TØ[\Õ˜Z[š[™ÜÊ\Ù\ŠHˆ×KˆÜØ[\Õ˜Z[š[™Ñ[˜X›Y\Ù\‹š\ÚX›TØ[\Õ˜Z[š[™Ü×Kˆ
+NÂˆÛÛœÝ][[Û‘[˜X›YHÛØXÚ[™Ñ[˜X›YÛÛXÝÑ[˜X›Y[[˜X›Y™]˜Z[š[™Ñ[˜X›YØ[\Õ˜Z[š[™Ñ[˜X›YÂˆÛÛœÝ][[Û”ÙXÝ[ÛœÈH\ÙSY[[Êˆ
+
+HOˆZ[\Ú›Ø\™][[Û”ÙXÝ[ÛœÊÂˆÝ\œ™[\Ù\Žˆ\Ù\‹ˆ[\™[[ÛœÎˆØÛÜY[\™[[ÛœËˆÛÛXÝ[ÛY[ÎˆØÛÜYÛÛXÝËˆ[™\]Y\ÝÎˆØÛÜY[™\]Y\ÝËˆ™]˜Z[š[™ÜÎˆØÛÜY™]˜Z[š[™ÜËˆØ[\Õ˜Z[š[™ÜÎˆØÛÜYØ[\Õ˜Z[š[™ÜËˆ™\™\Ù[]]™S˜[YNˆ
+Y
+HOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOHY
+NÂˆ™]\›ˆ™\™\Ù[]]™HÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™[šÛ›ÝÛˆŠNÂˆKˆÝÛ™\“˜[YNˆ
+Y
+HOˆYÈ™\Ü[™Õ\Ù\“˜[YJYX[˜YÙY\Ù\œÊHˆ[™Yš[™YˆJKˆÂˆX[˜YÙY\Ù\œËˆ™\™\Ù[]]™\ËˆØÛÜYÛÛXÝËˆØÛÜY[™\]Y\ÝËˆØÛÜY[\™[[ÛœËˆØÛÜY™]˜Z[š[™ÜËˆØÛÜYØ[\Õ˜Z[š[™ÜËˆˆ\Ù\‹ˆKˆ
+NÂˆÛÛœÝØÛÜYÝ]HH\ÙSY[[Êˆ
+
+HOˆÙ]š\ÚX›UÛÜšÙ›ÝÔÝ]J\Ù\‹Ý]K™\™\Ù[]]™\ÊKˆÜ™\™\Ù[]]™\ËÝ]K\Ù\—Bˆ
+NÂˆÛÛœÝÛX\™\Ý[H\ÙSY[[Ê
+
+HOˆÂˆÛÛœÝ]\Ù]HZ[™\Ü[™Ñ]\Ù]
+ØÛÜYÝ]K™\™\Ù[]]™\Ë\™›Ü›X[˜ÙQ]\Ù]X[˜YÙY\Ù\œÊNÂˆÛÛœÝØÛÜY]\Ù]Hš[\”™\Ü[™Ñ]\Ù]
+]\Ù]ØÛÜY™\™\Ù[]]™\Ë[\T™\Ü[™Ñš[\œËX[˜YÙY\Ù\œÊNÂˆ™]\›ˆZ[ÛX\ÛØXÚ[™ÊØÛÜY]\Ù]ØÛÜYÝ]K[™Yš[™YX[˜YÙY\Ù\œÊNÂˆKÛX[˜YÙY\Ù\œË\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™\ËØÛÜYÝ]KØÛÜY™\™\Ù[]]™\×JNÂˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+XXÝ[Û”Ú[Ñ[˜X›YXØ[XØÙ\ÜÐXÝ[Û”Ú[ÓÝ™\šY]Ê\Ù\‹[Ù[\ÊJHÂˆÙ]\Ú›Ø\™Yš[š][ÛœÊ×JNÂˆ™]\›ŽÂˆBˆ]Ø[˜Ù[YH˜[ÙNÂˆ›ÚY™]Ú
+Ø\KØXÝ[Û‹YYš[š][ÛœÏØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_XÈØXÚNˆ››Ë\ÝÜ™HˆJBˆ[Š\Þ[˜È
+™\ÜÛœÙJHOˆÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈYš[š][ÛœÏÎˆØÛÜYXÝ[Û‘Yš[š][Û–×HNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ
+˜XÝ[Û”Ú[Ë›ØY\œ›ÜˆŠJNÂˆYˆ
+XØ[˜Ù[Y
+HÙ]\Ú›Ø\™Yš[š][ÛœÊ^[ØY™Yš[š][ÛœÈÏÈ×JNÂˆJBˆ˜Ø]Ú
+
+
+HOˆÂˆYˆ
+XØ[˜Ù[Y
+HÙ]\Ú›Ø\™Yš[š][ÛœÊ×JNÂˆJNÂˆ™]\›ˆ
+
+HOˆÂˆØ[˜Ù[YHYNÂˆNÂˆKØXÝ[Û”Ú[Ñ[˜X›Y[Ù[\Ë\Ù\—JNÂˆÛÛœÝYš[š][Û“Ü[XÝ[ÛÛÝ[H\ÙSY[[Êˆ
+
+HOˆÜ]XÝ[Û”Ú[ÙXÝ[ÛœÊ\Ú›Ø\™Yš[š][ÛœË›X\
+
+Yš[š][ÛŠHOˆ
+È‹‹™Yš[š][Û‹ÛÝ\˜ÙNˆ™Yš[š][Ûˆˆ\ÈÛÛœÝJJJBˆ™š[™
+
+ÙXÝ[ÛŠHOˆÙXÝ[Û‹šYOOH›Ü[ˆŠOËš][\Ë›[™ÝÏÈˆÙ\Ú›Ø\™Yš[š][Ûœ×Kˆ
+NÂˆÛÛœÝØÛÜYÝ\“[ÛY[ÈH[›š[™Ñ[˜X›YÈÂˆ‹‹œØÛÜYÛÛXÝË›X\
+
+][JHOˆ
+ÈYˆÛÛXÝIÚ][KšYX\Nˆ˜ÛÛXÝ[ÛY[‹\œÛÛŽˆ™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOH][Kœ™\™\Ù[]]™RY
+OË™š\œÝ˜[YHÏÈ
+˜ÛØXÚ[™Ë™\Ú›Ø\™[šÛ›ÝÛˆŠK]Nˆ™]È]J][K\]Y]
+KÓØØ[Q]TÝš[™Ê\Ú›Ø\™ØØ[KÈ^Nˆ›[Y\šXÈ‹[ÛˆœÚÜˆJKÛÜ]ˆ][K\]Y]ÝÛ™\Žˆ][K›ÝÛ™\’YÝ]\Îˆ][KœÝ]\ÈJJKˆ‹‹œØÛÜY™]˜Z[š[™ÜË›X\
+
+][JHOˆ
+ÈYˆ™]˜Z[š[™ËIÚ][KšYX\Nˆœ™]˜Z[š[™È‹\œÛÛŽˆ™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOH][Kœ™\™\Ù[]]™RY
+OË™š\œÝ˜[YHÏÈ
+˜ÛØXÚ[™Ë™\Ú›Ø\™[šÛ›ÝÛˆŠK]Nˆ™]È]J][K™]H][K\]Y]
+KÓØØ[Q]TÝš[™Ê\Ú›Ø\™ØØ[KÈ^Nˆ›[Y\šXÈ‹[ÛˆœÚÜˆJKÛÜ]ˆ][K™]H][K\]Y]ÝÛ™\Žˆ][K˜Z[™\ˆ][Kš[š]X]Ü’YÝ]\Îˆ][KœÝ]\ÈJJKˆ‹‹œØÛÜYØ[\Õ˜Z[š[™ÜË›X\
+
+][JHOˆ
+ÈYˆØ[\ËIÚ][KšYX\NˆœØ[\×Ý˜Z[š[™È‹\œÛÛŽˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™œ\XÚ\[ÈŠKœ™\XÙJžØÛÝ[H‹Ýš[™Ê][Kœ\XÚ\[YË›[™Ý
+JK]Nˆ™]È]J][K™]H][K\]Y]
+KÓØØ[Q]TÝš[™Ê\Ú›Ø\™ØØ[KÈ^Nˆ›[Y\šXÈ‹[ÛˆœÚÜˆJKÛÜ]ˆ][K™]H][K\]Y]ÝÛ™\Žˆ][K˜Z[™\ˆ][Kš[š]X]Ü’YÝ]\Îˆ][KœÝ]\ÈJJKˆ‹‹œØÛÜY[™\]Y\ÝË›X\
+
+][JHOˆ
+ÈYˆ[IÚ][KšYX\Nˆš[X[œ˜XYÈ‹\œÛÛŽˆ™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOH][Kœ™\™\Ù[]]™RY
+OË™š\œÝ˜[YHÏÈ
+˜ÛØXÚ[™Ë™\Ú›Ø\™[šÛ›ÝÛˆŠK]Nˆ™]È]J][K\]Y]
+KÓØØ[Q]TÝš[™Ê\Ú›Ø\™ØØ[KÈ^Nˆ›[Y\šXÈ‹[ÛˆœÚÜˆJKÛÜ]ˆ][K\]Y]ÝÛ™\Žˆ][Kœ™\]Y\Ý\’YÝ]\Îˆ][KœÝ]\ÈJJKˆHˆ×NÂˆÛÛœÝ\ÛÛZ[™Ó[ÛY[ÈHY\PžRY
+Âˆ‹‹œØÛÜY[\™[[ÛœÂˆ™š[\Š
+][JHO‚ˆXÛÛ\]YÛØXÚ[™ÔÝ]\Ù\Ëš\Ê][KœÝ]\ÊH	‰‚ˆ][KœÝ]\ÈOOH™ÙX[›[Y\™ˆ	‰‚ˆ
+][Kœ[›™Y]HÏÈ][K\]Y]œÛXÙJL
+JHHØØ[]RÙ^J
+Bˆ
+Bˆ›X\
+
+][JHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOH][Kœ™\™\Ù[]]™RY
+NÂˆÛÛœÝÛÜ]H	Ú][Kœ[›™Y]HÏÈ][K\]Y]œÛXÙJL
+_U	Ú][KœÝ\[YHÏÈŒŒŸXÂˆÛÛœÝ\œÛÛ“˜[YHH™\™\Ù[]]™BˆÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆˆ][KœÝXš™XÝˆÈ	Ú][KœÝXš™XÝ™š\œÝ˜[Y_H	Ú][KœÝXš™XÝ›\Ý˜[Y_Xˆˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™[šÛ›ÝÛˆŠNÂˆ™]\›ˆÂˆYˆÛØXÚ[™ËIÚ][KšYXˆ\Nˆ˜™YÙ[ZY[™È‹ˆ\œÛÛŽˆ\œÛÛ“˜[YKˆ]Nˆ™]È]JÛÜ]
+KÓØØ[Q]TÝš[™Ê\Ú›Ø\™ØØ[KÈ^Nˆ›[Y\šXÈ‹[ÛˆœÚÜˆJKˆÛÜ]ˆÝÛ™\Žˆ™\Ü[™Õ\Ù\“˜[YJ][K›ÝÛ™\’YX[˜YÙY\Ù\œÊKˆÝ]\Îˆ][KœÝ]\ËˆÛØXÚ[™Îˆ][KˆNÂˆJKˆ‹‹œØÛÜYÝ\“[ÛY[Ë›X\
+
+][JHOˆ
+È‹‹š][KÛØXÚ[™Îˆ[™Yš[™YJJKˆJBˆœÛÜ
+
+YšYÚ
+HOˆYœÛÜ]›ØØ[PÛÛ\\™JšYÚœÛÜ]
+JBˆœÛXÙJJNÂˆÛÛœÝÜ[XÝ[ÛÛÝ[HXÝ[Û”Ú[Ñ[˜X›YˆÈÛX\™\Ý[š[œÚYÚËœ™YXÙJ
+Ý[[œÚYÚ
+HOˆÝ[
+È[œÚYÚ›Ü[XÝ[ÛÛÝ[
+H
+ÈYš[š][Û“Ü[XÝ[ÛÛÝ[ˆˆÂˆÛÛœÝ]ØZ][™Ð\›Ý˜[HØÛÜY[\™[[ÛœË™š[\Š
+][JHOˆ\Ô[™[™ÐÛØXÚ[™Ð\›Ý˜[Ý]\Ê][KœÝ]\ÊJNÂˆÛÛœÝ\›Ý˜[ÛÝ[H]ØZ][™Ð\›Ý˜[›[™ÝÂˆÛÛœÝ][[Û”™\]Z\™YÛÝ[H][[Û”ÙXÝ[ÛœËÙË›[™ÝÂˆÛÛœÝY]šXÜÈHÂˆÛØXÚ[™Ñ[˜X›Y	‰ˆ\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘Hˆ	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™›^PÛØXÚ[™ÜÈŠK˜[YNˆØÛÜY[\™[[ÛœË›[™ÝXÛÛŽˆÛ\›Ø\™ÚXÚËÛ™Nˆ˜™ËX›YKML^X›YKMÌ‹™YŽˆ‹Ø™YÙ[ZY[™Ù[ˆˆKˆÛØXÚ[™Ñ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™œ[›™YÛØXÚ[™ÜÈŠK˜[YNˆØÛÜY[\™[[ÛœË™š[\Š
+][JHOˆ][KœÝ]\ÈOOH™Ù\[™ŠK›[™ÝXÛÛŽˆØ[[™\ÚXÚËÛ™Nˆ˜™ËX›YKML^X›YKMÌ‹™YŽˆ‹Ø™YÙ[ZY[™Ù[ˆˆKˆXÝ[Û”Ú[Ñ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™›Ü[XÝ[ÛœÈŠK˜[YNˆÜ[XÝ[ÛÛÝ[XÛÛŽˆ\™Ù]Û™Nˆ˜™ËX[X™\‹ML^X[X™\‹MÌ‹™YŽˆ‹ØXÝY\[[ˆˆKˆÛÛXÝÑ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™›Ü[ÛÛXÝÈŠK˜[YNˆØÛÜYÛÛXÝË™š[\Š
+][JHOˆ][KœÝ]\ÈOOH˜Y™Ù\ÛÝ[ˆŠK›[™ÝXÛÛŽˆÛ™KÛ™Nˆ˜™Ë\ÚÞKML^\ÚÞKMÌ‹™YŽˆ‹ØÛÛXÝ[ÛY[[ˆˆKˆÛÛXÝÑ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™ØZ][™Õ[œ]ŠK˜[YNˆØÛÜYÛÛXÝË™š[\Š
+][JHOˆ][KœÝ]\ÈOOHØXÚÛÜÝÚ[œ]ŠK›[™ÝXÛÛŽˆÛÛXÝÛ™Nˆ˜™Ë]š[Û]ML^]š[Û]MÌ‹™YŽˆ‹ØÛÛXÝ[ÛY[[ˆˆKˆ[[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™›™]Ò[™\]Y\ÝÈŠK˜[YNˆØÛÜY[™\]Y\ÝË™š[\Š
+][JHOˆ™]Ò[™\]Y\ÝÝ]\Ù\Ëš\Ê][KœÝ]\ÊJK›[™ÝXÛÛŽˆÚ\˜ÛR[Û™Nˆ˜™Ë\›ÜÙKML^\›ÜÙKMÌ‹™YŽˆ‹Ú[X[œ˜YÙ[ˆˆKˆ[[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™››Ñ›ÛÝÕ\ŠK˜[YNˆØÛÜY[™\]Y\ÝË™š[\Š
+][JHOˆZ][K™›ÛÝÕ\\H	‰ˆ[™X]Y[™\]Y\ÝÝ]\Ù\Ëš\Ê][KœÝ]\ÊH	‰ˆZ[™Y[™\]Y\ÝÝ]\Ù\Ëš\Ê][KœÝ]\ÊJK›[™ÝXÛÛŽˆÛØÚÌËÛ™Nˆ˜™ËX[X™\‹ML^X[X™\‹MÌ‹™YŽˆ‹Ú[X[œ˜YÙ[ˆˆKˆÛØXÚ[™Ñ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™ØZ][™Ð\›Ý˜[ŠK˜[YNˆ\›Ý˜[ÛÝ[XÛÛŽˆÛ\›Ø\™ÚXÚËÛ™Nˆ˜™ËYXÚÚXKML^YXÚÚXKMÌ‹™YŽˆ\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘Hˆ	‰ˆXÝ[Û”Ú[Ñ[˜X›YÈ‹ÛZZ›‹]™\œÛYÙ[ˆˆˆ‹Ø™YÙ[ZY[™Ù[ˆˆKˆ™]˜Z[š[™Ñ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™œ[›™Y™]˜Z[š[™ÜÈŠK˜[YNˆØÛÜY™]˜Z[š[™ÜË™š[\Š
+][JHOˆ][KœÝ]\ÈOOH™Ù\[™ŠK›[™ÝXÛÛŽˆÜ˜YX][ÛØ\Û™Nˆ˜™ËZ[™YÛËML^Z[™YÛËMÌ‹™YŽˆ‹Ü™]˜Z[š[™Ù[ˆˆKˆØ[\Õ˜Z[š[™Ñ[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™œ[›™YØ[\Õ˜Z[š[™ÜÈŠK˜[YNˆØÛÜYØ[\Õ˜Z[š[™ÜË™š[\Š
+][JHOˆ][KœÝ]\ÈOOH™Ù\[™ŠK›[™ÝXÛÛŽˆÜ\šÛ\ËÛ™Nˆ˜™ËXÞX[‹ML^XÞX[‹MÌ‹™YŽˆ‹ÜØ[\Ë]˜Z[š[™Ù[ˆˆKˆ
+™]˜Z[š[™Ñ[˜X›YØ[\Õ˜Z[š[™Ñ[˜X›Y
+H	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™›Ü[•˜Z[š[™ÜÈŠK˜[YNˆË‹‹œØÛÜY™]˜Z[š[™ÜË‹‹œØÛÜYØ[\Õ˜Z[š[™Ü×K™š[\Š
+][JHOˆVÈ˜Y™Ù\›Û™‹™ÙX[›[Y\™—Kš[˜ÛY\Ê][KœÝ]\ÊJK›[™ÝXÛÛŽˆ›ÛÚÓÜ[ÚXÚËÛ™Nˆ˜™ËX›YKML^X›YKMÌ‹™YŽˆØ[\Õ˜Z[š[™Ñ[˜X›YÈ‹ÜØ[\Ë]˜Z[š[™Ù[ˆˆˆ‹Ü™]˜Z[š[™Ù[ˆˆKˆ
+™]˜Z[š[™Ñ[˜X›YØ[\Õ˜Z[š[™Ñ[˜X›Y
+H	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™˜Z[š[™ÕÚ]Ý]›ÛÝÕ\ŠK˜[YNˆØÛÜY™]˜Z[š[™ÜË™š[\Š
+][JHOˆ][K˜XÝ[Û”Ú[Ë›[™ÝOOH
+K›[™Ý
+ÈØÛÜYØ[\Õ˜Z[š[™ÜË™š[\Š
+][JHOˆZ][K™›ÛÝÕ\XÝ[Û‹š[J
+JK›[™ÝXÛÛŽˆ\™Ù]Û™Nˆ˜™ËX[X™\‹ML^X[X™\‹MÌ‹™YŽˆØ[\Õ˜Z[š[™Ñ[˜X›YÈ‹ÜØ[\Ë]˜Z[š[™Ù[ˆˆˆ‹Ü™]˜Z[š[™Ù[ˆˆKˆ][[Û‘[˜X›Y	‰ˆÈX™[ˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™˜][[Û”™\]Z\™YŠK˜[YNˆ][[Û”™\]Z\™YÛÝ[XÛÛŽˆÚ\˜ÛR[Û™Nˆ˜™Ë\›ÜÙKML^\›ÜÙKMÌ‹™YŽˆ‹ÝZÙ[‹]˜[™XYÈˆKˆK™š[\Š›ÛÛX[ŠH\ÈÈX™[ˆÝš[™ÎÈ˜[YNˆ[X™\ŽÈXÛÛŽˆ\[ÙˆØ[[™\ÚXÚÎÈÛ™NˆÝš[™ÎÈ™YŽˆÝš[™ÈV×NÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™™^YXœ›ÝÈŠ_Bˆ]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™Ù[ÛÛYHŠ_Bˆ\ØÜš\[Û^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™™\ØÜš\[ÛˆŠKœ™\XÙJžÛ˜[Y_H‹\Ù\‹›˜[YKœÜ]
+ˆŠVÌJ_BˆÛÛ\XÝˆXÝ[ÛœÏ^ØÛØXÚ[™Ñ[˜X›Y	‰ˆØ[Š\Ù\‹š[\™[[ÛŽ˜Ü™X]HŠHÈ
+ˆ[šÈ™YH‹Ø™YÙ[ZY[™Ù[‹ÛšY]]ÈˆÛ\ÜÓ˜[YOH˜‹\š[X\žHKLˆ‚ˆ\ÈÛ\ÜÓ˜[YOHšMËMˆÏˆÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™›™]ÐÛØXÚ[™ÈŠ_BˆÓ[šÏ‚ˆ
+Hˆ[™Yš[™YBˆÏ‚‚ˆØ][[Û‘[˜X›Y	‰ˆ\Ú›Ø\™][[ÛØ\™ÙXÝ[ÛœÏ^Ø][[Û”ÙXÝ[ÛœßH^ÝHÏŸB‚ˆØXÝ[Û”Ú[Ñ[˜X›Y	‰ˆÛX\\Ú›Ø\™[™[™\Ý[^ÜÛX\™\Ý[H\œÛÛ˜[^Ý\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘HŸHÏŸB‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH™ÜšYØ\L‹HÛN™ÜšYXÛÛËLˆÎ™ÜšYXÛÛËM‚ˆÛY]šXÜË›X\
+
+Y]šXÊHOˆÂˆÛÛœÝXÛÛˆHY]šXËšXÛÛŽÂˆ™]\›ˆ
+ˆ[šÂˆÙ^O^ÛY]šXË›X™[Bˆ™Y^ÛY]šXËš™YŸBˆÛ\ÜÓ˜[YOH˜Ø\™Ü›Ý\›^Z[‹ZVÍÌœH][\ËXÙ[\ˆØ\LÈLÈ˜[œÚ][ÛˆÝ™\Ž‹]˜[œÛ]K^KLHÝ™\Ž˜›Ü™\‹Xœ˜[™LL‚ˆ‚ˆ]ˆÛ\ÜÓ˜[YO^ØÜšYNHËNHÚš[šËLXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È	ÛY]šXËÛ™_XO‚ˆXÛÛˆÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH^^›ÛX›ÛXY[™Ë[›Û™H˜XÚÚ[™Ë]YÚ^\Û]KNMLžÛY]šXË˜[Y_OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^^ÈXY[™ËM^\Û]KMLžÛY]šXË›X™[OÜ‚ˆÙ]‚ˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMÚš[šËL^\Û]KLÌ˜[œÚ][ÛˆÜ›Ý\ZÝ™\Ž˜[œÛ]K^LHÜ›Ý\ZÝ™\Ž^Xœ˜[™MÌˆÏ‚ˆÓ[šÏ‚ˆ
+NÂˆJ_BˆÜÙXÝ[Û‚‚ˆÝX[Q\Ú›Ø\™[ÝÙY	‰ˆXÝ[Û”Ú[Ñ[˜X›Y	‰ˆÛX\X[RX]X\™\Ý[^ÜÛX\™\Ý[HÏŸB‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH™ÜšYØ\MH™ÜšYXÛÛËVÌKYœ—ÌYœ—H‚ˆÜ[›š[™Ñ[˜X›Y	‰ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™›™^[ÛY[ÈŠ_HÝX]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™›™^[ÛY[Ñ\ØÜš\[ÛˆŠ_H[šÏH‹Ü[›š[™ÈˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÝ\ÛÛZ[™Ó[ÛY[Ë›X\
+
+][JHOˆ
+ˆ]ˆÙ^O^Ú][KšYHÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\MMHKM‚ˆ]ˆÛ\ÜÓ˜[YOHšY[ˆLLˆËLLˆÚš[šËL›^XÛÛ][\ËXÙ[\ˆ\ÝYžKXÙ[\ˆ›Ý[™Y^™Ë\Û]KLLÛN™›^‚ˆÜ[ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH^\Û]KMžÚ][K™]KœÜ]
+ˆŠVÌW_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH^[È›ÛX›ÛXY[™Ë[›Û™H^\Û]KNžÚ][K™]KœÜ]
+ˆŠVÌ_OÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH[˜Ø]H›Û\Ù[ZX›Û^\Û]KNLžÚ][Kœ\œÛÛŸOÜ‚ˆÛ\ÜÓ˜[YOH›]LH^^ÈØ\][^™H^\Û]KMLžÚ][K\Kœ™\XÙJ—È‹ˆŠ_H0­ÈÚ][K›ÝÛ™\ŸOÜ‚ˆÙ]‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ßHÏ‚ˆÚ][K˜ÛØXÚ[™È	‰ˆØ[Ø[˜Ù[]\™PÛØXÚ[™Ê\Ù\‹][K˜ÛØXÚ[™ÊH	‰ˆÛØXÚ[™ÐØ[˜Ù[][ÛXÝ[Ûˆ[\™[[Û^Ú][K˜ÛØXÚ[™ßHÏŸBˆÙ]‚ˆ
+J_BˆÙ]‚ˆÙ]ŸB‚ˆÝX[Q\Ú›Ø\™[ÝÙY	‰ˆXÝ[Û”Ú[Ñ[˜X›Y	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™X[R[•šY]ÈŠ_HÝX]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™š\ÚX›T™\™\Ù[]]™\ÈŠKœ™\XÙJžØÛÝ[H‹Ýš[™ÊX[Q\Ú›Ø\™™\™\Ù[]]™\Ë›[™Ý
+J_H[šÏH‹Ý™\YÙ[ÛÛÜ™YÙ\œÈˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLHLÈ‚ˆÝX[Q\Ú›Ø\™™\™\Ù[]]™\ËœÛXÙJJK›X\
+
+™\™\Ù[]]™JHOˆ
+ˆ[šÈÙ^O^Ü™\™\Ù[]]™KšYH™Y^ØÝ™\YÙ[ÛÛÜ™YÙ\œËÉÜ™\™\Ù[]]™KšYXHÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ›Ý[™Y^LÈ˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KML‚ˆ]˜]\ˆ[š]X[Ï^Ü™\™\Ù[]]™Kš[š]X[ßHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLžÜ™\™\Ù[]]™K™š\œÝ˜[Y_HÜ™\™\Ù[]]™K›\Ý˜[Y_OÜ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^^È^\Û]KMLžÜ™\™\Ù[]]™KX[_OÜ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[LˆKLH^VÌL\H›Û\Ù[ZX›Û	Ü™\™\Ù[]]™K›]™[ÛÛÜŸXOžÜ™\™\Ù[]]™K›]™[OÜÜ[‚ˆÓ[šÏ‚ˆ
+J_BˆÙ]‚ˆÙ]‚ˆ
+_BˆÜÙXÝ[Û‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆÛØXÚ[™ÐØ[˜Ù[][ÛXÝ[ÛŠÈ[\™[[ÛˆNˆÈ[\™[[ÛŽˆÛØXÚ[™Ò[\™[[ÛˆJHÂˆÛÛœÝÈX[˜YÙY\Ù\œË[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÈØ[˜Ù[ÛØXÚ[™ÈHH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝÛÜ[‹Ù]Ü[—HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÜ™X\ÛÛ‹Ù]™X\ÛÛ—HH\ÙTÝ]JˆŠNÂˆÛÛœÝØ\ÞKÙ]\ÞWHH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÙ\œ›Ü‹Ù]\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝ™\™\Ù[]]™S˜[YHH[\™[[Û‹œÝXš™XÝÈ	Ú[\™[[Û‹œÝXš™XÝ™š\œÝ˜[Y_H	Ú[\™[[Û‹œÝXš™XÝ›\Ý˜[Y_Xš[J
+Hˆ
+˜ÛØXÚ[™Ë™\Ú›Ø\™[šÛ›ÝÛˆŠNÂˆÛÛœÝ]U[YHH	Ú[\™[[Û‹œ[›™Y]HÏÈ‹HŸH	Ú[\™[[Û‹œÝ\[YHÏÈˆŸIÚ[\™[[Û‹™[™[YHÈH	Ú[\™[[Û‹™[™[Y_XˆˆŸXš[J
+NÂˆ\Þ[˜È[˜Ý[Ûˆ[™PØ[˜Ù[
+
+HÂˆYˆ
+\™X\ÛÛ‹š[J
+H\ÞJH™]\›ŽÂˆÙ]\ÞJYJNÂˆÙ]\œ›ÜŠ[™Yš[™Y
+NÂˆžHÂˆ]ØZ]Ø[˜Ù[ÛØXÚ[™Ê[\™[[Û‹šY™X\ÛÛ‹š[J
+JNÂˆÙ]Ü[Š˜[ÙJNÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[™\œ›ÜˆŠJNÂˆHš[˜[HÂˆÙ]\ÞJ˜[ÙJNÂˆBˆBˆ™]\›ˆ
+ˆ‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOHš[›[™KY›^Úš[šËL][\ËXÙ[\ˆ\ÝYžKXÙ[\ˆ›Ý[™Y[È™Ë]˜[œÜ\™[L‹HKLKH^\ÛH›ÛX›Û^\›ÜÙKMÌÝ™\Ž˜™Ë\›ÜÙKMLˆ\šXK[X™[^Ý
+˜ÛØXÚ[™Ë˜Ø[˜Ù[›Ü[ˆŠ_HÛÛXÚÏ^Ê]™[
+HOˆÈ]™[œÝÜ›ÜYØ][ÛŠ
+NÈÙ]Ü[ŠYJNÈ_O‚ˆÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[œ™[[Ý™HŠ_BˆØ]Û‚ˆÛÜ[ˆ	‰ˆ]ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹MLÜšYXÙKZ][\ËXÙ[\ˆ™Ë\Û]KNMLÍMˆ›ÛOH™X[ÙÈˆ\šXK[[Ù[HYHˆ\šXK[X™[YžO^ØØ[˜Ù[]]KIÚ[\™[[Û‹šYXO‚ˆ]ˆÛ\ÜÓ˜[YOHËY[X^]Ë[È›Ý[™YLž™Ë]Ú]HMHÚYÝËLžˆÛÛXÚÏ^Ê]™[
+HOˆ]™[œÝÜ›ÜYØ][ÛŠ
+_O‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\M‚ˆ]Û\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[™^YXœ›ÝÈŠ_OÜˆY^ØØ[˜Ù[]]KIÚ[\™[[Û‹šYXHÛ\ÜÓ˜[YOH›]LH^^›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[]HŠ_OÚÙ]‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOHœ›Ý[™Y[ÈLˆ^\Û]KMLÝ™\Ž˜™Ë\Û]KLLˆÛÛXÚÏ^Ê
+HOˆÙ]Ü[Š˜[ÙJ_H\šXK[X™[^Ý
+˜ÛØXÚ[™Ë˜Ø[˜Ù[˜ÛÜÙHŠ_OÛ\ÜÓ˜[YOHšMHËMHˆÏØ]Û‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MÜXÙK^KLˆ›Ý[™Y^™Ë\Û]KMLM^\ÛH^\Û]KMÌ‚ˆÝ›Û™ÏžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[˜ÛØXÚY\Ù\ˆŠ_NÜÝ›Û™ÏˆÜ™\™\Ù[]]™S˜[Y_OÜ‚ˆÝ›Û™ÏžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[™]U[YHŠ_NÜÝ›Û™ÏˆÙ]U[Y_OÜ‚ˆÝ›Û™ÏžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[˜ÛØXÚŠ_NÜÝ›Û™ÏˆÜ™\Ü[™Õ\Ù\“˜[YJ[\™[[Û‹›ÝÛ™\’YX[˜YÙY\Ù\œÊ_OÜ‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH›]M›Ý[™Y^›Ü™\ˆ›Ü™\‹X[X™\‹LŒ™ËX[X™\‹MLLÈ^\ÛH›Û\Ù[ZX›Û^X[X™\‹NLžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[›Ý]ÛÚÕØ\›š[™ÈŠ_OÜ‚ˆX™[Û\ÜÓ˜[YOH›]M›ØÚÈÜ[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^\ÛH›ÛX›Û^\Û]KNžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[œ™X\ÛÛˆŠ_OÜÜ[^\™XHÛ\ÜÓ˜[YOH™šY[Z[‹ZLËY[ˆ˜[YO^Ü™X\ÛÛŸHÛÚ[™ÙO^Ê]™[
+HOˆÙ]™X\ÛÛŠ]™[\™Ù]˜[YJ_H™\]Z\™Y\ØX›Y^Ø\Þ_HÏÛX™[‚ˆÙ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOH›]LÈ›Ý[™Y^™Ë\›ÜÙKMLLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKMÌžÙ\œ›ÜŸOÜŸBˆ]ˆÛ\ÜÓ˜[YOH›]MH›^\ÝYžKY[™Ø\Lˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆ\ØX›Y^Ø\Þ_HÛÛXÚÏ^Ê
+HOˆÙ]Ü[Š˜[ÙJ_OžÝ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[˜X›ÜŠ_OØ]Û]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žH™Ë\›ÜÙKMÌÝ™\Ž˜™Ë\›ÜÙKN\ØX›Y›ÜXÚ]KMŒˆ\ØX›Y^Ø\ÞH\™X\ÛÛ‹š[J
+_HÛÛXÚÏ^Ê
+HOˆ›ÚY[™PØ[˜Ù[
+
+_OžØ\ÞHÈ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[™[][™ÈŠHˆ
+˜ÛØXÚ[™Ë˜Ø[˜Ù[˜ÛÛ™š\›HŠ_OØ]ÛÙ]‚ˆÙ]‚ˆÙ]ŸBˆÏ‚ˆ
+NÂŸB‚˜ÛÛœÝ][[Û’XÛÛœÎˆ™XÛÜ™\Ú›Ø\™][[Û’][VÈ\H—K\[ÙˆÛ\›Ø\™ÚXÚÏˆHÂˆ™YÙ[ZY[™ÎˆÛ\›Ø\™ÚXÚËˆÛÛXÝ[ÛY[ˆÛ™Kˆ™]˜Z[š[™ÎˆÜ˜YX][ÛØ\ˆØ[\×Ý˜Z[š[™ÎˆÜ\šÛ\Ëˆ[X[œ˜XYÎˆÚ\˜ÛR[ŸNÂ‚™[˜Ý[Ûˆ\Ú›Ø\™][[ÛØ\™
+ÈÙXÝ[ÛœË[šÈH‹ÝZÙ[‹]˜[™XYÈ‹NˆÈÙXÝ[ÛœÎˆ\Ú›Ø\™][[Û”ÙXÝ[ÛœÎÈ[šÏÎˆÝš[™È[Èˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÈJHÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™˜][[Û•]HŠ_HÝX]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™˜][[Û‘\ØÜš\[ÛˆŠ_H[šÏ^Û[šÈÏÈ[™Yš[™YHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÎ™ÜšYXÛÛËLˆ‚ˆ\Ú›Ø\™][[ÛÛÛ[[‚ˆ]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™ÑÈŠ_BˆÛÝ[^ÜÙXÝ[ÛœËÙË›[™ÝBˆ][\Ï^ÜÙXÝ[ÛœËÙßBˆ[\SY\ÜØYÙO^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™™[\UÑÈŠ_BˆÏ‚ˆ\Ú›Ø\™][[ÛÛÛ[[‚ˆ]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™™Û™HŠ_BˆÛÝ[^ÜÙXÝ[ÛœË™Û™K›[™ÝBˆ][\Ï^ÜÙXÝ[ÛœË™Û™_Bˆ[\SY\ÜØYÙO^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™™[\QÛ™HŠ_BˆÛ™BˆÏ‚ˆÙ]‚ˆÜÙXÝ[Û‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\Ú›Ø\™][[ÛÛÛ[[ŠÂˆ]KˆÛÝ[ˆ][\Ëˆ[\SY\ÜØYÙKˆÛ™HH˜[ÙKŸNˆÂˆ]NˆÝš[™ÎÂˆÛÝ[ˆ[X™\ŽÂˆ][\Îˆ\Ú›Ø\™][[Û’][V×NÂˆ[\SY\ÜØYÙNˆÝš[™ÎÂˆÛ™OÎˆ›ÛÛX[ŽÂŸJHÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YO^ØZ[‹]ËL	ÙÛ™HÈ˜›Ü™\‹]›Ü™\‹\Û]KLLÎ˜›Ü™\‹[Î˜›Ü™\‹]LˆˆˆŸXO‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\LÈ™Ë\Û]KMLÍÌMHKLÈ‚ˆÈÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNLžÝ]_OÚÏ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È›ÛX›Û	ÙÛ™HÈ˜™ËY[Y\˜[ML^Y[Y\˜[MÌˆˆ˜™Ë\›ÜÙKML^\›ÜÙKMÌŸXO‚ˆØÛÝ[BˆÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÚ][\Ë›[™ÝˆÈ
+ˆ][\Ë›X\
+
+][JHOˆ\Ú›Ø\™][[Û”›ÝÈÙ^O^Ú][KšYH][O^Ú][_HÏŠBˆ
+Hˆ
+ˆÛ\ÜÓ˜[YOHœMHKM^\ÛH^\Û]KMLžÙ[\SY\ÜØYÙ_OÜ‚ˆ
+_BˆÙ]‚ˆÜÙXÝ[Û‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\Ú›Ø\™][[Û”›ÝÊÈ][HNˆÈ][Nˆ\Ú›Ø\™][[Û’][HJHÂˆÛÛœÝÈ[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝ\SX™[HÂˆ™YÙ[ZY[™Îˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÜÈŠKˆÛÛXÝ[ÛY[ˆ
+˜ÛÛXÝ[˜ÛÛXÝœYÙU]HŠKˆ™]˜Z[š[™Îˆ
+˜ÛØXÚ[™Ë˜Z[š[™Ëœ™]˜Z[š[™ÈŠKˆØ[\×Ý˜Z[š[™Îˆ
+˜ÛØXÚ[™Ë˜Z[š[™ËœØ[\Õ˜Z[š[™ÈŠKˆ[X[œ˜XYÎˆ
+˜ÛÛXÝ[š[œYÙU]HŠKˆVÚ][K\WNÂˆÛÛœÝXÛÛˆH][[Û’XÛÛœÖÚ][K\WNÂˆÛÛœÝÛÛ[H
+ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^ËLŒÚš[šËL][\ËXÙ[\ˆØ\Lˆ^^È›ÛX›Û^\Û]KML‚ˆÛØÚÌÈÛ\ÜÓ˜[YOHšLËHËLËHˆÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH[˜Ø]HžÚ][K[YSX™[OOH’[HYÈˆÈ
+˜ÛØXÚ[™Ë™\Ú›Ø\™˜[^HŠHˆ][K[YSX™[OÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYNHËNHÚš[šËLXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È™ËXœ˜[™ML^Xœ˜[™MÌ‚ˆXÛÛˆÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNMLžÚ][K]_OÜ‚ˆÛ\ÜÓ˜[YOH›]LH[˜Ø]H^^È^\Û]KML‚ˆÝ\SX™[H0­ÈÚ][KœÝX]_^Ú][K›ÝÛ™\ˆÈ0­È	Ú][K›ÝÛ™\ŸXˆˆŸBˆÜ‚ˆÙ]‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ßHÏ‚ˆÏ‚ˆ
+NÂˆÛÛœÝÛ\ÜÓ˜[YHH™›^Z[‹ZVÍŽH][\ËXÙ[\ˆØ\LÈMHKLÈ˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLŽÂ‚ˆYˆ
+][Kš™YŠHÂˆ™]\›ˆ[šÈ™Y^Ú][Kš™YŸHÛ\ÜÓ˜[YO^ØÛ\ÜÓ˜[Y_OžØÛÛ[OÓ[šÏŽÂˆB‚ˆ™]\›ˆ]ˆÛ\ÜÓ˜[YO^ØÛ\ÜÓ˜[Y_OžØÛÛ[OÙ]ŽÂŸB‚™[˜Ý[Ûˆ^UX[TYÙJ
+HÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂˆÛÛœÝÈ[Ù[\ÈHH\ÙS[Ù[\Ê
+NÂˆÛÛœÝÈ\œ›Ü‹ØY[™ËY[X™\œÈHH\ÙS^UX[SY[X™\œÊ
+NÂˆÛÛœÝØÛÛ\ÙYÙ]ÛÛ\ÙYHH\ÙTÝ]OÙ]Ýš[™ÏŠ™]ÈÙ]
+
+JNÂˆÛÛœÝÛÝ[šY\ÈH\ÙSY[[Ê
+
+HOˆÜ›Ý\^UX[SY[X™\œÊY[X™\œÊKÛY[X™\œ×JNÂˆÛÛœÝÚÝÔ[›™YÛØXÚ[™Ò[™XØ]ÜˆHØ[”ÚÝÔ[›™YÛØXÚ[™Ò[™XØ]ÜŠ\Ù\‹[Ù[\ÊNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆžHÂˆÛÛœÝÝÜ™YHÚ[™ÝË›ØØ[ÝÜ˜YÙK™Ù]][JY^›^K]X[N˜ÛÛ\ÙY‰Ý\Ù\‹šYX
+NÂˆYˆ
+ÝÜ™Y
+HÙ]ÛÛ\ÙY
+™]ÈÙ]
+”ÓÓ‹œ\œÙJÝÜ™Y
+H\ÈÝš[™Ö×JJNÂˆHØ]ÚÂˆÙ]ÛÛ\ÙY
+™]ÈÙ]
+
+JNÂˆBˆKÝ\Ù\‹šYJNÂ‚ˆ[˜Ý[ÛˆÙÙÛJÙ^NˆÝš[™ÊHÂˆÙ]ÛÛ\ÙY
+
+Ý\œ™[
+HOˆÂˆÛÛœÝ™^H™]ÈÙ]
+Ý\œ™[
+NÂˆYˆ
+™^š\ÊÙ^JJH™^™[]JÙ^JNÂˆ[ÙH™^˜Y
+Ù^JNÂˆÚ[™ÝË›ØØ[ÝÜ˜YÙKœÙ]][JY^›^K]X[N˜ÛÛ\ÙY‰Ý\Ù\‹šYX”ÓÓ‹œÝš[™ÚYžJË‹‹›™^JJNÂˆ™]\›ˆ™^ÂˆJNÂˆB‚ˆYˆ
+ØY[™ÊH™]\›ˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK›ØY[™Õ]HŠ_H\ØÜš\[Û^Ý
+›^UX[KœYÙK›ØY[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂˆYˆ
+\œ›ÜŠH™]\›ˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK™\œ›Ü•]HŠ_H\ØÜš\[Û^Ù\œ›ÜŸHÏŽÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+›^UX[KœYÙK™^YXœ›ÝÈŠ_Bˆ]O^Ý
+›^UX[KœYÙK]HŠ_Bˆ\ØÜš\[Û^Ý
+›^UX[KœYÙK™\ØÜš\[ÛˆŠ_BˆÏ‚ˆÛY[X™\œË›[™ÝOOH	‰ˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK™[\U]HŠ_H\ØÜš\[Û^Ý
+›^UX[KœYÙK™[\Q\ØÜš\[ÛˆŠ_HÏŸB‚ˆØÛÝ[šY\Ë›X\
+
+ÈÛÝ[žKX[\ËÛÝ[JHOˆÂˆÛÛœÝÛÝ[žRÙ^HHÛÝ[žN‰ØÛÝ[ž_XÂˆÛÛœÝÛÝ[žSÜ[ˆHXÛÛ\ÙYš\ÊÛÝ[žRÙ^JNÂˆ™]\›ˆÙXÝ[ÛˆÙ^O^ØÛÝ[ž_HÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^Ê
+HOˆÙÙÛJÛÝ[žRÙ^J_H\šXKY^[™Y^ØÛÝ[žSÜ[ŸHÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆØ\LÈ™Ë\Û]KMLÎMKLËH^[Y˜[œÚ][ÛˆÝ™\Ž˜™ËXœ˜[™MLÍŒÛNœMH‚ˆØÛÝ[žSÜ[ˆÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMHËMH^Xœ˜[™MÌˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMHËMH^Xœ˜[™MÌˆÏŸBˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LHÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+›^UX[KœYÙK˜ÛÝ[žHŠ_OÜˆÛ\ÜÓ˜[YOH[˜Ø]H^[È›ÛX›Û^\Û]KNMLžØÛÝ[žS˜[YJÛÝ[žK\Ù\‹›[™ÝXYÙJ_OÚÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™LLL‹HKLH^^È›ÛX›Û^Xœ˜[™NžØÛÝ[HØÛÝ[OOHHÈ
+›^UX[KœYÙKœ\œÛÛ”Ú[™Ý[\ˆŠHˆ
+›^UX[KœYÙKœ\œÛÛ”\˜[Š_OÜÜ[‚ˆØ]Û‚ˆØÛÝ[žSÜ[ˆ	‰ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ›Ü™\‹]›Ü™\‹\Û]KLLLÈÛNœM‚ˆÝX[\Ë›X\
+
+X[JHOˆÂˆÛÛœÝX[RÙ^HHX[N‰ÝX[KšYXÂˆÛÛœÝX[SÜ[ˆHXÛÛ\ÙYš\ÊX[RÙ^JNÂˆ™]\›ˆÙXÝ[ÛˆÙ^O^ÝX[KšYHÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^Ê
+HOˆÙÙÛJX[RÙ^J_H\šXKY^[™Y^ÝX[SÜ[ŸHÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆØ\L‹HLÈKLÈ^[Y˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLÛNœM‚ˆÝX[SÜ[ˆÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMËM^\Û]KMLˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËM^\Û]KMLˆÏŸBˆ\Ù\œÔ›Ý[™Û\ÜÓ˜[YOHšMËM^Xœ˜[™MÌˆÏ‚ˆÈÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH[˜Ø]H^\ÛH›ÛX›Û^\Û]KNLžÝX[K›˜[Y_OÚÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^^È›Û\Ù[ZX›Û^\Û]KMLžÝX[K›Y[X™\œË›[™ÝHÝX[K›Y[X™\œË›[™ÝOOHHÈ
+›^UX[KœYÙKœ\œÛÛ”Ú[™Ý[\ˆŠHˆ
+›^UX[KœYÙKœ\œÛÛ”\˜[Š_OÜÜ[‚ˆØ]Û‚ˆÝX[SÜ[ˆ	‰ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL›Ü™\‹]›Ü™\‹\Û]KLL‚ˆÝX[K›Y[X™\œË›X\
+
+Y[X™\ŠHOˆ
+ˆ^UX[SY[X™\”›ÝÂˆÙ^O^ÛY[X™\‹šYBˆY[X™\^ÛY[X™\ŸBˆÚÝÔ[›™YÛØXÚ[™Ò[™XØ]Ü^ÜÚÝÔ[›™YÛØXÚ[™Ò[™XØ]ÜŸBˆ[™ÝXYÙO^Ý\Ù\‹›[™ÝXYÙ_BˆÏ‚ˆ
+J_BˆÙ]ŸBˆÜÙXÝ[ÛŽÂˆJ_BˆÙ]ŸBˆÜÙXÝ[ÛŽÂˆJ_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ^UX[SY[X™\”›ÝÊÂˆY[X™\‹ˆÚÝÔ[›™YÛØXÚ[™Ò[™XØ]Ü‹ˆ[™ÝXYÙKŸNˆÂˆY[X™\Žˆ^UX[SY[X™\ŽÂˆÚÝÔ[›™YÛØXÚ[™Ò[™XØ]ÜŽˆ›ÛÛX[ŽÂˆ[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—NÂŸJHÂˆÛÛœÝH
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JNÂˆÛÛœÝ\Ô[›™YÛØXÚ[™ÈHÚÝÔ[›™YÛØXÚ[™Ò[™XØ]Üˆ	‰ˆY[X™\‹š\Ô[›™YÛØXÚ[™ÎÂˆ™]\›ˆ[šÈ™Y^ÛY[X™\‹œ›Ùš[R™YŸHÛ\ÜÓ˜[YO^ØÜšYØ\LÈLËH˜[œÚ][ÛˆÛN™ÜšYXÛÛËVÛZ[›X^
+ŒLKœŠWÛZ[›X^
+L\ÙœŠWÛZ[›X^
+M\ŽœŠWØ]]×HÛNš][\ËXÙ[\ˆÛNœM	Ú\Ô[›™YÛØXÚ[™ÈÈ˜™Ë\ÚÞKMLÎÝ™\Ž˜™Ë\ÚÞKMLˆˆšÝ™\Ž˜™ËXœ˜[™MLÍŸXO‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Z[‹]ËL][\ËXÙ[\ˆØ\LÈ‚ˆ]˜]\ˆ[š]X[Ï^ÛY[X™\‹š[š]X[ßHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\LKHÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLžÛY[X™\‹™š\œÝ˜[Y_HÛY[X™\‹›\Ý˜[Y_OÜžÛY[X™\‹š\ÕX[SXY\ˆ	‰ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™LLLˆKLH^VÌLH›ÛX›Û^Xœ˜[™NžÝ
+›^UX[KœYÙKX[SXY\ˆŠ_OÜÜ[Ÿ^Ú\Ô[›™YÛØXÚ[™È	‰ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë\ÚÞKLLLˆKLH^VÌLH›ÛX›Û^\ÚÞKNžÝ
+›^UX[KœYÙKœ[›™YÛØXÚ[™ÈŠ_OÜÜ[ŸOÙ]‚ˆÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMLžÝ˜[œÛ]J[™ÝXYÙK[\\œÛÛ˜][Û‹œ›ÛK‰ÛY[X™\‹œ›Û_X\È˜[œÛ][Û’Ù^J_OÜ‚ˆÙ]‚ˆÙ]‚ˆ]Û\ÜÓ˜[YOH^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÝ
+›^UX[KœYÙK›Ý™\˜[ØÛÜ™HŠ_OÜÛ\ÜÓ˜[YOH›]LH^\ÛH›ÛX›Û^\Û]KNžÛY[X™\‹œ›ÛHOOH”‘T‘TÑS•UU‘HˆÈ¸ %ˆˆY[X™\‹›Ý™\˜[ØÛÜ™HOOH[™Yš[™YÈ
+›^UX[KœYÙK››ÔØÛÜ™HŠHˆ›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJY[X™\‹›Ý™\˜[ØÛÜ™K
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠJ_OÜÙ]‚ˆ]Û\ÜÓ˜[YOH^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÝ
+›^UX[KœYÙK›\ÝÛØXÚ[™ÈŠ_OÜÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMÌžÛY[X™\‹œ›ÛHOOH”‘T‘TÑS•UU‘HˆÈ
+›^UX[KœYÙK››Ý\XØX›HŠHˆY[X™\‹›\ÝÛØXÚ[™ÈÈ›Ü›X]ÚÜ]JY[X™\‹›\ÝÛØXÚ[™Ë[™ÝXYÙJHˆ
+›^UX[KœYÙK››ÐÛØXÚ[™ÈŠ_OÜÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHš[›[™KY›^][\ËXÙ[\ˆØ\LH^\ÛH›ÛX›Û^Xœ˜[™MÌžÝ
+›^UX[KœYÙK™šXÚHŠ_HÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMˆÏÜÜ[‚ˆÓ[šÏŽÂŸB‚™[˜Ý[Ûˆ\ÙS^UX[SY[X™\œÊ
+HÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÛY[X™\œËÙ]Y[X™\œ×HH\ÙTÝ]O^UX[SY[X™\–×OŠ×JNÂˆÛÛœÝÛØY[™ËÙ]ØY[™×HH\ÙTÝ]JYJNÂˆÛÛœÝÙ\œ›Ü‹Ù]\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆ]XÝ]™HHYNÂˆÙ]ØY[™ÊYJNÂˆÙ]\œ›ÜŠ[™Yš[™Y
+NÂˆ™]Ú
+Ø\KÛ^K]X[OØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_XÈØXÚNˆ››Ë\ÝÜ™HˆJBˆ[Š\Þ[˜È
+™\ÜÛœÙJHOˆÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈY[X™\œÏÎˆ^UX[SY[X™\–×NÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK™\œ›Ü•]HŠJNÂˆYˆ
+XÝ]™JHÙ]Y[X™\œÊ^[ØY›Y[X™\œÈÏÈ×JNÂˆJBˆ˜Ø]Ú
+
+Ø]\ÙJHOˆÂˆYˆ
+XXÝ]™JH™]\›ŽÂˆÙ]Y[X™\œÊ×JNÂˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK™\œ›Ü•]HŠJNÂˆJBˆ™š[˜[J
+
+HOˆÈYˆ
+XÝ]™JHÙ]ØY[™Ê˜[ÙJNÈJNÂˆ™]\›ˆ
+
+HOˆÈXÝ]™HH˜[ÙNÈNÂˆKÝ\Ù\‹šYJNÂˆ™]\›ˆÈY[X™\œËØY[™Ë\œ›ÜˆNÂŸB‚™[˜Ý[ÛˆÜ›Ý\^UX[SY[X™\œÊY[X™\œÎˆ^UX[SY[X™\–×JHÂˆÛÛœÝÛÝ[šY\ÈH™]ÈX\Ýš[™ËX\Ýš[™ËÈYˆÝš[™ÎÈ˜[YNˆÝš[™ÎÈY[X™\œÎˆ^UX[SY[X™\–×HOŠ
+NÂˆ›Üˆ
+ÛÛœÝY[X™\ˆÙˆY[X™\œÊHÂˆÛÛœÝX[\ÈHÛÝ[šY\Ë™Ù]
+Y[X™\‹˜ÛÝ[žJHÏÈ™]ÈX\
+
+NÂˆÛÛœÝX[HHX[\Ë™Ù]
+Y[X™\‹X[RY
+HÏÈÈYˆY[X™\‹X[RY˜[YNˆY[X™\‹X[KY[X™\œÎˆ×HNÂˆX[K›Y[X™\œËœ\Ú
+Y[X™\ŠNÂˆX[\ËœÙ]
+Y[X™\‹X[RYX[JNÂˆÛÝ[šY\ËœÙ]
+Y[X™\‹˜ÛÝ[žKX[\ÊNÂˆBˆ™]\›ˆË‹‹˜ÛÝ[šY\Ë™[šY\Ê
+WK›X\
+
+ØÛÝ[žKX[\×JHOˆ
+ÂˆÛÝ[žKˆX[\ÎˆË‹‹X[\Ë˜[Y\Ê
+WKˆÛÝ[ˆ™]ÈÙ]
+Ë‹‹X[\Ë˜[Y\Ê
+WK™›]X\
+
+X[JHOˆX[K›Y[X™\œË›X\
+
+Y[X™\ŠHOˆY[X™\‹šY
+JJKœÚ^™KˆJJNÂŸB‚™[˜Ý[ÛˆX[SY[X™\‘]Z[
+ÈYNˆÈYˆÝš[™ÈJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÈY[X™\œËØY[™Ë\œ›ÜˆHH\ÙS^UX[SY[X™\œÊ
+NÂˆÛÛœÝY[X™\ˆHY[X™\œË™š[™
+
+][JHOˆ][KšYOOHY
+NÂˆYˆ
+ØY[™ÊH™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK›Y[X™\“ØY[™Õ]HŠ_H\ØÜš\[Û^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK›Y[X™\“ØY[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂˆYˆ
+\œ›Üˆ[Y[X™\ŠH™]\›ˆ[\TÝ]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK˜XØÙ\ÜÕ]HŠ_H\ØÜš\[Û^Ù\œ›ÜˆÏÈ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK›Y[X™\XØÙ\ÜÑ\ØÜš\[ÛˆŠ_HÏŽÂˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMH‚ˆ[šÈ™YH‹ÛZZ›‹]X[HˆÛ\ÜÓ˜[YOHš[›[™KY›^][\ËXÙ[\ˆØ\LH^\ÛH›Û\Ù[ZX›Û^Xœ˜[™MÌ¸¡¤Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙK˜˜XÚÈŠ_OÓ[šÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MHÛNœMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\MÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆ‚ˆ]˜]\ˆ[š]X[Ï^ÛY[X™\‹š[š]X[ßHÛ\ÜÓ˜[YOHšLMˆËLMˆ^[ÈˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\LˆHÛ\ÜÓ˜[YOH^Lž›ÛY^˜X›Û^\Û]KNMLžÛY[X™\‹™š\œÝ˜[Y_HÛY[X™\‹›\Ý˜[Y_OÚOžÛY[X™\‹š\ÕX[SXY\ˆ	‰ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™LLL‹HKLH^^È›ÛX›Û^Xœ˜[™NžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[KœYÙKX[SXY\ˆŠ_OÜÜ[ŸOÙ]Û\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK[\\œÛÛ˜][Û‹œ›ÛK‰ÛY[X™\‹œ›Û_X\È˜[œÛ][Û’Ù^J_H0­ÈÛY[X™\‹X[_H0­ÈØÛÝ[žS˜[YJY[X™\‹˜ÛÝ[žK\Ù\‹›[™ÝXYÙJ_OÜÙ]‚ˆÙ]‚ˆÙ]‚ˆÙ]ŽÂŸB‚™[˜Ý[ÛˆÛÝ[žS˜[YJÛÝ[žNˆÝš[™Ë[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—HH››ŠHÂˆÛÛœÝ˜[Y\ÈHÂˆ‘NˆÈ›ˆ™[ÚpêÈ‹œŽˆ™[Ú\]YH‹Nˆ™[ÚY[ˆˆKˆ“ˆÈ›ˆ“™Y\›[™‹œŽˆ”^\ËP˜\È‹Nˆ“šYY\›[™HˆKˆNˆÈ›ˆ‘Z]Û[™‹œŽˆ[[XYÛ™H‹Nˆ‘]]ØÚ[™ˆKˆH\ÈÛÛœÝÂˆ™]\›ˆ˜[Y\ÖØÛÝ[žH\ÈÙ^[Ùˆ\[Ùˆ˜[Y\×OË–Û[™ÝXYÙWHÏÈÛÝ[žNÂŸB‚™[˜Ý[ÛˆØØ[Q›Ü“[™ÝXYÙJ[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—JHÂˆ™]\›ˆ[™ÝXYÙHOOH™œˆˆÈ™œ‹P‘Hˆˆ[™ÝXYÙHOOH™HˆÈ™KQHˆˆ››P‘HŽÂŸB‚™[˜Ý[ÛˆØØ[^™Y™\™\Ù[]]™S]™[
+ˆ]™[ˆ™\™\Ù[]]™VÈ›]™[—Kˆˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ËŠHÂˆÛÛœÝÙ^\Îˆ\X[™XÛÜ™™\™\Ù[]]™VÈ›]™[—K˜[œÛ][Û’Ù^OˆHÂˆÝ\\Žˆœ™\™\Ù[]]™S]™[”ÕT•Tˆ‹ˆ”Ø[\È^XÝ]]™HŽˆœ™\™\Ù[]]™S]™[”ÐST×ÑVPÕUU‘H‹ˆ›Ù™\ÜÚ[Û˜[ˆœ™\™\Ù[]]™S]™[”“Ñ‘TÔÒSÓS‹ˆ^\ˆœ™\™\Ù[]]™S]™[‘VT•‹ˆ™\YÙ[ÛÛÜ™YÙ\Žˆš[\\œÛÛ˜][Û‹œ›ÛK”‘T‘TÑS•UU‘H‹ˆNÂˆÛÛœÝÙ^HHÙ^\ÖÛ]™[NÂˆ™]\›ˆÙ^HÈ
+Ù^JHˆ]™[ÂŸB‚™[˜Ý[Ûˆ[š]X[šXÚUX‘œ›ÛR\Ú
+
+NˆšXÚUX’YÂˆYˆ
+\[ÙˆÚ[™ÝÈOOH[™Yš[™YŠH™]\›ˆ›Ý™\šY]ÈŽÂˆ™]\›ˆ›Ü›X[^™QšXÚUX’Y
+Ú[™ÝË›ØØ][Û‹š\ÚœÛXÙJJJNÂŸB‚™[˜Ý[Ûˆ›Ü›X[^™QšXÚUX’Y
+˜[YNˆÝš[™ÊNˆšXÚUX’YÂˆÛÛœÝXœÎˆšXÚUX’Y×HHÂˆ›Ý™\šY]È‹ˆœ\™›Ü›X[˜ÙPÚ\˜ÛH‹ˆœ\œÛÛ˜[Üš]\šXH‹ˆ˜XÝ[Û”Ú[È‹ˆš[™\]Y\ÝÈ‹ˆ˜ÛØXÚ[™ÜÈ‹ˆšÜ\È‹ˆ™]˜[X][ÛœÈ‹ˆ˜ÛÛXÝ[ÛY[È‹ˆœ™]˜Z[š[™ÜÈ‹ˆœØ[\Õ˜Z[š[™ÜÈ‹ˆ[Y[[™H‹ˆNÂˆ™]\›ˆXœËš[˜ÛY\Ê˜[YH\ÈšXÚUX’Y
+HÈ˜[YH\ÈšXÚUX’Yˆ›Ý™\šY]ÈŽÂŸB‚™[˜Ý[ÛˆÛ™R™YŠÛ™NˆÝš[™ÊHÂˆ™]\›ˆÛ™Kœ™\XÙJÖ×—
+×KÙËˆŠNÂŸB‚™[˜Ý[ÛˆZ[•^Ý[[X\žJ˜[YNˆÝš[™ËX^[™ÝHLŒ
+HÂˆÛÛœÝ^H\Ò[X\šÝ\
+˜[YJHÈšXÚ^ÔZ[•^
+˜[YJHˆ˜[YNÂˆÛÛœÝÛÛ\XÝH^œ™\XÙJ×ÊËÙËˆŠKš[J
+NÂˆ™]\›ˆÛÛ\XÝ›[™ÝˆX^[™ÝÈ	ØÛÛ\XÝœÛXÙJX^[™ÝHJKš[Q[™
+
+_x )˜ˆÛÛ\XÝÂŸB‚™[˜Ý[ÛˆÛØXÚ[™Ô\™›Ü›X[˜ÙTÝ]\ÊˆÛØXÚ[™Îˆ\ÝÜšXØ[ÛØXÚ[™Ëˆ™\™\Ù[]]™UšY]Îˆ›ÛÛX[‹ˆˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ËŠHÂˆYˆ
+ÛØXÚ[™ËœÝ]\ÈOOH˜ZÚÛÛÜ™ÙÛÜ—Ý™\YÙ[ÛÛÜ™YÙ\ˆŠH™]\›ˆ
+›^UX[KœYÙKœÝ]\Ë˜YÜ™YYŠNÂˆYˆ
+ÛØXÚ[™ËœÝ]\ÈOOH™\ž›Û™[—Ý\—ØZÚÛÛÜ™ŠH™]\›ˆ™\™\Ù[]]™UšY]ÈÈ
+›^UX[KœYÙKœÝ]\ËÐÛÛ™š\›HŠHˆ
+›^UX[KœYÙKœÝ]\ËœÙ[›Ü\›Ý˜[ŠNÂˆYˆ
+ÛØXÚ[™ËØ\Ô™[Ü[™YÛØXÚ[™ËœÝ]\ÈOOHš[—ÝZ]›Ù\š[™ÈŠH™]\›ˆ
+›^UX[KœYÙKœÝ]\Ëœ™[Ü[™YŠNÂˆ™]\›ˆ
+›^UX[KœYÙKœÝ]\Ë˜ÛÛ\]YØZ][™ÈŠNÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™\Ó\Ý
+
+HÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÈ\œ›Ü‹ØY[™Ë™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÜÙX\˜ÚÙ]ÙX\˜ÚHH\ÙTÝ]JˆŠNÂˆÛÛœÝØÛÝ[žKÙ]ÛÝ[žWHH\ÙTÝ]J˜[ŠNÂˆÛÛœÝÝX[KÙ]X[WHH\ÙTÝ]J˜[ŠNÂˆÛÛœÝÛ]™[Ù]]™[HH\ÙTÝ]J˜[ŠNÂ‚ˆÛÛœÝ]˜Z[X›HH™\™\Ù[]]™\Ë™š[\Š
+™\™\Ù[]]™JHOˆØ[XØÙ\ÜÔ™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JJNÂˆÛÛœÝš[\™YH]˜Z[X›K™š[\Š
+™\™\Ù[]]™JHOˆÂˆÛÛœÝ[˜[YHH	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_XÓÝÙ\Ø\ÙJ
+NÂˆ™]\›ˆ
+ˆ[˜[YKš[˜ÛY\ÊÙX\˜ÚÓÝÙ\Ø\ÙJ
+JH	‰‚ˆ
+ÛÝ[žHOOH˜[ˆ™\™\Ù[]]™K˜ÛÝ[žHOOHÛÝ[žJH	‰‚ˆ
+X[HOOH˜[ˆ™\™\Ù[]]™KX[HOOHX[JH	‰‚ˆ
+]™[OOH˜[ˆ™\™\Ù[]]™K›]™[OOH]™[
+Bˆ
+NÂˆJNÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆYÙRXY\‚ˆ^YXœ›ÝÏH“Y[œÙ[ˆ‚ˆ]OH•™\YÙ[ÛÛÜ™YÙ\œÈ‚ˆ\ØÜš\[ÛH™ZÚZšÈÛÚZÚÙ[[™ËÔIÜÈ[ˆ›ÛYYÙHÛØXÚ[™Ú\ÝÜšYZÈš[›™[ˆ›Ý]ÈØÛÜKˆ‚ˆXÝ[ÛœÏ^Ï]ÛˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHš[\ˆÛ\ÜÓ˜[YOHšMËMˆÏˆ^ÜY\ˆÙ[XÝYOØ]ÛŸBˆÏ‚ˆÛØY[™È	‰ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KML•™\YÙ[ÛÛÜ™YÙ\œÈY[‹‹‹ÜŸBˆÙ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKNžÙ\œ›ÜŸOÜŸBˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™M‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈÎ™ÜšYXÛÛËVÌYœ—ÌMŒÌŒÌŒH‚ˆX™[Û\ÜÓ˜[YOHœ™[]]™H‚ˆÙX\˜ÚÛ\ÜÓ˜[YOH˜XœÛÛ]HYLÈÜLËHMËM^\Û]KMˆÏ‚ˆ[œ]˜[YO^ÜÙX\˜ÚHÛÚ[™ÙO^Ê]™[
+HOˆÙ]ÙX\˜Ú
+]™[\™Ù]˜[YJ_HÛ\ÜÓ˜[YOH™šY[LLˆXÙZÛ\H–›ÙZÈÜ˜X[K‹‹ˆˆÏ‚ˆÛX™[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^ØÛÝ[ž_HÛÚ[™ÙO^Ê]™[
+HOˆÙ]ÛÝ[žJ]™[\™Ù]˜[YJ_O‚ˆÜ[Ûˆ˜[YOH˜[[H[™[ÛÜ[Û‚ˆÜ[Ûˆ˜[YOH‘H™[ÚpêÏÛÜ[Û‚ˆÜ[Ûˆ˜[YOH“““™Y\›[™ÛÜ[Û‚ˆÜ[Ûˆ˜[YOH‘H‘Z]Û[™ÛÜ[Û‚ˆÜÙ[XÝ‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^ÝX[_HÛÚ[™ÙO^Ê]™[
+HOˆÙ]X[J]™[\™Ù]˜[YJ_O‚ˆÜ[Ûˆ˜[YOH˜[[HX[\ÏÛÜ[Û‚ˆÖË‹‹›™]ÈÙ]
+]˜Z[X›K›X\
+
+][JHOˆ][KX[JJWK›X\
+
+][JHOˆÜ[ÛˆÙ^O^Ú][_OžÚ][_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Û]™[HÛÚ[™ÙO^Ê]™[
+HOˆÙ]]™[
+]™[\™Ù]˜[YJ_O‚ˆÜ[Ûˆ˜[YOH˜[[Hš]™X]\ÏÛÜ[Û‚ˆÖÈ”Ý\\ˆ‹•™\YÙ[ÛÛÜ™YÙ\ˆ‹”›Ù™\ÜÚ[Û˜[‹‘^\—K›X\
+
+][JHOˆÜ[ÛˆÙ^O^Ú][_OžÚ][_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÙ]‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOHšY[ˆÜšYXÛÛËVÛZ[›X^
+ŒŒKYœŠWÌYœ—ÎÌM\ÌLLÌLLÍHØ\M›Ü™\‹Xˆ›Ü™\‹\Û]KLL™Ë\Û]KMLMHKLÈ^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMY™ÜšY‚ˆÜ[•™\YÙ[ÛÛÜ™YÙ\ÜÜ[Ü[•X[OÜÜ[Ü[“[™ÜÜ[Ü[“X]ÝH™YÙ[ZY[™ÏÜÜ[Ü[‘]›Û]YOÜÜ[Ü[XÝY\[[ÜÜ[Ü[ˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÙš[\™Y›X\
+
+™\™\Ù[]]™JHOˆ
+ˆ[šÂˆÙ^O^Ü™\™\Ù[]]™KšYBˆ™Y^ØÝ™\YÙ[ÛÛÜ™YÙ\œËÉÜ™\™\Ù[]]™KšYXBˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈM˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLY™ÜšYXÛÛËVÛZ[›X^
+ŒŒKYœŠWÌYœ—ÎÌM\ÌLLÌLLÍHYš][\ËXÙ[\ˆY™Ø\MYœMH‚ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ‚ˆ]˜]\ˆ[š]X[Ï^Ü™\™\Ù[]]™Kš[š]X[ßHÏ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›Û^\Û]KNLžÜ™\™\Ù[]]™K™š\œÝ˜[Y_HÜ™\™\Ù[]]™K›\Ý˜[Y_OÜ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø]LH[›[™KY›^›Ý[™YY[LˆKLH^VÌL\H›Û\Ù[ZX›Û	Ü™\™\Ù[]]™K›]™[ÛÛÜŸXOžÜ™\™\Ù[]]™K›]™[OÜÜ[‚ˆÙ]‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KMŒžÜ™\™\Ù[]]™KX[_OÜ‚ˆÛ\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÜ™\™\Ù[]]™K˜ÛÝ[ž_OÜ‚ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KMŒžÙ›Ü›X]ÚÜ]J]\Ý\ÝÜšXØ[ÛØXÚ[™Ê\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™KšY
+OË™]J_OÜ‚ˆ\™›Ü›X[˜ÙU™[™X™[˜[YO^Ü\™›Ü›X[˜ÙU™[™
+\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™KšY
+_HÏ‚ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KMŒ‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›ÛX›Û^\Û]KNL‚ˆÜ\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[XÝ[Û”Ú[Ë™š[\Š
+][JHO‚ˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™KšY	‰‚ˆVÈ˜™ZX[‹›šY]Ø™ZX[—Kš[˜ÛY\Ê][KœÝ]\ÊBˆ
+K›[™ÝBˆÜÜ[ˆÜ[‚ˆÜ‚ˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšY[ˆMHËMH^\Û]KLÌY˜›ØÚÈˆÏ‚ˆÓ[šÏ‚ˆ
+J_BˆÙš[\™Y›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOHœLL^XÙ[\ˆ^\ÛH^\Û]KML‘ÙY[ˆ™\YÙ[ÛÛÜ™YÙ\œÈÙ]›Û™[ˆY]^™Hš[\œËÜŸBˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™Q]Z[
+ÈYX[S[ÙHH˜[ÙHNˆÈYˆÝš[™ÎÈX[S[ÙOÎˆ›ÛÛX[ˆJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂˆÛÛœÝÈ\œ›Ü‹ØY[™Ë™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]\œ›ÜŽˆ\™›Ü›X[˜ÙQ\œ›ÜˆHH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÈ[Ù[\ÈHH\ÙS[Ù[\Ê
+NÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOHY
+NÂˆÛÛœÝÝX‹Ù]X—HH\ÙTÝ]OšXÚUX’YŠ
+
+HOˆ[š]X[šXÚUX‘œ›ÛR\Ú
+
+JNÂˆÛÛœÝš\ÚX›TÙXÝ[ÛœÈH\ÙSY[[Êˆ
+
+HOˆ™\™\Ù[]]™BˆÈÙ]š\ÚX›QšXÚTÙXÝ[ÛœÊÈ\Ù\‹™\™\Ù[]]™K[Ù[\ÈJBˆˆ™]ÈÙ]šXÚTÙXÝ[Û’YŠ
+KˆÛ[Ù[\Ë™\™\Ù[]]™K\Ù\—Bˆ
+NÂˆÛÛœÝš\ÚX›UXœÈH\ÙSY[[Êˆ
+
+HOˆ™\™\Ù[]]™BˆÈÙ]š\ÚX›QšXÚUXœÊÈ\Ù\‹™\™\Ù[]]™K[Ù[\ÈJBˆˆ×KˆÛ[Ù[\Ë™\™\Ù[]]™K\Ù\—Bˆ
+NÂˆÛÛœÝXÝ]™UXˆHš\ÚX›UXœËœÛÛYJ
+][JHOˆ][KšYOOHXŠBˆÈX‚ˆˆš\ÚX›UXœÖÌOËšYÏÈ›Ý™\šY]ÈŽÂˆÛÛœÝ[Y[[™R][U\\ÈH\ÙSY[[Êˆ
+
+HOˆÙ]šXÚU[Y[[™R][U\\Êš\ÚX›TÙXÝ[ÛœÊKˆÝš\ÚX›TÙXÝ[Ûœ×Bˆ
+NÂˆÛÛœÝÚÝÐÛØXÚ[™ÜÈHš\ÚX›TÙXÝ[ÛœËš\Ê˜ÛØXÚ[™ÜÈŠNÂˆÛÛœÝÚÝÐXÝ[Û”Ú[ÈHš\ÚX›TÙXÝ[ÛœËš\Ê˜XÝ[Û”Ú[ÈŠNÂˆÛÛœÝÚÝÔ\™›Ü›X[˜ÙHHš\ÚX›TÙXÝ[ÛœËš\Êœ\™›Ü›X[˜ÙPÚ\˜ÛHŠNÂˆÛÛœÝÚÝÒÜ\ÈHš\ÚX›TÙXÝ[ÛœËš\ÊšÜ\ÈŠNÂ‚ˆ[˜Ý[ÛˆÙ[XÝXŠ™^XŽˆšXÚUX’Y
+HÂˆÙ]XŠ™^XŠNÂˆYˆ
+\[ÙˆÚ[™ÝÈOOH[™Yš[™YŠHÂˆÚ[™ÝËš\ÝÜžKœ™\XÙTÝ]J[ˆ‹	ÝÚ[™ÝË›ØØ][Û‹œ]˜[Y_IÝÚ[™ÝË›ØØ][Û‹œÙX\˜ÚHÉÛ™^XŸX
+NÂˆBˆB‚ˆYˆ
+ØY[™ÊHÂˆ™]\›ˆ[\TÝ]H]O^Ý
+›^UX[KœYÙKœ™\™\Ù[]]™SØY[™Õ]HŠ_H\ØÜš\[Û^Ý
+›^UX[KœYÙKœ™\™\Ù[]]™SØY[™Ñ\ØÜš\[ÛˆŠ_HÏŽÂˆB‚ˆYˆ
+\œ›ÜŠHÂˆ™]\›ˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK™]X˜\ÙU[˜]˜Z[X›U]HŠ_H\ØÜš\[Û^Ù\œ›ÜŸHÏŽÂˆB‚ˆYˆ
+\™\™\Ù[]]™HXØ[XØÙ\ÜÔ™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JJHÂˆ™]\›ˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK˜XØÙ\ÜÕ]HŠ_H\ØÜš\[Û^Ý
+›^UX[KœYÙKœ™\™\Ù[]]™PXØÙ\ÜÑ\ØÜš\[ÛˆŠ_HÏŽÂˆB‚ˆÛÛœÝ]\ÝÛÛ\]YÛØXÚ[™ÈH]\Ý\ÝÜšXØ[ÛØXÚ[™Ê\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™KšY
+NÂˆÛÛœÝ]\ÝÛØXÚ[™ÈH]\ÝØÛÜ™YÛØXÚ[™Ê\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™KšY
+NÂˆÛÛœÝ]\ÝÚY[H]\ÝÛØXÚ[™ÂˆÈÙ]\™›Ü›X[˜ÙUÚY[]J™\™\Ù[]]™KšY]\ÝÛØXÚ[™ËšYšØ\ÝÚÈ‹[™Yš[™Y\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[ÛØXÚ[™ÜÊBˆˆ[™Yš[™YÂˆÛÛœÝ]\Ý\˜Ù[YÙHH]\ÝÚY[ËÝ[\˜Ù[YÙNÂˆÛÛœÝØÛÜ™YÛØXÚ[™ÜÈHÛØXÚ[™ÜÑ›Ü”™\™\Ù[]]™J\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™KšY
+K™š[\Š\ÐÛØXÚ[™ÔØÛÜ™Q]JNÂˆÛÛœÝ™\™\Ù[]]™T›ÛSX™[H
+š[\\œÛÛ˜][Û‹œ›ÛK”‘T‘TÑS•UU‘HŠNÂˆÛÛœÝ™\™\Ù[]]™S]™[X™[HØØ[^™Y™\™\Ù[]]™S]™[
+™\™\Ù[]]™K›]™[
+NÂˆÛÛœÝÚÝÓ]™[˜YÙHH™\™\Ù[]]™K›]™[OOH•™\YÙ[ÛÛÜ™YÙ\ˆŽÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆÝX[S[ÙH	‰ˆ[šÈ™YH‹ÛZZ›‹]X[HˆÛ\ÜÓ˜[YOHš[›[™KY›^][\ËXÙ[\ˆØ\LH^\ÛH›Û\Ù[ZX›Û^Xœ˜[™MÌ¸¡¤Ý
+›^UX[KœYÙK˜˜XÚÈŠ_OÓ[šÏŸBˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH˜™ËYÜ˜YY[]Ë\ˆœ›ÛKXœ˜[™NšXKXœ˜[™MÌËX›YKMLMHKM^]Ú]HÛNœMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LÈÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆ‚ˆ]˜]\ˆ[š]X[Ï^Ü™\™\Ù[]]™Kš[š]X[ßHÛ\ÜÓ˜[YOHšLMˆËLMˆÚš[šËL›Ü™\‹Lˆ›Ü™\‹]Ú]KÎ™Ë]Ú]KÎMH^[È^Xœ˜[™NÚYÝË[YˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆHÛ\ÜÓ˜[YOH›Z[‹]ËLœ™XZË]ÛÜ™È^Lž›ÛY^˜X›ÛXY[™Ë]YÚ›Ü\ÚYÝË\ÛHÛN^LÞ‚ˆÜ™\™\Ù[]]™K™š\œÝ˜[Y_HÜ™\™\Ù[]]™K›\Ý˜[Y_BˆÚO‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë]Ú]KÌMHL‹HKLH^^È›Û\Ù[ZX›Û^]Ú]Hš[™ËLHš[™Ë]Ú]KÌHžÜ™\™\Ù[]]™T›ÛSX™[OÜÜ[‚ˆÜÚÝÓ]™[˜YÙH	‰ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È›Û\Ù[ZX›Û	Ü™\™\Ù[]]™K›]™[ÛÛÜŸXOžÜ™\™\Ù[]]™S]™[X™[OÜÜ[ŸBˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]LH›^›^]Ü˜\][\ËXÙ[\ˆØ\^MØ\^KLH^\ÛH^X›YKML‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LKH\Ù\œÈÛ\ÜÓ˜[YOHšMËMˆÏˆÜ™\™\Ù[]]™KX[_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LKHX\[ˆÛ\ÜÓ˜[YOHšMËMˆÏˆÜ™\™\Ù[]]™K˜ÛÝ[ž_OÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]Lˆ›^›^]Ü˜\][\ËXÙ[\ˆØ\^MHØ\^KLH^\ÛH›Û\Ù[ZX›Û^]Ú]H‚ˆÜ™\™\Ù[]]™K™[XZ[	‰ˆ
+ˆHÛ\ÜÓ˜[YOHš[›[™KY›^][\ËXÙ[\ˆØ\LKHÝ™\Ž[™\›[™H›ØÝ\Ë]š\ÚX›N›Ý][™H›ØÝ\Ë]š\ÚX›N›Ý][™KLˆ›ØÝ\Ë]š\ÚX›N›Ý][™K[Ù™œÙ]Lˆ›ØÝ\Ë]š\ÚX›N›Ý][™K]Ú]Hˆ™Y^ØXZ[Î‰Ü™\™\Ù[]]™K™[XZ[XO‚ˆXZ[Û\ÜÓ˜[YOHšMËMˆÏˆÜ™\™\Ù[]]™K™[XZ[BˆØO‚ˆ
+_BˆÜ™\™\Ù[]]™KœÛ™H	‰ˆ
+ˆHÛ\ÜÓ˜[YOHš[›[™KY›^][\ËXÙ[\ˆØ\LKHÝ™\Ž[™\›[™H›ØÝ\Ë]š\ÚX›N›Ý][™H›ØÝ\Ë]š\ÚX›N›Ý][™KLˆ›ØÝ\Ë]š\ÚX›N›Ý][™K[Ù™œÙ]Lˆ›ØÝ\Ë]š\ÚX›N›Ý][™K]Ú]Hˆ™Y^Ø[‰ÜÛ™R™YŠ™\™\Ù[]]™KœÛ™J_XO‚ˆÛ™HÛ\ÜÓ˜[YOHšMËMˆÏˆÜ™\™\Ù[]]™KœÛ™_BˆØO‚ˆ
+_BˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Úš[šËL›^XÛÛØ\LˆÛNš][\ËY[™‚ˆÜÚÝÔ\™›Ü›X[˜ÙH	‰ˆ\™›Ü›X[˜ÙU™[™X™[˜[YO^Ü\™›Ü›X[˜ÙU™[™
+\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™KšY
+_HÏŸBˆÜÚÝÐÛØXÚ[™ÜÈ	‰ˆØ[Š\Ù\‹š[\™[[ÛŽ˜Ü™X]HŠH	‰ˆ[šÈ™YH‹Ø™YÙ[ZY[™Ù[‹ÛšY]]ÈˆÛ\ÜÓ˜[YOH˜‹\š[X\žHËY[\ÝYžKXÙ[\ˆ™Ë]Ú]H^Xœ˜[™NÝ™\Ž˜™ËX›YKMLÛNËX]]È\ÈÛ\ÜÓ˜[YOHšMËMˆÏˆ™YÙ[ZY[™ÏÓ[šÏŸBˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Y^ZÜš^›Û[\ØÜ›Û˜\ˆ›^Z[‹ZVÍNHØ\LHÝ™\™›ÝË^X]]È›Ü™\‹]›Ü™\‹\Û]KLLMLˆ‚ˆÝš\ÚX›UXœË›X\
+
+][JHOˆ
+ˆ]ÛˆÙ^O^Ú][KšYHÛÛXÚÏ^Ê
+HOˆÙ[XÝXŠ][KšY
+_HÛ\ÜÓ˜[YO^ØZ[‹ZLLˆÚš[šËLÚ]\ÜXÙK[›ÝÜ˜\›Ü™\‹X‹LˆLÈKLÈ^\ÛH›Û\Ù[ZX›Û˜[œÚ][Û‹XÛÛÜœÈ	ØXÝ]™UXˆOOH][KšYÈ˜›Ü™\‹Xœ˜[™MÌ^Xœ˜[™MÌˆˆ˜›Ü™\‹]˜[œÜ\™[^\Û]KMLÝ™\Ž^\Û]KNŸXO‚ˆÝ
+][K˜[œÛ][Û’Ù^H\È˜[œÛ][Û’Ù^J_BˆØ]Û‚ˆ
+J_BˆÙ]‚ˆÙ]‚‚ˆØXÝ]™UXˆOOH›Ý™\šY]Èˆ	‰ˆ
+ˆ‚ˆÊÚÝÐÛØXÚ[™ÜÈÚÝÔ\™›Ü›X[˜ÙJH	‰ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YO^ØÜšYØ\M	ÜÚÝÐÛØXÚ[™ÜÈ	‰ˆÚÝÔ\™›Ü›X[˜ÙHÈ›Î™ÜšYXÛÛËVÌŒŒÌYœ—HˆˆˆŸXO‚ˆÜÚÝÔ\™›Ü›X[˜ÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™ÜšYXÙKZ][\ËXÙ[\ˆMH^XÙ[\ˆ‚ˆÛ]\ÝÛØXÚ[™È	‰ˆ]\Ý\˜Ù[YÙHOOH[™Yš[™YÈ\™›Ü›X[˜ÙUÚY[ˆ™\™\Ù[]]™RY^Ü™\™\Ù[]]™KšYBˆÝ\œ™[[\™[[Û’Y^Û]\ÝÛØXÚ[™ËšYBˆ\OHšØ\ÝÚÈ‚ˆÛØXÚ[™ÜÏ^Ü\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[ÛØXÚ[™ÜßBˆ›ÝØÛÜ™YX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠ_BˆÝ[ØÛÜ™SX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKÝ[ØÛÜ™HŠ_BˆÛÛ\XÝˆÏˆˆ]Ú\˜ÛR[Û\ÜÓ˜[YOH›^X]]ÈLLËLL^X[X™\‹MLˆÏÛ\ÜÓ˜[YOH›]LÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÛ]\ÝÛÛ\]YÛØXÚ[™ÈÈ
+›^UX[KœYÙK˜ÛÛ\]Y›ÔØÛÜ™HŠHˆ
+›^UX[KœYÙK››ÐÛÛ\]YÛØXÚ[™Ñ\ØÜš\[ÛˆŠ_OÜÙ]ŸBˆÙ]‚ˆ
+_BˆÜÚÝÐÛØXÚ[™ÜÈ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MHÛNœMˆ‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+›^UX[KœYÙK›]\ÝÛØXÚ[™ÈŠ_OÜ‚ˆÛ]\ÝÛØXÚ[™ÈÈ]ˆÛ\ÜÓ˜[YOH›]LÈ›^›^XÛÛ\ÝYžKX™]ÙY[ˆØ\MÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆ]ˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÜÚÝÔ\™›Ü›X[˜ÙH	‰ˆ]\Ý\˜Ù[YÙHOOH[™Yš[™YÈ	Ý
+›^UX[KœYÙK›Ý™\˜[ØÛÜ™HŠ_H	Ù›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJ]\Ý\˜Ù[YÙK
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠJ_Xˆ
+›^UX[KœYÙK›]\ÝÛØXÚ[™ÈŠ_OÚÛ\ÜÓ˜[YOH›]Lˆ^\ÛH^\Û]KMLžÙ›Ü›X]ÚÜ]J]\ÝÛØXÚ[™Ë™]K\Ù\‹›[™ÝXYÙJ_H0­ÈÛ]\ÝÛØXÚ[™Ë›ÝÛ™\“˜[Y_OÜ]ˆÛ\ÜÓ˜[YOH›]LÈÝ]\Ð˜YÙHÝ]\Ï^Û]\ÝÛØXÚ[™ËœÝ]\ßHX™[^ØÛØXÚ[™Ô\™›Ü›X[˜ÙTÝ]\Ê]\ÝÛØXÚ[™Ë\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘H‹
+_HÏÙ]Ù][šÈ™Y^ØØ™YÙ[ZY[™Ù[‹ÉÛ]\ÝÛØXÚ[™ËšYXHÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHžÝ
+›^UX[KœYÙK›Ü[ÛØXÚ[™ÈŠ_HÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMˆÏÓ[šÏÙ]ˆˆ]\ÝÛÛ\]YÛØXÚ[™ÈÈ]ˆÛ\ÜÓ˜[YOH›]LÈÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹X[X™\‹LŒ™ËX[X™\‹MLM^\ÛH›Û\Ù[ZX›Û^X[X™\‹NLžÜÚÝÔ\™›Ü›X[˜ÙHÈ
+›^UX[KœYÙK˜ÛÛ\]Y›ÔØÛÜ™HŠHˆ
+›^UX[KœYÙK˜ÛÛ\]Y]˜Z[X›HŠ_OÜ]ˆÛ\ÜÓ˜[YOH›]LÈÝ]\Ð˜YÙHÝ]\Ï^Û]\ÝÛÛ\]YÛØXÚ[™ËœÝ]\ßHX™[^ØÛØXÚ[™Ô\™›Ü›X[˜ÙTÝ]\Ê]\ÝÛÛ\]YÛØXÚ[™Ë\Ù\‹œ›ÛHOOH”‘T‘TÑS•UU‘H‹
+_HÏÙ]Ù]ˆˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK››ÐÛÛ\]YÛØXÚ[™Õ]HŠ_H\ØÜš\[Û^Ý
+›^UX[KœYÙK››ÐÛÛ\]YÛØXÚ[™Ñ\ØÜš\[ÛˆŠ_HÏŸBˆÙ]‚ˆ
+_BˆÜÙXÝ[Û‚ˆ
+_BˆÜÚÝÒÜ\È	‰ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH™ÜšYØ\MÛN™ÜšYXÛÛËLˆ™ÜšYXÛÛËM‚ˆÜ™\™\Ù[]]™KšÜ\Ë›X\
+
+ÜJHOˆ
+ˆ]ˆÙ^O^ÚÜK›X™[HÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆ‚ˆÛ\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^\Û]KMLžÚÜK›X™[OÜ‚ˆ™[™˜[YO^ÚÜK™[™HÏ‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH›]M^Lž›ÛX›Û^\Û]KNMLžÚÜK˜[Y_OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^^È^\Û]KM‘Ù[ÚÜK\™Ù]OÜ‚ˆÙ]‚ˆ
+J_BˆÜÙXÝ[Û‚ˆ
+_BˆÙXÝ[ÛˆÛ\ÜÓ˜[YO^ØÜšYØ\MH	ÜÚÝÐXÝ[Û”Ú[ÈÈž™ÜšYXÛÛËVÌKŒÙœ—ÌYœ—HˆˆˆŸXO‚ˆÜÚÝÐXÝ[Û”Ú[È	‰ˆ™\™\Ù[]]™SÜ[XÝ[Û”Ú[Ô[™[™\™\Ù[]]™O^Ü™\™\Ù[]]™_HÏŸBˆÊÚÝÐÛØXÚ[™ÜÈÚÝÐXÝ[Û”Ú[Èš\ÚX›TÙXÝ[ÛœËš\Ê˜ÛÛXÝ[ÛY[ÈŠHš\ÚX›TÙXÝ[ÛœËš\Êš[™\]Y\ÝÈŠHš\ÚX›TÙXÝ[ÛœËš\Êœ™]˜Z[š[™ÜÈŠHš\ÚX›TÙXÝ[ÛœËš\ÊœØ[\Õ˜Z[š[™ÜÈŠHš\ÚX›TÙXÝ[ÛœËš\Ê™]˜[X][ÛœÈŠJH	‰ˆ
+ˆ™\™\Ù[]]™PXÝ]š]Q™YY™\™\Ù[]]™RY^Ü™\™\Ù[]]™KšYHš\ÚX›TÙXÝ[ÛœÏ^Ýš\ÚX›TÙXÝ[ÛœßHÏ‚ˆ
+_BˆÜÙXÝ[Û‚ˆÏ‚ˆ
+_BˆÜ\™›Ü›X[˜ÙQ\œ›Üˆ	‰ˆ
+ÚÝÐÛØXÚ[™ÜÈÚÝÐXÝ[Û”Ú[ÈÚÝÔ\™›Ü›X[˜ÙHÚÝÒÜ\ÊH	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKNžÜ\™›Ü›X[˜ÙQ\œ›ÜŸOÜŸBˆØXÝ]™UXˆOOHœ\™›Ü›X[˜ÙPÚ\˜ÛHˆ	‰ˆ
+ˆØÛÜ™YÛØXÚ[™ÜË›[™ÝÈ\™›Ü›X[˜ÙQ]›Û][Û‚ˆÛØXÚ[™ÜÏ^ÜØÛÜ™YÛØXÚ[™ÜßBˆ™\™\Ù[]]™S˜[YO^Ø	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_XBˆÏˆˆ[\TÝ]H]O^Ý
+›^UX[KœYÙK››ÔØÛÜ™HŠ_H\ØÜš\[Û^Û]\ÝÛÛ\]YÛØXÚ[™ÈÈ
+›^UX[KœYÙK˜ÛÛ\]Y›ÔØÛÜ™HŠHˆ
+›^UX[KœYÙK››ÐÛÛ\]YÛØXÚ[™Ñ\ØÜš\[ÛˆŠ_HÏ‚ˆ
+_BˆØXÝ]™UXˆOOHœ\œÛÛ˜[Üš]\šXHˆ	‰ˆ\œÛÛ˜[Üš]\šXT[™[™\™\Ù[]]™O^Ü™\™\Ù[]]™_HÏŸBˆØXÝ]™UXˆOOHšÜ\Èˆ	‰ˆÜT[™[™\™\Ù[]]™RY^Ü™\™\Ù[]]™KšYHÏŸBˆØXÝ]™UXˆOOH˜XÝ[Û”Ú[Èˆ	‰ˆ™\™\Ù[]]™PXÝ[Û”Ú[Ô[™[™\™\Ù[]]™O^Ü™\™\Ù[]]™_HÏŸBˆØXÝ]™UXˆOOH™]˜[X][ÛœÈˆ	‰ˆ™\™\Ù[]]™Q]˜[X][ÛœÔ[™[™\™\Ù[]]™RY^Ü™\™\Ù[]]™KšYHÏŸBˆÖÈ˜ÛØXÚ[™ÜÈ‹˜ÛÛXÝ[ÛY[È‹œ™]˜Z[š[™ÜÈ‹œØ[\Õ˜Z[š[™ÜÈ‹š[™\]Y\ÝÈ‹[Y[[™H—Kš[˜ÛY\ÊXÝ]™UXŠH	‰ˆ[Y[[™T[™[X^ØXÝ]™UXŸH™\™\Ù[]]™RY^Ü™\™\Ù[]]™KšYH™\™\Ù[]]™S˜[YO^Ü™\™\Ù[]]™K™š\œÝ˜[Y_H][U\\Ï^Ý[Y[[™R][U\\Ñ›Ü•XŠXÝ]™UX‹[Y[[™R][U\\Ê_HÏŸBˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\œÛÛ˜[Üš]\šXT[™[
+È™\™\Ù[]]™HNˆÈ™\™\Ù[]]™Nˆ™\™\Ù[]]™HJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÈÛØXÚ[™Ñœ˜[Y]ÛÜšÈHH\ÙPÛÛ™šYÝ\˜][ÛŠ
+NÂˆÛÛœÝ\œÛÛ˜[Üš]\šXHH\ÙT\œÛÛ˜[Üš]\šXJ
+NÂˆÛÛœÝXÝ]™HH\œÛÛ˜[Üš]\šXK˜XÝ]™Q›Ü”™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™KšY
+NÂˆÛÛœÝ[˜XÝ]™HH\œÛÛ˜[Üš]\šXBˆš\ÚX›PÜš]\šXJ\Ù\ŠBˆ™š[\Š
+Üš]\š[ÛŠHOˆÜš]\š[Û‹œ™\™\Ù[]]™RYOOH™\™\Ù[]]™KšY	‰ˆXÜš]\š[Û‹š\ÐXÝ]™JNÂˆÛÛœÝØ[“X[˜YÙHH\œÛÛ˜[Üš]\šXK˜Ø[“X[˜YÙQ›Ü”™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JNÂˆÛÛœÝÙY][™ËÙ]Y][™×HH\ÙTÝ]O\œÛÛ˜[ÛØXÚ[™ÐÜš]\š[Ûˆ[Š[
+NÂˆÛÛœÝÙ›Ü›SÜ[‹Ù]›Ü›SÜ[—HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÙ›Ü›KÙ]›Ü›WHH\ÙTÝ]JÂˆ]Nˆˆ‹ˆ\ØÜš\[ÛŽˆˆ‹ˆ›ØÝ\Ó˜[YNˆÛØXÚ[™Ñœ˜[Y]ÛÜšÖÌOË›˜[YHÏÈˆ‹ˆJNÂˆÛÛœÝÛY\ÜØYÙKÙ]Y\ÜØYÙWHH\ÙTÝ]OÈ\NˆœÝXØÙ\ÜÈˆ™\œ›ÜˆŽÈ^ˆÝš[™ÈOŠ
+NÂ‚ˆ[˜Ý[ÛˆÜ[Ü™X]J
+HÂˆÙ]Y][™Ê[
+NÂˆÙ]›Ü›JÈ]Nˆˆ‹\ØÜš\[ÛŽˆˆ‹›ØÝ\Ó˜[YNˆÛØXÚ[™Ñœ˜[Y]ÛÜšÖÌOË›˜[YHÏÈˆˆJNÂˆÙ]Y\ÜØYÙJ[™Yš[™Y
+NÂˆÙ]›Ü›SÜ[ŠYJNÂˆB‚ˆ[˜Ý[ÛˆÜ[‘Y]
+Üš]\š[ÛŽˆ\œÛÛ˜[ÛØXÚ[™ÐÜš]\š[ÛŠHÂˆÙ]Y][™ÊÜš]\š[ÛŠNÂˆÙ]›Ü›JÂˆ]NˆÜš]\š[Û‹]Kˆ\ØÜš\[ÛŽˆÜš]\š[Û‹™\ØÜš\[Û‹ˆ›ØÝ\Ó˜[YNˆÜš]\š[Û‹™›ØÝ\Ó˜[YKˆJNÂˆÙ]Y\ÜØYÙJ[™Yš[™Y
+NÂˆÙ]›Ü›SÜ[ŠYJNÂˆB‚ˆ[˜Ý[ÛˆØ]™PÜš]\š[ÛŠ
+HÂˆÛÛœÝ[œ]HÂˆ‹‹™›Ü›Kˆ™\™\Ù[]]™RYˆ™\™\Ù[]]™KšYˆNÂˆÛÛœÝ™\Ý[HY][™ÂˆÈ\œÛÛ˜[Üš]\šXK\]PÜš]\š[ÛŠ\Ù\‹Y][™ËšY[œ]
+Bˆˆ\œÛÛ˜[Üš]\šXK˜Ü™X]PÜš]\š[ÛŠ\Ù\‹[œ]
+NÂˆYˆ
+\™\Ý[›ÚÊHÂˆÙ]Y\ÜØYÙJÈ\Nˆ™\œ›Üˆ‹^ˆ™\Ý[™\œ›ÜˆJNÂˆ™]\›ŽÂˆBˆÙ]Y\ÜØYÙJÈ\NˆœÝXØÙ\ÜÈ‹^ˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKY][™ÈÈ›^UX[K˜Üš]\šXK\]Yˆˆ›^UX[K˜Üš]\šXK˜YYŠHJNÂˆÙ]Y][™Ê[
+NÂˆÙ]›Ü›JÈ]Nˆˆ‹\ØÜš\[ÛŽˆˆ‹›ØÝ\Ó˜[YNˆÛØXÚ[™Ñœ˜[Y]ÛÜšÖÌOË›˜[YHÏÈˆˆJNÂˆÙ]›Ü›SÜ[Š˜[ÙJNÂˆB‚ˆ[˜Ý[ÛˆXXÝ]˜]PÜš]\š[ÛŠYˆÝš[™ÊHÂˆÛÛœÝ™\Ý[H\œÛÛ˜[Üš]\šXK™XXÝ]˜]PÜš]\š[ÛŠ\Ù\‹Y
+NÂˆÙ]Y\ÜØYÙJ™\Ý[›ÚÂˆÈÈ\NˆœÝXØÙ\ÜÈ‹^ˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™XXÝ]˜]YŠHBˆˆÈ\Nˆ™\œ›Üˆ‹^ˆ™\Ý[™\œ›ÜˆBˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆYH›Ý™\žšXÚˆÛ\ÜÓ˜[YOHœÜXÙK^KMHØÜ›Û[]L‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MHÛNœMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛ\ÝYžKX™]ÙY[ˆØ\LÈÛN™›^\›ÝÈÛNš][\Ë\Ý\‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™^YXœ›ÝÈŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH›]LH^^›ÛX›Û^\Û]KNMLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK]HŠKœ™\XÙJžÛ˜[Y_H‹™\™\Ù[]]™K™š\œÝ˜[YJ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LˆX^]ËLÞ^\ÛHXY[™ËMˆ^\Û]KML‚ˆÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™\ØÜš\[ÛˆŠ_BˆÜ‚ˆÙ]‚ˆØØ[“X[˜YÙH	‰ˆ
+ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^ÛÜ[Ü™X]_HÛ\ÜÓ˜[YOH˜‹\š[X\žH‚ˆ\ÈÛ\ÜÓ˜[YOHšMËMˆÏˆÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK˜YŠ_BˆØ]Û‚ˆ
+_BˆÙ]‚ˆÛY\ÜØYÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YO^Ø]M›Ý[™YLž›Ü™\ˆM^\ÛH›Û\Ù[ZX›Û	ÂˆY\ÜØYÙK\HOOHœÝXØÙ\ÜÈ‚ˆÈ˜›Ü™\‹Y[Y\˜[LŒ™ËY[Y\˜[ML^Y[Y\˜[N‚ˆˆ˜›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKML^\›ÜÙKN‚ˆXO‚ˆÛY\ÜØYÙK^BˆÙ]‚ˆ
+_BˆÙ]‚‚ˆÙ›Ü›SÜ[ˆ	‰ˆØ[“X[˜YÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MHÛNœMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËVÌYœ—ÌH‚ˆX™[‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK›˜[YHŠ_OÜÜ[‚ˆ[œ]ˆÛ\ÜÓ˜[YOH™šY[‚ˆ˜[YO^Ù›Ü›K]_BˆÛÚ[™ÙO^Ê]™[
+HOˆÙ]›Ü›J
+Ý\œ™[
+HOˆ
+È‹‹˜Ý\œ™[]Nˆ]™[\™Ù]˜[YHJJ_BˆXÙZÛ\^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK›˜[YTXÙZÛ\ˆŠ_BˆÏ‚ˆÛX™[‚ˆX™[‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™œ˜[Y]ÛÜšÔ\ÙHŠ_OÜÜ[‚ˆÙ[XÝˆÛ\ÜÓ˜[YOH™šY[‚ˆ˜[YO^Ù›Ü›K™›ØÝ\Ó˜[Y_BˆÛÚ[™ÙO^Ê]™[
+HOˆÙ]›Ü›J
+Ý\œ™[
+HOˆ
+È‹‹˜Ý\œ™[›ØÝ\Ó˜[YNˆ]™[\™Ù]˜[YHJJ_Bˆ‚ˆØÛØXÚ[™Ñœ˜[Y]ÛÜšË›X\
+
+›ØÝ\ÊHOˆÜ[ÛˆÙ^O^Ù›ØÝ\Ë›˜[Y_OžÙ›ØÝ\Ë›˜[Y_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆÙ]‚ˆX™[Û\ÜÓ˜[YOH›]M›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™\ØÜš\[Û“X™[Š_OÜÜ[‚ˆ^\™XBˆÛ\ÜÓ˜[YOH™šY[Z[‹ZLŽ‚ˆ˜[YO^Ù›Ü›K™\ØÜš\[ÛŸBˆÛÚ[™ÙO^Ê]™[
+HOˆÙ]›Ü›J
+Ý\œ™[
+HOˆ
+È‹‹˜Ý\œ™[\ØÜš\[ÛŽˆ]™[\™Ù]˜[YHJJ_BˆXÙZÛ\^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™\ØÜš\[Û”XÙZÛ\ˆŠ_BˆÏ‚ˆÛX™[‚ˆ]ˆÛ\ÜÓ˜[YOH›]MH›^›^XÛÛ\™]™\œÙHØ\LÈÛN™›^\›ÝÈÛNš\ÝYžKY[™‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^Ê
+HOˆÙ]›Ü›SÜ[Š˜[ÙJ_HÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK˜Ø[˜Ù[Š_OØ]Û‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^ÜØ]™PÜš]\š[ÛŸHÛ\ÜÓ˜[YOH˜‹\š[X\žHžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXKœØ]™HŠ_OØ]Û‚ˆÙ]‚ˆÙ]‚ˆ
+_B‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH™ÜšYØ\MH™ÜšYXÛÛËVÌYœ—ÌYœ—H‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™š^Y]HŠ_HÝX]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™š^YÝX]HŠ_HÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈMH‚ˆØÛØXÚ[™Ñœ˜[Y]ÛÜšË›X\
+
+›ØÝ\ÊHOˆ
+ˆ]ˆÙ^O^Ù›ØÝ\Ë›˜[Y_HÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLL™Ë\Û]KMLM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÜ[ˆÛ\ÜÓ˜[YO^ØMÈËLKH›Ý[™YY[	Ù›ØÝ\Ë˜ÛÛÜŸXHÏ‚ˆÛ\ÜÓ˜[YOH™›ÛX›Û^Xœ˜[™NžÙ›ØÝ\Ë›˜[Y_OÜ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›[X]]È›Ý[™YY[™Ë]Ú]HLˆKLH^^È›Û\Ù[ZX›Û^\Û]KMLžÙ›ØÝ\Ë˜Üš]\šXK›[™ÝHÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™š^YÛÝ[Š_OÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]LÈ›^›^]Ü˜\Ø\Lˆ‚ˆÙ›ØÝ\Ë˜Üš]\šXK›X\
+
+Üš]\š[ÛŠHOˆ
+ˆÜ[ˆÙ^O^ØÜš]\š[ÛŸHÛ\ÜÓ˜[YOHœ›Ý[™YY[›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HLÈKLH^^È›Û[YY][H^\Û]KMŒ‚ˆØÜš]\š[ÛŸBˆÜÜ[‚ˆ
+J_BˆÙ]‚ˆÙ]‚ˆ
+J_BˆÙ]‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[KX‹œ\œÛÛ˜[Üš]\šXHŠ_HÝX]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXKœ\œÛÛ˜[ÝX]HŠKœ™\XÙJžØÛÝ[H‹Ýš[™ÊXÝ]™K›[™Ý
+J_HÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈMH‚ˆØXÝ]™K›X\
+
+Üš]\š[ÛŠHOˆ
+ˆ\œÛÛ˜[Üš]\š[ÛØ\™ˆÙ^O^ØÜš]\š[Û‹šYBˆÜš]\š[Û^ØÜš]\š[ÛŸBˆØ[“X[˜YÙO^ØØ[“X[˜YÙ_BˆÛ‘Y]^Ê
+HOˆÜ[‘Y]
+Üš]\š[ÛŠ_BˆÛ‘XXÝ]˜]O^Ê
+HOˆXXÝ]˜]PÜš]\š[ÛŠÜš]\š[Û‹šY
+_BˆÏ‚ˆ
+J_BˆØXÝ]™K›[™ÝOOH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌ™Ë\Û]KMLMˆ^XÙ[\ˆ^\ÛH^\Û]KML‚ˆÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK™[\HŠ_BˆÙ]‚ˆ
+_BˆÙ]‚ˆÙ]‚‚ˆÚ[˜XÝ]™K›[™Ýˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆÜXÚ]KN‚ˆÙXÝ[Û•]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK˜\˜Ú]™Y]HŠ_HÝX]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[K˜Üš]\šXK˜\˜Ú]™YÝX]HŠ_HÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈMH‚ˆÚ[˜XÝ]™K›X\
+
+Üš]\š[ÛŠHOˆ
+ˆ\œÛÛ˜[Üš]\š[ÛØ\™ˆÙ^O^ØÜš]\š[Û‹šYBˆÜš]\š[Û^ØÜš]\š[ÛŸBˆØ[“X[˜YÙO^Ù˜[Ù_BˆÏ‚ˆ
+J_BˆÙ]‚ˆÙ]‚ˆ
+_BˆÙ]‚ˆÜÙXÝ[Û‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\œÛÛ˜[Üš]\š[ÛØ\™
+ÂˆÜš]\š[Û‹ˆØ[“X[˜YÙKˆÛ‘Y]ˆÛ‘XXÝ]˜]KŸNˆÂˆÜš]\š[ÛŽˆ\œÛÛ˜[ÛØXÚ[™ÐÜš]\š[ÛŽÂˆØ[“X[˜YÙNˆ›ÛÛX[ŽÂˆÛ‘Y]Îˆ
+
+HOˆ›ÚYÂˆÛ‘XXÝ]˜]OÎˆ
+
+HOˆ›ÚYÂŸJHÂˆÛÛœÝÈ[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JNÂˆ™]\›ˆ
+ˆ\XÛHÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Xœ˜[™LL™ËXœ˜[™MLÍM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LÈÛN™›^\›ÝÈÛNš][\Ë\Ý\ÛNš\ÝYžKX™]ÙY[ˆ‚ˆ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™MÌL‹HKLH^^È›ÛX›Û^]Ú]HžÝ
+›^UX[K˜Üš]\šXKœ\œÛÛ˜[˜YÙHŠ_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë]Ú]HL‹HKLH^^È›Û\Ù[ZX›Û^Xœ˜[™MÌžØÜš]\š[Û‹™›ØÝ\Ó˜[Y_OÜÜ[‚ˆÈXÜš]\š[Û‹š\ÐXÝ]™H	‰ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë\Û]KLŒL‹HKLH^^È›Û\Ù[ZX›Û^\Û]KMŒžÝ
+›^UX[K˜Üš]\šXKš[˜XÝ]™P˜YÙHŠ_OÜÜ[ŸBˆÙ]‚ˆÈÛ\ÜÓ˜[YOH›]LÈ›ÛX›Û^\Û]KNMLžØÜš]\š[Û‹]_OÚÏ‚ˆØÜš]\š[Û‹™\ØÜš\[Ûˆ	‰ˆÛ\ÜÓ˜[YOH›]LH^\ÛHXY[™ËMˆ^\Û]KMŒžØÜš]\š[Û‹™\ØÜš\[ÛŸOÜŸBˆÙ]‚ˆØØ[“X[˜YÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™›^Úš[šËLØ\Lˆ‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^ÛÛ‘Y]HÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHKLˆ^^ÈžÝ
+›^UX[K˜Üš]\šXK™Y]Š_OØ]Û‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^ÛÛ‘XXÝ]˜]_HÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHKLˆ^^È^\›ÜÙKMÌžÝ
+›^UX[K˜Üš]\šXK™XXÝ]˜]HŠ_OØ]Û‚ˆÙ]‚ˆ
+_BˆÙ]‚ˆØ\XÛO‚ˆ
+NÂŸB‚™[˜Ý[ÛˆÜT[™[
+È™\™\Ù[]]™RYNˆÈ™\™\Ù[]]™RYˆÝš[™ÈJHÂˆÛÛœÝÈ[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JNÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÛ˜\ÚÝÈH\™›Ü›X[˜ÙQ]\Ù]›[ÛRÜTÛ˜\ÚÝË™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+NÂˆÛÛœÝ]\ÝHÛ˜\ÚÝË˜]
+LJNÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MHÛNœMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛ\ÝYžKX™]ÙY[ˆØ\LÈÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆ‚ˆ]Û\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+›^UX[KšÜK›\Ý[ÛÈŠ_OÜˆÛ\ÜÓ˜[YOH›]LH^^›ÛX›ÛžÝ
+›^UX[KšÜK]HŠ_OÚÙ]‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[X^]ËMÜ[ÛžÝ
+›^UX[KšÜK›[ÛX^LŒˆŠ_OÛÜ[ÛÜ[ÛžÝ
+›^UX[KšÜK›[Û\š[ŒˆŠ_OÛÜ[ÛÜÙ[XÝ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MˆÜšYØ\MY™ÜšYXÛÛËLˆ‚ˆÊ]\ÝË˜[Y\ÈÏÈ×JK›X\
+
+ÜJHOˆ
+ˆ]ˆÙ^O^ÚÜK›X™[HÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLL™Ë\Û]KMLMH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›ÛžÚÜK›X™[OÜÛ\ÜÓ˜[YOH^[È›ÛX›ÛžÙ›Ü›X]ÜU˜[YJÜK˜[YKÜK[š][™ÝXYÙJ_OÜÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]Mˆ›^L][\ËY[™Ø\Lˆ‚ˆÜÛ˜\ÚÝË›X\
+
+Û˜\ÚÝ
+HOˆÂˆÛÛœÝ˜[YHHÛ˜\ÚÝ˜[Y\Ë™š[™
+
+][JHOˆ][K›X™[OOHÜK›X™[
+OË˜[YHÏÈÂˆÛÛœÝ\˜Ù[YÙHHX]›Z[ŠLX]›X^
+MK
+˜[YHÈÜK\™Ù]
+H
+ˆŠJNÂˆ™]\›ˆ]ˆÙ^O^ÜÛ˜\ÚÝ›[ÛH]O^Ø	ÜÛ˜\ÚÝ›[ÛNˆ	Ù›Ü›X]ÜU˜[YJ˜[YKÜK[š][™ÝXYÙJ_XHÛ\ÜÓ˜[YOH™›^LHÙ[‹Y[™›Ý[™Y][Y™ËXœ˜[™MÌÜXÚ]KNˆÝ[O^ÞÈZYÚˆ	Ü\˜Ù[YÙ_IX_HÏŽÂˆJ_BˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]Lˆ›^\ÝYžKX™]ÙY[ˆ^VÌLH^\Û]KMÜ[žÝ
+›^UX[KšÜK™œ›ÛHŠ_OÜÜ[Ü[žÝ
+›^UX[KšÜKÈŠ_OÜÜ[Ù]‚ˆÙ]‚ˆ
+J_BˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ[Y[[™R][U\\Ñ›Ü•XŠˆXŽˆšXÚUX’Yˆš\ÚX›R][U\\ÎˆšXÚU[Y[[™R][U\V×BŠNˆšXÚU[Y[[™R][U\V×HÂˆYˆ
+XˆOOH˜ÛØXÚ[™ÜÈŠH™]\›ˆš\ÚX›R][U\\Ëš[˜ÛY\Ê˜™YÙ[ZY[™ÈŠHÈÈ˜™YÙ[ZY[™È—Hˆ×NÂˆYˆ
+XˆOOH˜ÛÛXÝ[ÛY[ÈŠH™]\›ˆš\ÚX›R][U\\Ëš[˜ÛY\Ê˜ÛÛXÝ[ÛY[ŠHÈÈ˜ÛÛXÝ[ÛY[—Hˆ×NÂˆYˆ
+XˆOOHœ™]˜Z[š[™ÜÈŠH™]\›ˆš\ÚX›R][U\\Ëš[˜ÛY\Êœ™]˜Z[š[™ÈŠHÈÈœ™]˜Z[š[™È—Hˆ×NÂˆYˆ
+XˆOOHœØ[\Õ˜Z[š[™ÜÈŠH™]\›ˆš\ÚX›R][U\\Ëš[˜ÛY\ÊœØ[\×Ý˜Z[š[™ÈŠHÈÈœØ[\×Ý˜Z[š[™È—Hˆ×NÂˆYˆ
+XˆOOHš[™\]Y\ÝÈŠH™]\›ˆš\ÚX›R][U\\Ëš[˜ÛY\Êš[X[œ˜XYÈŠHÈÈš[X[œ˜XYÈ—Hˆ×NÂˆYˆ
+XˆOOH[Y[[™HŠH™]\›ˆš\ÚX›R][U\\ÎÂˆ™]\›ˆ×NÂŸB‚™[˜Ý[Ûˆ[Y[[™T[™[
+ÂˆX‹ˆ™\™\Ù[]]™RYˆ™\™\Ù[]]™S˜[YKˆ][U\\ËŸNˆÂˆXŽˆšXÚUX’YÂˆ™\™\Ù[]]™RYˆÝš[™ÎÂˆ™\™\Ù[]]™S˜[YNˆÝš[™ÎÂˆ][U\\ÎˆšXÚU[Y[[™R][U\V×NÂŸJHÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œÈHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂˆÛÛœÝÛÜšÙ›ÝÐ\HH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝØ\ÞPXÝ[Û’YÙ]\ÞPXÝ[Û’YHH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝØXÝ[Û‘\œ›Ü‹Ù]XÝ[Û‘\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝØXÝ[Û“›ÝXÙKÙ]XÝ[Û“›ÝXÙWHH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝ[ÝÙY\\ÈH™]ÈÙ]
+][U\\ÊNÂˆ\H[Y[[™R][HHÂˆYˆÝš[™ÎÂˆ\NˆÝš[™ÎÂˆ]NˆÝš[™ÎÂˆ]OÎˆÝš[™ÎÂˆÝÛ™\ŽˆÝš[™ÎÂˆÝ]\ÎˆÝš[™ÎÂˆØÛÜ™OÎˆ[X™\ŽÂˆ[\™[[ÛÎˆÛØXÚ[™Ò[\™[[ÛŽÂˆ\Ý\›Ý˜[™[Z[™\]ÎˆÝš[™ÎÂˆØ[”™[Z[™\›Ý˜[Îˆ›ÛÛX[ŽÂˆØ[“X\šÓ›Ý^XÝ]YÎˆ›ÛÛX[ŽÂˆØ[ÛÛ[YOÎˆ›ÛÛX[ŽÂˆNÂˆÛÛœÝ˜]Ò][\Îˆ[Y[[™R][V×HHÂˆ‹‹Š[ÝÙY\\Ëš\Ê˜™YÙ[ZY[™ÈŠBˆÈÂˆ‹‹œ\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[ÛØXÚ[™ÜÂˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+Bˆ›X\
+
+][JHOˆ
+ÂˆYˆ][KšYˆ\Nˆ˜™YÙ[ZY[™Èˆ\ÈÛÛœÝˆ]Nˆ][K™]Kˆ]Nˆ
+›^UX[Kœ›Ùš[K˜XÝ]š]K˜ÛØXÚ[™ÈŠKˆÝÛ™\Žˆ][K›ÝÛ™\“˜[YKˆÝ]\Îˆ][KœÝ]\ËˆØÛÜ™Nˆ][K›Ý™\˜[ØÛÜ™KˆJJKˆ‹‹ÛÜšÙ›ÝÐ\Kš\ÚX›R[\™[[ÛœÊ\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+Bˆ›X\
+
+][JHOˆÂˆÛÛœÝ\Ý\›Ý˜[™[Z[™\]H][K˜]Y]˜Z[ˆË™š[\Š
+[žJHOˆ[žK˜XÝ[ÛˆOOH˜ÛØXÚ[™Ë˜\›Ý˜[Ü™[Z[™YŠBˆœÛÜ
+
+YšYÚ
+HOˆšYÚ˜]›ØØ[PÛÛ\\™JY˜]
+JVÌOË˜]ÂˆÛÛœÝØ[“X[˜YÙHHØ[“X[˜YÙPÛØXÚ[™Ê\Ù\‹][JNÂˆ™]\›ˆÂˆYˆ][KšYˆ\Nˆ˜™YÙ[ZY[™Èˆ\ÈÛÛœÝˆ]Nˆ][Kœ[›™Y]HÏÈ][K\]Y]ˆ]Nˆ][K]KˆÝÛ™\Žˆ™\Ü[™Õ\Ù\“˜[YJ][K›ÝÛ™\’YX[˜YÙY\Ù\œÊKˆÝ]\Îˆ][KœÝ]\ËˆØÛÜ™Nˆ][K™ÜÜÚY\‚ˆÈØ[Ý[]UÝ[ÛØXÚ[™ÔØÛÜ™J][K™ÜÜÚY\‹][K˜\Ú[Y[ÈÏÈ×JBˆˆ[™Yš[™Yˆ[\™[[ÛŽˆ][Kˆ\Ý\›Ý˜[™[Z[™\]ˆØ[”™[Z[™\›Ý˜[ˆØ[”™[Z[™ÛØXÚ[™Ð\›Ý˜[
+\Ù\‹][JKˆØ[“X\šÓ›Ý^XÝ]YˆØ[“X[˜YÙH	‰ˆ][KœÝ]\ÈOOH™Ù\[™ˆ	‰ˆ\ÔØÚY[YÛØXÚ[™Ñ[™\Ý
+Âˆ[›™Y]Nˆ][Kœ[›™Y]Kˆ[™[YNˆ][K™[™[YKˆÛÝ[žNˆ][K˜ÛÝ[žKˆJKˆØ[ÛÛ[YNˆØ[“X[˜YÙH	‰ˆ][KœÝ]\ÈOOHš[—ÝZ]›Ù\š[™È‹ˆNÂˆJKˆBˆˆ×JKˆ‹‹Š[ÝÙY\\Ëš\Ê˜ÛÛXÝ[ÛY[ŠBˆÈÂˆ‹‹œ\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[ÛÛXÝ[ÛY[Âˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+Bˆ›X\
+
+][JHOˆ
+ÈYˆ][KšY\Nˆ˜ÛÛXÝ[ÛY[ˆ\ÈÛÛœÝ]Nˆ][K™]KÝÛ™\Žˆ][Kœ™X\ÛÛ‹Ý]\Îˆ][KœÝ]\ÈJJKˆ‹‹ÛÜšÙ›ÝÐ\Kš\ÚX›PÛÛXÝ[ÛY[Ê\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+Bˆ›X\
+
+][JHOˆ
+ÈYˆ][KšY\Nˆ˜ÛÛXÝ[ÛY[ˆ\ÈÛÛœÝ]Nˆ][K\]Y]ÝÛ™\Žˆ][Kœ™X\ÛÛ‹Ý]\Îˆ][KœÝ]\ÈJJKˆBˆˆ×JKˆ‹‹Š[ÝÙY\\Ëš\Êš[X[œ˜XYÈŠBˆÈÛÜšÙ›ÝÐ\Kš\ÚX›R[™\]Y\ÝÊ\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+Bˆ›X\
+
+][JHOˆ
+ÈYˆ][KšY\Nˆš[X[œ˜XYÈˆ\ÈÛÛœÝ]Nˆ][K\]Y]ÝÛ™\Žˆ][KœÝXš™XÝÝ]\Îˆ][KœÝ]\ÈJJBˆˆ×JKˆ‹‹Š[ÝÙY\\Ëš\Êœ™]˜Z[š[™ÈŠBˆÈÛÜšÙ›ÝÐ\Kš\ÚX›T™]˜Z[š[™ÜÊ\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY
+Bˆ›X\
+
+][JHOˆ
+ÈYˆ][KšY\Nˆœ™]˜Z[š[™Èˆ\ÈÛÛœÝ]Nˆ][K\]Y]ÝÛ™\Žˆ][K[YKÝ]\Îˆ][KœÝ]\ÈJJBˆˆ×JKˆ‹‹Š[ÝÙY\\Ëš\ÊœØ[\×Ý˜Z[š[™ÈŠBˆÈÛÜšÙ›ÝÐ\Kš\ÚX›TØ[\Õ˜Z[š[™ÜÊ\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ\XÚ\[YËš[˜ÛY\Ê™\™\Ù[]]™RY
+JBˆ›X\
+
+][JHOˆ
+ÈYˆ][KšY\NˆœØ[\×Ý˜Z[š[™Èˆ\ÈÛÛœÝ]Nˆ][K\]Y]ÝÛ™\Žˆ][K[YKÝ]\Îˆ][KœÝ]\ÈJJBˆˆ×JKˆ‹‹ÛÜšÙ›ÝÐ\KœÝ]K›[šÙY[\™[[ÛœÂˆ™š[\Š
+][JHO‚ˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™RY	‰‚ˆ[ÝÙY\\Ëš\Ê][K\JBˆ
+Bˆ›X\
+
+][JHOˆ
+ÈYˆ][KšY\Nˆ][K\K]Nˆ][K˜Ü™X]Y]ÝÛ™\Žˆ][K]KÝ]\Îˆ][KœÝ]\ÈJJKˆNÂˆÛÛœÝÛÜšÙ›ÝÒ][\ÈHË‹‹›™]ÈX\
+Âˆ‹‹œ˜]Ò][\Ë™š[\Š
+][JHOˆZ][Kš[\™[[ÛŠKˆ‹‹œ˜]Ò][\Ë™š[\Š
+][JHOˆ][Kš[\™[[ÛŠKˆK›X\
+
+][JHOˆØ	Ú][K\_N‰Ú][KšYX][WH\ÈÛÛœÝ
+JK˜[Y\Ê
+WBˆœÛÜ
+
+KŠHOˆ‹™]K›ØØ[PÛÛ\\™JK™]JJNÂ‚ˆ\Þ[˜È[˜Ý[Ûˆ^XÝ]PÛØXÚ[™ÐXÝ[ÛŠ][Nˆ[Y[[™R][KXÝ[ÛŽˆœ™[Z[™Ø\›Ý˜[ˆ››ÝÙ^XÝ]YŠHÂˆYˆ
+Z][Kš[\™[[Ûˆ\ÞPXÝ[Û’Y
+H™]\›ŽÂˆYˆ
+XÝ[ÛˆOOH››ÝÙ^XÝ]Yˆ	‰ˆ]Ú[™ÝË˜ÛÛ™š\›J
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË››Ý^XÝ]YÛÛ™š\›HŠJJH™]\›ŽÂˆÙ]\ÞPXÝ[Û’Y
+	Ú][KšYN‰ØXÝ[ÛŸX
+NÂˆÙ]XÝ[Û‘\œ›ÜŠ[™Yš[™Y
+NÂˆÙ]XÝ[Û“›ÝXÙJ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+Ø\KÝÛÜšÙ›ÝÜËØÛØXÚ[™ËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+][KšY
+_KØXÝ[ÛœÏØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_XÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÈXÝ[ÛˆJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ\œ›ÜÎˆÝš[™ÎÈXZ[Ý]\ÏÎˆœÙ[ˆœÚÚ\Yˆ™\œ›ÜˆˆNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠÛØXÚ[™ÐXÝ[Û‘\œ›Ü“Y\ÜØYÙJ^[ØY™\œ›Ü‹
+JNÂˆ]ØZ]ÛÜšÙ›ÝÐ\Kœ™Yœ™\Ú
+
+NÂˆÙ]XÝ[Û“›ÝXÙJXÝ[ÛˆOOHœ™[Z[™Ø\›Ý˜[‚ˆÈ^[ØY›XZ[Ý]\ÈOOH™\œ›Üˆ‚ˆÈ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜËœ™[Z[™\“XZ[\œ›ÜˆŠBˆˆ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜËœ™[Z[™\”Ù[ŠBˆˆ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË››Ý^XÝ]YÝXØÙ\ÜÈŠJNÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]XÝ[Û‘\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË˜XÝ[Û‘\œ›ÜˆŠJNÂˆHš[˜[HÂˆÙ]\ÞPXÝ[Û’Y
+[™Yš[™Y
+NÂˆBˆB‚ˆÛÛœÝ]HH
+šXÚUX•]RÙ^JXŠJNÂˆÛÛœÝ\ÐÛØXÚ[™ÜÈHXˆOOH˜ÛØXÚ[™ÜÈŽÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý]_HÝX]O^Ý
+›^UX[Kœ›Ùš[K[Y[[™KœÝX]HŠKœ™\XÙJžÛ˜[Y_H‹™\™\Ù[]]™S˜[YJ_HÏ‚ˆØXÝ[Û‘\œ›Üˆ	‰ˆ\ÐÛØXÚ[™ÜÈ	‰ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\›ÜÙKLL™Ë\›ÜÙKMLMKLˆ^^È›Û\Ù[ZX›Û^\›ÜÙKMÌžØXÝ[Û‘\œ›ÜŸOÜŸBˆØXÝ[Û“›ÝXÙH	‰ˆ\ÐÛØXÚ[™ÜÈ	‰ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹Y[Y\˜[LL™ËY[Y\˜[MLMKLˆ^^È›Û\Ù[ZX›Û^Y[Y\˜[MÌžØXÝ[Û“›ÝXÙ_OÜŸBˆÚ\ÐÛØXÚ[™ÜÈ	‰ˆÛÜšÙ›ÝÒ][\Ë›[™Ýˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHšY[ˆÜšYXÛÛËVÛZ[›X^
+LŒŽœŠWÛZ[›X^
+LÌYœŠWÌLÌLŒÛZ[›X^
+NLYœŠWHØ\LÈ›Ü™\‹]›Ü™\‹\Û]KLL™Ë\Û]KMLMKLˆ^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚYH^\Û]KMLY™ÜšY‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹™]HŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹œ™\ÜÛœÚX›HŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹œØÛÜ™HŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹œÝ]\ÈŠ_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH^XÙ[\ˆžÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹˜XÝ[ÛœÈŠ_OÜÜ[‚ˆÙ]‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÝÛÜšÙ›ÝÒ][\Ë›X\
+
+][JHOˆ\ÐÛØXÚ[™ÜÈÈ
+ˆ]ˆÙ^O^Ø	Ú][K\_N‰Ú][KšYXHÛ\ÜÓ˜[YOH™ÜšYØ\LˆMKL‹H^\ÛH˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLY™ÜšYXÛÛËVÛZ[›X^
+LŒŽœŠWÛZ[›X^
+LÌYœŠWÌLÌLŒÛZ[›X^
+NLYœŠWHYš][\ËXÙ[\ˆY™Ø\LÈ‚ˆ[šÈ™Y^Ý[Y[[™R][R™YŠ][K\K][KšY
+_HÛ\ÜÓ˜[YOH›Z[‹]ËL›Ý[™Y[È›ØÝ\Ë]š\ÚX›N›Ý][™K[›Û™H›ØÝ\Ë]š\ÚX›Nœš[™ËLˆ›ØÝ\Ë]š\ÚX›Nœš[™ËXœ˜[™ML‚ˆÜ[ˆÛ\ÜÓ˜[YOH˜›ØÚÈ›Û\Ù[ZX›Û^\Û]KNžÙ›Ü›X]ÚÜ]J][K™]K\Ù\‹›[™ÝXYÙJ_OÜÜ[‚ˆÚ][K]H	‰ˆÜ[ˆÛ\ÜÓ˜[YOH˜›ØÚÈ[˜Ø]H^^È^\Û]KMLžÚ][K]_OÜÜ[ŸBˆÓ[šÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH[˜Ø]H^\Û]KMŒžÚ][K›ÝÛ™\ŸOÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›ÛX›Û^\Û]KNLžÙ›Ü›X]Ù™šXÚX[ÛØXÚ[™ÔØÛÜ™J][KœØÛÜ™J_OÜÜ[‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ßHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Z[‹ZNH›^]Ü˜\][\ËXÙ[\ˆ\ÝYžKXÙ[\ˆØ\Lˆ^XÙ[\ˆ‚ˆÚ][K˜Ø[”™[Z[™\›Ý˜[	‰ˆ
+ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHÚ]\ÜXÙK[›ÝÜ˜\L‹HKLKH^^Èˆ]O^Ý
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜËœ™[Z[™\›Ý˜[Š_H\šXK[X™[^Ý
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜËœ™[Z[™\›Ý˜[Š_HÛÛXÚÏ^Ê
+HOˆ›ÚY^XÝ]PÛØXÚ[™ÐXÝ[ÛŠ][Kœ™[Z[™Ø\›Ý˜[Š_H\ØX›Y^Ø\ÞPXÝ[Û’YOOH[™Yš[™YO‚ˆØ\ÞPXÝ[Û’YOOH	Ú][KšYNœ™[Z[™Ø\›Ý˜[ÈØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏˆˆXZ[Û\ÜÓ˜[YOHšMËMˆÏˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜËœ™[Z[™\›Ý˜[Š_OÜÜ[ÏŸBˆØ]Û‚ˆ
+_BˆÚ][K˜Ø[“X\šÓ›Ý^XÝ]Y	‰ˆ
+ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHÚ]\ÜXÙK[›ÝÜ˜\L‹HKLKH^^È^\›ÜÙKMÌˆÛÛXÚÏ^Ê
+HOˆ›ÚY^XÝ]PÛØXÚ[™ÐXÝ[ÛŠ][K››ÝÙ^XÝ]YŠ_H\ØX›Y^Ø\ÞPXÝ[Û’YOOH[™Yš[™YO‚ˆØ\ÞPXÝ[Û’YOOH	Ú][KšYN››ÝÙ^XÝ]YÈØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏˆˆ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË››Ý^XÝ]YŠ_BˆØ]Û‚ˆ
+_BˆÚ][K˜Ø[ÛÛ[YH	‰ˆ[šÈ™Y^Ý[Y[[™R][R™YŠ][K\K][KšY
+_HÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHÚ]\ÜXÙK[›ÝÜ˜\L‹HKLKH^^ÈžÝ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË˜ÛÛ[YHŠ_OÓ[šÏŸBˆÈZ][K˜Ø[”™[Z[™\›Ý˜[	‰ˆZ][K˜Ø[“X\šÓ›Ý^XÝ]Y	‰ˆZ][K˜Ø[ÛÛ[YH	‰ˆÜ[ˆÛ\ÜÓ˜[YOH^\Û]KM¸ %ÜÜ[ŸBˆÚ][K›\Ý\›Ý˜[™[Z[™\]	‰ˆ\Ô[™[™ÐÛØXÚ[™Ð\›Ý˜[Ý]\Ê][KœÝ]\ÊH	‰ˆÜ[ˆÛ\ÜÓ˜[YOH˜˜\Ú\ËY[^XÙ[\ˆ^VÌL\H^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË›\Ý™[Z[™\ˆŠ_NˆÙ›Ü›X]]U[YJ][K›\Ý\›Ý˜[™[Z[™\]
+_OÜÜ[ŸBˆÙ]‚ˆÙ]‚ˆ
+Hˆ
+ˆ[šÈÙ^O^Ø	Ú][K\_N‰Ú][KšYXH™Y^Ý[Y[[™R][R™YŠ][K\K][KšY
+_HÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈMKLÈ˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KML‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYNHËNHXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È™ËXœ˜[™ML^Xœ˜[™MÌÛ\›Ø\™ÚXÚÈÛ\ÜÓ˜[YOHšMËMˆÏÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LHÛ\ÜÓ˜[YOH™›Û\Ù[ZX›ÛØ\][^™H^\Û]KNLžÝ
+šXÚU[Y[[™R][U\RÙ^J][K\JJ_OÜÛ\ÜÓ˜[YOH›]LH[˜Ø]H^^È^\Û]KMLžÙ›Ü›X]ÚÜ]J][K™]K\Ù\‹›[™ÝXYÙJ_H0­ÈÚ][K›ÝÛ™\ŸOÜÙ]‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ßHÏ‚ˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËM^\Û]KLÌˆÏ‚ˆÓ[šÏ‚ˆ
+J_BˆÝÛÜšÙ›ÝÒ][\Ë›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOHœN^XÙ[\ˆ^\ÛH^\Û]KMLžÚ\ÐÛØXÚ[™ÜÈÈ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË™[\HŠHˆ
+›^UX[Kœ›Ùš[K[Y[[™K™[\HŠ_OÜŸBˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ[Y[[™R][R™YŠ\NˆÝš[™ËYˆÝš[™ÊHÂˆYˆ
+\HOOH˜™YÙ[ZY[™ÈŠH™]\›ˆØ™YÙ[ZY[™Ù[‹ÉÚYXÂˆYˆ
+\HOOH˜ÛÛXÝ[ÛY[ŠH™]\›ˆØÛÛXÝ[ÛY[[‹ÉÚYXÂˆYˆ
+\HOOHš[X[œ˜XYÈŠH™]\›ˆÚ[X[œ˜YÙ[‹ÉÚYXÂˆYˆ
+\HOOHœ™]˜Z[š[™ÈŠH™]\›ˆÜ™]˜Z[š[™Ù[‹ÉÚYXÂˆYˆ
+\HOOHœØ[\×Ý˜Z[š[™ÈŠH™]\›ˆÜØ[\Ë]˜Z[š[™Ù[‹ÉÚYXÂˆ™]\›ˆ‹ÛZZ›‹]X[HŽÂŸB‚™[˜Ý[ÛˆšXÚUX•]RÙ^JXŽˆšXÚUX’Y
+Nˆ˜[œÛ][Û’Ù^HÂˆ™]\›ˆ^UX[Kœ›Ùš[KX‹‰ÝXŸX\È˜[œÛ][Û’Ù^NÂŸB‚™[˜Ý[ÛˆšXÚU[Y[[™R][U\RÙ^J\NˆÝš[™ÊNˆ˜[œÛ][Û’Ù^HÂˆÛÛœÝÙ^\Îˆ™XÛÜ™Ýš[™Ë˜[œÛ][Û’Ù^OˆHÂˆ™YÙ[ZY[™Îˆ›^UX[Kœ›Ùš[K˜XÝ]š]K˜ÛØXÚ[™È‹ˆÛÛXÝ[ÛY[ˆ›^UX[Kœ›Ùš[K˜XÝ]š]K˜ÛÛXÝ[ÛY[‹ˆ[X[œ˜XYÎˆ›^UX[Kœ›Ùš[K˜XÝ]š]Kš[™\]Y\Ý‹ˆ™]˜Z[š[™Îˆ›^UX[Kœ›Ùš[K˜XÝ]š]Kœ™]˜Z[š[™È‹ˆØ[\×Ý˜Z[š[™Îˆ›^UX[Kœ›Ùš[K˜XÝ]š]KœØ[\Õ˜Z[š[™È‹ˆXÝ[Û”Ú[ˆ›^UX[Kœ›Ùš[K˜XÝ]š]K˜XÝ[Û”Ú[‹ˆNÂˆ™]\›ˆÙ^\ÖÝ\WHÏÈ›^UX[Kœ›Ùš[K˜XÝ]š]K˜ÛØXÚ[™ÈŽÂŸB‚™[˜Ý[Ûˆ›Ü›X]Ù™šXÚX[ÛØXÚ[™ÔØÛÜ™JØÛÜ™Nˆ[X™\ˆ[™Yš[™Y
+HÂˆYˆ
+ØÛÜ™HOOH[™Yš[™YS[X™\‹š\Ñš[š]JØÛÜ™JJH™]\›ˆ¸ %ŽÂˆ™]\›ˆ	ÓX]œ›Ý[™
+ØÛÜ™J_IXÂŸB‚™[˜Ý[ÛˆÛØXÚ[™ÐXÝ[Û‘\œ›Ü“Y\ÜØYÙJ\œ›ÜŽˆÝš[™È[™Yš[™Yˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÊHÂˆ™]\›ˆ\œ›ÜˆÏÈ
+›^UX[Kœ›Ùš[K˜ÛØXÚ[™ÜË˜XÝ[Û‘\œ›ÜˆŠNÂŸB‚™[˜Ý[ÛˆÝ\\‘]˜[X][Û“[ÛY[Ù^J[ÛY[ˆÝ\\‘]˜[X][Û”›Ùš[R][VÈ›[ÛY[—JNˆ˜[œÛ][Û’Ù^HÂˆYˆ
+[ÛY[OOH“SÓ•ÌWÍHŠH™]\›ˆœÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛWÍHŽÂˆYˆ
+[ÛY[OOH“SÓ•ÌÈŠH™]\›ˆœÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛÈŽÂˆYˆ
+[ÛY[OOH“SÓ•ÍHŠH™]\›ˆœÝ\\‘]˜[X][ÛœË›Z[\ÝÛ™K›[ÛHŽÂˆ™]\›ˆ›^UX[Kœ›Ùš[K™]˜[X][ÛœË›X[X[ŽÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™Q]˜[X][ÛœÔ[™[
+È™\™\Ù[]]™RYNˆÈ™\™\Ù[]]™RYˆÝš[™ÈJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂˆÛÛœÝÙ]˜[X][ÛœËÙ]]˜[X][Ûœ×HH\ÙTÝ]OÝ\\‘]˜[X][Û”›Ùš[R][V×OŠ×JNÂˆÛÛœÝÛØY[™ËÙ]ØY[™×HH\ÙTÝ]JYJNÂˆÛÛœÝÙ\œ›Ü‹Ù]\œ›Ü—HH\ÙTÝ]JˆŠNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆÛÛœÝÛÛ›Û\ˆH™]ÈX›ÜÛÛ›Û\Š
+NÂˆÙ]ØY[™ÊYJNÂˆÙ]\œ›ÜŠˆŠNÂˆ™]Ú
+Ø\KÜÝ\\‹Y]˜[X][ÛœËÜ›Ùš[OØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_Iœ™\™\Ù[]]™RYIÙ[˜ÛÙUT’PÛÛ\Û™[
+™\™\Ù[]]™RY
+_XÂˆØXÚNˆ››Ë\ÝÜ™H‹ˆÚYÛ˜[ˆÛÛ›Û\‹œÚYÛ˜[ˆJBˆ[Š\Þ[˜È
+™\ÜÛœÙJHOˆÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ]˜[X][ÛœÏÎˆÝ\\‘]˜[X][Û”›Ùš[R][V×NÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+›^UX[Kœ›Ùš[K™]˜[X][ÛœË›ØY\œ›ÜˆŠJNÂˆÙ]]˜[X][ÛœÊ^[ØY™]˜[X][ÛœÈÏÈ×JNÂˆJBˆ˜Ø]Ú
+
+Ø]\ÙJHOˆÂˆYˆ
+XÛÛ›Û\‹œÚYÛ˜[˜X›ÜY
+HÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+›^UX[Kœ›Ùš[K™]˜[X][ÛœË›ØY\œ›ÜˆŠJNÂˆJBˆ™š[˜[J
+
+HOˆÂˆYˆ
+XÛÛ›Û\‹œÚYÛ˜[˜X›ÜY
+HÙ]ØY[™Ê˜[ÙJNÂˆJNÂˆ™]\›ˆ
+
+HOˆÛÛ›Û\‹˜X›Ü
+
+NÂˆKÜ™\™\Ù[]]™RY\Ù\‹šYJNÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý
+›^UX[Kœ›Ùš[KX‹™]˜[X][ÛœÈŠ_HÝX]O^Ý
+›^UX[Kœ›Ùš[K™]˜[X][ÛœËœÝX]HŠ_HÏ‚ˆÛØY[™ÈÈ
+ˆÛ\ÜÓ˜[YOHœMˆ^\ÛH›Û\Ù[ZX›Û^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K™]˜[X][ÛœË›ØY[™ÈŠ_OÜ‚ˆ
+Hˆ\œ›ÜˆÈ
+ˆÛ\ÜÓ˜[YOH›KM›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKMÌžÙ\œ›ÜŸOÜ‚ˆ
+Hˆ]˜[X][ÛœË›[™ÝOOHÈ
+ˆÛ\ÜÓ˜[YOHœN^XÙ[\ˆ^\ÛH^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K™]˜[X][ÛœË™[\HŠ_OÜ‚ˆ
+Hˆ
+ˆ‚ˆ]ˆÛ\ÜÓ˜[YOHšY[ˆÜšYXÛÛËVÌLLœÛZ[›X^
+LŒŽYœŠWÛZ[›X^
+LÌYœŠWÌLŒÌLLœÍHØ\LÈ›Ü™\‹]›Ü™\‹\Û]KLL™Ë\Û]KMLMKLˆ^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚYH^\Û]KMLY™ÜšY‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹™]HŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹\HŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹œ™\ÜÛœÚX›HŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹œÝ]\ÈŠ_OÜÜ[‚ˆÜ[žÝ
+›^UX[Kœ›Ùš[K˜ÛÛ[[‹˜\›Ý™Y]Š_OÜÜ[‚ˆÜ[ˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÙ]˜[X][ÛœË›X\
+
+]˜[X][ÛŠHOˆ
+ˆ[šÈÙ^O^Ù]˜[X][Û‹šYH™Y^Ù]˜[X][Û‹š™YŸHÛ\ÜÓ˜[YOH™ÜšYØ\LˆMKL‹H^\ÛH˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KML›ØÝ\Ë]š\ÚX›N˜™ËXœ˜[™MLY™ÜšYXÛÛËVÌLLœÛZ[›X^
+LŒŽYœŠWÛZ[›X^
+LÌYœŠWÌLŒÌLLœÍHYš][\ËXÙ[\ˆY™Ø\LÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›Û^\Û]KNžÙ›Ü›X]ÚÜ]J]˜[X][Û‹™]˜[X][Û‘]K\Ù\‹›[™ÝXYÙJ_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH[˜Ø]H^\Û]KMŒžÝ
+Ý\\‘]˜[X][Û“[ÛY[Ù^J]˜[X][Û‹›[ÛY[
+J_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOH[˜Ø]H^\Û]KMŒžÙ]˜[X][Û‹œÝ\YžS˜[YH]˜[X][Û‹›XY\“˜[YH¸ %ŸOÜÜ[‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ù]˜[X][Û‹œÝ]\ËÓÝÙ\Ø\ÙJ
+_HÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^\Û]KMŒžÙ]˜[X][Û‹˜\›Ý™Y]È›Ü›X]ÚÜ]J]˜[X][Û‹˜\›Ý™Y]\Ù\‹›[™ÝXYÙJHˆ¸ %ŸOÜÜ[‚ˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšY[ˆMËM\ÝYžK\Ù[‹Y[™^\Û]KLÌY˜›ØÚÈˆÏ‚ˆÓ[šÏ‚ˆ
+J_BˆÙ]‚ˆÏ‚ˆ
+_BˆÙ]‚ˆ
+NÂŸB‚\H™\™\Ù[]]™SÜ[XÝ[ÛˆHÂˆYˆÝš[™ÎÂˆÛÛ˜Ü™]PXÝ[Û”Ú[YˆÝš[™ÎÂˆ]NˆÝš[™ÎÂˆYOÎˆÝš[™ÎÂˆÝ]\ÎˆÝš[™ÎÂˆ›ÙÜ™\ÜÏÎˆ[X™\ŽÂŸNÂ‚™[˜Ý[Ûˆ™\™\Ù[]]™SÜ[XÝ[Û”Ú[Ô[™[
+È™\™\Ù[]]™HNˆÈ™\™\Ù[]]™Nˆ™\™\Ù[]]™HJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÛÜšÙ›ÝÐ\HH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ]\Ù]™Yœ™\Úˆ™Yœ™\Ú\™›Ü›X[˜ÙHHH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝØÛÜÙYYËÙ]ÛÜÙYY×HH\ÙTÝ]OÙ]Ýš[™ÏŠ™]ÈÙ]
+
+JNÂˆÛÛœÝØÛÜÚ[™ÒYÙ]ÛÜÚ[™ÒYHH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝØÛÜÙPØ[™Y]KÙ]ÛÜÙPØ[™Y]WHH\ÙTÝ]O™\™\Ù[]]™SÜ[XÝ[ÛŠ
+NÂˆÛÛœÝÙ\œ›Ü‹Ù]\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂ‚ˆÛÛœÝXÝ[ÛœÈH\ÙSY[[Ê
+
+HOˆÂˆÛÛœÝÛÜšÙ›ÝÐXÝ[ÛœÈHÛÜšÙ›ÝÐ\Kš\ÚX›R[\™[[ÛœÊ\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™KšY
+Bˆ™›]X\
+
+][JHOˆ][K˜XÝ[Û”Ú[Ë›X\
+
+XÝ[ÛŠHOˆ
+ÂˆYˆXÝ[Û‹šYˆÛÛ˜Ü™]PXÝ[Û”Ú[YˆXÝ[Û‹šYš[˜ÛY\ÊŽˆŠHÈXÝ[Û‹šYœÜ]
+ŽˆŠVÌHˆXÝ[Û‹šYˆ]NˆZ[•^Ý[[X\žJXÝ[Û‹]JKˆYNˆXÝ[Û‹™YKˆÝ]\ÎˆXÝ[Û‹œÝ]\Ëˆ›ÙÜ™\ÜÎˆ[™Yš[™YˆJJJNÂˆÛÛœÝ\ÝÜšXØ[XÝ[ÛœÈH]\Ù]š\ÝÜšXØ[XÝ[Û”Ú[Âˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™KšY
+Bˆ›X\
+
+XÝ[ÛŠHOˆ
+ÂˆYˆXÝ[Û‹šYˆÛÛ˜Ü™]PXÝ[Û”Ú[YˆXÝ[Û‹šYˆ]NˆZ[•^Ý[[X\žJXÝ[Û‹]JKˆYNˆXÝ[Û‹™YKˆÝ]\ÎˆXÝ[Û‹œÝ]\Ëˆ›ÙÜ™\ÜÎˆXÝ[Û‹œ›ÙÜ™\ÜËˆJJNÂˆÛÛœÝ[š\]YHH™]ÈX\Ýš[™Ë™\™\Ù[]]™SÜ[XÝ[ÛŠ
+NÂˆ›Üˆ
+ÛÛœÝXÝ[ÛˆÙˆË‹‹ÛÜšÙ›ÝÐXÝ[ÛœË‹‹š\ÝÜšXØ[XÝ[Ûœ×JHÂˆÛÛœÝ^\Ý[™ÈH[š\]YK™Ù]
+XÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+NÂˆYˆ
+Y^\Ý[™ÊHÂˆ[š\]YKœÙ]
+XÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[YXÝ[ÛŠNÂˆH[ÙHYˆ
+^\Ý[™Ëœ›ÙÜ™\ÜÈOOH[™Yš[™Y	‰ˆXÝ[Û‹œ›ÙÜ™\ÜÈOOH[™Yš[™Y
+HÂˆ[š\]YKœÙ]
+XÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[YÈ‹‹™^\Ý[™Ë›ÙÜ™\ÜÎˆXÝ[Û‹œ›ÙÜ™\ÜÈJNÂˆBˆBˆ™]\›ˆË‹‹[š\]YK˜[Y\Ê
+WBˆ™š[\Š
+XÝ[ÛŠHOˆ\ÓÜ[”™\™\Ù[]]™PXÝ[Û”Ú[
+XÝ[Û‹œÝ]\ÊH	‰ˆXÛÜÙYYËš\ÊXÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+JBˆœÛÜ
+
+YšYÚ
+HOˆ
+Y™YHŽNNNKLL‹LÌHŠK›ØØ[PÛÛ\\™JšYÚ™YHŽNNNKLL‹LÌHŠJNÂˆKØÛÜÙYYË]\Ù]š\ÝÜšXØ[XÝ[Û”Ú[Ë™\™\Ù[]]™KšY\Ù\‹ÛÜšÙ›ÝÐ\WJNÂ‚ˆÛÛœÝØ[ÛÜÙHHØ[ÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[
+\Ù\ŠH	‰‚ˆØ[Š\Ù\‹›Y[K˜ÛØXÚ[™Ë˜XÝ[Û”Ú[ÈŠH	‰‚ˆØ[XØÙ\ÜÔ™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JNÂ‚ˆ\Þ[˜È[˜Ý[ÛˆÛÜÙPXÝ[ÛŠXÝ[ÛŽˆ™\™\Ù[]]™SÜ[XÝ[Û‹ÛÜÙY™X\ÛÛŽˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÝš[™ÊHÂˆYˆ
+XØ[ÛÜÙHÛÜÚ[™ÒY
+H™]\›ŽÂˆÙ]ÛÜÚ[™ÒY
+XÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+NÂˆÙ]\œ›ÜŠ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+‹Ø\KØXÝ[Û‹\Ú[ËÈˆ
+È[˜ÛÙUT’PÛÛ\Û™[
+XÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+H
+È‹ØÛÜÙH‹ÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÂˆXÝÜ’Yˆ\Ù\‹šYˆ™\™\Ù[]]™RYˆ™\™\Ù[]]™KšYˆÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈXÝ[Û”Ú[ÎˆÈXÝ[Û”Ú[YˆÝš[™ÈNÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÈ\^[ØY˜XÝ[Û”Ú[
+H›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ
+›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë˜ÛÜÙQ\œ›ÜˆŠJNÂˆÙ]ÛÜÙYYÊ
+Ý\œ™[
+HOˆ™]ÈÙ]
+Ý\œ™[
+K˜Y
+XÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+JNÂˆÙ]ÛÜÙPØ[™Y]J[™Yš[™Y
+NÂˆ›ÚY›ÛZ\ÙK˜[
+ÝÛÜšÙ›ÝÐ\Kœ™Yœ™\Ú
+
+K™Yœ™\Ú\™›Ü›X[˜ÙJ
+WJNÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë˜ÛÜÙQ\œ›ÜˆŠJNÂˆHš[˜[HÂˆÙ]ÛÜÚ[™ÒY
+[™Yš[™Y
+NÂˆBˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë›Ü[XÝ[Û”Ú[ÈŠ_HÝX]O^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë›Ü[XÝ[Û”Ú[ÔÝX]HŠ_H[šÏH‹ØXÝY\[[ˆˆ[šÓX™[^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë˜[Š_HÏ‚ˆÙ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\›ÜÙKLL™Ë\›ÜÙKMLMKLˆ^^È›Û\Ù[ZX›Û^\›ÜÙKMÌžÙ\œ›ÜŸOÜŸBˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆØXÝ[ÛœËœÛXÙJ
+K›X\
+
+XÝ[ÛŠHOˆ
+ˆ]ˆÙ^O^ØXÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[YHÛ\ÜÓ˜[YOH™›^Z[‹]ËL][\ËXÙ[\ˆØ\LˆMKL‹H˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLÛN™Ø\LÈÛNœMH‚ˆ[šÂˆ™Y^ØXÝ[Û”Ú[™YŠ™\™\Ù[]]™KšYXÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+_BˆÛ\ÜÓ˜[YOH™Ü›Ý\Z[‹]ËL›^LH›Ý[™Y[ÈKLHÝ][™K[›Û™H›ØÝ\Ë]š\ÚX›Nœš[™ËLˆ›ØÝ\Ë]š\ÚX›Nœš[™ËXœ˜[™ML‚ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Z[‹]ËL›^]Ü˜\][\ËXÙ[\ˆØ\^LÈØ\^KLH‚ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLÜ›Ý\ZÝ™\Ž^Xœ˜[™NžØXÝ[Û‹]_OÜ‚ˆÜ[ˆÛ\ÜÓ˜[YOHœÚš[šËL^^È^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë™YHŠKœ™\XÙJžÙ]_H‹XÝ[Û‹™YHÈ›Ü›X]ÚÜ]JXÝ[Û‹™YK\Ù\‹›[™ÝXYÙJHˆ
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë››ÑYQ]HŠJ_OÜÜ[‚ˆÝ]\Ð˜YÙHÝ]\Ï^ØXÝ[Û‹œÝ]\ßHÏ‚ˆÙ]‚ˆØXÝ[Û‹œ›ÙÜ™\ÜÈOOH[™Yš[™Y	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›]LKH›^][\ËXÙ[\ˆØ\Lˆ‚ˆ]ˆÛ\ÜÓ˜[YOHšLKHZ[‹]ËLŒ›^LH›Ý[™YY[™Ë\Û]KLLˆ\šXK[X™[^ÔÝš[™ÊXÝ[Û‹œ›ÙÜ™\ÜÊH
+È‰HŸO‚ˆ]ˆÛ\ÜÓ˜[YOHšLKH›Ý[™YY[™ËXœ˜[™MÌˆÝ[O^ÞÈÚYˆX]›X^
+X]›Z[ŠLXÝ[Û‹œ›ÙÜ™\ÜÊJH
+È‰Hˆ_HÏ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH›Û\Ù[ZX›Û^\Û]KMLžØXÝ[Û‹œ›ÙÜ™\ÜßIOÜÜ[‚ˆÙ]‚ˆ
+_BˆÓ[šÏ‚ˆØØ[ÛÜÙH	‰ˆ
+ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOHœÚš[šËL›Ý[™Y[ÈLˆKLKH^^È›ÛX›Û^Xœ˜[™MÌ˜[œÚ][ÛˆÝ™\Ž˜™ËXœ˜[™ML›ØÝ\Ë]š\ÚX›N›Ý][™K[›Û™H›ØÝ\Ë]š\ÚX›Nœš[™ËLˆ›ØÝ\Ë]š\ÚX›Nœš[™ËXœ˜[™ML\ØX›Y˜Ý\œÛÜ‹]ØZ]\ØX›Y›ÜXÚ]KML‚ˆÛÛXÚÏ^Ê
+HOˆÂˆÙ]\œ›ÜŠ[™Yš[™Y
+NÂˆÙ]ÛÜÙPØ[™Y]JXÝ[ÛŠNÂˆ_Bˆ\ØX›Y^ØÛÜÚ[™ÒYOOH[™Yš[™YBˆ\šXK[X™[^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë˜ÛÜÙPXÝ[Û”Ú[ŠH
+ÈŽˆˆ
+ÈXÝ[Û‹]_Bˆ‚ˆØÛÜÚ[™ÒYOOHXÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[YÈØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏˆˆ
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë˜ÛÜÙPXÝ[Û”Ú[Š_BˆØ]Û‚ˆ
+_Bˆ[šÈ™Y^ØXÝ[Û”Ú[™YŠ™\™\Ù[]]™KšYXÝ[Û‹˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+_H\šXK[X™[^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë›Ü[XÝ[Û”Ú[Š_HÛ\ÜÓ˜[YOHœÚš[šËL›Ý[™Y[ÈLH^\Û]KLÌ˜[œÚ][ÛˆÝ™\Ž˜™ËXœ˜[™MLÝ™\Ž^Xœ˜[™MÌ›ØÝ\Ë]š\ÚX›N›Ý][™K[›Û™H›ØÝ\Ë]š\ÚX›Nœš[™ËLˆ›ØÝ\Ë]š\ÚX›Nœš[™ËXœ˜[™ML‚ˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÓ[šÏ‚ˆÙ]‚ˆ
+J_BˆØXÝ[ÛœË›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOHœMˆ^XÙ[\ˆ^\ÛH^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë››ÓÜ[XÝ[Û”Ú[ÈŠ_OÜŸBˆÙ]‚ˆØÛÜÙPØ[™Y]H	‰ˆ
+ˆXÝ[Û”Ú[ÛÜÙQX[ÙÂˆ][U]O^ØÛÜÙPØ[™Y]K]_Bˆ\œ›Ü^Ù\œ›ÜŸBˆØ]š[™Ï^ØÛÜÚ[™ÒYOOH[™Yš[™YBˆÛØ[˜Ù[^Ê
+HOˆÙ]ÛÜÙPØ[™Y]J[™Yš[™Y
+_BˆÛÛÛ™š\›O^ÊÛÜÙY™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŠHOˆ›ÚYÛÜÙPXÝ[ÛŠÛÜÙPØ[™Y]KÛÜÙY™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŠ_BˆÏ‚ˆ
+_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™PXÝ]š]Q™YY
+È™\™\Ù[]]™RYš\ÚX›TÙXÝ[ÛœÈNˆÈ™\™\Ù[]]™RYˆÝš[™ÎÈš\ÚX›TÙXÝ[ÛœÎˆÙ]šXÚTÙXÝ[Û’YˆJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÛÜšÙ›ÝÐ\HH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J\Ù\‹›[™ÝXYÙKÙ^JKÝ\Ù\‹›[™ÝXYÙWJNÂˆÛÛœÝÙ]˜[X][ÛœËÙ]]˜[X][Ûœ×HH\ÙTÝ]OÝ\\‘]˜[X][Û”›Ùš[R][V×OŠ×JNÂˆÛÛœÝÙ]˜[X][ÛœÓØY[™ËÙ]]˜[X][ÛœÓØY[™×HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝÝš\ÚX›PÛÝ[Ù]š\ÚX›PÛÝ[HH\ÙTÝ]JL
+NÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆÙ]š\ÚX›PÛÝ[
+L
+NÂˆKÜ™\™\Ù[]]™RYJNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+]š\ÚX›TÙXÝ[ÛœËš\Ê™]˜[X][ÛœÈŠJHÂˆÙ]]˜[X][ÛœÊ×JNÂˆ™]\›ŽÂˆBˆÛÛœÝÛÛ›Û\ˆH™]ÈX›ÜÛÛ›Û\Š
+NÂˆÙ]]˜[X][ÛœÓØY[™ÊYJNÂˆ™]Ú
+‹Ø\KÜÝ\\‹Y]˜[X][ÛœËÜ›Ùš[OØXÝÜ’YHˆ
+È[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+H
+È‰œ™\™\Ù[]]™RYHˆ
+È[˜ÛÙUT’PÛÛ\Û™[
+™\™\Ù[]]™RY
+KÂˆØXÚNˆ››Ë\ÝÜ™H‹ˆÚYÛ˜[ˆÛÛ›Û\‹œÚYÛ˜[ˆJBˆ[Š\Þ[˜È
+™\ÜÛœÙJHOˆÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ]˜[X][ÛœÏÎˆÝ\\‘]˜[X][Û”›Ùš[R][V×HNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ‘]˜[X]Y\ÈÛÛ™[ˆšY]ÛÜ™[ˆÙ[Y[‹ˆŠNÂˆÙ]]˜[X][ÛœÊ^[ØY™]˜[X][ÛœÈÏÈ×JNÂˆJBˆ˜Ø]Ú
+
+
+HOˆÂˆYˆ
+XÛÛ›Û\‹œÚYÛ˜[˜X›ÜY
+HÙ]]˜[X][ÛœÊ×JNÂˆJBˆ™š[˜[J
+
+HOˆÂˆYˆ
+XÛÛ›Û\‹œÚYÛ˜[˜X›ÜY
+HÙ]]˜[X][ÛœÓØY[™Ê˜[ÙJNÂˆJNÂˆ™]\›ˆ
+
+HOˆÛÛ›Û\‹˜X›Ü
+
+NÂˆKÜ™\™\Ù[]]™RY\Ù\‹šYš\ÚX›TÙXÝ[Ûœ×JNÂ‚ˆÛÛœÝXÝ]š]Y\ÈH\ÙSY[[Ê
+
+HOˆZ[™\™\Ù[]]™PXÝ]š]Y\ÊÂˆ™\™\Ù[]]™RYˆÛØXÚ[™ÜÎˆš\ÚX›TÙXÝ[ÛœËš\Ê˜ÛØXÚ[™ÜÈŠHÈ]\Ù]š\ÝÜšXØ[ÛØXÚ[™ÜÈˆ×KˆÛÜšÙ›ÝÐÛØXÚ[™ÜÎˆš\ÚX›TÙXÝ[ÛœËš\Ê˜ÛØXÚ[™ÜÈŠHÈÛÜšÙ›ÝÐ\Kš\ÚX›R[\™[[ÛœÊ\Ù\ŠHˆ×Kˆ\ÝÜšXØ[XÝ[Û”Ú[Îˆš\ÚX›TÙXÝ[ÛœËš\Ê˜XÝ[Û”Ú[ÈŠHÈ]\Ù]š\ÝÜšXØ[XÝ[Û”Ú[Èˆ×KˆÛÛXÝ[ÛY[Îˆš\ÚX›TÙXÝ[ÛœËš\Ê˜ÛÛXÝ[ÛY[ÈŠHÈÛÜšÙ›ÝÐ\Kš\ÚX›PÛÛXÝ[ÛY[Ê\Ù\ŠHˆ×Kˆ\ÝÜšXØ[ÛÛXÝ[ÛY[Îˆš\ÚX›TÙXÝ[ÛœËš\Ê˜ÛÛXÝ[ÛY[ÈŠHÈ]\Ù]š\ÝÜšXØ[ÛÛXÝ[ÛY[Èˆ×Kˆ[™\]Y\ÝÎˆš\ÚX›TÙXÝ[ÛœËš\Êš[™\]Y\ÝÈŠHÈÛÜšÙ›ÝÐ\Kš\ÚX›R[™\]Y\ÝÊ\Ù\ŠHˆ×Kˆ™]˜Z[š[™ÜÎˆš\ÚX›TÙXÝ[ÛœËš\Êœ™]˜Z[š[™ÜÈŠHÈÛÜšÙ›ÝÐ\Kš\ÚX›T™]˜Z[š[™ÜÊ\Ù\ŠHˆ×KˆØ[\Õ˜Z[š[™ÜÎˆš\ÚX›TÙXÝ[ÛœËš\ÊœØ[\Õ˜Z[š[™ÜÈŠHÈÛÜšÙ›ÝÐ\Kš\ÚX›TØ[\Õ˜Z[š[™ÜÊ\Ù\ŠHˆ×Kˆ]˜[X][ÛœÎˆ]˜[X][ÛœÂˆ™š[\Š
+]˜[X][ÛŠHOˆ›ÛÛX[Š]˜[X][Û‹™]˜[X][Û‘]JJBˆ›X\
+
+]˜[X][ÛŠHOˆ
+ÂˆYˆ]˜[X][Û‹šYˆ]Nˆ]˜[X][Û‹™]˜[X][Û‘]Kˆ]Nˆ]˜[X][Û‹›[ÛY[È
+Ý\\‘]˜[X][Û“[ÛY[Ù^J]˜[X][Û‹›[ÛY[
+JHˆ
+›^UX[Kœ›Ùš[K™]˜[X][ÛœË›X[X[ŠKˆÝ]\Îˆ]˜[X][Û‹œÝ]\Ëˆ\™Ù]\›ˆ]˜[X][Û‹š™Y‹ˆJJKˆJKÙ]\Ù]]˜[X][ÛœË™\™\Ù[]]™RY\Ù\‹š\ÚX›TÙXÝ[ÛœËÛÜšÙ›ÝÐ\WJNÂ‚ˆÛÛœÝ\Ü^YYXÝ]š]Y\ÈHXÝ]š]Y\ËœÛXÙJš\ÚX›PÛÝ[
+NÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë›]\ÝXÝ]š]HŠ_HÝX]O^Ý
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë›]\ÝXÝ]š]TÝX]HŠ_HÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÙ\Ü^YYXÝ]š]Y\Ë›X\
+
+XÝ]š]JHOˆ™\™\Ù[]]™PXÝ]š]T›ÝÈÙ^O^ØXÝ]š]KšYHXÝ]š]O^ØXÝ]š]_H[™ÝXYÙO^Ý\Ù\‹›[™ÝXYÙ_H^ÝHÏŠ_BˆÈY\Ü^YYXÝ]š]Y\Ë›[™Ý	‰ˆY]˜[X][ÛœÓØY[™È	‰ˆÛ\ÜÓ˜[YOHœMˆ^XÙ[\ˆ^\ÛH^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë››ÐXÝ]š]HŠ_OÜŸBˆÙ]˜[X][ÛœÓØY[™È	‰ˆY\Ü^YYXÝ]š]Y\Ë›[™Ý	‰ˆÛ\ÜÓ˜[YOHœM^XÙ[\ˆ^^È^\Û]KMLžÝ
+›^UX[Kœ›Ùš[K™]˜[X][ÛœË›ØY[™ÈŠ_OÜŸBˆÙ]‚ˆØXÝ]š]Y\Ë›[™Ýˆš\ÚX›PÛÝ[	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹]›Ü™\‹\Û]KLLLÈ^XÙ[\ˆ‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHLÈKLˆ^^ÈˆÛÛXÚÏ^Ê
+HOˆÙ]š\ÚX›PÛÝ[
+
+Ý\œ™[
+HOˆÝ\œ™[
+ÈL
+_O‚ˆÝ
+›^UX[Kœ›Ùš[K›Ý™\šY]Ë›[Ü™PXÝ]š]HŠ_BˆØ]Û‚ˆÙ]‚ˆ
+_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™PXÝ]š]T›ÝÊÈXÝ]š]K[™ÝXYÙKNˆÈXÝ]š]Nˆ™\™\Ù[]]™PXÝ]š]NÈ[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—NÈˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÈJHÂˆ™]\›ˆ
+ˆ[šÈ™Y^ØXÝ]š]K\™Ù]\›HÛ\ÜÓ˜[YOH™Ü›Ý\›^Z[‹]ËL][\ËXÙ[\ˆØ\LÈMKL‹H˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KML›ØÝ\Ë]š\ÚX›N˜™ËXœ˜[™MLÛNœMH‚ˆ™\™\Ù[]]™PXÝ]š]RXÛÛˆ\O^ØXÝ]š]K\_HÏ‚ˆ[YH]U[YO^ØXÝ]š]K™]_HÛ\ÜÓ˜[YOHËLŒÚš[šËL^^È›Û\Ù[ZX›Û^\Û]KMLÛNËLžÙ›Ü›X]™\™\Ù[]]™PXÝ]š]Q]JXÝ]š]K™]K[™ÝXYÙJ_OÝ[YO‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH^VÌL\H›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚYH^\Û]KMžÜ™\™\Ù[]]™PXÝ]š]U\SX™[
+XÝ]š]K\K
+_OÜ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLÜ›Ý\ZÝ™\Ž^Xœ˜[™NžØXÝ]š]K]_OÜ‚ˆÙ]‚ˆØXÝ]š]KœÝ]\È	‰ˆÝ]\Ð˜YÙHÝ]\Ï^ØXÝ]š]KœÝ]\ßHÏŸBˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMÚš[šËL^\Û]KLÌ˜[œÚ][ÛˆÜ›Ý\ZÝ™\Ž^Xœ˜[™MÌˆÏ‚ˆÓ[šÏ‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™PXÝ]š]RXÛÛŠÈ\HNˆÈ\Nˆ™\™\Ù[]]™PXÝ]š]VÈ\H—HJHÂˆÛÛœÝXÛÛˆH\HOOH˜ÛØXÚ[™ÈˆÈÛ\›Ø\™ÚXÚÂˆˆ\HOOH˜XÝ[Û”Ú[ˆÈ\™Ù]ˆˆ\HOOH˜ÛÛXÝ[ÛY[ˆÈÛÛXÝˆˆ\HOOHš[™\]Y\ÝˆÈÚ\˜ÛR[ˆˆ\HOOH™]˜[X][ÛˆˆÈÚXÚÐÚ\˜ÛL‚ˆˆ\HOOHœ™]˜Z[š[™ÈˆÈÜ˜YX][ÛØ\ˆˆÜ\šÛ\ÎÂˆ™]\›ˆÜ[ˆÛ\ÜÓ˜[YOH™ÜšYNËNÚš[šËLXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È™ËXœ˜[™ML^Xœ˜[™MÌXÛÛˆÛ\ÜÓ˜[YOHšMËMˆÏÜÜ[ŽÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™PXÝ]š]U\SX™[
+\Nˆ™\™\Ù[]]™PXÝ]š]VÈ\H—Kˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÊHÂˆÛÛœÝÙ^\Îˆ™XÛÜ™™\™\Ù[]]™PXÝ]š]VÈ\H—K˜[œÛ][Û’Ù^OˆHÂˆÛØXÚ[™Îˆ›^UX[Kœ›Ùš[K˜XÝ]š]K˜ÛØXÚ[™È‹ˆXÝ[Û”Ú[ˆ›^UX[Kœ›Ùš[K˜XÝ]š]K˜XÝ[Û”Ú[‹ˆÛÛXÝ[ÛY[ˆ›^UX[Kœ›Ùš[K˜XÝ]š]K˜ÛÛXÝ[ÛY[‹ˆ[™\]Y\Ýˆ›^UX[Kœ›Ùš[K˜XÝ]š]Kš[™\]Y\Ý‹ˆ]˜[X][ÛŽˆ›^UX[Kœ›Ùš[K˜XÝ]š]K™]˜[X][Ûˆ‹ˆ™]˜Z[š[™Îˆ›^UX[Kœ›Ùš[K˜XÝ]š]Kœ™]˜Z[š[™È‹ˆØ[\Õ˜Z[š[™Îˆ›^UX[Kœ›Ùš[K˜XÝ]š]KœØ[\Õ˜Z[š[™È‹ˆNÂˆ™]\›ˆ
+Ù^\ÖÝ\WJNÂŸB‚™[˜Ý[Ûˆ›Ü›X]™\™\Ù[]]™PXÝ]š]Q]J˜[YNˆÝš[™Ë[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—JHÂˆÛÛœÝØØ[HH[™ÝXYÙHOOH™œˆˆÈ™œ‹P‘Hˆˆ[™ÝXYÙHOOH™HˆÈ™KQHˆˆ››P‘HŽÂˆ™]\›ˆ™]È]J˜[YJKÓØØ[Q]TÝš[™ÊØØ[KÈ^NˆŒ‹YYÚ]‹[ÛˆœÚÜ‹YX\Žˆ›[Y\šXÈˆJNÂŸB‚™[˜Ý[Ûˆ™\™\Ù[]]™PXÝ[Û”Ú[Ô[™[
+È™\™\Ù[]]™HNˆÈ™\™\Ù[]]™Nˆ™\™\Ù[]]™HJHÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œÈHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÛÜšÙ›ÝÐ\HH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝØÛÜÙPØ[™Y]KÙ]ÛÜÙPØ[™Y]WHH\ÙTÝ]OÛÜšÙ›ÝÐXÝ[Û”Ú[Š
+NÂˆÛÛœÝØÛÜÚ[™ÒYÙ]ÛÜÚ[™ÒYHH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝØÛÜÙQ\œ›Ü‹Ù]ÛÜÙQ\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝØÛÜÙYÝ™\œšY\ËÙ]ÛÜÙYÝ™\œšY\×HH\ÙTÝ]O™XÛÜ™Ýš[™ËXÚÏÛÜšÙ›ÝÐXÝ[Û”Ú[œÝ]\Èˆ˜ÛÜÙY]ˆ˜ÛÜÙYžU\Ù\’Yˆ˜ÛÜÙY™X\ÛÛˆˆ˜ÛÜÙY™X\ÛÛ‘^[˜][ÛˆŠßJNÂˆÛÛœÝÛÜšÙ›ÝÐXÝ[ÛœÈHÛÜšÙ›ÝÐ\Kš\ÚX›R[\™[[ÛœÊ\Ù\ŠBˆ™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™KšY
+Bˆ™›]X\
+
+][JHOˆ][K˜XÝ[Û”Ú[ÊNÂˆÛÛœÝ\ÝÜšXØ[XÝ[ÛœÈH]\Ù]š\ÝÜšXØ[XÝ[Û”Ú[Ë™š[\Š
+][JHOˆ][Kœ™\™\Ù[]]™RYOOH™\™\Ù[]]™KšY
+NÂˆÛÛœÝXÝ[ÛœÈHY\PžRY
+Ë‹‹ÛÜšÙ›ÝÐXÝ[ÛœË‹‹š\ÝÜšXØ[XÝ[Ûœ×JK›X\
+
+XÝ[ÛŠHOˆ
+Âˆ‹‹˜XÝ[Û‹ˆ‹‹ŠÛÜÙYÝ™\œšY\ÖØXÝ[Û‹šYHÏÈßJKˆJJBˆœÛÜ
+
+YšYÚ
+HOˆ
+Y™YHŽNNNKLL‹LÌHŠK›ØØ[PÛÛ\\™JšYÚ™YHŽNNNKLL‹LÌHŠJNÂˆÛÛœÝÜ[XÝ[ÛœÈHXÝ[ÛœÂˆ™š[\Š
+XÝ[ÛŠHOˆ\ÓÜ[”™\™\Ù[]]™PXÝ[Û”Ú[
+XÝ[Û‹œÝ]\ÊJBˆœÛÜ
+
+YšYÚ
+HOˆ
+Y™YHŽNNNKLL‹LÌHŠK›ØØ[PÛÛ\\™JšYÚ™YHŽNNNKLL‹LÌHŠJNÂˆÛÛœÝÛÜÙYXÝ[ÛœÈHXÝ[ÛœÂˆ™š[\Š
+XÝ[ÛŠHOˆZ\ÓÜ[”™\™\Ù[]]™PXÝ[Û”Ú[
+XÝ[Û‹œÝ]\ÊJBˆœÛÜ
+
+YšYÚ
+HOˆ
+šYÚ˜ÛÜÙY]ÏÈˆŠK›ØØ[PÛÛ\\™JY˜ÛÜÙY]ÏÈˆŠJNÂˆÛÛœÝØ[ÛÜÙHHØ[ÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[
+\Ù\ŠH	‰‚ˆØ[Š\Ù\‹›Y[K˜ÛØXÚ[™Ë˜XÝ[Û”Ú[ÈŠH	‰‚ˆØ[XØÙ\ÜÔ™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JNÂ‚ˆ\Þ[˜È[˜Ý[ÛˆÛÜÙPXÝ[ÛŠXÝ[ÛŽˆÛÜšÙ›ÝÐXÝ[Û”Ú[ÛÜÙY™X\ÛÛŽˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÝš[™ÊHÂˆYˆ
+XØ[ÛÜÙHÛÜÚ[™ÒY
+H™]\›ŽÂˆÛÛœÝXÝ[Û”Ú[YHXÝ[Û‹šYš[˜ÛY\ÊŽˆŠHÈXÝ[Û‹šYœÜ]
+ŽˆŠVÌHˆXÝ[Û‹šYÂˆÙ]ÛÜÚ[™ÒY
+XÝ[Û‹šY
+NÂˆÙ]ÛÜÙQ\œ›ÜŠ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+Ø\KØXÝ[Û‹\Ú[ËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+XÝ[Û”Ú[Y
+_KØÛÜÙXÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÂˆXÝÜ’Yˆ\Ù\‹šYˆ™\™\Ù[]]™RYˆ™\™\Ù[]]™KšYˆÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÂˆXÝ[Û”Ú[ÎˆÂˆÝ]\Îˆ˜Y™Ù\›Û™ŽÂˆÛÜÙY]ˆÝš[™ÎÂˆÛÜÙYžU\Ù\’YˆÝš[™ÎÂˆÛÜÙY™X\ÛÛÎˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛŽÂˆÛÜÙY™X\ÛÛ‘^[˜][ÛÎˆÝš[™ÎÂˆNÂˆ\œ›ÜÎˆÝš[™ÎÂˆNÂˆYˆ
+\™\ÜÛœÙK›ÚÈ\^[ØY˜XÝ[Û”Ú[
+H›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë˜ÛÜÙQ\œ›ÜˆŠJNÂˆÙ]ÛÜÙYÝ™\œšY\Ê
+Ý\œ™[
+HOˆ
+Âˆ‹‹˜Ý\œ™[ˆØXÝ[Û‹šYNˆ^[ØY˜XÝ[Û”Ú[KˆJJNÂˆÙ]ÛÜÙPØ[™Y]J[™Yš[™Y
+NÂˆ›ÚYÛÜšÙ›ÝÐ\Kœ™Yœ™\Ú
+
+NÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]ÛÜÙQ\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë˜ÛÜÙQ\œ›ÜˆŠJNÂˆHš[˜[HÂˆÙ]ÛÜÚ[™ÒY
+[™Yš[™Y
+NÂˆBˆB‚ˆ[˜Ý[Ûˆ™[™\XÝ[Û”›ÝÜÊ][\Îˆ\[ÙˆXÝ[ÛœË[\RÙ^Nˆ˜[œÛ][Û’Ù^JHÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÚ][\Ë›X\
+
+XÝ[ÛŠHOˆÂˆÛÛœÝØ[ÛÜÙPXÝ[ÛˆHØ[ÛÜÙH	‰ˆ\ÓÜ[”™\™\Ù[]]™PXÝ[Û”Ú[
+XÝ[Û‹œÝ]\ÊNÂˆÛÛœÝÛÜÙYžS˜[YHHXÝ[Û‹˜ÛÜÙYžU\Ù\’YÈ™\Ü[™Õ\Ù\“˜[YJXÝ[Û‹˜ÛÜÙYžU\Ù\’YX[˜YÙY\Ù\œÊHˆˆŽÂˆÛÛœÝXÝ[Û”Ú[YHXÝ[Û‹šYš[˜ÛY\ÊŽˆŠHÈXÝ[Û‹šYœÜ]
+ŽˆŠVÌHˆXÝ[Û‹šYÂˆ™]\›ˆ
+ˆ]ˆÙ^O^ØXÝ[Û‹šYHÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LˆMKL‹HÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆ[šÈ™Y^ØXÝ[Û”Ú[™YŠ™\™\Ù[]]™KšYXÝ[Û”Ú[Y
+_HÛ\ÜÓ˜[YOH˜›ØÚÈ[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLÝ™\Ž^Xœ˜[™MÌ›ØÝ\Ë]š\ÚX›N›Ý][™K[›Û™H›ØÝ\Ë]š\ÚX›Nœš[™ËLˆ›ØÝ\Ë]š\ÚX›Nœš[™ËXœ˜[™MLˆ]O^ØXÝ[Û‹]_OžÜZ[•^Ý[[X\žJXÝ[Û‹]J_OÓ[šÏ‚ˆÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë™XY[™HŠ_NˆØXÝ[Û‹™YHÈ›Ü›X]ÚÜ]JXÝ[Û‹™YJHˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë››ÑXY[™HŠ_OÜ‚ˆØXÝ[Û‹˜ÛÜÙY]	‰ˆÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙY]Š_NˆÙ›Ü›X]]U[YJXÝ[Û‹˜ÛÜÙY]
+_^ØÛÜÙYžS˜[YHÈ0­È	Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙYžHŠ_Nˆ	ØÛÜÙYžS˜[Y_XˆˆŸOÜŸBˆØXÝ[Û‹˜ÛÜÙY™X\ÛÛˆ	‰ˆÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMŒÜ[ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›ÛžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙY™X\ÛÛˆŠ_NÜÜ[ˆÝ˜[œÛ]J\Ù\‹›[™ÝXYÙKXÝ[Û”Ú[ÛÜÙT™X\ÛÛ’Ù^JXÝ[Û‹˜ÛÜÙY™X\ÛÛŠJ_^ØXÝ[Û‹˜ÛÜÙY™X\ÛÛ‘^[˜][ÛˆÈ0­È	ØXÝ[Û‹˜ÛÜÙY™X\ÛÛ‘^[˜][ÛŸXˆˆŸOÜŸBˆÙ]‚ˆÝ]\Ð˜YÙHÝ]\Ï^ØXÝ[Û‹œÝ]\ßHÏ‚ˆØØ[ÛÜÙPXÝ[Ûˆ	‰ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHÚš[šËLLÈKLKH^^ÈˆÛÛXÚÏ^Ê
+HOˆÈÙ]ÛÜÙQ\œ›ÜŠ[™Yš[™Y
+NÈÙ]ÛÜÙPØ[™Y]JXÝ[ÛŠNÈ_H\ØX›Y^ØÛÜÚ[™ÒYOOH[™Yš[™YOžØÛÜÚ[™ÒYOOHXÝ[Û‹šYÈØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏˆˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜XÝ[ÛœË˜ÛÜÙHŠ_OØ]ÛŸBˆÙ]‚ˆ
+NÂˆJ_BˆÚ][\Ë›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOHœN^XÙ[\ˆ^\ÛH^\Û]KMLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK[\RÙ^J_OÜŸBˆÙ]‚ˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆÙXÝ[Û•]H]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[KX‹˜XÝ[Û”Ú[ÈŠ_HÝX]O^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[ËœÝX]HŠ_HÏ‚ˆØÛÜÙQ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\›ÜÙKLL™Ë\›ÜÙKMLMKLˆ^^È›Û\Ù[ZX›Û^\›ÜÙKMÌžØÛÜÙQ\œ›ÜŸOÜŸBˆÙXÝ[Û‚ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹^H›Ü™\‹\Û]KLL™Ë\Û]KMLMKLÈÈÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë›Ü[•]HŠ_OÚÏÙ]‚ˆÜ™[™\XÝ[Û”›ÝÜÊÜ[XÝ[ÛœË›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë››ÓÜ[ˆŠ_BˆÜÙXÝ[Û‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜›Ü™\‹]›Ü™\‹\Û]KLŒ‚ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\Û]KLL™Ë\Û]KMLMKLÈÈÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNLžÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë˜ÛÜÙY]HŠ_OÚÏÙ]‚ˆÜ™[™\XÝ[Û”›ÝÜÊÛÜÙYXÝ[ÛœË›^UX[Kœ›Ùš[K˜XÝ[Û”Ú[Ë››ÐÛÜÙYŠ_BˆÜÙXÝ[Û‚ˆØÛÜÙPØ[™Y]H	‰ˆXÝ[Û”Ú[ÛÜÙQX[ÙÈ][U]O^ÜZ[•^Ý[[X\žJÛÜÙPØ[™Y]K]J_H\œ›Ü^ØÛÜÙQ\œ›ÜŸHØ]š[™Ï^ØÛÜÚ[™ÒYOOH[™Yš[™YHÛØ[˜Ù[^Ê
+HOˆÙ]ÛÜÙPØ[™Y]J[™Yš[™Y
+_HÛÛÛ™š\›O^ÊÛÜÙY™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŠHOˆ›ÚYÛÜÙPXÝ[ÛŠÛÜÙPØ[™Y]KÛÜÙY™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŠ_HÏŸBˆÙ]‚ˆ
+NÂŸB‚˜ÛÛœÝXÝ[Û”Ú[ÛÜÙT™X\ÛÛ’Ù^\Îˆ™XÛÜ™XÝ[Û”Ú[ÛÜÙT™X\ÛÛ‹˜[œÛ][Û’Ù^OˆHÂˆÓÐSÔ‘PPÒQˆ˜XÝ[Û”Ú[Ë˜ÛÜÙT™X\ÛÛ‹™ÛØ[™XXÚY‹ˆ“×ÓÓ‘ÑT—ÐTPÐP“Nˆ˜XÝ[Û”Ú[Ë˜ÛÜÙT™X\ÛÛ‹››ÓÛ™Ù\\XØX›H‹ˆ‘TÓÓ‘QÕ’PWÓÕT—ÐPÕSÓŽˆ˜XÝ[Û”Ú[Ë˜ÛÜÙT™X\ÛÛ‹œ™\ÛÛ™YšXSÝ\XÝ[Ûˆ‹ˆ“ÕÑ‘PTÒP“Nˆ˜XÝ[Û”Ú[Ë˜ÛÜÙT™X\ÛÛ‹››Ý™X\ÚX›H‹ˆÕTŽˆ˜XÝ[Û”Ú[Ë˜ÛÜÙT™X\ÛÛ‹›Ý\ˆ‹ŸNÂ‚™[˜Ý[ÛˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛ’Ù^J™X\ÛÛŽˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛŠHÂˆ™]\›ˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛ’Ù^\ÖÜ™X\ÛÛ—NÂŸB‚™[˜Ý[ÛˆXÝ[Û”Ú[ÛÜÙQX[ÙÊÂˆ][U]Kˆ\œ›Ü‹ˆØ]š[™ËˆÛØ[˜Ù[ˆÛÛÛ™š\›KŸNˆÂˆ][U]NˆÝš[™ÎÂˆ\œ›ÜÎˆÝš[™ÎÂˆØ]š[™Îˆ›ÛÛX[ŽÂˆÛØ[˜Ù[ˆ
+
+HOˆ›ÚYÂˆÛÛÛ™š\›Nˆ
+™X\ÛÛŽˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛ‹^[˜][ÛŽˆÝš[™ÊHOˆ›ÚYÂŸJHÂˆÛÛœÝÈ[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝÜ™X\ÛÛ‹Ù]™X\ÛÛ—HH\ÙTÝ]OXÝ[Û”Ú[ÛÜÙT™X\ÛÛˆˆŠˆŠNÂˆÛÛœÝÙ^[˜][Û‹Ù]^[˜][Û—HH\ÙTÝ]JˆŠNÂˆÛÛœÝÝ˜[Y][Û‘\œ›Ü‹Ù]˜[Y][Û‘\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂ‚ˆ[˜Ý[ÛˆÝX›Z]
+]™[ˆ™XXÝ‘›Ü›Q]™[S›Ü›Q[[Y[ŠHÂˆ]™[œ™]™[Y˜][
+
+NÂˆÛÛœÝš[[YY^[˜][ÛˆH^[˜][Û‹š[J
+NÂˆYˆ
+\™X\ÛÛŠHÂˆÙ]˜[Y][Û‘\œ›ÜŠ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙËœ™X\ÛÛ”™\]Z\™YŠJNÂˆ™]\›ŽÂˆBˆYˆ
+™X\ÛÛˆOOH“ÕTˆˆ	‰ˆ]š[[YY^[˜][ÛŠHÂˆÙ]˜[Y][Û‘\œ›ÜŠ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË™^[˜][Û”™\]Z\™YŠJNÂˆ™]\›ŽÂˆBˆÙ]˜[Y][Û‘\œ›ÜŠ[™Yš[™Y
+NÂˆÛÛÛ™š\›J™X\ÛÛ‹š[[YY^[˜][ÛŠNÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹VÍÌHÜšYXÙKZ][\ËXÙ[\ˆ™Ë\Û]KNMLÍLM‚ˆ›Ü›HÛ\ÜÓ˜[YOHËY[X^]Ë[Y›Ý[™YLž™Ë]Ú]HÚYÝËLžˆÛ”ÝX›Z]^ÜÝX›Z]O‚ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\Û]KLLMH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]Lˆ^\ÛHXY[™ËMˆ^\Û]KMŒžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË›Y\ÜØYÙHŠ_OÜ‚ˆÛ\ÜÓ˜[YOH›]Lˆ[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLˆ]O^Ú][U]_OžÚ][U]_OÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMMH‚ˆX™[‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMLžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙËœ™X\ÛÛ“X™[Š_H
+ÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ü™X\ÛÛŸH\ØX›Y^ÜØ]š[™ßHÛÚ[™ÙO^Ê]™[
+HOˆÈÙ]™X\ÛÛŠ]™[\™Ù]˜[YH\ÈXÝ[Û”Ú[ÛÜÙT™X\ÛÛˆˆŠNÈÙ]˜[Y][Û‘\œ›ÜŠ[™Yš[™Y
+NÈ_O‚ˆÜ[Ûˆ˜[YOHˆžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙËœ™X\ÛÛ”XÙZÛ\ˆŠ_OÛÜ[Û‚ˆÐPÕSÓ—ÔÒS•ÐÓÔÑWÔ‘PTÓÓ”Ë›X\
+
+Ü[ÛŠHOˆÜ[ÛˆÙ^O^ÛÜ[ÛŸH˜[YO^ÛÜ[ÛŸOžÝ
+XÝ[Û”Ú[ÛÜÙT™X\ÛÛ’Ù^JÜ[ÛŠJ_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆX™[‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMLžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË™^[˜][Û“X™[Š_^Ü™X\ÛÛˆOOH“ÕTˆˆÈˆ
+ˆˆˆˆŸOÜÜ[‚ˆ^\™XHÛ\ÜÓ˜[YOH™šY[Z[‹ZL™\Ú^™K^Hˆ˜[YO^Ù^[˜][ÛŸH\ØX›Y^ÜØ]š[™ßHX^[™Ý^ÌŒHXÙZÛ\^Ý
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË™^[˜][Û”XÙZÛ\ˆŠ_HÛÚ[™ÙO^Ê]™[
+HOˆÈÙ]^[˜][ÛŠ]™[\™Ù]˜[YJNÈÙ]˜[Y][Û‘\œ›ÜŠ[™Yš[™Y
+NÈ_HÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›]LH›ØÚÈ^^È^\Û]KMžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË™^[˜][Û’[Š_OÜÜ[‚ˆÛX™[‚ˆÊ˜[Y][Û‘\œ›Üˆ\œ›ÜŠH	‰ˆ›ÛOH˜[\ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLLÈKLˆ^^È›Û\Ù[ZX›Û^\›ÜÙKMÌžÝ˜[Y][Û‘\œ›ÜˆÏÈ\œ›ÜŸOÜŸBˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\\ÝYžKY[™Ø\Lˆ›Ü™\‹]›Ü™\‹\Û]KLLMH‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^ÛÛØ[˜Ù[H\ØX›Y^ÜØ]š[™ßOžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË˜Ø[˜Ù[Š_OØ]Û‚ˆ]Ûˆ\OHœÝX›Z]ˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆ\ØX›Y^ÜØ]š[™ßOžÜØ]š[™ÈÈØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]u÷Þø¶‰žËkºwµçJWBˆœÛÜ
+
+YšYÚ
+HOˆšYÚ˜]›ØØ[PÛÛ\\™JY˜]
+JVÌNÂˆÛÛœÝØÚÙYHÈ™\ž›Û™[—Ý\—ØZÚÛÛÜ™‹˜ZÚÛÛÜ™ÙÛÜ—Ý™\YÙ[ÛÛÜ™YÙ\ˆ—Kš[˜ÛY\Ê[\™[[Û‹œÝ]\ÊNÂ‚ˆ[˜Ý[ÛˆÛÛ™š\›U˜[œÚ][ÛŠ
+HÂˆYˆ
+ÛÛ™š\›X][ÛˆOOHœÙ[™ŠHÛ”Ù[™›Ü\›Ý˜[
+
+NÂˆYˆ
+ÛÛ™š\›X][ÛˆOOH˜\›Ý™HŠHÛ\›Ý™J
+NÂˆÙ]ÛÛ™š\›X][ÛŠ[™Yš[™Y
+NÂˆB‚ˆ[˜Ý[ÛˆÙÙÛP\Ú[Y[
+YˆÝš[™ÊHÂˆÙ]Ü[\Ú[Y[YÊ
+Ý\œ™[
+HOˆÂˆÛÛœÝ™^H™]ÈÙ]
+Ý\œ™[
+NÂˆYˆ
+™^š\ÊY
+JH™^™[]JY
+NÂˆ[ÙH™^˜Y
+Y
+NÂˆ™]\›ˆ™^ÂˆJNÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ[šÈ™YH‹Ø™YÙ[ZY[™Ù[ˆˆÛ\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^Xœ˜[™MÌ¸¡¤Ý
+˜ÛØXÚ[™Ëœ™\Ü˜˜XÚÈŠ_OÓ[šÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\Lˆ‚ˆØØ[‘ÝÛ›ØY	‰ˆ]ÛˆYHœ˜\Üˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHØÜ›Û[]Lˆ\ØX›Y^Ú\Ð\Þ_HÛÛXÚÏ^Ê
+HOˆÛ‘ÝÛ›ØY
+™\ÜÚY[™Y‹˜Ý\œ™[Ëœ]Y\žTÙ[XÝÜÕ‘ÔÕ‘Ñ[[Y[Š	ÖÙ]K]\ÝYHœ\™›Ü›X[˜ÙK]ÚY[\Ý™È—IÊHÏÈ[™Yš[™Y™\ÜÚY[]J_Oš[QÝÛˆÛ\ÜÓ˜[YOHšMËMˆÏˆÝ
+˜ÛØXÚ[™Ëœ™\Üœ”™\ÜŠ_OØ]ÛŸBˆØØ[“X[˜YÙH	‰ˆ[ØÚÙY	‰ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆ\ØX›Y^Ú\Ð\Þ_HÛÛXÚÏ^Ê
+HOˆÙ]ÛÛ™š\›X][ÛŠœÙ[™Š_OžÝ
+˜ÛØXÚ[™Ëœ™\ÜœÙ[™›Ü\›Ý˜[Š_OØ]ÛŸBˆÚ\Ô™\™\Ù[]]™H	‰ˆ[\™[[Û‹œÝ]\ÈOOH™\ž›Û™[—Ý\—ØZÚÛÛÜ™ˆ	‰ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆ\ØX›Y^Ú\Ð\Þ_HÛÛXÚÏ^Ê
+HOˆÙ]ÛÛ™š\›X][ÛŠ˜\›Ý™HŠ_OžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜\›Ý™HŠ_OØ]ÛŸBˆÝ]\Ð˜YÙHÝ]\Ï^Ú[\™[[Û‹œÝ]\ßHÏ‚ˆÙ]‚ˆÙ]‚‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+˜ÛØXÚ[™Ëœ™\Ü˜ÛÛ\]Y^YXœ›ÝÈŠ_Bˆ]O^Ø	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_XBˆ\ØÜš\[Û^Ø	Ù›Ü›X]ÚÜ]J[\™[[Û‹œ[›™Y]J_H0­È	Ú[\™[[Û‹œÝ\[YHÏÈ‹KN‹KHŸKIÚ[\™[[Û‹™[™[YHÏÈ‹KN‹KHŸXBˆÛÛ\XÝˆÏ‚‚ˆÛY\ÜØYÙH	‰ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Xœ˜[™LŒ™ËXœ˜[™MLM^\ÛH›Û\Ù[ZX›Û^Xœ˜[™NLžÛY\ÜØYÙ_OÙ]ŸBˆ]ˆ™Y^Ü™\ÜÚY[™YŸH\šXKZY[HYHˆÛ\ÜÓ˜[YOHœÚ[\‹Y]™[Ë[›Û™Hš^Y[YVÌLHÜLËVÌLHÜXÚ]KL‚ˆ\™›Ü›X[˜ÙUÚY[ˆ™\™\Ù[]]™RY^ØÝ\œ™[\ÝÜžKœ™\™\Ù[]]™RYBˆÝ\œ™[[\™[[Û’Y^ØÝ\œ™[\ÝÜžKšYBˆÛÛ\\š\ÛÛ’[\™[[Û’Y^ØÛÛ\\š\ÛÛ’\ÝÜžOËšYBˆ\OHšØ\ÝÚÈ‚ˆÛØXÚ[™ÜÏ^ÝÚY[ÛØXÚ[™ÜßBˆ›ÝØÛÜ™YX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠ_BˆÝ[ØÛÜ™SX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKÝ[ØÛÜ™HŠ_BˆX™[Ï^ÝÚY[X™[ßBˆÏ‚ˆÙ]‚ˆÛØÚÙY	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹YXÚÚXKLŒ™ËYXÚÚXKMLM^\ÛH›Û\Ù[ZX›Û^YXÚÚXKNL‚ˆÚ[\™[[Û‹œÝ]\ÈOOH˜ZÚÛÛÜ™ÙÛÜ—Ý™\YÙ[ÛÛÜ™YÙ\ˆ‚ˆÈ	Ý
+˜ÛØXÚ[™Ëœ™\Ü›ØÚÙY\›Ý™YŠ_IÚ[\™[[Û‹˜\›Ý™YžT™\]È	Ý
+˜ÛØXÚ[™Ëœ™\Ü›ÛˆŠ_H	Ù›Ü›X]]U[YJ[\™[[Û‹˜\›Ý™YžT™\]
+_XˆˆŸK˜ˆˆ
+˜ÛØXÚ[™Ëœ™\Ü›ØÚÙYÙ[Š_BˆÙ]‚ˆ
+_BˆÛ]\Ý]Y]	‰ˆ
+ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KML‚ˆÝ
+˜ÛØXÚ[™Ëœ™\Ü›\ÝY]YžHŠKœ™\XÙJžÙ]_H‹›Ü›X]]U[YJ]\Ý]Y]˜]
+JKœ™\XÙJžÝ\Ù\ŸH‹]\Ý]Y]\Ù\“˜[YHÏÈ
+˜ÛØXÚ[™Ëœ™\Ü˜U\Ù\ˆŠJ_BˆÜ‚ˆ
+_B‚ˆÈZ\Ô™\™\Ù[]]™H	‰ˆ[\™[[Û‹œÙ[›Ü\›Ý˜[]	‰ˆ
+ˆ\›Ý˜[™Y›XÝ[Û”™XYÛ›H\›Ý˜[^Ø\›Ý˜[HÙ[›Ü\›Ý˜[]^Ú[\™[[Û‹œÙ[›Ü\›Ý˜[]H^ÝHÏ‚ˆ
+_B‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH™ÜšYØ\MÎ™ÜšYXÛÛËVÛZ[›X^
+KYœŠWÛZ[›X^
+ŽMYœŠWH‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü™Ù[™\˜[[™›ÈŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]MÜšYØ\^MˆØ\^KMÛN™ÜšYXÛÛËLˆÎ™ÜšYXÛÛËLÈ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Üœ™\™\Ù[]]™HŠ_H˜[YO^Ø	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_XHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü˜ÛØXÚŠ_H˜[YO^ÛXY\“˜[Y_HÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\ÜX[HŠ_H˜[YO^Ü™\™\Ù[]]™KX[_HÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Üœ›ÛS]™[Š_H˜[YO^Ø	Ý
+˜ÛØXÚ[™Ëœ™\Üœ™\™\Ù[]]™HŠ_H0­È	Ü™\™\Ù[]]™K›]™[XHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü™]HŠ_H˜[YO^Ù›Ü›X]ÚÜ]J[\™[[Û‹œ[›™Y]J_HÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Üœ[›™Y[YHŠ_H˜[YO^Ø	Ú[\™[[Û‹œÝ\[YHÏÈ‹KN‹KHŸH8 $È	Ú[\™[[Û‹™[™[YHÏÈ‹KN‹KHŸXHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü[™ËœÝ]\ÈŠ_H˜[YO^ÏÝ]\Ð˜YÙHÝ]\Ï^Ú[\™[[Û‹œÝ]\ßHÏŸHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü™Y™™XÝ]™P\œš]˜[\\\™HŠ_H˜[YO^Ø	ÙÜÜÚY\‹˜\œš]˜[[YH‹KN‹KHŸH8 $È	ÙÜÜÚY\‹™\\\™U[YH‹KN‹KHŸXHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü[™Ë˜\™XHŠ_H˜[YO^ÙÜÜÚY\‹˜\™XH¸ %ŸHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü[™ËœÙXÝÜˆŠ_H˜[YO^ÙÜÜÚY\‹œÙXÝÜˆ¸ %ŸHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\ÜšÚ[ÛY]\œÈŠ_H˜[YO^ÙÜÜÚY\‹šÚ[ÛY]\œÈ¸ %ŸHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü[™Ë™›ØÝ\ÈŠ_H˜[YO^Ú[\™[[Û‹™›ØÝ\Ó˜[Y\Ë›[™ÝÈ[\™[[Û‹™›ØÝ\Ó˜[Y\Ëš›Ú[Š‹ŠHˆ
+˜ÛØXÚ[™Ëœ™\Ü™›ØÝ\Ó›Û™HŠ_HÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü››ÝYšYYŠ_H˜[YO^Ú[\™[[Û‹››ÝYžT™\™\Ù[]]™HÈ
+˜ÛÛXÝ[˜ÛÛ[[Û‹žY\ÈŠHˆ
+˜ÛØXÚ[™Ëœ™\Ü››ÈŠ_HÏ‚ˆÙ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™›^Z[‹]ËL›^XÛÛ\ÝYžKX™]ÙY[ˆMHÛNœMˆ‚ˆ]‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü™Ù[™\˜[ØÛÜ™HŠ_OÚ‚ˆÝÝ[ØÛÜ™HOOH[™Yš[™YÈ
+ˆÛ\ÜÓ˜[YOH›]MH^X˜\ÙH›Û\Ù[ZX›Û^\Û]KMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü››ÔØÛÜ™P]˜Z[X›HŠ_OÜ‚ˆ
+Hˆ
+ˆÛ\ÜÓ˜[YOH›]LÈ^M^›ÛX›XÚÈ˜XÚÚ[™Ë]YÚ^Xœ˜[™NMLžÙ›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJÝ[ØÛÜ™K
+˜ÛØXÚ[™Ëœ™\Ü››ÔØÛÜ™P]˜Z[X›HŠJ_OÜ‚ˆ
+_BˆÙ]‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOH˜‹\š[X\žH]NËY[\ÝYžKXÙ[\ˆÚ]\ÜXÙK[›Ü›X[^XÙ[\ˆ‚ˆÛÛXÚÏ^Ê
+HOˆÙ]ÚY[Ü[ŠYJ_Bˆ‚ˆÝ
+˜ÛØXÚ[™Ëœ™\Ü›Ü[”\™›Ü›X[˜ÙUÚY[Š_BˆØ]Û‚ˆÙ]‚ˆÜÙXÝ[Û‚‚ˆÙXÝ[ÛˆYH›ÜY\šÚ[™Ù[ˆˆÛ\ÜÓ˜[YOH˜Ø\™ØÜ›Û[]LMH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\ÜœÝ[[X\žPÛÛ˜Û\Ú[ÛˆŠ_OÚ‚ˆ]ˆÛ\ÜÓ˜[YOH›]MÜXÙK^KLÈ‚ˆÙÙ[™\˜[™[X\šÜË›X\
+
+™[X\šÊHOˆ]ˆÙ^O^Ø	Ü™[X\šË›X™[N‰Ü™[X\šË^XHÛ\ÜÓ˜[YOHœ›Ý[™Y^™Ë\Û]KMLMKLÈÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^Xœ˜[™MÌžÜ™[X\šË›X™[OÜÜ[Û˜[ÛØXÚ[™Ô™[X\šÈ˜[YO^Ü™[X\šË^HÛ\ÜÓ˜[YOH›]LH^\ÛHXY[™ËMˆ^\Û]KMÌˆÏÙ]Š_BˆÈZ\Ô™\™\Ù[]]™H	‰ˆZ\Ð›[šÔšXÚ^
+[\™[[Û‹š[\›˜[›Ý\ÊH	‰ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹X[X™\‹LŒ™ËX[X™\‹MLMKLÈÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^X[X™\‹NžÝ
+˜ÛØXÚ[™Ëœ™\Üš[\›˜[›ÝHŠ_OÜÜ[Û˜[ÛØXÚ[™Ô™[X\šÈ˜[YO^Ú[\™[[Û‹š[\›˜[›Ý\ßHÛ\ÜÓ˜[YOH›]LH^\ÛHXY[™ËMˆ^X[X™\‹NLˆÏÙ]ŸBˆÙ]‚ˆÜÙXÝ[Û‚‚ˆÙXÝ[ÛˆYHœØÛÜ™\ÈˆÛ\ÜÓ˜[YOH˜Ø\™ØÜ›Û[]LMH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü›XZ[‘›Ü›TØÛÜ™\ÈŠKœ™\XÙJžÜØÛÜ™_H‹›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJXZ[‘›Ü›TØÛÜ™K
+˜ÛØXÚ[™Ëœ™\Ü››ÔØÛÜ™P]˜Z[X›HŠJJ_OÚ‚ˆ™XYÛ›TÚ[\TØÛÜ™UX›HØÛÜ™\Ï^ÛXZ[”ØÛÜ™T›ÝÜßHÏ‚ˆÈÛ\ÜÓ˜[YOH›]Mˆ^X˜\ÙH›ÛX›Û^\Û]KNLžÝ
+˜ÛØXÚ[™Ëœ™\Ü™]Z[YÜš]\šXHŠ_OÚÏ‚ˆ™XYÛ›UÛÜšÙ›ÝÔØÛÜ™UX›HØÛÜ™\Ï^ÝÛÜšÙ›ÝÔØÛÜ™T›ÝÜßHÏ‚ˆÜÙXÝ[Û‚‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH™ÜšYØ\MÎ™ÜšYXÛÛËLˆ‚ˆ]ˆYH˜XÝY\[[ˆˆÛ\ÜÓ˜[YOH˜Ø\™ØÜ›Û[]LMH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜XÝ[Û”Ú[ÈŠ_OÚ‚ˆ]ˆÛ\ÜÓ˜[YOH›]MÜXÙK^KLˆ‚ˆÙY\PžRY
+[\™[[Û‹˜XÝ[Û”Ú[ÊK›X\
+
+XÝ[ÛŠHOˆ]ˆÙ^O^ØXÝ[Û‹šYHÛ\ÜÓ˜[YOHœ›Ý[™Y^™Ë\Û]KMLMKLÈ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\LÈ]Û\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^\Û]KNžØXÝ[Û‹]_OÜÛ\ÜÓ˜[YOH›]LH^^È^\Û]KML‘XY[™HØXÝ[Û‹™YHÈ›Ü›X]ÚÜ]JXÝ[Û‹™YJHˆ›šY][™Ù\Ý[ŸH0­Èš[Üš]Z]ØXÝ[Û‹œš[Üš]HÏÈ››Ü›XX[ŸOÜÙ]Ý]\Ð˜YÙHÝ]\Ï^ØXÝ[Û‹œÝ]\ßHÏÙ]žÈZ\Ð›[šÔšXÚ^
+XÝ[Û‹™\ØÜš\[ÛŠH	‰ˆšXÚ^™[™\™\ˆ˜[YO^ØXÝ[Û‹™\ØÜš\[ÛŸHÛ\ÜÓ˜[YOH›]LÈ^\ÛHXY[™ËMˆ^\Û]KMŒˆÏŸOÙ]Š_BˆÚ[\™[[Û‹˜XÝ[Û”Ú[Ë›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü››ÐXÝ[Û”Ú[ÐYYŠ_OÜŸBˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜YÜ™Y[Y[ÕÚ][ˆŠ_OÚ‚ˆ]ˆÛ\ÜÓ˜[YOH›]MÜXÙK^KLˆ‚ˆØ\Ú[Y[Ë›X\
+
+\Ú[Y[[™^
+HOˆÂˆÛÛœÝ^[™YHÜ[\Ú[Y[YËš\Ê\Ú[Y[šY
+NÂˆ™]\›ˆ\XÛHÙ^O^Ø™\ÜIØ\Ú[Y[šYXHÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆØ\LÈM^[Y˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLˆÛÛXÚÏ^Ê
+HOˆÙÙÛP\Ú[Y[
+\Ú[Y[šY
+_H\šXKY^[™Y^Ù^[™YO‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYLLZ[‹]ËLMˆXÙKZ][\ËXÙ[\ˆ›Ý[™Y^™ËXœ˜[™MLLˆ^^È›ÛX›Û^Xœ˜[™NžØ\Ú[Y[˜\œš]˜[[YH‹KN‹KHŸOÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LHÛ\ÜÓ˜[YOH[˜Ø]H›Û\Ù[ZX›Û^\Û]KNLžÚ[™^
+È_KˆØ\Ú[Y[˜Ý\ÝÛY\ˆ
+˜ÛØXÚ[™Ëœ™\Ü[›˜[YY\Ú[Y[Š_OÜÛ\ÜÓ˜[YOH›]LH^^ÈØ\][^™H^\Û]KMLžØ\Ú[Y[œ™[][Û•\_H0­ÈØ\Ú[Y[˜\Ú[Y[\_H0­ÈØ\Ú[Y[œXÙH
+˜ÛØXÚ[™Ëœ™\Ü››ÓØØ][ÛˆŠ_OÜÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHšY[ˆ^\šYÚÛN˜›ØÚÈÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^Xœ˜[™NžÙ›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJ\Ú[Y[]™\˜YÙTØÛÜ™J\Ú[Y[
+K
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠJ_OÜÛ\ÜÓ˜[YOH^^È^\Û]KMžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜]™\˜YÙTØÛÜ™HŠ_OÜÙ]‚ˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YO^ØMHËMHÚš[šËL^\Û]KM˜[œÚ][Ûˆ	Ù^[™YÈœ›Ý]KNLˆˆˆŸXHÏ‚ˆØ]Û‚ˆÙ^[™Y	‰ˆ\Ú[Y[™XYÛ›T™\Ü\Ú[Y[^Ø\Ú[Y[HÛØXÚ[™Ñœ˜[Y]ÛÜšÏ^ØÛØXÚ[™Ñœ˜[Y]ÛÜšßH^ÝHÏŸBˆØ\XÛOŽÂˆJ_BˆØ\Ú[Y[Ë›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü››Ð\Ú[Y[Ô™YÚ\Ý\™YŠ_OÜŸBˆÙ]‚ˆÙ]‚ˆÜÙXÝ[Û‚‚ˆÜÚÝÒ\ÝÜžH	‰ˆ
+[\™[[Û‹˜]Y]˜Z[Ë›[™ÝÏÈ
+Hˆ	‰ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆ^[Y›ÛX›Û^\Û]KNMLˆÛÛXÚÏ^Ê
+HOˆÙ]\ÝÜžSÜ[Š
+˜[YJHOˆ]˜[YJ_O‚ˆÝ
+˜ÛØXÚ[™Ëœ™\Üš\ÝÜžHŠ_HÜ[žÚ\ÝÜžSÜ[ˆÈ¸¢$ˆˆˆŠÈŸOÜÜ[‚ˆØ]Û‚ˆÚ\ÝÜžSÜ[ˆ	‰ˆ]ˆÛ\ÜÓ˜[YOH›]MÜXÙK^KLÈžÚ[\™[[Û‹˜]Y]˜Z[K›X\
+
+[žJHOˆ]ˆÙ^O^Ù[žKšYHÛ\ÜÓ˜[YOH˜›Ü™\‹[Lˆ›Ü™\‹Xœ˜[™LŒMÛ\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^\Û]KNžÙ[žKœÝ[[X\ž_OÜÛ\ÜÓ˜[YOH^^È^\Û]KMLžÙ›Ü›X]]U[YJ[žK˜]
+_H0­ÈÙ[žK\Ù\“˜[YHÏÈ[žK\Ù\’YOÜÙ]Š_OÙ]ŸBˆÜÙXÝ[Û‚ˆ
+_B‚ˆØÛÛ™š\›X][Ûˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹MLÜšYXÙKZ][\ËXÙ[\ˆ™Ë\Û]KNMLÍLM‚ˆ]ˆÛ\ÜÓ˜[YOHËY[X^]Ë[Y›Ý[™YLž™Ë]Ú]HMˆÚYÝËLž‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜ÛÛ™š\›X][ÛˆŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LÈ^\ÛHXY[™ËMˆ^\Û]KMŒ‚ˆØÛÛ™š\›X][ÛˆOOHœÙ[™‚ˆÈ
+˜ÛØXÚ[™Ëœ™\ÜœÙ[™ÛÛ™š\›X][ÛˆŠBˆˆ
+˜ÛØXÚ[™Ëœ™\Ü˜\›Ý™PÛÛ™š\›X][ÛˆŠ_BˆÜ‚ˆ]ˆÛ\ÜÓ˜[YOH›]Mˆ›^\ÝYžKY[™Ø\Lˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^Ê
+HOˆÙ]ÛÛ™š\›X][ÛŠ[™Yš[™Y
+_OžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜Ø[˜Ù[Š_OØ]Û]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆÛÛXÚÏ^ØÛÛ™š\›U˜[œÚ][ÛŸOžÝ
+˜ÛØXÚ[™Ëœ™\Ü˜ÛÛ™š\›HŠ_OØ]ÛÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+_Bˆ\™›Ü›X[˜ÙUÚY[X[ÙÂˆÜ[^ÝÚY[Ü[ŸBˆÛÛÜÙO^Ê
+HOˆÙ]ÚY[Ü[Š˜[ÙJ_Bˆ]O^Ý
+˜ÛØXÚ[™Ëœ™\Üœ\™›Ü›X[˜ÙUÚY[[Ù[]HŠ_BˆÛÜÙSX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü˜ÛÜÙT\™›Ü›X[˜ÙUÚY[Š_Bˆ™\™\Ù[]]™RY^ØÝ\œ™[\ÝÜžKœ™\™\Ù[]]™RYBˆÝ\œ™[[\™[[Û’Y^ØÝ\œ™[\ÝÜžKšYBˆÛÛ\\š\ÛÛ’[\™[[Û’Y^ØÛÛ\\š\ÛÛ’\ÝÜžOËšYBˆÛØXÚ[™ÜÏ^ÝÚY[ÛØXÚ[™ÜßBˆÝ[\˜Ù[YÙSÝ™\œšYO^ÝÝ[ØÛÜ™_Bˆ›ÝØÛÜ™YX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠ_BˆÝ[ØÛÜ™SX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKÝ[ØÛÜ™HŠ_BˆX™[Ï^ÞÂˆ›ÐÛÛ\\˜X›TØÛÜ™\Îˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÔØÛÜ™\ÈŠKˆ›ÐÜš]\šXNˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÐÜš]\šXHŠKˆ[˜ÛÛ\]Nˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKš[˜ÛÛ\]HŠKˆ\šXRØ\ÝÚÎˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK˜ÛÛ\][˜ÞUÚY[ŠKˆ\šXQÙ[™\˜[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK™Ù[™\˜[ÚY[ŠKˆ™]š[Ý\Îˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKœ™]š[Ý\ÔÚÜŠKˆÝ\œ™[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK˜Ý\œ™[ÚÜŠKˆÛÛ\[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKÚY[[ŠKˆÝ\œ™[YX\Ý\™[Y[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK˜Ý\œ™[YX\Ý\™[Y[ŠKˆ™]š[Ý\ÓYX\Ý\™[Y[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKœ™]š[Ý\ÓYX\Ý\™[Y[ŠKˆ›Ô™]š[Ý\ÓYX\Ý\™[Y[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››Ô™]š[Ý\ÓYX\Ý\™[Y[ŠKˆ™]\Žˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK˜™]\ˆŠKˆÛÜœÙNˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKÛÜœÙHŠKˆ\]X[ˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK™\]X[ŠKˆš\œÝˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK™š\œÝYX\Ý\™[Y[ŠKˆÜ™Y[Žˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK™Ü™Y[ˆŠKˆ™Yˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKœ™YŠKˆ\šÐ›YNˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK™\šÐ›YHŠKˆ›YNˆ
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK˜›YHŠKˆ_BˆÏ‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\™›Ü›X[˜ÙUÚY[X[ÙÊÂˆÜ[‹ˆÛÛÜÙKˆ]KˆÛÜÙSX™[ˆ™\™\Ù[]]™RYˆÝ\œ™[[\™[[Û’YˆÛÛ\\š\ÛÛ’[\™[[Û’YˆÛØXÚ[™ÜËˆÝ[\˜Ù[YÙSÝ™\œšYKˆ›ÝØÛÜ™YX™[ˆÝ[ØÛÜ™SX™[ˆX™[ËŸNˆÂˆÜ[Žˆ›ÛÛX[ŽÂˆÛÛÜÙNˆ
+
+HOˆ›ÚYÂˆ]NˆÝš[™ÎÂˆÛÜÙSX™[ˆÝš[™ÎÂˆ™\™\Ù[]]™RYˆÝš[™ÎÂˆÝ\œ™[[\™[[Û’YˆÝš[™ÎÂˆÛÛ\\š\ÛÛ’[\™[[Û’YÎˆÝš[™ÎÂˆÛØXÚ[™ÜÎˆ\ÝÜšXØ[ÛØXÚ[™Ö×NÂˆÝ[\˜Ù[YÙSÝ™\œšYOÎˆ[X™\ŽÂˆ›ÝØÛÜ™YX™[ˆÝš[™ÎÂˆÝ[ØÛÜ™SX™[ˆÝš[™ÎÂˆX™[Îˆ\˜[Y]\œÏ\[Ùˆ\™›Ü›X[˜ÙUÚY[–ÌVÈ›X™[È—NÂŸJHÂˆÛÛœÝX[ÙÔ™YˆH\ÙT™YS]‘[[Y[Š[
+NÂˆÛÛœÝÛÜÙP]Û”™YˆH\ÙT™YS]Û‘[[Y[Š[
+NÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+[Ü[ŠH™]\›ŽÂˆÛÛœÝ™]š[Ý\ÐXÝ]™Q[[Y[HØÝ[Y[˜XÝ]™Q[[Y[[œÝ[˜Ù[ÙˆS[[Y[ÈØÝ[Y[˜XÝ]™Q[[Y[ˆ[ÂˆÛÛœÝ™]š[Ý\ÓÝ™\™›ÝÈHØÝ[Y[˜›ÙKœÝ[K›Ý™\™›ÝÎÂˆØÝ[Y[˜›ÙKœÝ[K›Ý™\™›ÝÈHšY[ˆŽÂˆÛÛœÝ›ØÝ\Õ[Y\ˆHÚ[™ÝËœÙ][Y[Ý]
+
+
+HOˆÛÜÙP]Û”™Y‹˜Ý\œ™[Ë™›ØÝ\Ê
+K
+NÂ‚ˆ[˜Ý[Ûˆ[™RÙ^QÝÛŠ]™[ˆÙ^X›Ø\™]™[
+HÂˆYˆ
+]™[šÙ^HOOH‘\ØØ\HŠHÂˆ]™[œ™]™[Y˜][
+
+NÂˆÛÛÜÙJ
+NÂˆ™]\›ŽÂˆBˆYˆ
+]™[šÙ^HOOH•XˆŠH™]\›ŽÂˆÛÛœÝ›ØÝ\ØX›HHX[ÙÔ™Y‹˜Ý\œ™[Ëœ]Y\žTÙ[XÝÜ[S[[Y[Šˆ˜]Û‹Ú™Y—K[œ]Ù[XÝ^\™XKÝXš[™^N››Ý
+ÝXš[™^W‹LW—JH‚ˆ
+NÂˆYˆ
+Y›ØÝ\ØX›OË›[™Ý
+H™]\›ŽÂˆÛÛœÝš\œÝH›ØÝ\ØX›VÌNÂˆÛÛœÝ\ÝH›ØÝ\ØX›VÙ›ØÝ\ØX›K›[™ÝHWNÂˆYˆ
+]™[œÚYÙ^H	‰ˆØÝ[Y[˜XÝ]™Q[[Y[OOHš\œÝ
+HÂˆ]™[œ™]™[Y˜][
+
+NÂˆ\Ý™›ØÝ\Ê
+NÂˆH[ÙHYˆ
+Y]™[œÚYÙ^H	‰ˆØÝ[Y[˜XÝ]™Q[[Y[OOH\Ý
+HÂˆ]™[œ™]™[Y˜][
+
+NÂˆš\œÝ™›ØÝ\Ê
+NÂˆBˆB‚ˆØÝ[Y[˜Y]™[\Ý[™\ŠšÙ^YÝÛˆ‹[™RÙ^QÝÛŠNÂˆ™]\›ˆ
+
+HOˆÂˆÚ[™ÝË˜ÛX\•[Y[Ý]
+›ØÝ\Õ[Y\ŠNÂˆØÝ[Y[œ™[[Ý™Q]™[\Ý[™\ŠšÙ^YÝÛˆ‹[™RÙ^QÝÛŠNÂˆØÝ[Y[˜›ÙKœÝ[K›Ý™\™›ÝÈH™]š[Ý\ÓÝ™\™›ÝÎÂˆ™]š[Ý\ÐXÝ]™Q[[Y[Ë™›ØÝ\Ê
+NÂˆNÂˆKÛÛÛÜÙKÜ[—JNÂ‚ˆYˆ
+[Ü[ŠH™]\›ˆ[Â‚ˆ™]\›ˆ
+ˆ]‚ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹VÎH›^][\ËXÙ[\ˆ\ÝYžKXÙ[\ˆ™Ë\Û]KNMLÍÌLˆ˜XÚÙ›ÜX›\‹\ÛHÛNœM‚ˆÛ“[Ý\ÙQÝÛ^Ê]™[
+HOˆÂˆYˆ
+]™[\™Ù]OOH]™[˜Ý\œ™[\™Ù]
+HÛÛÜÙJ
+NÂˆ_Bˆ‚ˆ]‚ˆ™Y^ÙX[ÙÔ™YŸBˆ›ÛOH™X[ÙÈ‚ˆ\šXK[[Ù[HYH‚ˆ\šXK[X™[YžOHœ\™›Ü›X[˜ÙK]ÚY[YX[ÙË]]H‚ˆÛ\ÜÓ˜[YOH™›^X^ZVØØ[ÊLšL\™[JWHËY[X^]ËVÛZ[ŠMLØ[ÊLËL\™[JJWHZ[‹]ËL›^XÛÛÝ™\™›ÝËZY[ˆ›Ý[™YLž™Ë]Ú]HÚYÝËLžÛN›X^ZVØØ[ÊLšLœ™[JWHÛNœ›Ý[™YLÞ‚ˆÛ“[Ý\ÙQÝÛ^Ê]™[
+HOˆ]™[œÝÜ›ÜYØ][ÛŠ
+_Bˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Úš[šËL][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\M›Ü™\‹Xˆ›Ü™\‹\Û]KLŒMKLÈÛNœMˆÛNœKM‚ˆˆYHœ\™›Ü›X[˜ÙK]ÚY[YX[ÙË]]HˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLÛN^^žÝ]_OÚ‚ˆ]Û‚ˆ™Y^ØÛÜÙP]Û”™YŸBˆ\OH˜]Ûˆ‚ˆ\šXK[X™[^ØÛÜÙSX™[BˆÛ\ÜÓ˜[YOH™ÜšYLLËLLÚš[šËLXÙKZ][\ËXÙ[\ˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ^\Û]KMŒ˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KML›ØÝ\Î›Ý][™K[›Û™H›ØÝ\Îœš[™ËLˆ›ØÝ\Îœš[™ËXœ˜[™ML›ØÝ\Îœš[™Ë[Ù™œÙ]Lˆ‚ˆÛÛXÚÏ^ÛÛÛÜÙ_Bˆ‚ˆÛ\ÜÓ˜[YOHšMHËMHˆ\šXKZY[HYHˆÏ‚ˆØ]Û‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹ZLÝ™\™›ÝË^KX]]ÈÝ™\œØÜ›ÛXÛÛZ[ˆLÈÛNœMˆ‚ˆ\™›Ü›X[˜ÙUÚY[ˆ™\™\Ù[]]™RY^Ü™\™\Ù[]]™RYBˆÝ\œ™[[\™[[Û’Y^ØÝ\œ™[[\™[[Û’YBˆÛÛ\\š\ÛÛ’[\™[[Û’Y^ØÛÛ\\š\ÛÛ’[\™[[Û’YBˆ\OHšØ\ÝÚÈ‚ˆÛØXÚ[™ÜÏ^ØÛØXÚ[™ÜßBˆÝ[\˜Ù[YÙSÝ™\œšYO^ÝÝ[\˜Ù[YÙSÝ™\œšY_Bˆ›ÝØÛÜ™YX™[^Û›ÝØÛÜ™YX™[BˆÝ[ØÛÜ™SX™[^ÝÝ[ØÛÜ™SX™[BˆX™[Ï^ÛX™[ßBˆÏ‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\Ú[Y[™XYÛ›T™\Ü
+È\Ú[Y[ÛØXÚ[™Ñœ˜[Y]ÛÜšËNˆÈ\Ú[Y[ˆÛØXÚ[™Ð\Ú[Y[ÈÛØXÚ[™Ñœ˜[Y]ÛÜšÎˆ™]\›•\O\[Ùˆ\ÙPÛÛ™šYÝ\˜][Û–È˜ÛØXÚ[™Ñœ˜[Y]ÛÜšÈ—NÈˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÈJHÂˆÛÛœÝØÛÜ™\ÈHY\TØÛÜ™\ÐžPÜš]\š[ÛŠ\Ú[Y[œØÛÜ™\ÊNÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹]›Ü™\‹\Û]KLŒ™Ë\Û]KMLMÛNœMH‚ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÛN™ÜšYXÛÛËLˆÎ™ÜšYXÛÛËLÈ‚ˆÝ[[X\žU˜[YHX™[H’Û[È›ÜÜXÝˆ˜[YO^Ø\Ú[Y[˜Ý\ÝÛY\ˆ“šY][™Ù][ŸHÏ‚ˆÝ[[X\žU˜[YHX™[H’Û[[[Y\ˆˆ˜[YO^Ø\Ú[Y[˜Ý\ÝÛY\“[X™\ˆ“šY][™Ù][ŸHÏ‚ˆÝ[[X\žU˜[YHX™[HY™\ÈÈØØ]YHˆ˜[YO^Ø\Ú[Y[œXÙH“šY][™Ù][ŸHÏ‚ˆÝ[[X\žU˜[YHX™[H•Z™Ý\ˆ˜[YO^Ø	Ø\Ú[Y[˜\œš]˜[[YH‹KN‹KHŸH8 $È	Ø\Ú[Y[™\\\™U[YH‹KN‹KHŸXHÏ‚ˆÝ[[X\žU˜[YHX™[H•\Hˆ˜[YO^Ø	Ø\Ú[Y[œ™[][Û•\_H0­È	Ø\Ú[Y[˜\Ú[Y[\_XHÏ‚ˆÝ[[X\žU˜[YHX™[^Ý
+˜ÛØXÚ[™Ëœ™\Ü˜]™\˜YÙTØÛÜ™HŠ_H˜[YO^Ù›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJ\Ú[Y[]™\˜YÙTØÛÜ™J\Ú[Y[
+K
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠJ_HÏ‚ˆÙ‚ˆ]ˆÛ\ÜÓ˜[YOH›]MHÜšYØ\MÎ™ÜšYXÛÛËLˆ‚ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^™Ë]Ú]HMÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KM”™\Ý[X]ÈXÝ]š]Z]ÜÛ\ÜÓ˜[YOH›]Lˆ^\ÛHXY[™ËMˆ^\Û]KMÌžØ\Ú[Y[˜XÝ]š]OËš[J
+H‘ÙY[ˆ™\Ý[X][™Ù][ˆŸOÜÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^™Ë]Ú]HMÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KM“›Ý]Y\ÈÈÜY\šÚ[™Ù[ÜÜ[Û˜[ÛØXÚ[™Ô™[X\šÈ˜[YO^Ø\Ú[Y[œ™[X\šÜßHÛ\ÜÓ˜[YOH›]LˆZ[‹ZMˆ^\ÛHXY[™ËMˆ^\Û]KMÌˆÏÙ]‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH›]MH›ÛX›Û^\Û]KNLžÝ
+˜ÛØXÚ[™Ëœ™\Ü™]Z[YØÛÜ™\ÈŠ_OÚ‚ˆ™XYÛ›P\Ú[Y[ØÛÜ™QÜ›Ý\ÈØÛÜ™\Ï^ÜØÛÜ™\ßHÛØXÚ[™Ñœ˜[Y]ÛÜšÏ^ØÛØXÚ[™Ñœ˜[Y]ÛÜšßH^ÝHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›]M›Ý[™Y^›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌ™Ë]Ú]HMKLÈ^\ÛH^\Û]KML‘ÙY[ˆYž›Û™\›ZšÈX[ˆ^™HYœÜ˜XZÈÙZÛÜ[HXÝY\[[ˆÙ\™YÚ\Ý™Y\™Ù]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™XYÛ›P\Ú[Y[ØÛÜ™QÜ›Ý\ÊÈØÛÜ™\ËÛØXÚ[™Ñœ˜[Y]ÛÜšËNˆÈØÛÜ™\ÎˆÛØXÚ[™ÔÚ[\TØÛÜ™V×NÈÛØXÚ[™Ñœ˜[Y]ÛÜšÎˆ™]\›•\O\[Ùˆ\ÙPÛÛ™šYÝ\˜][Û–È˜ÛØXÚ[™Ñœ˜[Y]ÛÜšÈ—NÈˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÈJHÂˆÛÛœÝÜ›Ý\ÈHÜ›Ý\\Ú[Y[ØÛÜ™\ÊØÛÜ™\ËÛØXÚ[™Ñœ˜[Y]ÛÜšÊNÂˆYˆ
+Ü›Ý\Ë›[™ÝOOH
+H™]\›ˆÛ\ÜÓ˜[YOH›]M^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ëœ™\Ü››ÔØÛÜ™\Ô™YÚ\Ý\™YŠ_OÜŽÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›]LÈÜXÙK^KLÈ‚ˆÙÜ›Ý\Ë›X\
+
+Ü›Ý\
+HOˆ
+ˆÙXÝ[ÛˆÙ^O^ÙÜ›Ý\›˜[Y_HÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\Lˆ›Ü™\‹Xˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLLÈKLˆ‚ˆHÛ\ÜÓ˜[YOH›Z[‹]ËL›^LHœ™XZË]ÛÜ™È^\ÛH›ÛX›Û^\Û]KNLžÙÜ›Ý\›˜[Y_OÚO‚ˆÜ[ˆÛ\ÜÓ˜[YOHœÚš[šËL^\ÛH›ÛX›Û^Xœ˜[™NžÙ›Ü›X]\™›Ü›X[˜ÙT\˜Ù[YÙJÜ›Ý\˜]™\˜YÙK
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠJ_OÜÜ[‚ˆÙ]‚ˆ™XYÛ›TÚ[\TØÛÜ™UX›HØÛÜ™\Ï^ÙÜ›Ý\œØÛÜ™\ßHÜ]Üš]\š[ÛˆÏ‚ˆÜÙXÝ[Û‚ˆ
+J_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆÜ[Û˜[ÛØXÚ[™Ô™[X\šÊÈ˜[YKÛ\ÜÓ˜[YHNˆÈ˜[YOÎˆÝš[™È[ÈÛ\ÜÓ˜[YNˆÝš[™ÈJHÂˆYˆ
+\Ð›[šÔšXÚ^
+˜[YJJH™]\›ˆ]ˆÛ\ÜÓ˜[YO^ØÛ\ÜÓ˜[Y_H\šXKZY[HYHˆÏŽÂˆÛÛœÝ^H˜[YHÏÈˆŽÂˆYˆ
+\Ò[X\šÝ\
+^
+JHÂˆ™]\›ˆšXÚ^™[™\™\ˆ˜[YO^Ý^HÛ\ÜÓ˜[YO^ØÛ\ÜÓ˜[Y_HÏŽÂˆBˆ™]\›ˆÛ\ÜÓ˜[YO^ØÛ\ÜÓ˜[Y_OžÜšXÚ^ÔZ[•^
+^
+_OÜŽÂŸB‚™[˜Ý[Ûˆ\›Ý˜[™Y›XÝ[Û”™XYÛ›JÂˆ\›Ý˜[ˆÙ[›Ü\›Ý˜[]ˆŸNˆÂˆ\›Ý˜[ÎˆÛÜšÙ›ÝÐ\VÈœÝ]H—VÈ˜\›Ý˜[È—VÛ[X™\—NÂˆÙ[›Ü\›Ý˜[]ˆÝš[™ÎÂˆˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÎÂŸJHÂˆÛÛœÝÛÛ\]HH\›Ý˜[\ÐÛÛ\]Y™Y›XÝ[ÛŠ\›Ý˜[
+NÂˆÛÛœÝ›ÝÜÈHÂˆÈX™[ˆ
+˜\›Ý˜[™Y›XÝ[Û‹œ]Y\Ý[Û‹šÜHŠK˜[YNˆ\›Ý˜[Ëœ™Y›XÝ[Û’ÜR[KˆÈX™[ˆ
+˜\›Ý˜[™Y›XÝ[Û‹œ]Y\Ý[Û‹›X\›š[™ÈŠK˜[YNˆ\›Ý˜[Ëœ™Y›XÝ[Û“X\›š[™Ò[KˆÈX™[ˆ
+˜\›Ý˜[™Y›XÝ[Û‹œ]Y\Ý[Û‹™ÛØ[ŠK˜[YNˆ\›Ý˜[Ëœ™Y›XÝ[Û‘ÛØ[[KˆNÂ‚ˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜\›Ý˜[™Y›XÝ[Û‹œÙXÝ[Û•]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KML‚ˆØÛÛ\]BˆÈ
+˜\›Ý˜[™Y›XÝ[Û‹˜ÛÛ\]YX[˜YÙ\ˆŠBˆˆ	Ý
+˜\›Ý˜[™Y›XÝ[Û‹œ[™[™ÓX[˜YÙ\ˆŠ_H	Ý
+˜\›Ý˜[™Y›XÝ[Û‹œÙ[›Ü\›Ý˜[]Š_Nˆ	Ù›Ü›X]]U[YJÙ[›Ü\›Ý˜[]
+_K˜BˆÜ‚ˆÙ]‚ˆÝ]\Ð˜YÙHÝ]\Ï^ØÛÛ\]HÈš[™ÙYY[™ˆˆØXÚÛÜØZÚÛÛÜ™ŸHÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MHÜXÙK^KM‚ˆÜ›ÝÜË›X\
+
+›ÝÊHOˆ
+ˆ]ˆÙ^O^Ü›ÝË›X™[HÛ\ÜÓ˜[YOHœ›Ý[™Y^™Ë\Û]KMLMKLÈ‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^Xœ˜[™MÌžÜ›ÝË›X™[OÜ‚ˆÚ\Ð›[šÔšXÚ^
+›ÝË˜[YJHÈ
+ˆÛ\ÜÓ˜[YOH›]Lˆ^\ÛH›Û\Ù[ZX›Û^\Û]KMLžÝ
+˜\›Ý˜[™Y›XÝ[Û‹››Ýš[YŠ_OÜ‚ˆ
+Hˆ
+ˆšXÚ^™[™\™\ˆ˜[YO^Ü›ÝË˜[Y_HÛ\ÜÓ˜[YOH›]Lˆ^\ÛHXY[™ËMˆ^\Û]KMÌˆÏ‚ˆ
+_BˆÙ]‚ˆ
+J_BˆÙ]‚ˆÜÙXÝ[Û‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™XYÛ›TÚ[\TØÛÜ™UX›JÈØÛÜ™\ËÜ]Üš]\š[ÛˆH˜[ÙHNˆÈØÛÜ™\ÎˆÛØXÚ[™ÔÚ[\TØÛÜ™V×NÈÜ]Üš]\š[ÛÎˆ›ÛÛX[ˆJHÂˆYˆ
+ØÛÜ™\Ë›[™ÝOOH
+H™]\›ˆÛ\ÜÓ˜[YOH›]M^\ÛH^\Û]KML‘ÙY[ˆØÛÜ™\ÈÙ\™YÚ\Ý™Y\™ÜŽÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›]MÜšYØ\LˆY™ÜšYXÛÛËLˆ‚ˆÜØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆÂˆÛÛœÝÜš]\š[ÛˆHÜ]ØÛÜ™PÜš]\š[ÛŠØÛÜ™K˜Üš]\š[ÛŠNÂˆÛÛœÝÝ\œ™[\˜Ù[YÙHHØÛÜ™KœØÛÜ™HOOH[ØÛÜ™KœØÛÜ™HOOH›ˆÈ[™Yš[™Yˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™JØÛÜ™KœØÛÜ™JNÂˆÛÛœÝ™]š[Ý\Ô\˜Ù[YÙHHØÛÜ™Kœ™]š[Ý\ÔØÛÜ™HOOH[™Yš[™YÈ[™Yš[™Yˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™JØÛÜ™Kœ™]š[Ý\ÔØÛÜ™JNÂˆÛÛœÝ™[™HØÛÜ™U™[™
+Ý\œ™[\˜Ù[YÙK™]š[Ý\Ô\˜Ù[YÙJNÂˆ™]\›ˆ]ˆÙ^O^ÜØÛÜ™K˜Üš]\š[ÛŸHÛ\ÜÓ˜[YOH›Z[‹]ËL›Ý[™Y[È™Ë\Û]KMLLÈKLˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Z[‹]ËL][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LHœ™XZË]ÛÜ™È^\ÛH›Û\Ù[ZX›Û^\Û]KNžÜÜ]Üš]\š[ÛˆÈÜš]\š[Û‹™]Z[ˆØÛÜ™K˜Üš]\š[ÛŸOÜ‚ˆ]ˆÛ\ÜÓ˜[YOHœÚš[šËL^\šYÚ‚ˆÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNMLžØÝ\œ™[\˜Ù[YÙHOOH[™Yš[™YÈ
+ØÛÜ™KœØÛÜ™HOOH›ˆÈ“‹‹ˆˆˆ¸ %ŠHˆ	ØÝ\œ™[\˜Ù[YÙ_IXOÜ‚ˆÜ™]š[Ý\Ô\˜Ù[YÙHOOH[™Yš[™Y	‰ˆÛ\ÜÓ˜[YO^Ø^^È›Û\Ù[ZX›Û	Ý™[™Û™_XOžÝ™[™›X™[H0­È›ÜšYÙHÜ™]š[Ý\Ô\˜Ù[YÙ_IOÜŸBˆÙ]‚ˆÙ]‚ˆÈZ\Ð›[šÔšXÚ^
+ØÛÜ™K˜ÛÛ[Y[
+H	‰ˆÜ[Û˜[ÛØXÚ[™Ô™[X\šÈ˜[YO^ÜØÛÜ™K˜ÛÛ[Y[HÛ\ÜÓ˜[YOH›]LH^\ÛHXY[™ËMH^\Û]KMŒˆÏŸBˆÙ]ŽÂˆJ_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ™XYÛ›UÛÜšÙ›ÝÔØÛÜ™UX›JÈØÛÜ™\ÈNˆÈØÛÜ™\ÎˆÛÜšÙ›ÝÔØÛÜ™V×HJHÂˆYˆ
+ØÛÜ™\Ë›[™ÝOOH
+H™]\›ˆÛ\ÜÓ˜[YOH›]M^\ÛH^\Û]KML‘ÙY[ˆÙY]Z[Y\™HÜš]\šXHÙ\™YÚ\Ý™Y\™ÜŽÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›]MÜXÙK^KLˆ‚ˆÜØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆÂˆÛÛœÝÝ\œ™[HØÛÜ™K˜[YHOOH“••ˆÈ[™Yš[™YˆØÛÜ™K˜[YNÂˆÛÛœÝ™[™HØÛÜ™U™[™
+Ý\œ™[ØÛÜ™Kœ™]š[Ý\ÔØÛÜ™JNÂˆ™]\›ˆ]ˆÙ^O^Ø	ÜØÛÜ™K™›ØÝ\ßN‰ÜØÛÜ™K˜Üš]\š[ÛŸN‰ÜØÛÜ™K˜Üš]\š[Û’YÏÈ˜\ÝŸXHÛ\ÜÓ˜[YOH™ÜšYØ\Lˆ›Ý[™Y^™Ë\Û]KMLMKLÈÛN™ÜšYXÛÛËVÛZ[›X^
+MLYœŠWÌL\ÛZ[›X^
+NKŒ™œŠWHÛNš][\ËXÙ[\ˆ‚ˆ]Û\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^Xœ˜[™MÌžÜØÛÜ™K™›ØÝ\È[Ù[YY[ˆŸOÜÛ\ÜÓ˜[YOH›]LH^\ÛH›Û\Ù[ZX›Û^\Û]KNžÜØÛÜ™K˜Üš]\š[ÛŸOÜÙ]‚ˆ]Û\ÜÓ˜[YOH^\ÛH›ÛX›Û^\Û]KNMLžØÝ\œ™[OOH[™Yš[™YÈ“‹‹ˆˆˆ	ØÝ\œ™[IXOÜžÜØÛÜ™Kœ™]š[Ý\ÔØÛÜ™HOOH[™Yš[™Y	‰ˆÛ\ÜÓ˜[YO^Ø^^È›Û\Ù[ZX›Û	Ý™[™Û™_XOžÝ™[™›X™[H0­È›ÜšYÙHÜØÛÜ™Kœ™]š[Ý\ÔØÛÜ™_IOÜŸOÙ]‚ˆÜ[Û˜[ÛØXÚ[™Ô™[X\šÈ˜[YO^ÜØÛÜ™K™\ØÜš\[ÛŸHÛ\ÜÓ˜[YOH›Z[‹ZMH^\ÛHXY[™ËMH^\Û]KMŒˆÏ‚ˆÙ]ŽÂˆJ_BˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆY\TØÛÜ™\ÐžPÜš]\š[ÛŠØÛÜ™\ÎˆÛØXÚ[™ÔÚ[\TØÛÜ™V×JHÂˆ™]\›ˆË‹‹›™]ÈX\
+ØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆÜØÛÜ™K˜Üš]\š[Û‹ØÛÜ™WJJK˜[Y\Ê
+WNÂŸB‚™[˜Ý[ÛˆY\UÛÜšÙ›ÝÔØÛÜ™\ÊØÛÜ™\ÎˆÛÜšÙ›ÝÔØÛÜ™V×JHÂˆ™]\›ˆË‹‹›™]ÈX\
+ØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆØ	ÜØÛÜ™K™›ØÝ\ßN‰ÜØÛÜ™K˜Üš]\š[ÛŸN‰ÜØÛÜ™K˜Üš]\š[Û’YÏÈ˜\ÝŸXØÛÜ™WJJK˜[Y\Ê
+WNÂŸB‚™[˜Ý[ÛˆÜ]ØÛÜ™PÜš]\š[ÛŠ˜[YNˆÝš[™ÊHÂˆÛÛœÝÙÜ›Ý\‹‹™]Z[HH˜[YKœÜ]
+×ÊËWÊËÊNÂˆ™]\›ˆÈÜ›Ý\ˆ]Z[›[™ÝÈÜ›Ý\ˆÜš]\š][H‹]Z[ˆ]Z[›[™ÝÈ]Z[š›Ú[ŠˆHŠHˆÜ›Ý\NÂŸB‚™[˜Ý[ÛˆØÛÜ™U™[™
+Ý\œ™[Îˆ[X™\ˆ›ˆ[™]š[Ý\ÏÎˆ[X™\ŠHÂˆYˆ
+\[ÙˆÝ\œ™[OOH›[X™\ˆˆ™]š[Ý\ÈOOH[™Yš[™Y
+H™]\›ˆÈX™[ˆˆ‹Û™Nˆ^\Û]KMLˆNÂˆYˆ
+Ý\œ™[ˆ™]š[Ý\ÊH™]\›ˆÈX™[ˆ¸¡¤H™]\ˆ‹Û™Nˆ^Y[Y\˜[MÌˆNÂˆYˆ
+Ý\œ™[™]š[Ý\ÊH™]\›ˆÈX™[ˆ¸¡¤ÈYÙ\ˆ‹Û™Nˆ^\›ÜÙKMÌˆNÂˆ™]\›ˆÈX™[ˆ¸¡¤ˆÙ[ZšÈ‹Û™Nˆ^\Û]KMŒˆNÂŸB‚™[˜Ý[ÛˆÝ[[X\žU˜[YJÈX™[˜[YHNˆÈX™[ˆÝš[™ÎÈ˜[YNˆ™XXÝ”™XXÝ›ÙHJHÂˆ™]\›ˆ]Û\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÛX™[OÙÛ\ÜÓ˜[YOH›]LH^\ÛH›Û\Ù[ZX›Û^\Û]KNžÝ˜[Y_OÙÙ]ŽÂŸB‚™[˜Ý[Ûˆ›Ü›X]]U[YJ˜[YNˆÝš[™ÊHÂˆ™]\›ˆ™]È[‘]U[YQ›Ü›X]
+››P‘H‹È]TÝ[NˆœÚÜ‹[YTÝ[NˆœÚÜˆJK™›Ü›X]
+™]È]J˜[YJJNÂŸB‚™[˜Ý[Ûˆ^šY[
+ÈX™[˜[YKÛÚ[™ÙK\HH^‹\ØX›YH˜[ÙHNˆÈX™[ˆÝš[™ÎÈ˜[YNˆÝš[™ÎÈÛÚ[™ÙNˆ
+˜[YNˆÝš[™ÊHOˆ›ÚYÈ\OÎˆÝš[™ÎÈ\ØX›YÎˆ›ÛÛX[ˆJHÂˆ™]\›ˆX™[Ü[ˆÛ\ÜÓ˜[YOH›X‹Lˆ›ØÚÈ^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMLžÛX™[OÜÜ[[œ]\O^Ý\_HÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ý˜[Y_H\ØX›Y^Ù\ØX›YHÛÚ[™ÙO^Ê]™[
+HOˆÛÚ[™ÙJ]™[\™Ù]˜[YJ_HÏÛX™[ŽÂŸB‚™[˜Ý[ÛˆÛØXÚ[™ÔÝXš™XÝ\Ô™\™\Ù[]]™JÝXš™XÝˆ›Û“[X›OÛØXÚ[™ÕÛÜšÙ›ÝÒ][VÈœÝXš™XÝ—OŠNˆ™\™\Ù[]]™HÂˆ™]\›ˆÈYˆÝXš™XÝšYš\œÝ˜[YNˆÝXš™XÝ™š\œÝ˜[YK\Ý˜[YNˆÝXš™XÝ›\Ý˜[YK[š]X[ÎˆÝXš™XÝš[š]X[ËÛÝ[žNˆÝXš™XÝ˜ÛÝ[žKX[NˆÝXš™XÝX[KX[RYˆÝXš™XÝX[RY]™[ˆ•™\YÙ[ÛÛÜ™YÙ\ˆ‹]™[ÛÛÜŽˆ˜™ËXœ˜[™LL^Xœ˜[™N‹\ÝÛØXÚ[™Îˆ“›ÙÈšY]‹Ü[XÝ[ÛœÎˆ[XZ[ˆˆ‹Û™Nˆˆ‹Ü\Îˆ×HNÂŸB‚˜ÛÛœÝšXÚ^Y]ÜˆHY[[Ê[˜Ý[ÛˆšXÚ^Y]ÜŠÈX™[˜[YKÛÚ[™ÙK\ØX›YNˆÈX™[ˆÝš[™ÎÈ˜[YNˆÝš[™ÎÈÛÚ[™ÙNˆ
+˜[YNˆÝš[™ÊHOˆ›ÚYÈ\ØX›Yˆ›ÛÛX[ˆJHÂˆÛÛœÝY]Ü”™YˆH\ÙT™YS]‘[[Y[Š[
+NÂˆÛÛœÝ\Ý[Z]Y˜[YHH\ÙT™YÝš[™È[™Yš[™YŠ[™Yš[™Y
+NÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆÛÛœÝY]ÜˆHY]Ü”™Y‹˜Ý\œ™[ÂˆYˆ
+YY]ÜŠH™]\›ŽÂ‚ˆËÈH\™[™[™\ˆY\ˆØØ[\[™È]\Ý™]™\ˆ™]Üš]HHY]X›HÓN‚ˆËÈÚ[™ÈÛÈ\Ý›Þ\ÈHœ›ÝÜÙ\ˆÙ[XÝ[Ûˆ[™[Ý™\ÈHØ\™]ÈHÝ\‚ˆYˆ
+˜[YHOOH\Ý[Z]Y˜[YK˜Ý\œ™[
+HÂˆ\Ý[Z]Y˜[YK˜Ý\œ™[H[™Yš[™YÂˆ™]\›ŽÂˆBˆYˆ
+Y]Ü‹š[›™\’SOOH˜[YJHY]Ü‹š[›™\’SH˜[YNÂˆKÝ˜[YWJNÂ‚ˆÛÛœÝ[Z]Ú[™ÙHH\ÙPØ[˜XÚÊ
+
+HOˆÂˆÛÛœÝ™^˜[YHHY]Ü”™Y‹˜Ý\œ™[Ëš[›™\’SÏÈˆŽÂˆ\Ý[Z]Y˜[YK˜Ý\œ™[H™^˜[YNÂˆÛÚ[™ÙJ™^˜[YJNÂˆKÛÛÚ[™ÙWJNÂ‚ˆÛÛœÝÛÛ[X[™H\ÙPØ[˜XÚÊ
+˜[YNˆÝš[™ËÛÛ[X[™˜[YOÎˆÝš[™ÊHOˆÂˆY]Ü”™Y‹˜Ý\œ™[Ë™›ØÝ\Ê
+NÂˆØÝ[Y[™^XÐÛÛ[X[™
+˜[YK˜[ÙKÛÛ[X[™˜[YJNÂˆK×JNÂˆÛÛœÝÛÛ›ÛÈHÂˆÈˆ‹˜›Û—KÈ’H‹š][XÈ—KÈ•H‹[™\›[™H—KÈ¸ (ˆ‹š[œÙ\[›Ü™\™Y\Ý—KˆÈŒKˆ‹š[œÙ\Ü™\™Y\Ý—KÈ¸¡¤‹š\ÝYžSY—KÈ¸¡¥‹š\ÝYžPÙ[\ˆ—KÈ¸¡¤ˆ‹š\ÝYžTšYÚ—KˆH\ÈÛÛœÝÂˆ™]\›ˆ]Û\ÜÓ˜[YOH›X‹Lˆ^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMLžÛX™[OÜ]ˆÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆÈY\ØX›Y	‰ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\LH›Ü™\‹Xˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLLˆžØÛÛ›ÛË›X\
+
+Ý^˜[YWJHOˆ]ÛˆÙ^O^Û˜[Y_H\OH˜]Ûˆˆ]O^Û˜[Y_HÛ\ÜÓ˜[YOH™ÜšYNZ[‹]ËNXÙKZ][\ËXÙ[\ˆ›Ý[™Y[YLˆ^^È›ÛX›ÛÝ™\Ž˜™Ë]Ú]HˆÛ“[Ý\ÙQÝÛ^Ê]™[
+HOˆÈ]™[œ™]™[Y˜][
+
+NÈÛÛ[X[™
+˜[YJNÈ_OžÝ^OØ]ÛŠ_O]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOHšN›Ý[™Y[YLˆ^^È›ÛX›ÛÝ™\Ž˜™Ë]Ú]HˆÛ“[Ý\ÙQÝÛ^Ê]™[
+HOˆÈ]™[œ™]™[Y˜][
+
+NÈÛÛœÝ\›HÚ[™ÝËœ›Û\
+“[šÈ
+Î‹Ëø )ŠHŠNÈYˆ
+\›
+HÛÛ[X[™
+˜Ü™X]S[šÈ‹\›
+NÈ_O“[šÏØ]Û[œ]\OH˜ÛÛÜˆˆ]OH•ZÜÝÛ]\ˆˆÛ\ÜÓ˜[YOHšNËNˆÛÚ[™ÙO^Ê]™[
+HOˆÛÛ[X[™
+™›Ü™PÛÛÜˆ‹]™[\™Ù]˜[YJ_HÏÙ]ŸBˆ]ˆ™Y^ÙY]Ü”™YŸHÛ\ÜÓ˜[YOHœšXÚ]^YY]ÜˆZ[‹ZLŽLÈ^\ÛHXY[™ËMˆÝ][™K[›Û™HˆÛÛ[Y]X›O^ÈY\ØX›YHÝ\™\ÜÐÛÛ[Y]X›UØ\›š[™ÈÛ’[œ]^Ù[Z]Ú[™Ù_HÏ‚ˆÙ]Ù]ŽÂŸJNÂ‚˜ÛÛœÝXÝ[Û•\ÑY]ÜˆHY[[Ê[˜Ý[ÛˆXÝ[Û•\ÑY]ÜŠÈXÝ[Û’Y˜[YK\ØX›YÛÚ[™ÙHNˆÂˆXÝ[Û’YˆÝš[™ÎÂˆ˜[YNˆÝš[™ÎÂˆ\ØX›Yˆ›ÛÛX[ŽÂˆÛÚ[™ÙNˆ
+XÝ[Û’YˆÝš[™Ë˜[YNˆÝš[™ÊHOˆ›ÚYÂŸJHÂˆÛÛœÝ[™PÚ[™ÙHH\ÙPØ[˜XÚÊ
+™^˜[YNˆÝš[™ÊHOˆÛÚ[™ÙJXÝ[Û’Y™^˜[YJKØXÝ[Û’YÛÚ[™ÙWJNÂˆ™]\›ˆšXÚ^Y]ÜˆX™[H•\È	ˆšXÚÜÈ
+ˆˆ˜[YO^Ý˜[Y_H\ØX›Y^Ù\ØX›YHÛÚ[™ÙO^Ú[™PÚ[™Ù_HÏŽÂŸJNÂ‚™[˜Ý[ÛˆÛØXÚ[™ÓÝ]ÛÚÔÞ[˜ÔÝ]\ÊÈ[\™[[ÛˆNˆÈ[\™[[ÛŽˆÛØXÚ[™ÕÛÜšÙ›ÝÒ][HJHÂˆÛÛœÝX™[H[\™[[Û‹›Ý]ÛÚÔÞ[˜ÔÝ]\ÈOOH”ÖSÑQ‚ˆÈ‘Ù\Þ[˜Ú›Ûš\ÙY\™Y]Ý]ÛÚÈ‚ˆˆ[\™[[Û‹›Ý]ÛÚÔÞ[˜ÔÝ]\ÈOOH‘T”“Ôˆ‚ˆÈ“Ý]ÛÚË\Þ[˜Ù›Ý]‚ˆˆ“›ÙÈšY]Ù\Þ[˜Ú›Ûš\ÙY\™Y]Ý]ÛÚÈŽÂˆÛÛœÝÛ™HH[\™[[Û‹›Ý]ÛÚÔÞ[˜ÔÝ]\ÈOOH”ÖSÑQ‚ˆÈ˜›Ü™\‹Y[Y\˜[LŒ™ËY[Y\˜[ML^Y[Y\˜[N‚ˆˆ[\™[[Û‹›Ý]ÛÚÔÞ[˜ÔÝ]\ÈOOH‘T”“Ôˆ‚ˆÈ˜›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKML^\›ÜÙKN‚ˆˆ˜›Ü™\‹X[X™\‹LŒ™ËX[X™\‹ML^X[X™\‹NŽÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YO^Ø›Ý[™YLž›Ü™\ˆM^\ÛH	ÝÛ™_XO‚ˆÛ\ÜÓ˜[YOH™›ÛX›ÛžÛX™[OÜ‚ˆÚ[\™[[Û‹›\ÝÞ[˜ÙY]	‰ˆ
+ˆÛ\ÜÓ˜[YOH›]LH^^ÈÜXÚ]KN“X]ÝÙ\Þ[˜Ú›Ûš\ÙY\™ˆÛ™]È]J[\™[[Û‹›\ÝÞ[˜ÙY]
+KÓØØ[TÝš[™Ê››P‘HŠ_OÜ‚ˆ
+_BˆÚ[\™[[Û‹œÞ[˜Ñ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOH›]LH^^ÈžÚ[\™[[Û‹œÞ[˜Ñ\œ›ÜŸOÜŸBˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ[›[™SÝ]ÛÚÔÞ[˜ÔÝ]\ÊÂˆÝ]\Ëˆ\œ›Ü‹ŸNˆÂˆÝ]\Îˆ““ÕÔÖSÑQˆ”ÖSÑQˆ‘T”“ÔˆŽÂˆ\œ›ÜÎˆÝš[™ÎÂŸJHÂˆÛÛœÝX™[HÝ]\ÈOOH”ÖSÑQˆÈ‘Ù\Þ[˜Ú›Ûš\ÙY\™ˆˆÝ]\ÈOOH‘T”“ÔˆˆÈ”Þ[˜ËY›Ý]ˆˆ“›ÙÈšY]Ù\Þ[˜Ú›Ûš\ÙY\™ŽÂˆÛÛœÝÛ™HHÝ]\ÈOOH”ÖSÑQ‚ˆÈ˜™ËY[Y\˜[LL^Y[Y\˜[N‚ˆˆÝ]\ÈOOH‘T”“Ôˆ‚ˆÈ˜™Ë\›ÜÙKLL^\›ÜÙKN‚ˆˆ˜™ËX[X™\‹LL^X[X™\‹NŽÂˆ™]\›ˆÜ[ˆÛ\ÜÓ˜[YO^Ø[›[™KY›^›Ý[™YY[L‹HKLH^^È›ÛX›Û	ÝÛ™_XH]O^Ù\œ›ÜˆÏÈX™[OžÛX™[OÜÜ[ŽÂŸB‚™[˜Ý[Ûˆ™XYÛ›QšY[
+ÈX™[˜[YHNˆÈX™[ˆÝš[™ÎÈ˜[YNˆÝš[™ÈJHÂˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLLÈÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÛX™[OÜÛ\ÜÓ˜[YOH›]LH›Û\Ù[ZX›Û^\Û]KNLžÝ˜[YH‹HŸOÜÙ]ŽÂŸB‚™[˜Ý[Ûˆ\ÝÜšXØ[ØÛÜ™PÛÛ\\š\ÛÛ”[™[
+ÂˆˆØY[™Ëˆ\œ›Ü‹ˆÜ[ÛœËˆÙ[XÝYYˆÙ[XÝYˆÝ\œ™[\ÝÜžKˆÚY[ÛØXÚ[™ÜËˆÛ”Ù[XÝˆÛ”™]žKŸNˆÂˆˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÎÂˆØY[™Îˆ›ÛÛX[ŽÂˆ\œ›ÜÎˆÝš[™ÎÂˆÜ[ÛœÎˆ\ÝÜšXØ[ÛÛ\\š\ÛÛ”™\ÜÛœÙVÈ›Ü[ÛœÈ—NÂˆÙ[XÝYYˆÝš[™ÎÂˆÙ[XÝYÎˆ\ÝÜšXØ[ÛÛ\\š\ÛÛ”™\ÜÛœÙVÈœÙ[XÝY—NÂˆÝ\œ™[\ÝÜžNˆ\ÝÜšXØ[ÛØXÚ[™ÎÂˆÚY[ÛØXÚ[™ÜÎˆ\ÝÜšXØ[ÛØXÚ[™Ö×NÂˆÛ”Ù[XÝˆ
+YˆÝš[™ÊHOˆ›ÚYÂˆÛ”™]žNˆ
+
+HOˆ›ÚYÂŸJHÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\M›Ü™\‹Xˆ›Ü™\‹\Û]KLLMHÛNœMˆÎ™›^\›ÝÈÎš][\ËXÙ[\ˆÎš\ÝYžKX™]ÙY[ˆ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ë]HŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH›]LH^[È›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ëœ™\™\Ù[]]™TØÛÜ™\ÈŠ_OÚ‚ˆÜÙ[XÝY	‰ˆ
+ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KML‚ˆÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ëœ™]š[Ý\ÐÛØXÚ[™ÈŠ_NˆÙ›Ü›X]ÚÜ]JÙ[XÝY™]J_HHÜÙ[XÝY›ÝÛ™\“˜[Y_BˆÜ‚ˆ
+_BˆÙ]‚ˆÛÜ[ÛœË›[™ÝˆÈ
+ˆX™[Û\ÜÓ˜[YOH›Z[‹]ËL^^È›Û\Ù[ZX›Û^\Û]KMLÎ›X^]Ë[Y‚ˆÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ë˜ÛÛ\\™UÚ]™]š[Ý\ÈŠ_BˆÙ[XÝˆÛ\ÜÓ˜[YOH™šY[]LHËY[Z[‹]ËL‚ˆ˜[YO^ÜÙ[XÝYYBˆ\ØX›Y^ÛØY[™ßBˆÛÚ[™ÙO^Ê]™[
+HOˆÛ”Ù[XÝ
+]™[\™Ù]˜[YJ_Bˆ‚ˆÜ[Ûˆ˜[YOH››Û™HžÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ë››ÐÛÛ\\š\ÛÛˆŠ_OÛÜ[Û‚ˆÛÜ[ÛœË›X\
+
+Ü[ÛŠHOˆ
+ˆÜ[ÛˆÙ^O^ÛÜ[Û‹šYH˜[YO^ÛÜ[Û‹šYO‚ˆÙ›Ü›X]ÚÜ]JÜ[Û‹™]J_HHÛÜ[Û‹›ÝÛ™\“˜[Y_HHÛÜ[Û‹œÝ]\ßBˆÛÜ[Û‚ˆ
+J_BˆÜÙ[XÝ‚ˆÛX™[‚ˆ
+Hˆ
+ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMŒ‚ˆÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ë››Ò\ÝÜšXØ[ØÛÜ™\ÈŠ_BˆÜ‚ˆ
+_BˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMMHÛNœMˆ‚ˆÛØY[™È	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMŒ‚ˆØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏ‚ˆÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ë›ØY[™Ò\ÝÜšXØ[ØÛÜ™\ÈŠ_BˆÙ]‚ˆ
+_BˆÙ\œ›Üˆ	‰ˆ
+ˆ]ˆ›ÛOH˜[\ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LÈ›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKNÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆÛNš\ÝYžKX™]ÙY[ˆ‚ˆÜ[žÙ\œ›ÜŸOÜÜ[‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žH™Ë]Ú]HKLˆ^^ÈˆÛÛXÚÏ^ÛÛ”™]ž_O‚ˆÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ëœ™]žHŠ_BˆØ]Û‚ˆÙ]‚ˆ
+_BˆÜÙ[XÝY	‰ˆY\œ›Üˆ	‰ˆ
+ˆ‚ˆ]‚ˆ\™›Ü›X[˜ÙUÚY[ˆ™\™\Ù[]]™RY^ØÝ\œ™[\ÝÜžKœ™\™\Ù[]]™RYBˆÝ\œ™[[\™[[Û’Y^ØÝ\œ™[\ÝÜžKšYBˆÛÛ\\š\ÛÛ’[\™[[Û’Y^ÜÙ[XÝYšYBˆ\OHšØ\ÝÚÈ‚ˆÛØXÚ[™ÜÏ^ÝÚY[ÛØXÚ[™ÜßBˆ›ÝØÛÜ™YX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙK››ÝØÛÜ™YŠ_BˆÝ[ØÛÜ™SX™[^Ý
+˜ÛØXÚ[™Ëœ\™›Ü›X[˜ÙKÝ[ØÛÜ™HŠ_BˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MH‚ˆ]ˆÛ\ÜÓ˜[YOH›X‹LÈ›^›^]Ü˜\][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\Lˆ‚ˆÈÛ\ÜÓ˜[YOH™›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ëœ™\Üš\ÝÜšXØ[ØÛÜ™\ÈŠ_OÚÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÝ]\Ð˜YÙHÝ]\Ï^ÜÙ[XÝYœÝ]\ËÓÝÙ\Ø\ÙJ
+_HÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^\ÛH›ÛX›Û^Xœ˜[™NžÙ›Ü›X]\˜Ù[YÙJÙ[XÝYš\ÝÜžK›Ý™\˜[ØÛÜ™J_OÜÜ[‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LˆÎ™ÜšYXÛÛËLˆ‚ˆÜÙ[XÝYœØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+ˆ]ˆÙ^O^ÜØÛÜ™KšÙ^_HÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\LÈ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLLÈKLˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÜØÛÜ™K›X™[ÏÈØÛÜ™KšÙ^_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë]Ú]HLˆKLH^^È›ÛX›Û^Xœ˜[™Nš[™ËLHš[™Ë\Û]KLŒžÜØÛÜ™KœØÛÜ™_HÈOÜÜ[‚ˆÙ]‚ˆ
+J_BˆÈ\Ù[XÝYœØÛÜ™\Ë›[™Ý	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌLÈKM^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ëœ™\\˜][Û‹››ÔØÛÜ™\ÈŠ_OÜŸBˆÙ]‚ˆÙ]‚ˆÏ‚ˆ
+_BˆÙ]‚ˆÜÙXÝ[Û‚ˆ
+NÂŸB‚™[˜Ý[ÛˆØÛÜ™TÙXÝ[ÛŠÈ]KØÛÜ™\Ë™XYÛ›KY™Yš^ÛÛ\\š\ÛÛØ]YÛÜžK\ÝÜšXØ[ØÛÜ™\ËÛÚ[™ÙHNˆÈ]NˆÝš[™ÎÈØÛÜ™\ÎˆÛØXÚ[™ÔÚ[\TØÛÜ™V×NÈ™XYÛ›Nˆ›ÛÛX[ŽÈY™Yš^ˆÝš[™ÎÈÛÛ\\š\ÛÛØ]YÛÜžOÎˆÝš[™ÎÈ\ÝÜšXØ[ØÛÜ™\ÏÎˆ™XYÛ›SX\Ýš[™Ë\ÝÜšXØ[ØÛÜ™T™Y™\™[˜ÙOŽÈˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÎÈÛÚ[™ÙNˆ
+[™^ˆ[X™\‹]ÚˆÈØÛÜ™OÎˆÛØXÚ[™ÔÚ[\TØÛÜ™VÈœØÛÜ™H—NÈÛÛ[Y[ÎˆÝš[™ÈJHOˆ›ÚYJHÂˆÛÛœÝÜ[ÛœÈHÌK‹ËK›—H\ÈÛÛœÝÂˆÛÛœÝÚÝÐÛÛ\\š\ÛÛˆH›ÛÛX[ŠÛÛ\\š\ÛÛØ]YÛÜžH	‰ˆ\ÝÜšXØ[ØÛÜ™\ÏËœÚ^™JNÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™MHÛNœMˆ‚ˆˆÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ]_OÚ‚ˆ]ˆÛ\ÜÓ˜[YOH›]MÜšYØ\LÈ‚ˆÜØÛÜ™\Ë›X\
+
+][K[™^
+HOˆÂˆÛÛœÝ™]š[Ý\ÔØÛÜ™HHÛÛ\\š\ÛÛØ]YÛÜžBˆÈ\ÝÜšXØ[ØÛÜ™\ÏË™Ù]
+\ÝÜšXØ[ØÛÜ™RÙ^JÛÛ\\š\ÛÛØ]YÛÜžK][K˜Üš]\š[ÛŠJOËœØÛÜ™Bˆˆ[™Yš[™YÂˆ™]\›ˆ
+ˆ]ˆY^Ø	ÚY™Yš^KIÚ[™^XHÙ^O^Ú][K˜Üš]\š[ÛŸH\šXKZ[˜[Y^Ú][KœØÛÜ™HOOH[HÛ\ÜÓ˜[YO^ØÜšYØ\LÈ›Ý[™YLž›Ü™\ˆMÎš][\ËXÙ[\ˆ	Ú][KœØÛÜ™HOOH[È˜›Ü™\‹\›ÜÙKLÌ™Ë\›ÜÙKMLÍÌˆˆ˜›Ü™\‹\Û]KLŒ™Ë\Û]KMLŸH	ÜÚÝÐÛÛ\\š\ÛÛˆÈ›Î™ÜšYXÛÛËVÛZ[›X^
+NYœŠWÌLLÛZ[›X^
+ŒKŒ™œŠWÌLÛZ[›X^
+ŒŒYœŠWHˆˆ›Î™ÜšYXÛÛËVÌŒŒÌYœ—ÌKœ—HŸXO‚ˆ]Û\ÜÓ˜[YOH™›Û\Ù[ZX›Û^\Û]KNLžÚ][K˜Üš]\š[ÛŸOÜžÚ][KœØÛÜ™HOOH[	‰ˆÛ\ÜÓ˜[YOH›]LH^^È›ÛX›Û^\›ÜÙKMÌžÝ
+˜ÛØXÚ[™Ëœ™\ÜœØÛÜ™T™\]Z\™YŠ_OÜŸOÙ]‚ˆÜÚÝÐÛÛ\\š\ÛÛˆ	‰ˆ\ÝÜšXØ[ØÛÜ™PÙ[ØÛÜ™O^Ü™]š[Ý\ÔØÛÜ™_H^ÝHÏŸBˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\Lˆ‚ˆÛÜ[ÛœË›X\
+
+Ü[ÛŠHOˆ
+ˆ]ÛˆÙ^O^ÛÜ[ÛŸH\OH˜]Ûˆˆ\ØX›Y^Ü™XYÛ›_HÛÛXÚÏ^Ê
+HOˆÛÚ[™ÙJ[™^ÈØÛÜ™NˆÜ[ÛˆJ_HÛ\ÜÓ˜[YO^Ø›Ý[™Y[È›Ü™\ˆLÈKLˆ^\ÛH›ÛX›Û	Ú][KœØÛÜ™HOOHÜ[ÛˆÈ˜›Ü™\‹Xœ˜[™MÌ™ËXœ˜[™MÌ^]Ú]Hˆˆ˜›Ü™\‹\Û]KLŒ™Ë]Ú]H^\Û]KMŒŸXOžÛÜ[ÛˆOOH›ˆÈ“••ˆˆÜ[ÛŸOØ]Û‚ˆ
+J_BˆÙ]‚ˆÜÚÝÐÛÛ\\š\ÛÛˆ	‰ˆØÛÜ™QY™™\™[˜ÙPÙ[Ý\œ™[^Ú][KœØÛÜ™_H™]š[Ý\Ï^Ü™]š[Ý\ÔØÛÜ™_H^ÝHÏŸBˆ[œ]Û\ÜÓ˜[YOH™šY[ˆ\ØX›Y^Ü™XYÛ›_HXÙZÛ\^Ý
+˜ÛØXÚ[™Ëœ™\Ü˜ÛÛ[Y[Š_H˜[YO^Ú][K˜ÛÛ[Y[HÛÚ[™ÙO^Ê]™[
+HOˆÛÚ[™ÙJ[™^ÈÛÛ[Y[ˆ]™[\™Ù]˜[YHJ_HÏ‚ˆÙ]‚ˆ
+NÂˆJ_BˆÙ]‚ˆÜÙXÝ[Û‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\Ú[Y[Y]ÜŠÂˆ\Ú[Y[ˆ™XYÛ›Kˆ\ÝÜšXØ[ØÛÜ™\ËˆˆÛÚ[™ÙKˆÛ”ØÛÜ™PÚ[™ÙKŸNˆÂˆ\Ú[Y[ˆÛØXÚ[™Ð\Ú[Y[Âˆ™XYÛ›Nˆ›ÛÛX[ŽÂˆ\ÝÜšXØ[ØÛÜ™\ÏÎˆ™XYÛ›SX\Ýš[™Ë\ÝÜšXØ[ØÛÜ™T™Y™\™[˜ÙOŽÂˆˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÎÂˆÛÚ[™ÙNˆ
+]Úˆ\X[ÛØXÚ[™Ð\Ú[Y[ŠHOˆ›ÚYÂˆÛ”ØÛÜ™PÚ[™ÙNˆ
+[™^ˆ[X™\‹]ÚˆÈØÛÜ™OÎˆHˆÈH›ŽÈÛÛ[Y[ÎˆÝš[™ÈJHOˆ›ÚYÂŸJHÂˆÛÛœÝÜ[ÛœÈHÌK‹ËK›—H\ÈÛÛœÝÂˆÛÛœÝÚÝÐÛÛ\\š\ÛÛˆH›ÛÛX[Š\ÝÜšXØ[ØÛÜ™\ÏËœÚ^™JNÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›X‹M›Ý[™YLž›Ü™\ˆ›Ü™\‹Xœ˜[™LL™Ë]Ú]HM‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈY™ÜšYXÛÛËMH‚ˆ^šY[X™[H’Û[˜X[Hˆ˜[YO^Ø\Ú[Y[˜Ý\ÝÛY\ŸH\ØX›Y^Ü™XYÛ›_HÛÚ[™ÙO^ÊÝ\ÝÛY\ŠHOˆÛÚ[™ÙJÈÝ\ÝÛY\ˆJ_HÏ‚ˆ^šY[X™[H’Û[[[Y\ˆˆ˜[YO^Ø\Ú[Y[˜Ý\ÝÛY\“[X™\ˆÏÈˆŸH\ØX›Y^Ü™XYÛ›_HÛÚ[™ÙO^ÊÝ\ÝÛY\“[X™\ŠHOˆÛÚ[™ÙJÈÝ\ÝÛY\“[X™\ˆJ_HÏ‚ˆ^šY[X™[H”X]Èˆ˜[YO^Ø\Ú[Y[œXÙHÏÈˆŸH\ØX›Y^Ü™XYÛ›_HÛÚ[™ÙO^ÊXÙJHOˆÛÚ[™ÙJÈXÙHJ_HÏ‚ˆ^šY[X™[H”Ý\]\ˆˆ\OH[YHˆ˜[YO^Ø\Ú[Y[˜\œš]˜[[Y_H\ØX›Y^Ü™XYÛ›_HÛÚ[™ÙO^Ê\œš]˜[[YJHOˆÛÚ[™ÙJÈ\œš]˜[[YHJ_HÏ‚ˆ^šY[X™[H‘Z[™]\ˆˆ\OH[YHˆ˜[YO^Ø\Ú[Y[™\\\™U[Y_H\ØX›Y^Ü™XYÛ›_HÛÚ[™ÙO^Ê\\\™U[YJHOˆÛÚ[™ÙJÈ\\\™U[YHJ_HÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MÜšYØ\LÈ‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^Xœ˜[™MÌ™[ÛÜ™[[™ÈYœÜ˜XZÏÜ‚ˆØ\Ú[Y[œØÛÜ™\Ë›X\
+
+ØÛÜ™K[™^
+HOˆÂˆÛÛœÝÈÜ›Ý\]Z[HHÜ]ØÛÜ™PÜš]\š[ÛŠØÛÜ™K˜Üš]\š[ÛŠNÂˆÛÛœÝ™]š[Ý\ÔØÛÜ™HH\ÝÜšXØ[ØÛÜ™\ÏË™Ù]
+\ÝÜšXØ[ØÛÜ™RÙ^JÜ›Ý\]Z[
+JOËœØÛÜ™NÂˆ™]\›ˆ
+ˆ]ˆÙ^O^Ø	ÜØÛÜ™K˜Üš]\š[ÛŸKIÚ[™^XHÛ\ÜÓ˜[YO^ØÜšYØ\LÈ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLLÈÎš][\ËXÙ[\ˆ	ÜÚÝÐÛÛ\\š\ÛÛˆÈ›Î™ÜšYXÛÛËVÛZ[›X^
+NYœŠWÎLÌŒÎLÛZ[›X^
+ŒŒYœŠWHˆˆ›Î™ÜšYXÛÛËVÛZ[›X^
+NYœŠWÌŒÛZ[›X^
+ŒŒYœŠWHŸXO‚ˆÛ\ÜÓ˜[YOH^\ÛH›Û\Ù[ZX›Û^\Û]KNLžÜØÛÜ™K˜Üš]\š[ÛŸOÜ‚ˆÜÚÝÐÛÛ\\š\ÛÛˆ	‰ˆ\ÝÜšXØ[ØÛÜ™PÙ[ØÛÜ™O^Ü™]š[Ý\ÔØÛÜ™_H^ÝHÏŸBˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\LKH‚ˆÛÜ[ÛœË›X\
+
+Ü[ÛŠHOˆ
+ˆ]Û‚ˆÙ^O^ÛÜ[ÛŸBˆ\OH˜]Ûˆ‚ˆ\ØX›Y^Ü™XYÛ›_BˆÛÛXÚÏ^Ê
+HOˆÛ”ØÛÜ™PÚ[™ÙJ[™^ÈØÛÜ™NˆÜ[ÛˆJ_BˆÛ\ÜÓ˜[YO^Ø›Ý[™Y[È›Ü™\ˆL‹HKLKH^^È›ÛX›Û	ÜØÛÜ™KœØÛÜ™HOOHÜ[ÛˆÈ˜›Ü™\‹Xœ˜[™MÌ™ËXœ˜[™MÌ^]Ú]Hˆˆ˜›Ü™\‹\Û]KLŒ™Ë]Ú]H^\Û]KMŒŸXBˆ‚ˆÛÜ[ÛˆOOH›ˆÈ“••ˆˆÜ[ÛŸBˆØ]Û‚ˆ
+J_BˆÙ]‚ˆÜÚÝÐÛÛ\\š\ÛÛˆ	‰ˆØÛÜ™QY™™\™[˜ÙPÙ[Ý\œ™[^ÜØÛÜ™KœØÛÜ™_H™]š[Ý\Ï^Ü™]š[Ý\ÔØÛÜ™_H^ÝHÏŸBˆ[œ]Û\ÜÓ˜[YOH™šY[ˆ\ØX›Y^Ü™XYÛ›_HXÙZÛ\H“ÜY\šÚ[™È\ˆÜš]\š][Hˆ˜[YO^ÜØÛÜ™K˜ÛÛ[Y[HÛÚ[™ÙO^Ê]™[
+HOˆÛ”ØÛÜ™PÚ[™ÙJ[™^ÈÛÛ[Y[ˆ]™[\™Ù]˜[YHJ_HÏ‚ˆÙ]‚ˆ
+NÂˆJ_BˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\ÝÜšXØ[ØÛÜ™PÙ[
+ÈØÛÜ™KNˆÈØÛÜ™OÎˆ[X™\ŽÈˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÈJHÂˆ™]\›ˆ
+ˆ]‚ˆÛ\ÜÓ˜[YOH^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ëœ™]š[Ý\ÔØÛÜ™HŠ_OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH›ÛX›Û^\Û]KMÌžÜØÛÜ™HOOH[™Yš[™YÈ‹HˆˆØÛÜ™_OÜ‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆØÛÜ™QY™™\™[˜ÙPÙ[
+ÈÝ\œ™[™]š[Ý\ËNˆÈÝ\œ™[ˆÛØXÚ[™ÔÚ[\TØÛÜ™VÈœØÛÜ™H—NÈ™]š[Ý\ÏÎˆ[X™\ŽÈˆ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆÝš[™ÈJHÂˆÛÛœÝY™™\™[˜ÙHH\[ÙˆÝ\œ™[OOH›[X™\ˆˆ	‰ˆ™]š[Ý\ÈOOH[™Yš[™YÈÝ\œ™[H™]š[Ý\Èˆ[™Yš[™YÂˆÛÛœÝÛ™HHY™™\™[˜ÙHOOH[™Yš[™YˆÈ˜™Ë\Û]KLL^\Û]KMŒ‚ˆˆY™™\™[˜ÙHˆˆÈ˜™ËY[Y\˜[LL^Y[Y\˜[N‚ˆˆY™™\™[˜ÙHˆÈ˜™Ë\›ÜÙKLL^\›ÜÙKN‚ˆˆ˜™Ë\Û]KLŒ^\Û]KMÌŽÂˆÛÛœÝX™[HY™™\™[˜ÙHOOH[™Yš[™YˆÈ
+™]š[Ý\ÈOOH[™Yš[™YÈ
+˜ÛØXÚ[™ËœØÛÜ™\Ë››Ô™]š[Ý\ÔØÛÜ™HŠHˆ‹HŠBˆˆY™™\™[˜ÙHˆˆÈ
+ÉÙY™™\™[˜Ù_XˆˆÝš[™ÊY™™\™[˜ÙJNÂˆ™]\›ˆ
+ˆ]‚ˆÛ\ÜÓ˜[YOH^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÝ
+˜ÛØXÚ[™ËœØÛÜ™\Ë™Y™™\™[˜ÙHŠ_OÜ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø]LH[›[™KY›^›Ý[™YY[LˆKLH^^È›ÛX›Û	ÝÛ™_XOžÛX™[OÜÜ[‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\Ú[Y[]™\˜YÙTØÛÜ™J\Ú[Y[ˆÈØÛÜ™\Îˆ\œ˜^OÈØÛÜ™NˆÛØXÚ[™ÔÚ[\TØÛÜ™VÈœØÛÜ™H—HOˆJHÂˆ™]\›ˆØ[Ý[]P]™\˜YÙTØÛÜ™T\˜Ù[YÙJ\Ú[Y[œØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆØÛÜ™KœØÛÜ™JJNÂŸB‚™[˜Ý[ÛˆØ[Ý[]UÝ[ÛØXÚ[™ÔØÛÜ™JÜÜÚY\ŽˆÛØXÚ[™ÑÜÜÚY\‹\Ú[Y[ÎˆÛØXÚ[™Ð\Ú[Y[×JHÂˆ™]\›ˆØ[Ý[]SÙ™šXÚX[ÛØXÚ[™ÔØÛÜ™JÂˆÜÜÚY\”ØÛÜ™\ÎˆË‹‹™ÜÜÚY\‹™Ù[™\˜[ØÛÜ™\Ë‹‹™ÜÜÚY\‹œ\œÛÛ˜[]TØÛÜ™\×K›X\
+
+ØÛÜ™JHOˆØÛÜ™KœØÛÜ™JKˆ\Ú[Y[ØÛÜ™\Îˆ\Ú[Y[Ë›X\
+
+\Ú[Y[
+HOˆ\Ú[Y[œØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆØÛÜ™KœØÛÜ™JJKˆJNÂŸB‚™[˜Ý[ÛˆÛØXÚ[™Ò[\™[[Û\Ò\ÝÜžJˆ[\™[[ÛŽˆÛØXÚ[™ÕÛÜšÙ›ÝÒ][KˆÜÜÚY\ŽˆÛØXÚ[™ÑÜÜÚY\‹ˆ\Ú[Y[ÎˆÛØXÚ[™Ð\Ú[Y[×KˆÝÛ™\“˜[YNˆÝš[™ËˆÝ[ØÛÜ™OÎˆ[X™\‚ŠNˆ\ÝÜšXØ[ÛØXÚ[™ÈÂˆÛÛœÝ\Ú[Y[Üš]\š[Û”ØÛÜ™\ÈHÜš]\š[Û”ØÛÜ™\Ñœ›ÛT›ÝÜÊˆ\Ú[Y[Ë™›]X\
+
+\Ú[Y[
+HO‚ˆ\Ú[Y[œØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+ÂˆÜš]\š[ÛŽˆØÛÜ™K˜Üš]\š[Û‹ˆØÛÜ™NˆØÛÜ™KœØÛÜ™HOOH›ˆÈ[ˆØÛÜ™KœØÛÜ™Kˆ›Ý\XØX›NˆØÛÜ™KœØÛÜ™HOOH›‹ˆJJBˆ
+Bˆ
+NÂˆÛÛœÝÛÜšÙ›ÝÐÜš]\š[Û”ØÛÜ™\ÈH[\™[[Û‹œØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+Âˆ›ØÝ\ÎˆØÛÜ™K™›ØÝ\ËˆÜš]\š[ÛŽˆØÛÜ™K˜Üš]\š[Û‹ˆØÛÜ™NˆØÛÜ™K˜[YHOOH“••ˆÈˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™JØÛÜ™K˜[YJKˆØÛÜ™YˆØÛÜ™K˜[YHOOH“••‹ˆJJNÂˆÛÛœÝÜÜÚY\Üš]\š[Û”ØÛÜ™\ÈHÂˆ‹‹™ÜÜÚY\‹™Ù[™\˜[ØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+È‹‹œØÛÜ™KØ]YÛÜžNˆ‘ÜÜÚY\Ž[Ù[YY[ˆˆJJKˆ‹‹™ÜÜÚY\‹œ\œÛÛ˜[]TØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+È‹‹œØÛÜ™KØ]YÛÜžNˆ‘ÜÜÚY\Ž”\œÛÛÛ›ZšÚZYˆJJKˆK™›]X\
+
+ØÛÜ™JHO‚ˆØÛÜ™KœØÛÜ™HOOH›ˆØÛÜ™KœØÛÜ™HOOH[ˆÈ×BˆˆÞÂˆ›ØÝ\ÎˆØÛÜ™K˜Ø]YÛÜžKˆÜš]\š[ÛŽˆØÛÜ™K˜Üš]\š[Û‹ˆØÛÜ™Nˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™JØÛÜ™KœØÛÜ™JKˆØÛÜ™YˆYKˆWBˆ
+NÂˆÛÛœÝÜš]\š[Û”ØÛÜ™\ÈHY\™ÙPÜš]\š[Û”ØÛÜ™\Ê\Ú[Y[Üš]\š[Û”ØÛÜ™\ËÛÜšÙ›ÝÐÜš]\š[Û”ØÛÜ™\ËÜÜÚY\Üš]\š[Û”ØÛÜ™\ÊNÂˆÛÛœÝ\ÙTØÛÜ™\ÈH]™\˜YÙTØÛÜ™Q[Y[œÚ[ÛœÊÜš]\š[Û”ØÛÜ™\Âˆ™š[\Š
+ØÛÜ™JHOˆØÛÜ™KœØÛÜ™YOOH˜[ÙJBˆ›X\
+
+ØÛÜ™JHOˆ
+ÈX™[ˆØÛÜ™K™›ØÝ\ËØÛÜ™NˆØÛÜ™KœØÛÜ™HJJJNÂ‚ˆ™]\›ˆÂˆYˆ[\™[[Û‹šYˆ™\™\Ù[]]™RYˆ[\™[[Û‹œ™\™\Ù[]]™RYˆ]Nˆ[\™[[Û‹œ[›™Y]HÏÈ[\™[[Û‹˜Ü™X]Y]œÛXÙJL
+KˆÝÛ™\’Yˆ[\™[[Û‹›ÝÛ™\’YˆÝÛ™\“˜[YKˆÝ]\Îˆ[\™[[Û‹œÝ]\ËˆÝ™\˜[ØÛÜ™NˆÝ[ØÛÜ™Kˆ›ØÝ\Ó˜[Y\ÎˆË‹‹›™]ÈÙ]
+Âˆ‹‹š[\™[[Û‹™›ØÝ\Ó˜[Y\Ëˆ‹‹˜Üš]\š[Û”ØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆØÛÜ™K™›ØÝ\ÊKˆJWKˆ\ÙTØÛÜ™\Îˆ\ÙTØÛÜ™\Ë›[™ÝˆÈ\ÙTØÛÜ™\ÂˆˆÝ[ØÛÜ™HOOH[™Yš[™YˆÈÞÈX™[ˆ[Ù[Y[™H™YÙ[ZY[™È‹ØÛÜ™NˆX]œ›Ý[™
+Ý[ØÛÜ™JHWBˆˆ×KˆÙ[™\˜[ØÛÜ™\ÎˆË‹‹™ÜÜÚY\‹™Ù[™\˜[ØÛÜ™\Ë‹‹™ÜÜÚY\‹œ\œÛÛ˜[]TØÛÜ™\×K™›]X\
+
+ØÛÜ™JHO‚ˆØÛÜ™KœØÛÜ™HOOH›ˆØÛÜ™KœØÛÜ™HOOH[ˆÈ×BˆˆÞÈX™[ˆØÛÜ™K˜Üš]\š[Û‹ØÛÜ™Nˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™JØÛÜ™KœØÛÜ™JKØÛÜ™YˆYHWBˆ
+KˆÜš]\š[Û”ØÛÜ™\ËˆNÂŸB‚™[˜Ý[Ûˆ]™\˜YÙTØÛÜ™Q[Y[œÚ[ÛœÊ][\ÎˆÈX™[ˆÝš[™ÎÈØÛÜ™Nˆ[X™\ˆV×JHÂˆÛÛœÝÜ›Ý\YH™]ÈX\Ýš[™Ë[X™\–×OŠ
+NÂˆ›Üˆ
+ÛÛœÝ][HÙˆ][\ÊHÂˆÛÛœÝÝ\œ™[HÜ›Ý\Y™Ù]
+][K›X™[
+HÏÈ×NÂˆÝ\œ™[œ\Ú
+][KœØÛÜ™JNÂˆÜ›Ý\YœÙ]
+][K›X™[Ý\œ™[
+NÂˆBˆ™]\›ˆË‹‹™Ü›Ý\Y™[šY\Ê
+WK›X\
+
+ÛX™[˜[Y\×JHOˆ
+ÂˆX™[ˆØÛÜ™NˆX]œ›Ý[™
+˜[Y\Ëœ™YXÙJ
+Ý[K˜[YJHOˆÝ[H
+È˜[YK
+HÈX]›X^
+K˜[Y\Ë›[™Ý
+JKˆJJNÂŸB‚™[˜Ý[Ûˆ›Ü›X]\˜Ù[YÙJ˜[YOÎˆ[X™\ŠHÂˆ™]\›ˆ˜[YHOOH[™Yš[™YÈ‹Hˆˆ	ÓX]œ›Ý[™
+˜[YJ_IXÂŸB‚\H[\™[[Û“\Ý›ÝÈHÛØXÚ[™ÔØÛÜQÜ›Ý\][H	ˆÂˆ\NˆÝš[™ÎÂˆÙX\˜Ú^ˆÝš[™ÎÂˆ]NˆÝš[™ÎÂˆÝÛ™\ŽˆÝš[™ÎÂˆÝ]\ÎˆÝš[™ÎÂˆY]X›Nˆ›ÛÛX[ŽÂˆ[›™Y]NˆÝš[™ÎÂˆÝ\[YNˆÝš[™ÎÂˆ[™[YNˆÝš[™ÎÂˆ^XÝ][Û]ˆ[X™\ŽÂˆÝ]ÛÚÔÞ[˜ÔÝ]\ÏÎˆÛØXÚ[™Ò[\™[[Û–È›Ý]ÛÚÔÞ[˜ÔÝ]\È—NÂˆÞ[˜Ñ\œ›ÜÎˆÝš[™ÎÂˆ]Z[™YÎˆÝš[™ÎÂˆÜ[“X™[ˆÝš[™ÎÂˆY][›š[™Ò™YÎˆÝš[™ÎÂˆÛØXÚ[™ÏÎˆÛØXÚ[™Ò[\™[[ÛŽÂŸNÂ‚™[˜Ý[Ûˆ[\™[[Û“\Ý
+ÈÚ[™NˆÈÚ[™ˆÝš[™ÈJHÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œË[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝÈÝ]Kš\ÚX›R[\™[[ÛœÈHH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÜÙX\˜Ú\›KÙ]ÙX\˜Ú\›WHH\ÙTÝ]JˆŠNÂˆÛÛœÝÙ^[™YÜ›Ý\YËÙ]^[™YÜ›Ý\Y×HH\ÙTÝ]OÙ]Ýš[™Ïˆ[Š[
+NÂˆÛÛœÝ›Ü›X[^™YÙX\˜Ú\›HH›Ü›X[^™PÛØXÚ[™ÔÙX\˜Ú^
+ÙX\˜Ú\›JNÂˆÛÛœÝ\ÔÙX\˜ÚXÝ]™HH›ÛÛX[Š›Ü›X[^™YÙX\˜Ú\›JNÂˆÛÛœÝX™[Îˆ™XÛÜ™Ýš[™ËÈ]NˆÝš[™ÎÈ\ØÜš\[ÛŽˆÝš[™ÎÈXÛÛŽˆ\[ÙˆÛ\›Ø\™ÚXÚÈOˆHÂˆ™YÙ[ZY[™Ù[ŽˆÈ]Nˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÜÈŠK\ØÜš\[ÛŽˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÜÑ\ØÜš\[ÛˆŠKXÛÛŽˆÛ\›Ø\™ÚXÚÈKˆÛÛXÝ[ÛY[[ŽˆÈ]Nˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛÛXÝÈŠK\ØÜš\[ÛŽˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛÛXÝÑ\ØÜš\[ÛˆŠKXÛÛŽˆÛ™HKˆ™]˜Z[š[™Ù[ŽˆÈ]Nˆ
+˜ÛØXÚ[™Ë›\Ýœ™]˜Z[š[™ÜÈŠK\ØÜš\[ÛŽˆ
+˜ÛØXÚ[™Ë›\Ýœ™]˜Z[š[™ÜÑ\ØÜš\[ÛˆŠKXÛÛŽˆÜ˜YX][ÛØ\KˆœØ[\Ë]˜Z[š[™Ù[ˆŽˆÈ]Nˆ
+˜ÛØXÚ[™Ë›\ÝœØ[\Õ˜Z[š[™ÜÈŠK\ØÜš\[ÛŽˆ
+˜ÛØXÚ[™Ë›\ÝœØ[\Õ˜Z[š[™ÜÑ\ØÜš\[ÛˆŠKXÛÛŽˆÜ\šÛ\ÈKˆNÂˆÛÛœÝÝ\œ™[HX™[ÖÚÚ[™NÂˆÛÛœÝXÛÛˆHÝ\œ™[šXÛÛŽÂˆÛÛœÝÙ^RÙ^HHØØ[]RÙ^J
+NÂˆÛÛœÝ\ÝÜšXØ[›ÝÜÎˆ[\™[[Û“\Ý›ÝÖ×HHÚ[™OOH˜™YÙ[ZY[™Ù[ˆ‚ˆÈ\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[ÛØXÚ[™ÜÂˆ™š[\Š
+][JHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOH][Kœ™\™\Ù[]]™RY
+NÂˆ™]\›ˆ™\™\Ù[]]™HÈØ[XØÙ\ÜÔ™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JHˆ˜[ÙNÂˆJBˆ›X\
+
+][JHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™Q›ÜÛØXÚ[™Ê][K™\™\Ù[]]™\ÊHNÂˆ™]\›ˆÂˆYˆ][KšYˆ\Nˆ˜™YÙ[ZY[™È‹ˆÙX\˜Ú^ˆÂˆ™\™\Ù[]]™K™š\œÝ˜[YKˆ™\™\Ù[]]™K›\Ý˜[YKˆ][K›ÝÛ™\“˜[YKˆ][K™]Kˆ›Ü›X]ÚÜ]J][K™]K[™ÝXYÙJKˆ][KœÝ]\Ëˆ
+Ý]\Ë‰Ú][KœÝ]\ßX\È˜[œÛ][Û’Ù^JKˆ™\™\Ù[]]™K˜ÛÝ[žKˆÛÝ[žS˜[YJ™\™\Ù[]]™K˜ÛÝ[žK[™ÝXYÙJKˆ™\™\Ù[]]™KX[Kˆ‹‹š][K™›ØÝ\Ó˜[Y\ËˆKš›Ú[ŠˆŠKˆ\œÛÛŽˆ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ™\™\Ù[]]™RYˆ™\™\Ù[]]™KšYˆÛÝ[žNˆ™\™\Ù[]]™K˜ÛÝ[žKˆX[RYˆ™\™\Ù[]]™KX[RYˆX[Nˆ™\™\Ù[]]™KX[Kˆ]Nˆ›Ü›X]ÚÜ]J][K™]K[™ÝXYÙJKˆÝÛ™\Žˆ][K›ÝÛ™\“˜[YKˆÝ]\Îˆ][KœÝ]\ËˆY]X›Nˆ˜[ÙKˆ[›™Y]Nˆ][K™]KˆÝ\[YNˆˆ‹ˆ[™[YNˆˆ‹ˆ^XÝ][Û]ˆ^XÝ][Û•[Y\Ý[\
+][K™]JKˆÝ]ÛÚÔÞ[˜ÔÝ]\Îˆ[™Yš[™YˆÞ[˜Ñ\œ›ÜŽˆ[™Yš[™Yˆ]Z[™YŽˆØ™YÙ[ZY[™Ù[‹ÉÚ][KšYXˆÜ[“X™[ˆ
+˜ÛØXÚ[™Ë›\ÝšY]Ô™\ÜŠKˆY][›š[™Ò™YŽˆ[™Yš[™YˆÛØXÚ[™Îˆ[™Yš[™YˆNÂˆJBˆˆ×NÂˆÛÛœÝÛÜšÙ›ÝÔ›ÝÜÎˆ[\™[[Û“\Ý›ÝÖ×HHÚ[™OOH˜™YÙ[ZY[™Ù[ˆ‚ˆÈš\ÚX›R[\™[[ÛœÊ\Ù\ŠK›X\
+
+][JHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+\œÛÛŠHOˆ\œÛÛ‹šYOOH][Kœ™\™\Ù[]]™RY
+NÂˆÛÛœÝ\œÛÛ“˜[YHH™\™\Ù[]]™BˆÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆˆ][KœÝXš™XÝˆÈ	Ú][KœÝXš™XÝ™š\œÝ˜[Y_H	Ú][KœÝXš™XÝ›\Ý˜[Y_Xˆˆ
+˜ÛØXÚ[™Ë›\Ý[šÛ›ÝÛˆŠNÂˆÛÛœÝ\›Ý˜[YHÝ]K˜\›Ý˜[Ë™š[™
+
+\›Ý˜[
+HOˆ\›Ý˜[š[\™[[Û’YOOH][KšY
+OËšYÂˆÛÛœÝÜ[’™YˆHÛØXÚ[™ÓÜ[’™YŠ\Ù\‹][KÙ^RÙ^K\›Ý˜[Y
+NÂˆÛÛœÝY][›š[™Ò™YˆHØ[‘Y]]\™PÛØXÚ[™Ô[›š[™Ê\Ù\‹][KÙ^RÙ^JBˆÈØ™YÙ[ZY[™Ù[‹ÛšY]]ÏÚYIÙ[˜ÛÙUT’PÛÛ\Û™[
+][KšY
+_Xˆˆ[™Yš[™YÂˆÛÛœÝÜ[“X™[HY][›š[™Ò™Y‚ˆÈ
+˜ÛØXÚ[™Ë›\Ý™Y][›š[™ÈŠBˆˆÛÛ\]YÛØXÚ[™ÔÝ]\Ù\Ëš\Ê][KœÝ]\ÊBˆÈ
+˜ÛØXÚ[™Ë›\ÝšY]Ô™\ÜŠBˆˆØ[“X[˜YÙPÛØXÚ[™Ê\Ù\‹][JBˆÈ
+˜ÛØXÚ[™Ë›\Ý›Ü[‘ÜÜÚY\ˆŠBˆˆÜ[’™Y‚ˆÈ
+˜ÛØXÚ[™Ë›\ÝšY]Ô™\\˜][ÛˆŠBˆˆ
+˜ÛØXÚ[™Ë›\ÝœØÚY[YŠNÂˆ™]\›ˆÂˆYˆ][KšYˆ\Nˆ˜™YÙ[ZY[™È‹ˆÙX\˜Ú^ˆÂˆ\œÛÛ“˜[YKˆ][K]Kˆ][K›ÝÛ™\’Yˆ™\Ü[™Õ\Ù\“˜[YJ][K›ÝÛ™\’YX[˜YÙY\Ù\œÊKˆ][K˜ÛÝ[žKˆÛÝ[žS˜[YJ][K˜ÛÝ[žK[™ÝXYÙJKˆ™\™\Ù[]]™OËX[Kˆ][KœÝXš™XÝËX[Kˆ][KX[RYˆ][Kœ[›™Y]Kˆ›Ü›X]ÚÜ]J][Kœ[›™Y]HÏÈ][K\]Y]œÛXÙJL
+K[™ÝXYÙJKˆ][KœÝ]\Ëˆ
+Ý]\Ë‰Ú][KœÝ]\ßX\È˜[œÛ][Û’Ù^JKˆ‹‹š][K™›ØÝ\Ó˜[Y\Ëˆ][Kš[\›˜[›Ý\Ëˆ][K™]šX][Û”™X\ÛÛ‹ˆK™š[\Š›ÛÛX[ŠKš›Ú[ŠˆŠKˆ\œÛÛŽˆ\œÛÛ“˜[YKˆ™\™\Ù[]]™RYˆ™\™\Ù[]]™OËšYÏÈ][KœÝXš™XÝËšYÏÈ][Kœ™\™\Ù[]]™RYˆÛÝ[žNˆ][K˜ÛÝ[žKˆX[RYˆ™\™\Ù[]]™OËX[RYÏÈ][KœÝXš™XÝËX[RYÏÈ][KX[RYˆX[Nˆ™\™\Ù[]]™OËX[HÏÈ][KœÝXš™XÝËX[HÏÈ
+˜ÛØXÚ[™Ë›\Ý››ÕX[HŠKˆ]Nˆ›Ü›X]ÚÜ]J][Kœ[›™Y]HÏÈ][K\]Y]œÛXÙJL
+K[™ÝXYÙJKˆÝÛ™\Žˆ™\Ü[™Õ\Ù\“˜[YJ][K›ÝÛ™\’YX[˜YÙY\Ù\œÊKˆÝ]\Îˆ][KœÝ]\ËˆY]X›Nˆ›ÛÛX[ŠÜ[’™YŠKˆ]Z[™YŽˆÜ[’™Y‹ˆÜ[“X™[ˆY][›š[™Ò™Y‹ˆ[›™Y]Nˆ][Kœ[›™Y]HÏÈ][K\]Y]œÛXÙJL
+KˆÝ\[YNˆ][KœÝ\[YHÏÈˆ‹ˆ[™[YNˆ][K™[™[YHÏÈˆ‹ˆ^XÝ][Û]ˆ^XÝ][Û•[Y\Ý[\
+	Ú][Kœ[›™Y]HÏÈ][K\]Y]œÛXÙJL
+_U	Ú][KœÝ\[YHÏÈŒŒŸX
+KˆÝ]ÛÚÔÞ[˜ÔÝ]\Îˆ][K›Ý]ÛÚÔÞ[˜ÔÝ]\ËˆÞ[˜Ñ\œ›ÜŽˆ][KœÞ[˜Ñ\œ›Ü‹ˆÛØXÚ[™Îˆ][KˆNÂˆJBˆˆ×NÂˆÛÛœÝÛÜšÙ›ÝÒYÈH™]ÈÙ]
+ÛÜšÙ›ÝÔ›ÝÜË›X\
+
+][JHOˆ][KšY
+JNÂˆÛÛœÝ[›ÝÜÎˆ[\™[[Û“\Ý›ÝÖ×HHY\PžRY
+Âˆ‹‹ÛÜšÙ›ÝÔ›ÝÜËˆ‹‹š\ÝÜšXØ[›ÝÜË™š[\Š
+][JHOˆ]ÛÜšÙ›ÝÒYËš\Ê][KšY
+JKˆJNÂˆÛÛœÝš[\™Y›ÝÜÈH\ÔÙX\˜ÚXÝ]™BˆÈ[›ÝÜË™š[\Š
+][JHOˆX]Ú\ÐÛØXÚ[™ÔÙX\˜Ú
+][KœÙX\˜Ú^›Ü›X[^™YÙX\˜Ú\›JJBˆˆ[›ÝÜÎÂˆÛÛœÝÙ^T›ÝÜÈHš[\™Y›ÝÜÂˆ™š[\Š
+][JHO‚ˆXÛÛ\]YÛØXÚ[™ÔÝ]\Ù\Ëš\Ê][KœÝ]\ÊH	‰‚ˆ][KœÝ]\ÈOOH™ÙX[›[Y\™ˆ	‰‚ˆ][Kœ[›™Y]HOOHÙ^RÙ^Bˆ
+BˆœÛÜ
+
+YšYÚ
+HOˆY™^XÝ][Û]HšYÚ™^XÝ][Û]
+NÂˆÛÛœÝ[›™Y›ÝÜÈHš[\™Y›ÝÜÂˆ™š[\Š
+][JHO‚ˆXÛÛ\]YÛØXÚ[™ÔÝ]\Ù\Ëš\Ê][KœÝ]\ÊH	‰‚ˆ][KœÝ]\ÈOOH™ÙX[›[Y\™ˆ	‰‚ˆ][Kœ[›™Y]HˆÙ^RÙ^Bˆ
+BˆœÛÜ
+
+YšYÚ
+HOˆY™^XÝ][Û]HšYÚ™^XÝ][Û]
+NÂˆÛÛœÝÛÛ\]Y›ÝÜÈHš[\™Y›ÝÜÂˆ™š[\Š
+][JHOˆÛÛ\]YÛØXÚ[™ÔÝ]\Ù\Ëš\Ê][KœÝ]\ÊH][KœÝ]\ÈOOH™ÙX[›[Y\™ŠBˆœÛÜ
+
+YšYÚ
+HOˆšYÚ™^XÝ][Û]HY™^XÝ][Û]
+NÂ‚ˆÛÛœÝ[ØÛÜQÜ›Ý\ÈHZ[ÛØXÚ[™ÔØÛÜQÜ›Ý\Ê\Ù\‹[›ÝÜÊNÂˆÛÛœÝÜ›Ý\YÑ›Ü”ÙXÝ[ÛˆH
+ÙXÝ[Û’Ù^NˆÝš[™Ë›ÝÜÎˆ[\™[[Û“\Ý›ÝÖ×JHOˆ™]ÈÙ]
+ˆË‹‹˜ÛÛXÝÛØXÚ[™ÑÜ›Ý\YÊZ[ÛØXÚ[™ÔØÛÜQÜ›Ý\Ê\Ù\‹›ÝÜÊJWBˆ›X\
+
+Ü›Ý\Y
+HOˆÛØXÚ[™ÔÙXÝ[Û‘Ü›Ý\Ù^JÙXÝ[Û’Ù^KÜ›Ý\Y
+JBˆ
+NÂˆÛÛœÝÙ^QÜ›Ý\YÈHÜ›Ý\YÑ›Ü”ÙXÝ[ÛŠÙ^H‹Ù^T›ÝÜÊNÂˆÛÛœÝ[›™YÜ›Ý\YÈHÜ›Ý\YÑ›Ü”ÙXÝ[ÛŠ™]\™H‹[›™Y›ÝÜÊNÂˆÛÛœÝÛÛ\]YÜ›Ý\YÈHÜ›Ý\YÑ›Ü”ÙXÝ[ÛŠ˜ÛÛ\]Y‹ÛÛ\]Y›ÝÜÊNÂˆÛÛœÝ[Ü›Ý\YÈH™]ÈÙ]
+Ë‹‹Ù^QÜ›Ý\YË‹‹œ[›™YÜ›Ý\YË‹‹˜ÛÛ\]YÜ›Ý\Y×JNÂˆÛÛœÝš[\™YÜ›Ý\YÒÙ^HHË‹‹˜[Ü›Ý\Y×KœÛÜ
+
+Kš›Ú[ŠŸŠNÂˆÛÛœÝš[\™YÜ›Ý\YÔ™YˆH\ÙT™YÙ]Ýš[™ÏŠ™]ÈÙ]
+
+JNÂˆÛÛœÝ™]š[Ý\Ñš[\™YÜ›Ý\YÒÙ^T™YˆH\ÙT™YŠˆŠNÂˆYˆ
+™]š[Ý\Ñš[\™YÜ›Ý\YÒÙ^T™Y‹˜Ý\œ™[OOHš[\™YÜ›Ý\YÒÙ^JHÂˆ™]š[Ý\Ñš[\™YÜ›Ý\YÒÙ^T™Y‹˜Ý\œ™[Hš[\™YÜ›Ý\YÒÙ^NÂˆš[\™YÜ›Ý\YÔ™Y‹˜Ý\œ™[H™]ÈÙ]
+[Ü›Ý\YÊNÂˆBˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+\ÔÙX\˜ÚXÝ]™JHÂˆÙ]^[™YÜ›Ý\YÊ™]ÈÙ]
+š[\™YÜ›Ý\YÔ™Y‹˜Ý\œ™[
+JNÂˆBˆKÙš[\™YÜ›Ý\YÒÙ^K\ÔÙX\˜ÚXÝ]™K›Ü›X[^™YÙX\˜Ú\›WJNÂˆÛÛœÝ\ÑÜ›Ý\Ü[ˆH
+Ü›Ý\YˆÝš[™ÊHOˆ^[™YÜ›Ý\YÈOOH[^[™YÜ›Ý\YËš\ÊÜ›Ý\Y
+NÂˆÛÛœÝÙÙÛQÜ›Ý\H
+Ü›Ý\YˆÝš[™ÊHOˆÂˆÙ]^[™YÜ›Ý\YÊ
+Ý\œ™[
+HOˆÂˆÛÛœÝ™^H™]ÈÙ]
+Ý\œ™[
+NÂˆYˆ
+™^š\ÊÜ›Ý\Y
+JH™^™[]JÜ›Ý\Y
+NÂˆ[ÙH™^˜Y
+Ü›Ý\Y
+NÂˆ™]\›ˆ™^ÂˆJNÂˆNÂˆÛÛœÝÙ][Ü›Ý\ÓÜ[ˆH
+Ü[Žˆ›ÛÛX[ŠHOˆÂˆÙ]^[™YÜ›Ý\YÊÜ[ˆÈ™]ÈÙ]
+[Ü›Ý\YÊHˆ™]ÈÙ]
+
+JNÂˆNÂˆÛÛœÝ\]TÙX\˜Ú\›HH
+˜[YNˆÝš[™ÊHOˆÂˆÙ]ÙX\˜Ú\›J˜[YJNÂˆYˆ
+[›Ü›X[^™PÛØXÚ[™ÔÙX\˜Ú^
+˜[YJJHÙ]^[™YÜ›Ý\YÊ[
+NÂˆNÂˆÛÛœÝÜ›Ý\ÛRYH
+Ü›Ý\YˆÝš[™ÊHOˆÛØXÚ[™ËYÜ›Ý\IÙÜ›Ý\Yœ™\XÙJÖ×˜K^KVŒNWËWKÙË‹HŠ_XÂ‚ˆ[˜Ý[Ûˆ™[™\”›ÝÜÊ][\Îˆ[\™[[Û“\Ý›ÝÖ×K[\SY\ÜØYÙNˆÝš[™ËÙXÝ[Û’Ù^NˆÝš[™ÊHÂˆYˆ
+][\Ë›[™ÝOOH
+HÂˆYˆ
+\ÔÙX\˜ÚXÝ]™JH™]\›ˆ[Âˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌ™Ë\Û]KMLMˆKLL^XÙ[\ˆ^\ÛH^\Û]KML‚ˆÙ[\SY\ÜØYÙ_BˆÙ]‚ˆ
+NÂˆB‚ˆÛÛœÝØÛÜQÜ›Ý\ÈHZ[ÛØXÚ[™ÔØÛÜQÜ›Ý\Ê\Ù\‹][\ÊNÂˆÛÛœÝØÛÜYÜ›Ý\Ù^HH
+Ü›Ý\YˆÝš[™ÊHOˆÛØXÚ[™ÔÙXÝ[Û‘Ü›Ý\Ù^JÙXÝ[Û’Ù^KÜ›Ý\Y
+NÂˆÛÛœÝØÛÜYÜ›Ý\ÛRYH
+Ü›Ý\YˆÝš[™ÊHOˆÜ›Ý\ÛRY
+	ÜÙXÝ[Û’Ù^_KIÙÜ›Ý\YX
+NÂˆYˆ
+ØÛÜQÜ›Ý\Ë™[˜X›Y
+HÂˆYˆ
+ØÛÜQÜ›Ý\ËœÚÝÐÛÝ[žJHÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆÜØÛÜQÜ›Ý\Ë˜ÛÝ[šY\Ë›X\
+
+ÛÝ[žJHOˆ
+ˆÙXÝ[ÛˆÙ^O^ØÛÝ[žKšYHÛ\ÜÓ˜[YOHœÜXÙK^KLÈ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLÍÌLÈÛNœM‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOH™›^ËY[›^]Ü˜\][\ËXÙ[\ˆØ\LÈ^[Y‚ˆ\šXKY^[™Y^Ú\ÑÜ›Ý\Ü[ŠØÛÜYÜ›Ý\Ù^JÛØXÚ[™ÑÜ›Ý\Ù^J˜ÛÝ[žH‹ÛÝ[žKšY
+JJ_Bˆ\šXKXÛÛ›ÛÏ^ÜØÛÜYÜ›Ý\ÛRY
+ÛØXÚ[™ÑÜ›Ý\Ù^J˜ÛÝ[žH‹ÛÝ[žKšY
+J_BˆÛÛXÚÏ^Ê
+HOˆÙÙÛQÜ›Ý\
+ØÛÜYÜ›Ý\Ù^JÛØXÚ[™ÑÜ›Ý\Ù^J˜ÛÝ[žH‹ÛÝ[žKšY
+JJ_Bˆ‚ˆÚ\ÑÜ›Ý\Ü[ŠØÛÜYÜ›Ý\Ù^JÛØXÚ[™ÑÜ›Ý\Ù^J˜ÛÝ[žH‹ÛÝ[žKšY
+JJHÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMHËMHÚš[šËL^Xœ˜[™MÌˆ\šXKZY[HYHˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMHËMHÚš[šËL^Xœ˜[™MÌˆ\šXKZY[HYHˆÏŸBˆ]ˆÛ\ÜÓ˜[YOH™ÜšYNHËNHXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È™Ë]Ú]H^Xœ˜[™MÌÚYÝË\ÛH‚ˆX\[ˆÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+˜ÛØXÚ[™Ë›\Ý˜ÛÝ[žHŠ_OÜ‚ˆÈÛ\ÜÓ˜[YOH[˜Ø]H^X˜\ÙH›ÛX›Û^\Û]KNMLžØÛÝ[žS˜[YJÛÝ[žKšY[™ÝXYÙJ_OÚÏ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë]Ú]HL‹HKLH^^È›ÛX›Û^\Û]KMÌÚYÝË\ÛH‚ˆØÛÝ[ÛÝ[žR][\ÊÛÝ[žJ_HØÛÝ[ÛÝ[žR][\ÊÛÝ[žJHOOHHÈ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÈŠHˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÜÐÛÝ[Š_BˆÜÜ[‚ˆØ]Û‚ˆÚ\ÑÜ›Ý\Ü[ŠØÛÜYÜ›Ý\Ù^JÛØXÚ[™ÑÜ›Ý\Ù^J˜ÛÝ[žH‹ÛÝ[žKšY
+JJH	‰ˆ]ˆY^ÜØÛÜYÜ›Ý\ÛRY
+ÛØXÚ[™ÑÜ›Ý\Ù^J˜ÛÝ[žH‹ÛÝ[žKšY
+J_HÛ\ÜÓ˜[YOHœÜXÙK^KLÈ‚ˆØÛÝ[žKX[\Ë›X\
+
+X[JHOˆ™[™\•X[QÜ›Ý\
+X[KÛÝ[žKšYÙXÝ[Û’Ù^JJ_BˆÙ]ŸBˆÜÙXÝ[Û‚ˆ
+J_BˆÙ]‚ˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ‚ˆÜØÛÜQÜ›Ý\Ë˜ÛÝ[šY\Ë™›]X\
+
+ÛÝ[žJHOˆÛÝ[žKX[\Ë›X\
+
+X[JHOˆ
+ÈÛÝ[žRYˆÛÝ[žKšYX[HJJJK›X\
+
+ÈÛÝ[žRYX[HJHOˆ™[™\•X[QÜ›Ý\
+X[KÛÝ[žRYÙXÝ[Û’Ù^JJ_BˆÙ]‚ˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÚ][\Ë›X\
+
+][JHOˆ™[™\’[\™[[Û”›ÝÊ][JJ_BˆÙ]‚ˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\•X[QÜ›Ý\
+X[NˆÛØXÚ[™ÔØÛÜUX[QÜ›Ý\[\™[[Û“\Ý›ÝÏ‹ÛÝ[žRYˆÝš[™ËÙXÝ[Û’Ù^NˆÝš[™ÊHÂˆÛÛœÝÛÝ[HÛÝ[X[R][\ÊX[JNÂˆÛÛœÝX[QÜ›Ý\YHÛØXÚ[™ÑÜ›Ý\Ù^JX[H‹ÛÝ[žRYX[KšY
+NÂˆÛÛœÝØÛÜYX[QÜ›Ý\YHÛØXÚ[™ÔÙXÝ[Û‘Ü›Ý\Ù^JÙXÝ[Û’Ù^KX[QÜ›Ý\Y
+NÂˆÛÛœÝØÛÜYÜ›Ý\ÛRYH
+Ü›Ý\YˆÝš[™ÊHOˆÜ›Ý\ÛRY
+	ÜÙXÝ[Û’Ù^_KIÙÜ›Ý\YX
+NÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÙ^O^ÝX[KšYHÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOH™›^ËY[›^]Ü˜\][\ËXÙ[\ˆØ\L‹H™Ë]Ú]HLÈKLÈ^[YÛNœM‚ˆ\šXKY^[™Y^Ú\ÑÜ›Ý\Ü[ŠØÛÜYX[QÜ›Ý\Y
+_Bˆ\šXKXÛÛ›ÛÏ^ÜØÛÜYÜ›Ý\ÛRY
+X[QÜ›Ý\Y
+_BˆÛÛXÚÏ^Ê
+HOˆÙÙÛQÜ›Ý\
+ØÛÜYX[QÜ›Ý\Y
+_Bˆ‚ˆÚ\ÑÜ›Ý\Ü[ŠØÛÜYX[QÜ›Ý\Y
+HÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMHËMHÚš[šËL^Xœ˜[™MÌˆ\šXKZY[HYHˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMHËMHÚš[šËL^Xœ˜[™MÌˆ\šXKZY[HYHˆÏŸBˆ\Ù\œÔ›Ý[™Û\ÜÓ˜[YOHšMËM^Xœ˜[™MÌˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+˜ÛØXÚ[™Ë›\ÝX[HŠ_OÜ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›ÛX›Û^\Û]KNLžÝX[K›˜[Y_OÚ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOH^^È›Û\Ù[ZX›Û^\Û]KML‚ˆØÛÝ[HØÛÝ[OOHHÈ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÈŠHˆ
+˜ÛØXÚ[™Ë›\Ý˜ÛØXÚ[™ÜÐÛÝ[Š_BˆÜÜ[‚ˆØ]Û‚ˆÚ\ÑÜ›Ý\Ü[ŠØÛÜYX[QÜ›Ý\Y
+H	‰ˆ]ˆY^ÜØÛÜYÜ›Ý\ÛRY
+X[QÜ›Ý\Y
+_HÛ\ÜÓ˜[YOHœÜXÙK^KLÈ›Ü™\‹]›Ü™\‹\Û]KLL™Ë\Û]KMLÍHLÈÛNœM‚ˆÝX[K\Ù\œË›X\
+
+\Ù\‘Ü›Ý\
+HOˆÂˆÛÛœÝ\Ù\‘Ü›Ý\YHÛØXÚ[™ÑÜ›Ý\Ù^J\Ù\ˆ‹ÛÝ[žRYX[KšY\Ù\‘Ü›Ý\šY
+NÂˆÛÛœÝØÛÜY\Ù\‘Ü›Ý\YHÛØXÚ[™ÔÙXÝ[Û‘Ü›Ý\Ù^JÙXÝ[Û’Ù^K\Ù\‘Ü›Ý\Y
+NÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÙ^O^Ý\Ù\‘Ü›Ý\šYHÛ\ÜÓ˜[YOHœÜXÙK^KLˆ‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOH™›^ËY[›^]Ü˜\][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\Lˆ^[Y‚ˆ\šXKY^[™Y^Ú\ÑÜ›Ý\Ü[ŠØÛÜY\Ù\‘Ü›Ý\Y
+_Bˆ\šXKXÛÛ›ÛÏ^ÜØÛÜYÜ›Ý\ÛRY
+\Ù\‘Ü›Ý\Y
+_BˆÛÛXÚÏ^Ê
+HOˆÙÙÛQÜ›Ý\
+ØÛÜY\Ù\‘Ü›Ý\Y
+_Bˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH™›^Z[‹]ËL][\ËXÙ[\ˆØ\Lˆ‚ˆÚ\ÑÜ›Ý\Ü[ŠØÛÜY\Ù\‘Ü›Ý\Y
+HÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMËMÚš[šËL^Xœ˜[™MÌˆ\šXKZY[HYHˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMÚš[šËL^Xœ˜[™MÌˆ\šXKZY[HYHˆÏŸBˆÜ[ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›ÛX›Û^\Û]KNLžÝ\Ù\‘Ü›Ý\›˜[Y_OÜÜ[‚ˆÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë\Û]KLLLˆKLH^VÌL\H›ÛX›Û^\Û]KMŒ‚ˆÝ\Ù\‘Ü›Ý\š][\Ë›[™ÝBˆÜÜ[‚ˆØ]Û‚ˆÚ\ÑÜ›Ý\Ü[ŠØÛÜY\Ù\‘Ü›Ý\Y
+H	‰ˆ]ˆY^ÜØÛÜYÜ›Ý\ÛRY
+\Ù\‘Ü›Ý\Y
+_HÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]H‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÝ\Ù\‘Ü›Ý\š][\Ë›X\
+
+][JHOˆ™[™\’[\™[[Û”›ÝÊ][JJ_BˆÙ]‚ˆÙ]‚ˆBˆÜÙXÝ[Û‚ˆ
+NÂˆJ_BˆÙ]‚ˆBˆÜÙXÝ[Û‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\’[\™[[Û”›ÝÊ][Nˆ[\™[[Û“\Ý›ÝÊHÂˆÛÛœÝ[YSX™[HÚ][KœÝ\[YK][K™[™[YWK™š[\Š›ÛÛX[ŠKš›Ú[ŠˆHŠNÂˆÛÛœÝ›ÝÐÛ\ÜÈHÜšYØ\LÈLËH˜[œÚ][ÛˆÛN™ÜšYXÛÛËVÛZ[›X^
+ŒŒKYœŠWÛZ[›X^
+LÍ\YœŠWÛZ[›X^
+N\ŽYœŠWØ]]×HÛNš][\ËXÙ[\ˆÛNœM	Ú][K™]Z[™YˆÈšÝ™\Ž˜™ËXœ˜[™MLÍˆˆˆŸXÂˆÛÛœÝXÝ[ÛÛ\ÜÈH[›[™KY›^][\ËXÙ[\ˆØ\LH^\ÛH›ÛX›Û	Ú][K™]Z[™YˆÈ^Xœ˜[™MÌˆˆ^\Û]KMŸXÂˆÛÛœÝ]Z[ÈH
+ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Z[‹]ËL][\ËXÙ[\ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYLLHËLLHÚš[šËLXÙKZ][\ËXÙ[\ˆ›Ý[™Y^™ËXœ˜[™ML^Xœ˜[™MÌXÛÛˆÛ\ÜÓ˜[YOHšMHËMHˆÏÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›Û\Ù[ZX›Û^\Û]KNLžÚ][Kœ\œÛÛŸOÜ‚ˆÛ\ÜÓ˜[YOH›]LH[˜Ø]H^^È^\Û]KMLžÚ][K›ÝÛ™\ŸOÜ‚ˆÙ]‚ˆÙ]‚ˆ]‚ˆÛ\ÜÓ˜[YOH^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KM‘][OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMÌžÚ][K™]_OÜ‚ˆÝ[YSX™[	‰ˆÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMLžÝ[YSX™[OÜŸBˆÙ]‚ˆ]‚ˆÛ\ÜÓ˜[YOH^VÌLH›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KM”Ý]\ÏÜ‚ˆ]ˆÛ\ÜÓ˜[YOH›]LH›^›^]Ü˜\][\ËXÙ[\ˆØ\LKH‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ßHÏ‚ˆÚ][K›Ý]ÛÚÔÞ[˜ÔÝ]\È	‰ˆ
+ˆ[›[™SÝ]ÛÚÔÞ[˜ÔÝ]\ÈÝ]\Ï^Ú][K›Ý]ÛÚÔÞ[˜ÔÝ]\ßH\œ›Ü^Ú][KœÞ[˜Ñ\œ›ÜŸHÏ‚ˆ
+_BˆÙ]‚ˆÙ]‚ˆÏ‚ˆ
+NÂˆÛÛœÝØ[˜Ù[XÝ[ÛˆH][K˜ÛØXÚ[™È	‰ˆØ[Ø[˜Ù[]\™PÛØXÚ[™Ê\Ù\‹][K˜ÛØXÚ[™ÊBˆÈÛØXÚ[™ÐØ[˜Ù[][ÛXÝ[Ûˆ[\™[[Û^Ú][K˜ÛØXÚ[™ßHÏ‚ˆˆ[ÂˆÛÛœÝXÝ[ÛœÈH
+ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKY[™Ø\LÈ‚ˆÚ][K™]Z[™YˆÈ
+ˆ[šÈ™Y^Ú][K™]Z[™YŸHÛ\ÜÓ˜[YO^ØXÝ[ÛÛ\ÜßO‚ˆÚ][K›Ü[“X™[BˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÓ[šÏ‚ˆ
+HˆÜ[ˆÛ\ÜÓ˜[YO^ØXÝ[ÛÛ\ÜßOžÚ][K›Ü[“X™[OÜÜ[ŸBˆØØ[˜Ù[XÝ[ÛŸBˆÙ]‚ˆ
+NÂ‚ˆ™]\›ˆ
+ˆ]ˆÙ^O^Ú][KšYHÛ\ÜÓ˜[YO^Ü›ÝÐÛ\ÜßO‚ˆÚ][K™]Z[™YˆÈ[šÈ™Y^Ú][K™]Z[™YŸHÛ\ÜÓ˜[YOH˜ÛÛ[ÈžÙ]Z[ßOÓ[šÏˆˆ]Z[ßBˆØXÝ[ÛœßBˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[ÛˆÛÝ[X[R][\ÊX[NˆÛØXÚ[™ÔØÛÜUX[QÜ›Ý\[\™[[Û“\Ý›ÝÏŠHÂˆ™]\›ˆX[K\Ù\œËœ™YXÙJ
+Ý[\Ù\‘Ü›Ý\
+HOˆÝ[
+È\Ù\‘Ü›Ý\š][\Ë›[™Ý
+NÂˆB‚ˆ[˜Ý[ÛˆÛÝ[ÛÝ[žR][\ÊÛÝ[žNˆÛØXÚ[™ÔØÛÜPÛÝ[žQÜ›Ý\[\™[[Û“\Ý›ÝÏŠHÂˆ™]\›ˆÛÝ[žKX[\Ëœ™YXÙJ
+Ý[X[JHOˆÝ[
+ÈÛÝ[X[R][\ÊX[JK
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+˜ÛØXÚ[™Ë›\Ý™^YXœ›ÝÈŠ_Bˆ]O^ØÝ\œ™[]_Bˆ\ØÜš\[Û^ØÝ\œ™[™\ØÜš\[ÛŸBˆXÝ[ÛœÏ^ØØ[Š\Ù\‹š[\™[[ÛŽ˜Ü™X]HŠHÈ[šÈ™Y^ÚÚ[™OOH˜™YÙ[ZY[™Ù[ˆˆÈ‹Ø™YÙ[ZY[™Ù[‹ÛšY]]ÈˆˆˆÈŸHÛ\ÜÓ˜[YOH˜‹\š[X\žH\ÈÛ\ÜÓ˜[YOHšMËMˆÏˆÝ
+˜ÛØXÚ[™Ë›\Ý›™]ÐÛØXÚ[™ÈŠ_OÓ[šÏˆˆ[™Yš[™YBˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™M]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\LÈX™[Û\ÜÓ˜[YOHœ™[]]™HZ[‹]ËVÛZ[ŠL	KN™[JWH›^LHÙX\˜ÚÛ\ÜÓ˜[YOHœÚ[\‹Y]™[Ë[›Û™HXœÛÛ]HYLÈÜLËHMËM^\Û]KMˆÏ[œ]Û\ÜÓ˜[YOH™šY[ËY[LL‹LLˆ˜[YO^ÜÙX\˜Ú\›_HÛÚ[™ÙO^Ê]™[
+HOˆ\]TÙX\˜Ú\›J]™[\™Ù]˜[YJ_HXÙZÛ\^Ý
+˜ÛØXÚ[™Ë›\ÝœÙX\˜ÚŠ_H\šXK[X™[^Ý
+˜ÛØXÚ[™Ë›\ÝœÙX\˜ÚŠ_HÏžÜÙX\˜Ú\›H	‰ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜XœÛÛ]HšYÚLˆÜLˆÜšYNËNXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È^\Û]KMLÝ™\Ž˜™Ë\Û]KLLÝ™\Ž^\Û]KNˆÛÛXÚÏ^Ê
+HOˆ\]TÙX\˜Ú\›JˆŠ_H\šXK[X™[^Ý
+˜ÛØXÚ[™Ë›\Ý˜ÛX\”ÙX\˜ÚŠ_OÛ\ÜÓ˜[YOHšMËMˆÏØ]ÛŸOÛX™[Ù[XÝÛ\ÜÓ˜[YOH™šY[YËVÌNHÜ[ÛžÝ
+˜ÛØXÚ[™Ë›\Ý˜[Ý]\Ù\ÈŠ_OÛÜ[ÛÜ[ÛžÝ
+˜ÛØXÚ[™Ë›\Ýœ[›™YŠ_OÛÜ[ÛÜ[ÛžÝ
+˜ÛØXÚ[™Ë›\Ý˜ÛÜÙYŠ_OÛÜ[ÛÜÙ[XÝÙ[XÝÛ\ÜÓ˜[YOH™šY[YËVÌNHÜ[ÛžÝ
+˜ÛØXÚ[™Ë›\Ý›™^Ì^\ÈŠ_OÛÜ[ÛÜ[ÛžÝ
+˜ÛØXÚ[™Ë›\Ý\Ô]X\\ˆŠ_OÛÜ[ÛÜÙ[XÝžØ[ØÛÜQÜ›Ý\Ë™[˜X›Y	‰ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\Lˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHÚ]\ÜXÙK[›ÝÜ˜\ˆÛÛXÚÏ^Ê
+HOˆÙ][Ü›Ý\ÓÜ[ŠYJ_OÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMËMˆÏˆÝ
+˜ÛØXÚ[™Ë›\Ý™^[™[Š_OØ]Û]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHÚ]\ÜXÙK[›ÝÜ˜\ˆÛÛXÚÏ^Ê
+HOˆÙ][Ü›Ý\ÓÜ[Š˜[ÙJ_OÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËMˆÏˆÝ
+˜ÛØXÚ[™Ë›\Ý˜ÛÛ\ÙP[Š_OØ]ÛÙ]ŸOÙ]Ù]‚ˆÚ\ÔÙX\˜ÚXÝ]™H	‰ˆš[\™Y›ÝÜË›[™ÝOOH	‰ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌ™Ë\Û]KMLMˆKLL^XÙ[\ˆ^\ÛH›Û\Ù[ZX›Û^\Û]KMŒžÝ
+˜ÛØXÚ[™Ë›\Ý››ÔÙX\˜Ú™\Ý[ÈŠ_OÙ]ŸBˆÙXÝ[ÛˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËY[™\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+˜ÛØXÚ[™Ë›\ÝÙ^HŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ë›\ÝÙ^U]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë›\ÝœÛÜYžTÝ\Š_OÜ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™MLLÈKLH^\ÛH›ÛX›Û^Xœ˜[™MÌžÝÙ^T›ÝÜË›[™ÝOÜÜ[‚ˆÙ]‚ˆÜ™[™\”›ÝÜÊÙ^T›ÝÜË
+˜ÛØXÚ[™Ë›\Ý™[\UÙ^HŠKÙ^HŠ_BˆÜÙXÝ[Û‚‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOHœÜXÙK^KM›Ü™\‹]›Ü™\‹\Û]KLŒMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËY[™\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+˜ÛØXÚ[™Ë›\Ý™]\™HŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ë›\Ý™]\™U]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë›\ÝœÛÜYžQ]HŠ_OÜ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™MLLÈKLH^\ÛH›ÛX›Û^Xœ˜[™MÌžÜ[›™Y›ÝÜË›[™ÝOÜÜ[‚ˆÙ]‚ˆÜ™[™\”›ÝÜÊ[›™Y›ÝÜË
+˜ÛØXÚ[™Ë›\Ý™[\Q]\™HŠK™]\™HŠ_BˆÜÙXÝ[Û‚‚ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOHœÜXÙK^KM›Ü™\‹]›Ü™\‹\Û]KLŒMˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËY[™\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+˜ÛØXÚ[™Ë›\Ýš\ÝÜžHŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÝ
+˜ÛØXÚ[™Ë›\Ý˜ÛÛ\]Y]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë›\Ýš\ÝÜžS™]Ù\ÝŠ_OÜ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë\Û]KLLLÈKLH^\ÛH›ÛX›Û^\Û]KMÌžØÛÛ\]Y›ÝÜË›[™ÝOÜÜ[‚ˆÙ]‚ˆÜ™[™\”›ÝÜÊÛÛ\]Y›ÝÜË
+˜ÛØXÚ[™Ë›\Ý™[\PÛÛ\]YŠK˜ÛÛ\]YŠ_BˆÜÙXÝ[Û‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆÛÜšÙ›ÝÐÛØXÚ[™Ð\Ò\ÝÜžJˆ[\™[[ÛŽˆ™]\›•\O\[Ùˆ\ÙUÛÜšÙ›ÝÏ–ÈœÝ]H—VÈš[\™[[ÛœÈ—VÛ[X™\—KˆÛØXÚ[™Ñœ˜[Y]ÛÜšÎˆ™]\›•\O\[Ùˆ\ÙPÛÛ™šYÝ\˜][Û–È˜ÛØXÚ[™Ñœ˜[Y]ÛÜšÈ—KˆX[˜YÙY\Ù\œÎˆ™]\›•\O\[Ùˆ\ÙTÙ\ÜÚ[Û–È›X[˜YÙY\Ù\œÈ—Kˆ™]š[Ý\ÏÎˆ\ÝÜšXØ[ÛØXÚ[™ÂŠNˆ\ÝÜšXØ[ÛØXÚ[™ÈÂˆÛÛœÝØÛÜ™PžQ›ØÝ\ÈH™]ÈX\Ýš[™Ë[X™\–×OŠ
+NÂˆÛÛœÝ\Ú[Y[Üš]\š[Û”ØÛÜ™\ÈHÜš]\š[Û”ØÛÜ™\Ñœ›ÛT›ÝÜÊˆ
+[\™[[Û‹˜\Ú[Y[ÈÏÈ×JBˆ™š[\Š
+\Ú[Y[
+HOˆX\Ú[Y[š\Ñ[]Y
+Bˆ™›]X\
+
+\Ú[Y[
+HOˆ\Ú[Y[œØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+ÂˆÜš]\š[ÛŽˆØÛÜ™K˜Üš]\š[Û‹ˆØÛÜ™NˆØÛÜ™KœØÛÜ™HOOH›ˆÈ[ˆØÛÜ™KœØÛÜ™Kˆ›Ý\XØX›NˆØÛÜ™KœØÛÜ™HOOH›‹ˆJJJBˆ
+NÂˆÛÛœÝÛÜšÙ›ÝÐÜš]\š[Û”ØÛÜ™\ÈH[\™[[Û‹œØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆ
+Âˆ›ØÝ\ÎˆØÛÜ™K™›ØÝ\ËˆÜš]\š[ÛŽˆØÛÜ™K˜Üš]\š[Û‹ˆØÛÜ™NˆØÛÜ™K˜[YHOOH“••ˆÈˆ›Ü›X[^™T\™›Ü›X[˜ÙTØÛÜ™JØÛÜ™K˜[YJKˆØÛÜ™YˆØÛÜ™K˜[YHOOH“••‹ˆJJNÂˆÛÛœÝÜš]\š[Û”ØÛÜ™\ÈHY\™ÙPÜš]\š[Û”ØÛÜ™\Ê\Ú[Y[Üš]\š[Û”ØÛÜ™\ËÛÜšÙ›ÝÐÜš]\š[Û”ØÛÜ™\ÊNÂˆ›Üˆ
+ÛÛœÝØÛÜ™HÙˆÜš]\š[Û”ØÛÜ™\ÊHÂˆYˆ
+ØÛÜ™KœØÛÜ™YOOH˜[ÙJHÛÛ[YNÂˆØÛÜ™PžQ›ØÝ\ËœÙ]
+ØÛÜ™K™›ØÝ\ËË‹‹ŠØÛÜ™PžQ›ØÝ\Ë™Ù]
+ØÛÜ™K™›ØÝ\ÊHÏÈ×JKØÛÜ™KœØÛÜ™WJNÂˆBˆÛÛœÝ\ÙTØÛÜ™\ÈHÛØXÚ[™Ñœ˜[Y]ÛÜšË›X\
+
+›ØÝ\ÊHOˆÂˆÛÛœÝ˜[Y\ÈHØÛÜ™PžQ›ØÝ\Ë™Ù]
+›ØÝ\Ë›˜[YJNÂˆÛÛœÝ˜[˜XÚÈH™]š[Ý\ÏËœ\ÙTØÛÜ™\Ë™š[™
+
+][JHOˆ][K›X™[OOH›ØÝ\Ë›˜[YJOËœØÛÜ™HÏÈLÂˆ™]\›ˆÂˆX™[ˆ›ØÝ\Ë›˜[YKˆØÛÜ™Nˆ˜[Y\ÏË›[™ÝÈX]œ›Ý[™
+˜[Y\Ëœ™YXÙJ
+Ý[K˜[YJHOˆÝ[H
+È˜[YK
+HÈ˜[Y\Ë›[™Ý
+Hˆ˜[˜XÚËˆNÂˆJNÂˆ™]\›ˆÂˆYˆ[\™[[Û‹šYˆ™\™\Ù[]]™RYˆ[\™[[Û‹œ™\™\Ù[]]™RYˆ]Nˆ[\™[[Û‹\]Y]œÛXÙJL
+KˆÝÛ™\’Yˆ[\™[[Û‹›ÝÛ™\’YˆÝÛ™\“˜[YNˆ™\Ü[™Õ\Ù\“˜[YJ[\™[[Û‹›ÝÛ™\’YX[˜YÙY\Ù\œÊKˆÝ]\Îˆ˜Y™Ù\ÛÝ[ˆ‹ˆ›ØÝ\Ó˜[Y\ÎˆË‹‹›™]ÈÙ]
+Ë‹‹š[\™[[Û‹™›ØÝ\Ó˜[Y\Ë‹‹˜Üš]\š[Û”ØÛÜ™\Ë›X\
+
+ØÛÜ™JHOˆØÛÜ™K™›ØÝ\ÊWJWKˆ\ÙTØÛÜ™\ËˆÙ[™\˜[ØÛÜ™\Îˆ™]š[Ý\ÏË™Ù[™\˜[ØÛÜ™\ÈÏÈ×KˆÜš]\š[Û”ØÛÜ™\ËˆNÂŸB‚™[˜Ý[ÛˆXÝ[Û”Ú[Ê
+HÂˆ™]\›ˆØÛÜYXÝ[Û”Ú[ÈÏŽÂŸB‚\HXÝ[Û‘Yš[š][Û‘˜YHÂˆYÎˆÝš[™ÎÂˆ]NˆÝš[™ÎÂˆ\Ð[™šXÚÜÎˆÝš[™ÎÂˆ\™Ù]˜[YNˆÝš[™ÎÂˆš[Üš]NˆØÛÜYXÝ[Û‘Yš[š][Û–Èœš[Üš]H—NÂˆØÛÜNˆØÛÜYXÝ[Û‘Yš[š][Û–ÈœØÛÜH—NÂˆÛÝ[žNˆÝš[™ÎÂˆX[RYˆÝš[™ÎÂˆ\Ù\’YˆÝš[™ÎÂˆ˜[Yœ›ÛNˆÝš[™ÎÂˆ˜[Y[[ˆÝš[™ÎÂˆXÝ]™Nˆ›ÛÛX[ŽÂˆ›ÙXÝYÎˆÝš[™Ö×NÂŸNÂ‚™[˜Ý[ÛˆØÛÜYXÝ[Û”Ú[Ê
+HÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œË[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝÈ[Ù[\ÈHH\ÙS[Ù[\Ê
+NÂˆÛÛœÝÈÝ]HHH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÈ™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÙYš[š][ÛœËÙ]Yš[š][Ûœ×HH\ÙTÝ]OØÛÜYXÝ[Û‘Yš[š][Û–×OŠ×JNÂˆÛÛœÝÝ\™Ù]\\ËÙ]\™Ù]\\×HH\ÙTÝ]OXÝ[Û”Ú[\™Ù]\SÜ[Û–×OŠ×JNÂˆÛÛœÝÜ›ÙXÝËÙ]›ÙXÝ×HH\ÙTÝ]OXÝ[Û”Ú[›ÙXÝÜ[Û–×OŠ×JNÂˆÛÛœÝÙ\œ›Ü‹Ù]\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝÛ›ÝXÙKÙ]›ÝXÙWHH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝÙ›Ü›Q\œ›Ü‹Ù]›Ü›Q\œ›Ü—HH\ÙTÝ]OÝš[™ÏŠ
+NÂˆÛÛœÝÜØ]š[™ËÙ]Ø]š[™×HH\ÙTÝ]J˜[ÙJNÂˆÛÛœÝØÛÛ\ÙYÜ›Ý\ËÙ]ÛÛ\ÙYÜ›Ý\×HH\ÙTÝ]OÙ]Ýš[™ÏŠ™]ÈÙ]
+
+JNÂˆÛÛœÝØXÝ]™PXÝ[Û•X‹Ù]XÝ]™PXÝ[Û•X—HH\ÙTÝ]O˜XÝ[ÛœÈˆ\Ù\œÈŠ˜XÝ[ÛœÈŠNÂˆÛÛœÝØXÝ[Û”ÙX\˜ÚÙ]XÝ[Û”ÙX\˜ÚHH\ÙTÝ]JˆŠNÂˆÛÛœÝÝ\Ù\”ÙX\˜ÚÙ]\Ù\”ÙX\˜ÚHH\ÙTÝ]JˆŠNÂˆÛÛœÝÜ›ÙXÝÙX\˜ÚÙ]›ÙXÝÙX\˜ÚHH\ÙTÝ]JˆŠNÂˆÛÛœÝÙ˜YÙ]˜YHH\ÙTÝ]OXÝ[Û‘Yš[š][Û‘˜YŠ
+NÂˆÛÛœÝÙ]Z[XÝ[Û‹Ù]]Z[XÝ[Û—HH\ÙTÝ]OXÝ[Û”Ú[Ý™\šY]Ò][OŠ
+NÂˆÛÛœÝØÛÜÙPØ[™Y]KÙ]ÛÜÙPØ[™Y]WHH\ÙTÝ]OXÝ[Û”Ú[Ý™\šY]Ò][OŠ
+NÂˆÛÛœÝØÛÜÙYÛÜšÙ›ÝÐXÝ[ÛœËÙ]ÛÜÙYÛÜšÙ›ÝÐXÝ[Ûœ×HH\ÙTÝ]O™XÛÜ™Ýš[™ËXÚÏXÝ[Û”Ú[Ý™\šY]Ò][KœÝ]\Èˆ˜ÛÜÙY]ˆ˜ÛÜÙYžU\Ù\’Yˆ˜ÛÜÙYžS˜[YHˆ˜ÛÜÙY™X\ÛÛˆˆ˜ÛÜÙY™X\ÛÛ‘^[˜][Ûˆˆ\]Y]ŠßJNÂˆÛÛœÝ[ÝÙYHØ[XØÙ\ÜÐXÝ[Û”Ú[ÓÝ™\šY]Ê\Ù\‹[Ù[\ÊNÂˆÛÛœÝØ[Ü™X]QYš[š][ÛœÈHØ[Ü™X]PXÝ[Û”Ú[Yš[š][ÛŠ\Ù\ŠNÂˆÛÛœÝØ[“X[˜YÙQYš[š][ÛœÈHØ[“X[˜YÙPXÝ[Û”Ú[Yš[š][ÛœÊ\Ù\ŠNÂˆÛÛœÝÚÝÐXÝ[Û”Ú[\Ù\•XˆHØ[•šY]ÐXÝ[Û”Ú[\Ù\•XŠ\Ù\ŠNÂˆÛÛœÝš\ÚX›PXÝ[Û•XˆHÚÝÐXÝ[Û”Ú[\Ù\•XˆÈXÝ]™PXÝ[Û•Xˆˆ˜XÝ[ÛœÈŽÂˆÛÛœÝÛÜšÙ›ÝÐXÝ[Û’][\ÈH\ÙSY[[ÏXÝ[Û”Ú[Ý™\šY]Ò][V×OŠ
+
+HOˆÂˆYˆ
+X[ÝÙY
+H™]\›ˆ×NÂˆÛÛœÝØÛÜYÝ]HHÙ]š\ÚX›UÛÜšÙ›ÝÔÝ]J\Ù\‹Ý]K™\™\Ù[]]™\ÊNÂˆÛÛœÝØÛÜY™\™\Ù[]]™\ÈHÙ]š\ÚX›T™\™\Ù[]]™\Ê\Ù\‹™\™\Ù[]]™\ÊNÂˆÛÛœÝ]\Ù]HZ[™\Ü[™Ñ]\Ù]
+ØÛÜYÝ]K™\™\Ù[]]™\Ë\™›Ü›X[˜ÙQ]\Ù]X[˜YÙY\Ù\œÊNÂˆÛÛœÝØÛÜY]\Ù]Hš[\”™\Ü[™Ñ]\Ù]
+]\Ù]ØÛÜY™\™\Ù[]]™\Ë[\T™\Ü[™Ñš[\œËX[˜YÙY\Ù\œÊNÂˆ™]\›ˆØÛÜY]\Ù]˜XÝ[ÛœË™›]X\
+
+XÝ[ÛŠHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOHXÝ[Û‹œ™\™\Ù[]]™RY
+NÂˆYˆ
+\™\™\Ù[]]™JH™]\›ˆ×NÂˆÛÛœÝÝÛ™\“˜[YHHXÝ[Û‹›ÝÛ™\’YÈ™\Ü[™Õ\Ù\“˜[YJXÝ[Û‹›ÝÛ™\’YX[˜YÙY\Ù\œÊHˆ[™Yš[™YÂˆÛÛœÝ™\™\Ù[]]™S˜[YHH	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_XÂˆÛÛœÝXÝ[Û”Ú[YHXÝ[Û‹šYš[˜ÛY\ÊŽˆŠHÈXÝ[Û‹šYœÜ]
+ŽˆŠVÌHˆXÝ[Û‹šYÂˆÛÛœÝÝ™\œšYHHÛÜÙYÛÜšÙ›ÝÐXÝ[ÛœÖØ	ØXÝ[Û”Ú[YN‰ØXÝ[Û‹œ™\™\Ù[]]™RYXHÏÈÛÜÙYÛÜšÙ›ÝÐXÝ[ÛœÖØXÝ[Û”Ú[YNÂˆ™]\›ˆÞÂˆYˆÛÜšÙ›ÝÎ‰ØXÝ[Û‹šYN‰ØXÝ[Û‹œ™\™\Ù[]]™RYXˆÛÝ\˜ÙNˆÛÜšÙ›ÝÈ‹ˆÝ]\ÎˆÝ™\œšYOËœÝ]\ÈÏÈXÝ[Û‹œÝ]\ËˆYNˆXÝ[Û‹™YKˆÛÜÙY]ˆÝ™\œšYOË˜ÛÜÙY]ÏÈXÝ[Û‹˜ÛÜÙY]ˆÛÜÙYžU\Ù\’YˆÝ™\œšYOË˜ÛÜÙYžU\Ù\’YÏÈXÝ[Û‹˜ÛÜÙYžU\Ù\’YˆÛÜÙYžS˜[YNˆÝ™\œšYOË˜ÛÜÙYžS˜[YHÏÈ
+XÝ[Û‹˜ÛÜÙYžU\Ù\’YÈ™\Ü[™Õ\Ù\“˜[YJXÝ[Û‹˜ÛÜÙYžU\Ù\’YX[˜YÙY\Ù\œÊHˆ[™Yš[™Y
+KˆÛÜÙY™X\ÛÛŽˆÝ™\œšYOË˜ÛÜÙY™X\ÛÛˆÏÈXÝ[Û‹˜ÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÝ™\œšYOË˜ÛÜÙY™X\ÛÛ‘^[˜][ÛˆÏÈXÝ[Û‹˜ÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆ]NˆXÝ[Û‹]Kˆ\ØÜš\[ÛŽˆXÝ[Û‹›[šÙYÜHÈÔNˆ	ØXÝ[Û‹›[šÙYÜ_Xˆˆ‹ˆ\Ð[™šXÚÜÎˆˆ‹ˆš[Üš]NˆXÝ[Û‹™YH	‰ˆXÝ[Û‹™YHØØ[]RÙ^J
+H	‰ˆVÈ˜Y™Ù\›Û™‹˜™ZX[‹›šY]Ø™ZX[‹™ÙX[›[Y\™—Kš[˜ÛY\ÊXÝ[Û‹œÝ]\ÊHÈšÛÙÈˆˆ››Ü›XX[‹ˆØÛÜNˆ•TÑTˆ‹ˆØÛÜRÙ^NˆTÑTŽ‰ØXÝ[Û‹œ™\™\Ù[]]™RYXˆÛÝ[žNˆ™\™\Ù[]]™K˜ÛÝ[žKˆX[RYˆ™\™\Ù[]]™KX[RYˆ\Ù\’YˆXÝ[Û‹œ™\™\Ù[]]™RYˆXÝ]™NˆVÈ˜Y™Ù\›Û™‹˜™ZX[‹›šY]Ø™ZX[‹™ÙX[›[Y\™—Kš[˜ÛY\ÊXÝ[Û‹œÝ]\ÊKˆ˜[Yœ›ÛNˆXÝ[Û‹\]Y]œÛXÙJL
+Kˆ˜[Y[[ˆXÝ[Û‹™YH[™Yš[™Yˆ\]Y]ˆÝ™\œšYOË\]Y]ÏÈXÝ[Û‹\]Y]ˆÛÛ˜Ü™]PXÝ[Û”Ú[YˆXÝ[Û”Ú[YˆÝÛ™\“˜[YKˆ™\™\Ù[]]™RYˆXÝ[Û‹œ™\™\Ù[]]™RYˆ™\™\Ù[]]™S˜[YKˆÜšYÚ[“X™[ˆ‘ÙZÛÜ[XÝY\[‹ˆWNÂˆJNÂˆKØ[ÝÙYÛÜÙYÛÜšÙ›ÝÐXÝ[ÛœËX[˜YÙY\Ù\œË\™›Ü›X[˜ÙQ]\Ù]™\™\Ù[]]™\ËÝ]K\Ù\—JNÂˆÛÛœÝXÝ[Û”Ú[][\ÈH\ÙSY[[ÏXÝ[Û”Ú[Ý™\šY]Ò][V×OŠˆ
+
+HOˆÂˆ‹‹™Yš[š][ÛœË›X\
+
+Yš[š][ÛŠHOˆ
+È‹‹™Yš[š][Û‹ÛÝ\˜ÙNˆ™Yš[š][Ûˆˆ\ÈÛÛœÝJJKˆ‹‹ÛÜšÙ›ÝÐXÝ[Û’][\ËˆKˆÙYš[š][ÛœËÛÜšÙ›ÝÐXÝ[Û’][\×Kˆ
+NÂˆÛÛœÝÙXÝ[ÛœÈH\ÙSY[[Ê
+
+HOˆÜ]XÝ[Û”Ú[ÙXÝ[ÛœÊXÝ[Û”Ú[][\ÊKØXÝ[Û”Ú[][\×JNÂˆÛÛœÝÜ[XÝ[Û”Ú[][\ÈH\ÙSY[[Êˆ
+
+HOˆÙXÝ[ÛœË™š[™
+
+ÙXÝ[ÛŠHOˆÙXÝ[Û‹šYOOH›Ü[ˆŠOËš][\ÈÏÈ×KˆÜÙXÝ[Ûœ×Kˆ
+NÂˆÛÛœÝÛÜÙYXÝ[Û”Ú[][\ÈH\ÙSY[[Êˆ
+
+HOˆØ[“X[˜YÙQYš[š][ÛœÈØ[ÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[
+\Ù\ŠHÈÙXÝ[ÛœË™š[™
+
+ÙXÝ[ÛŠHOˆÙXÝ[Û‹šYOOH˜ÛÜÙYŠOËš][\ÈÏÈ×Hˆ×KˆØØ[“X[˜YÙQYš[š][ÛœËÙXÝ[ÛœË\Ù\—Kˆ
+NÂˆÛÛœÝš[\™YXÝ[Û’][\ÈHÜ[XÝ[Û”Ú[][\Ë™š[\Š
+][JHOˆX]Ú\ÐXÝ[Û”Ú[ÙX\˜Ú
+][KXÝ[Û”ÙX\˜Ú
+JNÂˆÛÛœÝš[\™YÛÜÙYXÝ[Û’][\ÈHÛÜÙYXÝ[Û”Ú[][\Ë™š[\Š
+][JHOˆX]Ú\ÐXÝ[Û”Ú[ÙX\˜Ú
+][KXÝ[Û”ÙX\˜Ú
+JNÂˆÛÛœÝXÝ[Û”ØÛÜQÜ›Ý\ÈHÜ›Ý\XÝ[Û”Ú[ÐžTØÛÜJš[\™YXÝ[Û’][\ÊNÂˆÛÛœÝÛÜÙYXÝ[Û”ØÛÜQÜ›Ý\ÈHÜ›Ý\XÝ[Û”Ú[ÐžTØÛÜJš[\™YÛÜÙYXÝ[Û’][\ÊNÂˆÛÛœÝš\ÚX›PXÝ[Û”Ú[™\™\Ù[]]™\ÈHÙ]š\ÚX›T™\™\Ù[]]™\Ê\Ù\‹™\™\Ù[]]™\ÊNÂˆÛÛœÝ\Ù\‘Ü›Ý\ÈHÚÝÐXÝ[Û”Ú[\Ù\•X‚ˆÈÜ›Ý\XÝ[Û”Ú[ÐžT™\™\Ù[]]™JÜ[XÝ[Û”Ú[][\Ëš\ÚX›PXÝ[Û”Ú[™\™\Ù[]]™\ËX[˜YÙY\Ù\œÊBˆ™›]X\
+
+Ü›Ý\
+HOˆÂˆÛÛœÝÜ›Ý\X]Ú\ÈHX]Ú\Õ^
+	ÙÜ›Ý\]_H	ÙÜ›Ý\œÝX]_X\Ù\”ÙX\˜Ú
+NÂˆÛÛœÝ][\ÈHÜ›Ý\X]Ú\ÂˆÈÜ›Ý\š][\ÂˆˆÜ›Ý\š][\Ë™š[\Š
+][JHOˆX]Ú\ÐXÝ[Û”Ú[ÙX\˜Ú
+][K\Ù\”ÙX\˜Ú
+JNÂˆ™]\›ˆ][\Ë›[™ÝÈÞÈ‹‹™Ü›Ý\][\ÈWHˆ×NÂˆJBˆˆ×NÂˆÛÛœÝ™Yœ™\ÚH\ÙPØ[˜XÚÊ\Þ[˜È
+
+HOˆÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+Ø\KØXÝ[Û‹YYš[š][ÛœÏØXÝÜ’YIÙ[˜ÛÙUT’PÛÛ\Û™[
+\Ù\‹šY
+_XÈØXÚNˆ››Ë\ÝÜ™HˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÂˆYš[š][ÛœÏÎˆØÛÜYXÝ[Û‘Yš[š][Û–×NÂˆ\™Ù]\\ÏÎˆXÝ[Û”Ú[\™Ù]\SÜ[Û–×NÂˆ›ÙXÝÏÎˆXÝ[Û”Ú[›ÙXÝÜ[Û–×NÂˆ\œ›ÜÎˆÝš[™ÎÂˆNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜŠNÂˆÙ]Yš[š][ÛœÊ^[ØY™Yš[š][ÛœÈÏÈ×JNÂˆÙ]\™Ù]\\Ê^[ØY\™Ù]\\ÈÏÈ×JNÂˆÙ]›ÙXÝÊ^[ØYœ›ÙXÝÈÏÈ×JNÂˆKÝ\Ù\‹šYJNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+X[ÝÙY
+H™]\›ŽÂˆ›ÚY™Yœ™\Ú
+
+K˜Ø]Ú
+
+Ø]\ÙJHOˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ
+˜XÝ[Û”Ú[Ë›ØY\œ›ÜˆŠJJNÂˆKØ[ÝÙY™Yœ™\ÚJNÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆYˆ
+X[ÝÙY\[ÙˆÚ[™ÝÈOOH[™Yš[™YŠH™]\›ŽÂˆÛÛœÝ™\]Y\ÝYYH™]ÈT“ÙX\˜Ú\˜[\ÊÚ[™ÝË›ØØ][Û‹œÙX\˜Ú
+K™Ù]
+˜XÝ[Û”Ú[YŠNÂˆYˆ
+\™\]Y\ÝYY
+H™]\›ŽÂˆÛÛœÝX]ÚHXÝ[Û”Ú[][\Ë™š[™
+
+][JHO‚ˆ][K˜ÛÛ˜Ü™]PXÝ[Û”Ú[YOOH™\]Y\ÝYYˆ][KšYOOH™\]Y\ÝYYˆ][KšYœÝ\ÕÚ]
+ÛÜšÙ›ÝÎˆˆ
+È™\]Y\ÝYY
+ÈŽˆŠBˆ
+NÂˆYˆ
+X]Ú
+HÙ]]Z[XÝ[ÛŠX]Ú
+NÂˆKØXÝ[Û”Ú[][\Ë[ÝÙYJNÂ‚ˆYˆ
+X[ÝÙY
+HÂˆ™]\›ˆ[\TÝ]H]O^Ý
+˜ÛÛXÝ[˜ÛÛ[[Û‹››ÔšYÚÕ]HŠ_H\ØÜš\[Û^Ý
+˜XÝ[Û”Ú[Ë››ÓX[˜YÙTšYÚÈŠ_HÏŽÂˆB‚ˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+˜XÝ[Û”Ú[ËœYÙQ^YXœ›ÝÈŠ_Bˆ]O^Ý
+˜XÝ[Û”Ú[ËœYÙU]HŠ_Bˆ\ØÜš\[Û^Ý
+˜XÝ[Û”Ú[ËœYÙQ\ØÜš\[ÛˆŠ_BˆXÝ[ÛœÏ^ØØ[Ü™X]QYš[š][ÛœÈÈ
+ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆÛÛXÚÏ^Ê
+HOˆÜ[Ü™X]QX[ÙÊ
+_O‚ˆ\ÈÛ\ÜÓ˜[YOHšMËMˆÏˆÝ
+˜XÝ[Û”Ú[Ë˜YŠ_BˆØ]Û‚ˆ
+Hˆ[™Yš[™YBˆÏ‚ˆÙ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKNžÙ\œ›ÜŸOÜŸBˆÛ›ÝXÙH	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹Y[Y\˜[LŒ™ËY[Y\˜[MLLÈ^\ÛH›Û\Ù[ZX›Û^Y[Y\˜[NžÛ›ÝXÙ_OÜŸB‚ˆÜÚÝÐXÝ[Û”Ú[\Ù\•Xˆ	‰ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOH˜Ø\™Lˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LˆÛN™ÜšYXÛÛËLˆ‚ˆÖÂˆÈYˆ˜XÝ[ÛœÈˆ\ÈÛÛœÝX™[ˆ
+˜XÝ[Û”Ú[ËœYÙU]HŠKÛÝ[ˆš[\™YXÝ[Û’][\Ë›[™ÝKˆÈYˆ\Ù\œÈˆ\ÈÛÛœÝX™[ˆ
+˜XÝ[Û”Ú[Ë\Ù\œÕXˆŠKÛÝ[ˆ\Ù\‘Ü›Ý\Ë›[™ÝKˆK›X\
+
+XŠHOˆÂˆÛÛœÝXÝ]™HHXÝ]™PXÝ[Û•XˆOOHX‹šYÂˆ™]\›ˆ
+ˆ]Û‚ˆÙ^O^ÝX‹šYBˆ\OH˜]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÙ]XÝ]™PXÝ[Û•XŠX‹šY
+_BˆÛ\ÜÓ˜[YO^Ø›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆ›Ý[™Y^MKLÈ^[Y^\ÛH›ÛX›Û˜[œÚ][Ûˆ	ØXÝ]™HÈ˜™ËXœ˜[™MÌ^]Ú]HÚYÝË\ÛHˆˆ˜™Ë\Û]KML^\Û]KMŒÝ™\Ž˜™ËXœ˜[™MLÝ™\Ž^Xœ˜[™NŸXBˆ‚ˆÜ[žÝX‹›X™[OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È	ØXÝ]™HÈ˜™Ë]Ú]KÌŒ^]Ú]Hˆˆ˜™Ë]Ú]H^Xœ˜[™MÌŸXOžÝX‹˜ÛÝ[OÜÜ[‚ˆØ]Û‚ˆ
+NÂˆJ_BˆÙ]‚ˆÜÙXÝ[ÛŸB‚ˆÝš\ÚX›PXÝ[Û•XˆOOH˜XÝ[ÛœÈˆÈ™[™\XÝ[ÛœÕXŠ
+Hˆ™[™\•\Ù\œÕXŠ
+_BˆÙ]Z[XÝ[Ûˆ	‰ˆ™[™\‘]Z[[Ù[
+]Z[XÝ[ÛŠ_BˆØÛÜÙPØ[™Y]H	‰ˆ™[™\ÛÜÙQX[ÙÊÛÜÙPØ[™Y]J_BˆÙ˜Y	‰ˆ™[™\XÝ[Û‘Yš[š][Û‘X[ÙÊ
+_BˆÙ]ŽÂ‚ˆ[˜Ý[ÛˆÜ[Ü™X]QX[ÙÊ
+HÂˆÛÛœÝØÛÜHH[ÝÙY\™Ù]\\Ê
+VÌOË˜ÛÙHÏÈ•TÑTˆŽÂˆÙ]›ÙXÝÙX\˜Ú
+ˆŠNÂˆÙ]›Ü›Q\œ›ÜŠ[™Yš[™Y
+NÂˆÙ]˜Y
+›Ü›X[^™Q˜Y
+Âˆ]Nˆˆ‹ˆ\Ð[™šXÚÜÎˆˆ‹ˆ\™Ù]˜[YNˆˆ‹ˆš[Üš]Nˆ››Ü›XX[‹ˆØÛÜKˆÛÝ[žNˆˆ‹ˆX[RYˆˆ‹ˆ\Ù\’Yˆˆ‹ˆ˜[Yœ›ÛNˆØØ[]RÙ^J
+Kˆ˜[Y[[ˆˆ‹ˆXÝ]™NˆYKˆ›ÙXÝYÎˆ×KˆJJNÂˆB‚ˆ[˜Ý[ÛˆÜ[‘Y]X[ÙÊ][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆÙ]›ÙXÝÙX\˜Ú
+ˆŠNÂˆÙ]›Ü›Q\œ›ÜŠ[™Yš[™Y
+NÂˆÙ]]Z[XÝ[ÛŠ[™Yš[™Y
+NÂˆÙ]˜Y
+›Ü›X[^™Q˜Y
+ÂˆYˆ][KšYˆ]Nˆ][K]Kˆ\Ð[™šXÚÜÎˆ][K\Ð[™šXÚÜÈ][K™\ØÜš\[Û‹ˆ\™Ù]˜[YNˆ][K\™Ù]˜[YHOOH[™Yš[™YÈˆˆˆÝš[™Ê][K\™Ù]˜[YJKˆš[Üš]Nˆ][Kœš[Üš]KˆØÛÜNˆ][KœØÛÜKˆÛÝ[žNˆ][K˜ÛÝ[žHÏÈˆ‹ˆX[RYˆ][KX[RYÏÈˆ‹ˆ\Ù\’Yˆ][K\Ù\’YÏÈˆ‹ˆ˜[Yœ›ÛNˆ][K˜[Yœ›ÛKˆ˜[Y[[ˆ][K˜[Y[[ÏÈˆ‹ˆXÝ]™Nˆ][K˜XÝ]™Kˆ›ÙXÝYÎˆ][Kœ›ÙXÝYÈÏÈ×KˆJJNÂˆB‚ˆ[˜Ý[Ûˆ\]Q˜Y
+\]Nˆ\X[XÝ[Û‘Yš[š][Û‘˜YŠHÂˆÙ]˜Y
+
+Ý\œ™[
+HOˆÝ\œ™[È›Ü›X[^™Q˜Y
+È‹‹˜Ý\œ™[‹‹\]HJHˆÝ\œ™[
+NÂˆB‚ˆ[˜Ý[Ûˆ›Ü›X[^™Q˜Y
+˜[YNˆXÝ[Û‘Yš[š][Û‘˜Y
+NˆXÝ[Û‘Yš[š][Û‘˜YÂˆÛÛœÝ[ÝÙYØÛÜ\ÈH[ÝÙY\™Ù]\\Ê
+K›X\
+
+][JHOˆ][K˜ÛÙJNÂˆÛÛœÝØÛÜHH[ÝÙYØÛÜ\Ëš[˜ÛY\Ê˜[YKœØÛÜJHÈ˜[YKœØÛÜHˆ[ÝÙYØÛÜ\ÖÌHÏÈ•TÑTˆŽÂˆÛÛœÝÛÝ[šY\ÈHÛÝ[žSÜ[ÛœÊ
+NÂˆ]ÛÝ[žHH˜[YK˜ÛÝ[žHÛÝ[šY\ÖÌH\Ù\‹˜ÛÝ[žNÂˆ]X[RYH˜[YKX[RYÂˆ]\Ù\’YH˜[YK\Ù\’YÂ‚ˆYˆ
+ØÛÜHOOH‘ÓÐSŠHÂˆ™]\›ˆÈ‹‹˜[YKØÛÜKÛÝ[žNˆˆ‹X[RYˆˆ‹\Ù\’YˆˆˆNÂˆB‚ˆYˆ
+ØÛÜHOOHÓÕS•–HŠHÂˆYˆ
+XÛÝ[šY\Ëš[˜ÛY\ÊÛÝ[žJJHÛÝ[žHHÛÝ[šY\ÖÌHÏÈ\Ù\‹˜ÛÝ[žNÂˆ™]\›ˆÈ‹‹˜[YKØÛÜKÛÝ[žKX[RYˆˆ‹\Ù\’YˆˆˆNÂˆB‚ˆYˆ
+ØÛÜHOOH•PSHŠHÂˆÛÛœÝX[\ÈHX[SÜ[ÛœÊÛÝ[žJNÂˆYˆ
+]X[\ËœÛÛYJ
+X[JHOˆX[KšYOOHX[RY
+JHÂˆX[RYHX[\ÖÌOËšYÏÈˆŽÂˆBˆÛÛœÝÙ[XÝYX[HHX[\Ë™š[™
+
+X[JHOˆX[KšYOOHX[RY
+NÂˆ™]\›ˆÈ‹‹˜[YKØÛÜKÛÝ[žNˆÙ[XÝYX[OË˜ÛÝ[žHÏÈÛÝ[žKX[RY\Ù\’YˆˆˆNÂˆB‚ˆÛÛœÝ\Ù\œÈH\Ù\“Ü[ÛœÊÛÝ[žKX[RY
+NÂˆYˆ
+]\Ù\œËœÛÛYJ
+Y[X™\ŠHOˆY[X™\‹šYOOH\Ù\’Y
+JHÂˆ\Ù\’YH\Ù\œÖÌOËšYÏÈˆŽÂˆBˆÛÛœÝÙ[XÝY\Ù\ˆH\Ù\œË™š[™
+
+Y[X™\ŠHOˆY[X™\‹šYOOH\Ù\’Y
+NÂˆ™]\›ˆÂˆ‹‹˜[YKˆØÛÜNˆ•TÑTˆ‹ˆÛÝ[žNˆÙ[XÝY\Ù\Ë˜ÛÝ[žHÏÈÛÝ[žKˆX[RYˆÙ[XÝY\Ù\ËX[RYÏÈX[RYˆ\Ù\’YˆNÂˆB‚ˆ[˜Ý[Ûˆ[ÝÙY\™Ù]\\Ê
+HÂˆÛÛœÝXÝ]™U\\ÈH\™Ù]\\Ë™š[\Š
+][JHOˆ][Kš\ÐXÝ]™JNÂˆ™]\›ˆXÝ]™U\\Ë™š[\Š
+][JHOˆÂˆYˆ
+\Ù\‹œ›ÛHOOH”ÐST×ÓPQTˆŠH™]\›ˆ][K˜ÛÙHOOH•TÑTˆŽÂˆYˆ
+È”ÐST×ÓPSQÑTˆ‹ÓÕS•–WÓPSQÑTˆ—Kš[˜ÛY\Ê\Ù\‹œ›ÛJJH™]\›ˆ][K˜ÛÙHOOH‘ÓÐSŽÂˆ™]\›ˆØ[Ü™X]QYš[š][ÛœÈØ[“X[˜YÙQYš[š][ÛœÎÂˆJNÂˆB‚ˆ[˜Ý[ÛˆÛÝ[žSÜ[ÛœÊ
+HÂˆÛÛœÝÛÝ[šY\ÈH™]ÈÙ]Ýš[™ÏŠ
+NÂˆYˆ
+È‘Ô“ÕTÓPSQÑTˆ‹”ÕTT—ÐQRSˆ‹QRSˆ—Kš[˜ÛY\Ê\Ù\‹œ›ÛJJHÂˆX[˜YÙY\Ù\œË™›Ü‘XXÚ
+
+Y[X™\ŠHOˆÛÝ[šY\Ë˜Y
+Y[X™\‹˜ÛÝ[žJJNÂˆÛÝ[šY\Ë˜Y
+\Ù\‹˜ÛÝ[žJNÂˆH[ÙHYˆ
+\Ù\‹˜ÛÝ[žPXØÙ\ÜÏË›[™Ý
+HÂˆ\Ù\‹˜ÛÝ[žPXØÙ\ÜË™›Ü‘XXÚ
+
+ÛÝ[žJHOˆÛÝ[šY\Ë˜Y
+ÛÝ[žJJNÂˆH[ÙHÂˆÛÝ[šY\Ë˜Y
+\Ù\‹˜ÛÝ[žJNÂˆBˆ™]\›ˆÈ‘H‹““‹‘H—K™š[\Š
+ÛÝ[žJHOˆÛÝ[šY\Ëš\ÊÛÝ[žJJNÂˆB‚ˆ[˜Ý[ÛˆX[SÜ[ÛœÊÛÝ[žOÎˆÝš[™ÊHÂˆÛÛœÝÛÝ[šY\ÈH™]ÈÙ]
+ÛÝ[žHÈØÛÝ[žWHˆÛÝ[žSÜ[ÛœÊ
+JNÂˆÛÛœÝX[\ÈH™]ÈX\Ýš[™ËÈYˆÝš[™ÎÈ˜[YNˆÝš[™ÎÈÛÝ[žNˆÝš[™ÈOŠ
+NÂˆX[˜YÙY\Ù\œÂˆ™š[\Š
+Y[X™\ŠHOˆY[X™\‹˜XÝ]™H	‰ˆY[X™\‹X[RY	‰ˆÛÝ[šY\Ëš\ÊY[X™\‹˜ÛÝ[žJJBˆ™›Ü‘XXÚ
+
+Y[X™\ŠHOˆÂˆYˆ
+]X[\Ëš\ÊY[X™\‹X[RY
+JHÂˆX[\ËœÙ]
+Y[X™\‹X[RYÈYˆY[X™\‹X[RY˜[YNˆY[X™\‹X[S˜[YHY[X™\‹X[RYÛÝ[žNˆY[X™\‹˜ÛÝ[žHJNÂˆBˆJNÂˆ™]\›ˆË‹‹X[\Ë˜[Y\Ê
+WKœÛÜ
+
+YšYÚ
+HO‚ˆY˜ÛÝ[žK›ØØ[PÛÛ\\™JšYÚ˜ÛÝ[žK››P‘HŠHY›˜[YK›ØØ[PÛÛ\\™JšYÚ›˜[YK››P‘HŠBˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ\Ù\“Ü[ÛœÊÛÝ[žOÎˆÝš[™ËX[RYÎˆÝš[™ÊHÂˆÛÛœÝÛÝ[šY\ÈH™]ÈÙ]
+ÛÝ[žHÈØÛÝ[žWHˆÛÝ[žSÜ[ÛœÊ
+JNÂˆ™]\›ˆX[˜YÙY\Ù\œÂˆ™š[\Š
+Y[X™\ŠHOˆY[X™\‹˜XÝ]™H	‰ˆY[X™\‹œ›ÛHOOH”‘T‘TÑS•UU‘HŠBˆ™š[\Š
+Y[X™\ŠHOˆÛÝ[šY\Ëš\ÊY[X™\‹˜ÛÝ[žJJBˆ™š[\Š
+Y[X™\ŠHOˆ]X[RYY[X™\‹X[RYOOHX[RY
+Bˆ™š[\Š
+Y[X™\ŠHOˆ\Ù\‹œ›ÛHOOH”ÐST×ÓPQTˆˆ›ÛÛX[Š\Ù\‹X[RY	‰ˆY[X™\‹X[RYOOH\Ù\‹X[RY
+JBˆœÛÜ
+
+YšYÚ
+HO‚ˆY˜ÛÝ[žK›ØØ[PÛÛ\\™JšYÚ˜ÛÝ[žK››P‘HŠHˆYX[S˜[YK›ØØ[PÛÛ\\™JšYÚX[S˜[YK››P‘HŠHˆY›\Ý˜[YK›ØØ[PÛÛ\\™JšYÚ›\Ý˜[YK››P‘HŠHˆY™š\œÝ˜[YK›ØØ[PÛÛ\\™JšYÚ™š\œÝ˜[YK››P‘HŠBˆ
+NÂˆB‚ˆ\Þ[˜È[˜Ý[ÛˆØ]™Q˜Y
+
+HÂˆYˆ
+Y˜Y
+H™]\›ŽÂˆÙ]Ø]š[™ÊYJNÂˆÙ]›Ü›Q\œ›ÜŠ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ›ÙHHXÝ[Û‘Yš[š][Û”^[ØY
+˜Y
+NÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+‹Ø\KØXÝ[Û‹YYš[š][ÛœÈ‹ÂˆY]Ùˆ˜YšYÈ”UÒˆˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJ›ÙJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈXÝY\[ÛÛˆšY]ÛÜ™[ˆÜÙ\ÛYÙ[‹ˆŠNÂˆ]ØZ]™Yœ™\Ú
+
+NÂˆÙ]˜Y
+[™Yš[™Y
+NÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]›Ü›Q\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆXÝY\[ÛÛˆšY]ÛÜ™[ˆÜÙ\ÛYÙ[‹ˆŠNÂˆHš[˜[HÂˆÙ]Ø]š[™Ê˜[ÙJNÂˆBˆB‚ˆ\Þ[˜È[˜Ý[ÛˆÙ]Yš[š][ÛXÝ]™J][NˆXÝ[Û”Ú[Ý™\šY]Ò][KXÝ]™Nˆ›ÛÛX[ŠHÂˆÛÛœÝ™^˜YH›Ü›X[^™Q˜Y
+ÂˆYˆ][KšYˆ]Nˆ][K]Kˆ\Ð[™šXÚÜÎˆ][K\Ð[™šXÚÜÈ][K™\ØÜš\[Û‹ˆ\™Ù]˜[YNˆ][K\™Ù]˜[YHOOH[™Yš[™YÈˆˆˆÝš[™Ê][K\™Ù]˜[YJKˆš[Üš]Nˆ][Kœš[Üš]KˆØÛÜNˆ][KœØÛÜKˆÛÝ[žNˆ][K˜ÛÝ[žHÏÈˆ‹ˆX[RYˆ][KX[RYÏÈˆ‹ˆ\Ù\’Yˆ][K\Ù\’YÏÈˆ‹ˆ˜[Yœ›ÛNˆ][K˜[Yœ›ÛKˆ˜[Y[[ˆ][K˜[Y[[ÏÈˆ‹ˆXÝ]™Kˆ›ÙXÝYÎˆ][Kœ›ÙXÝYÈÏÈ×KˆJNÂˆÙ]Ø]š[™ÊYJNÂˆÙ]\œ›ÜŠ[™Yš[™Y
+NÂˆÙ]›ÝXÙJ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+‹Ø\KØXÝ[Û‹YYš[š][ÛœÈ‹ÂˆY]Ùˆ”UÒ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJXÝ[Û‘Yš[š][Û”^[ØY
+™^˜Y
+JKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÈ\œ›ÜÎˆÝš[™ÈNÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈXÝY\[ÛÛˆšY]ÛÜ™[ˆšZ™Ù]Ù\šÝˆŠNÂˆ]ØZ]™Yœ™\Ú
+
+NÂˆÙ]]Z[XÝ[ÛŠ[™Yš[™Y
+NÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆXÝY\[ÛÛˆšY]ÛÜ™[ˆšZ™Ù]Ù\šÝˆŠNÂˆHš[˜[HÂˆÙ]Ø]š[™Ê˜[ÙJNÂˆBˆB‚ˆ\Þ[˜È[˜Ý[ÛˆÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][KÛÜÙY™X\ÛÛŽˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÝš[™ÊHÂˆYˆ
+Z][K˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+H™]\›ŽÂˆÙ]Ø]š[™ÊYJNÂˆÙ]\œ›ÜŠ[™Yš[™Y
+NÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+Ø\KØXÝ[Û‹\Ú[ËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+][K˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y
+_KØÛÜÙXÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÈÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛˆˆKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÂˆXÝÜ’Yˆ\Ù\‹šYˆ™\™\Ù[]]™RYˆ][Kœ™\™\Ù[]]™RYˆÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆJKˆJNÂˆÛÛœÝ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÂˆXÝ[Û”Ú[ÎˆÂˆXÝ[Û”Ú[YˆÝš[™ÎÂˆ™\™\Ù[]]™RYˆÝš[™ÎÂˆÝ]\Îˆ˜Y™Ù\›Û™ŽÂˆÛÜÙY]ˆÝš[™ÎÂˆÛÜÙYžU\Ù\’YˆÝš[™ÎÂˆÛÜÙYžS˜[YNˆÝš[™ÎÂˆÛÜÙY™X\ÛÛÎˆXÝ[Û”Ú[ÛÜÙT™X\ÛÛŽÂˆÛÜÙY™X\ÛÛ‘^[˜][ÛÎˆÝš[™ÎÂˆNÂˆ\œ›ÜÎˆÝš[™ÎÂˆNÂˆYˆ
+\™\ÜÛœÙK›ÚÈ\^[ØY˜XÝ[Û”Ú[
+H›ÝÈ™]È\œ›ÜŠ^[ØY™\œ›ÜˆÏÈ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙQ\œ›ÜˆŠJNÂˆÛÛœÝÛÜÙYXÝ[ÛˆH^[ØY˜XÝ[Û”Ú[ÂˆÛÛœÝÙ^HH	ØÛÜÙYXÝ[Û‹˜XÝ[Û”Ú[YN‰ØÛÜÙYXÝ[Û‹œ™\™\Ù[]]™RYXÂˆÙ]ÛÜÙYÛÜšÙ›ÝÐXÝ[ÛœÊ
+Ý\œ™[
+HOˆ
+Âˆ‹‹˜Ý\œ™[ˆØÛÜÙYXÝ[Û‹˜XÝ[Û”Ú[YNˆÂˆÝ]\Îˆ˜Y™Ù\›Û™‹ˆÛÜÙY]ˆÛÜÙYXÝ[Û‹˜ÛÜÙY]ˆÛÜÙYžU\Ù\’YˆÛÜÙYXÝ[Û‹˜ÛÜÙYžU\Ù\’YˆÛÜÙYžS˜[YNˆÛÜÙYXÝ[Û‹˜ÛÜÙYžS˜[YKˆÛÜÙY™X\ÛÛŽˆÛÜÙYXÝ[Û‹˜ÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÛÜÙYXÝ[Û‹˜ÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆ\]Y]ˆÛÜÙYXÝ[Û‹˜ÛÜÙY]ˆKˆÚÙ^WNˆÂˆÝ]\Îˆ˜Y™Ù\›Û™‹ˆÛÜÙY]ˆÛÜÙYXÝ[Û‹˜ÛÜÙY]ˆÛÜÙYžU\Ù\’YˆÛÜÙYXÝ[Û‹˜ÛÜÙYžU\Ù\’YˆÛÜÙYžS˜[YNˆÛÜÙYXÝ[Û‹˜ÛÜÙYžS˜[YKˆÛÜÙY™X\ÛÛŽˆÛÜÙYXÝ[Û‹˜ÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÛÜÙYXÝ[Û‹˜ÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆ\]Y]ˆÛÜÙYXÝ[Û‹˜ÛÜÙY]ˆKˆJJNÂˆÙ]ÛÜÙPØ[™Y]J[™Yš[™Y
+NÂˆÙ]]Z[XÝ[ÛŠ
+Ý\œ™[
+HOˆÝ\œ™[ËšYOOH][KšYÈÂˆ‹‹˜Ý\œ™[ˆÝ]\Îˆ˜Y™Ù\›Û™‹ˆXÝ]™Nˆ˜[ÙKˆÛÜÙY]ˆÛÜÙYXÝ[Û‹˜ÛÜÙY]ˆÛÜÙYžU\Ù\’YˆÛÜÙYXÝ[Û‹˜ÛÜÙYžU\Ù\’YˆÛÜÙYžS˜[YNˆÛÜÙYXÝ[Û‹˜ÛÜÙYžS˜[YKˆÛÜÙY™X\ÛÛŽˆÛÜÙYXÝ[Û‹˜ÛÜÙY™X\ÛÛ‹ˆÛÜÙY™X\ÛÛ‘^[˜][ÛŽˆÛÜÙYXÝ[Û‹˜ÛÜÙY™X\ÛÛ‘^[˜][Û‹ˆ\]Y]ˆÛÜÙYXÝ[Û‹˜ÛÜÙY]ˆHˆÝ\œ™[
+NÂˆÙ]›ÝXÙJ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙTÝXØÙ\ÜÈŠJNÂˆHØ]Ú
+Ø]\ÙJHÂˆÙ]\œ›ÜŠØ]\ÙH[œÝ[˜Ù[Ùˆ\œ›ÜˆÈØ]\ÙK›Y\ÜØYÙHˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙQ\œ›ÜˆŠJNÂˆHš[˜[HÂˆÙ]Ø]š[™Ê˜[ÙJNÂˆBˆB‚ˆ[˜Ý[ÛˆXÝ[Û‘Yš[š][Û”^[ØY
+˜[YNˆXÝ[Û‘Yš[š][Û‘˜Y
+HÂˆ™]\›ˆÂˆXÝÜ’Yˆ\Ù\‹šYˆYˆ˜[YKšYˆ]Nˆ˜[YK]Kˆ\ØÜš\[ÛŽˆ˜[YK\Ð[™šXÚÜËˆ\Ð[™šXÚÜÎˆ˜[YK\Ð[™šXÚÜËˆ\™Ù]˜[YNˆ˜[YK\™Ù]˜[YKˆš[Üš]Nˆ˜[YKœš[Üš]KˆØÛÜNˆ˜[YKœØÛÜKˆÛÝ[žNˆ˜[YKœØÛÜHOOH‘ÓÐSˆÈ[™Yš[™Yˆ˜[YK˜ÛÝ[žKˆX[RYˆÈ•PSH‹•TÑTˆ—Kš[˜ÛY\Ê˜[YKœØÛÜJHÈ˜[YKX[RYˆ[™Yš[™Yˆ\Ù\’Yˆ˜[YKœØÛÜHOOH•TÑTˆˆÈ˜[YK\Ù\’Yˆ[™Yš[™Yˆ˜[Yœ›ÛNˆ˜[YK˜[Yœ›ÛKˆ˜[Y[[ˆ˜[YK˜[Y[[[™Yš[™YˆXÝ]™Nˆ˜[YK˜XÝ]™Kˆ›ÙXÝYÎˆ˜[YKœ›ÙXÝYËˆNÂˆB‚ˆ[˜Ý[ÛˆÙÙÛQÜ›Ý\
+Ù^NˆÝš[™ÊHÂˆÙ]ÛÛ\ÙYÜ›Ý\Ê
+Ý\œ™[
+HOˆÂˆÛÛœÝ™^H™]ÈÙ]
+Ý\œ™[
+NÂˆYˆ
+™^š\ÊÙ^JJH™^™[]JÙ^JNÂˆ[ÙH™^˜Y
+Ù^JNÂˆ™]\›ˆ™^ÂˆJNÂˆB‚ˆ[˜Ý[Ûˆ™[™\XÝ[ÛœÕXŠ
+HÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËY[™\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+œÝ]\Ë›Ü[ˆŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÝ
+˜XÝ[Û”Ú[ËœYÙU]HŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜XÝ[Û”Ú[Ë™Ü›Ý\YžU\P[™\Ù\ˆŠ_OÜ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™MLLÈKLH^\ÛH›ÛX›Û^Xœ˜[™MÌžÙš[\™YXÝ[Û’][\Ë›[™ÝOÜÜ[‚ˆÙ]‚ˆÜ™[™\”ÙX\˜ÚšY[
+
+˜XÝ[Û”Ú[ËœÙX\˜ÚXÝ[ÛœÈŠKXÝ[Û”ÙX\˜ÚÙ]XÝ[Û”ÙX\˜Ú
+_BˆÜ™[™\”ØÛÜQÜ›Ý\ÊXÝ[Û”ØÛÜQÜ›Ý\Ë˜XÝ[ÛœÈ‹
+˜XÝ[Û”Ú[Ë™[\TÙX\˜ÚŠJ_BˆØØ[“X[˜YÙQYš[š][ÛœÈ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœLˆ‚ˆ]ˆÛ\ÜÓ˜[YOH›X‹LÈ›^›^]Ü˜\][\ËY[™\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+˜XÝ[Û”Ú[ËœYÙQ^YXœ›ÝÈŠ_OÜ‚ˆÈÛ\ÜÓ˜[YOH^[È›ÛX›Û^\Û]KNMLžÝ
+˜XÝ[Û”Ú[Ëš[˜XÝ]™HŠ_OÚÏ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë\Û]KLLLÈKLH^\ÛH›ÛX›Û^\Û]KMÌžÙš[\™YÛÜÙYXÝ[Û’][\Ë›[™ÝOÜÜ[‚ˆÙ]‚ˆÜ™[™\”ØÛÜQÜ›Ý\ÊÛÜÙYXÝ[Û”ØÛÜQÜ›Ý\Ë˜ÛÜÙYXXÝ[ÛœÈ‹
+˜XÝ[Û”Ú[Ë™[\TÙX\˜ÚŠJ_BˆÙ]‚ˆ
+_BˆÜÙXÝ[Û‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\•\Ù\œÕXŠ
+HÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËY[™\ÝYžKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+œÝ]\Ë›Ü[ˆŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÝ
+˜XÝ[Û”Ú[Ë\Ù\œÕXˆŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜XÝ[Û”Ú[Ë™Ü›Ý\YžU\P[™\Ù\ˆŠ_OÜ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™MLLÈKLH^\ÛH›ÛX›Û^Xœ˜[™MÌžÝ\Ù\‘Ü›Ý\Ë›[™ÝOÜÜ[‚ˆÙ]‚ˆÜ™[™\”ÙX\˜ÚšY[
+
+˜XÝ[Û”Ú[ËœÙX\˜Ú\Ù\œÈŠK\Ù\”ÙX\˜ÚÙ]\Ù\”ÙX\˜Ú
+_BˆÜ™[™\•\Ù\‘Ü›Ý\Ê\Ù\‘Ü›Ý\Ë
+˜XÝ[Û”Ú[Ë™[\U\Ù\œÈŠJ_BˆÜÙXÝ[Û‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\”ÙX\˜ÚšY[
+ˆXÙZÛ\ŽˆÝš[™Ëˆ˜[YNˆÝš[™ËˆÛÚ[™ÙNˆ
+˜[YNˆÝš[™ÊHOˆ›ÚYˆ
+HÂˆ™]\›ˆ
+ˆX™[Û\ÜÓ˜[YOHœ™[]]™H›ØÚÈ‚ˆÙX\˜ÚÛ\ÜÓ˜[YOH˜XœÛÛ]HYLÈÜLËHMËM^\Û]KMˆÏ‚ˆ[œ]ˆÛ\ÜÓ˜[YOH™šY[LL‚ˆXÙZÛ\^ÜXÙZÛ\ŸBˆ˜[YO^Ý˜[Y_BˆÛÚ[™ÙO^Ê]™[
+HOˆÛÚ[™ÙJ]™[\™Ù]˜[YJ_BˆÏ‚ˆÛX™[‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\”ØÛÜQÜ›Ý\ÊˆÜ›Ý\ÎˆXÝ[Û”Ú[ØÛÜQÜ›Ý\×KˆÙ^T™Yš^ˆÝš[™Ëˆ[\SY\ÜØYÙNˆÝš[™Ëˆ
+HÂˆYˆ
+Ü›Ý\Ë›[™ÝOOH
+HÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌ™Ë\Û]KMLMˆKLL^XÙ[\ˆ^\ÛH^\Û]KML‚ˆÙ[\SY\ÜØYÙ_BˆÙ]‚ˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ‚ˆÙÜ›Ý\Ë›X\
+
+Ü›Ý\
+HOˆÂˆÛÛœÝÜ›Ý\Ù^HH	ÚÙ^T™Yš^N‰ÙÜ›Ý\šYXÂˆÛÛœÝÜ›Ý\Ü[ˆHXÛÛ\ÙYÜ›Ý\Ëš\ÊÜ›Ý\Ù^JNÂˆÛÛœÝ\Ù\”ÝX‘Ü›Ý\ÈHXÝ[Û”Ú[\Ù\”ÝX‘Ü›Ý\ÊÜ›Ý\
+NÂˆÛÛœÝš\ÚX›R][PÛÝ[H\Ù\”ÝX‘Ü›Ý\Ëœ™YXÙJ
+Ý[\Ù\‘Ü›Ý\
+HOˆÝ[
+È\Ù\‘Ü›Ý\š][\Ë›[™Ý
+NÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÙ^O^ÙÜ›Ý\Ù^_HÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HÚYÝË\ÛH‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÙÙÛQÜ›Ý\
+Ü›Ý\Ù^J_Bˆ\šXKY^[™Y^ÙÜ›Ý\Ü[ŸBˆÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆØ\LÈ™Ë\Û]KMLÎMKLËH^[Y˜[œÚ][ÛˆÝ™\Ž˜™ËXœ˜[™MLÍŒÛNœMH‚ˆ‚ˆÙÜ›Ý\Ü[ˆÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMHËMH^Xœ˜[™MÌˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMHËMH^Xœ˜[™MÌˆÏŸBˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÝ
+˜XÝ[Û”Ú[ËœYÙU]HŠ_OÜ‚ˆÈÛ\ÜÓ˜[YOH[˜Ø]H^X˜\ÙH›ÛX›Û^\Û]KNMLžÝ
+XÝ[Û”Ú[ØÛÜRÙ^JÜ›Ý\šY
+J_OÚÏ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™LLL‹HKLH^^È›ÛX›Û^Xœ˜[™NžÝš\ÚX›R][PÛÝ[OÜÜ[‚ˆØ]Û‚ˆÙÜ›Ý\Ü[ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÝ\Ù\”ÝX‘Ü›Ý\Ë›X\
+
+\Ù\‘Ü›Ý\
+HOˆ™[™\“™\ÝY\Ù\‘Ü›Ý\
+\Ù\‘Ü›Ý\	ÙÜ›Ý\Ù^_N\Ù\˜
+J_BˆÙ]‚ˆ
+_BˆÜÙXÝ[Û‚ˆ
+NÂˆJ_BˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[ÛˆXÝ[Û”Ú[\Ù\”ÝX‘Ü›Ý\ÊÜ›Ý\ˆXÝ[Û”Ú[ØÛÜQÜ›Ý\
+NˆXÝ[Û”Ú[\Ù\‘Ü›Ý\×HÂˆÛÛœÝ\Ù\‘Ü›Ý\ÈHÜ›Ý\XÝ[Û”Ú[ÐžT™\™\Ù[]]™JÜ›Ý\š][\Ëš\ÚX›PXÝ[Û”Ú[™\™\Ù[]]™\ËX[˜YÙY\Ù\œÊNÂˆYˆ
+\Ù\‘Ü›Ý\Ë›[™Ýˆ
+H™]\›ˆ\Ù\‘Ü›Ý\ÎÂˆ™]\›ˆÞÂˆYˆ	ÙÜ›Ý\šYN™Ù[™\˜[ˆ]Nˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë™Ù[™\˜[Ü›Ý\ŠKˆÝX]Nˆ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë››ÔÜXÚYšXÕ\Ù\ˆŠKˆ][\ÎˆÜ›Ý\š][\ËˆWNÂˆB‚ˆ[˜Ý[Ûˆ™[™\“™\ÝY\Ù\‘Ü›Ý\
+Ü›Ý\ˆXÝ[Û”Ú[\Ù\‘Ü›Ý\Ù^T™Yš^ˆÝš[™ÊHÂˆÛÛœÝÜ›Ý\Ù^HH	ÚÙ^T™Yš^N‰ÙÜ›Ý\šYXÂˆÛÛœÝÜ›Ý\Ü[ˆHXÛÛ\ÙYÜ›Ý\Ëš\ÊÜ›Ý\Ù^JNÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÙ^O^ÙÜ›Ý\Ù^_HÛ\ÜÓ˜[YOH˜™Ë]Ú]H‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÙÙÛQÜ›Ý\
+Ü›Ý\Ù^J_Bˆ\šXKY^[™Y^ÙÜ›Ý\Ü[ŸBˆÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆØ\LÈ™Ë]Ú]HMKLÈ^[Y˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLÛNœMH‚ˆ‚ˆÙÜ›Ý\Ü[ˆÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMËM^Xœ˜[™MÌˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMËM^Xœ˜[™MÌˆÏŸBˆ]˜]\ˆ[š]X[Ï^Ú[š]X[Ñœ›ÛS˜[YJÜ›Ý\]J_HÛ\ÜÓ˜[YOHšNËN^VÌL\HˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^VÌL\H›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÙÜ›Ý\œÝX]_OÜ‚ˆÛ\ÜÓ˜[YOH[˜Ø]H^\ÛH›ÛX›Û^\Û]KNMLžÙÜ›Ý\]_OÚ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™Ë\Û]KLLL‹HKLH^^È›ÛX›Û^\Û]KMÌžÙÜ›Ý\š][\Ë›[™ÝOÜÜ[‚ˆØ]Û‚ˆÙÜ›Ý\Ü[ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL›Ü™\‹]›Ü™\‹\Û]KLLMÛNœN‚ˆÙÜ›Ý\š][\Ë›X\
+
+][JHOˆ™[™\XÝ[Û”Ú[Ø\™
+][JJ_BˆÙ]‚ˆ
+_BˆÜÙXÝ[Û‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\•\Ù\‘Ü›Ý\ÊÜ›Ý\ÎˆXÝ[Û”Ú[\Ù\‘Ü›Ý\×K[\SY\ÜØYÙNˆÝš[™ÊHÂˆYˆ
+Ü›Ý\Ë›[™ÝOOH
+HÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹Y\ÚY›Ü™\‹\Û]KLÌ™Ë\Û]KMLMˆKLL^XÙ[\ˆ^\ÛH^\Û]KML‚ˆÙ[\SY\ÜØYÙ_BˆÙ]‚ˆ
+NÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ‚ˆÙÜ›Ý\Ë›X\
+
+Ü›Ý\
+HOˆÂˆÛÛœÝÜ›Ý\Ù^HH\Ù\œÎ‰ÙÜ›Ý\šYXÂˆÛÛœÝÜ›Ý\Ü[ˆHXÛÛ\ÙYÜ›Ý\Ëš\ÊÜ›Ý\Ù^JNÂˆ™]\›ˆ
+ˆÙXÝ[ÛˆÙ^O^ÙÜ›Ý\Ù^_HÛ\ÜÓ˜[YOH›Ý™\™›ÝËZY[ˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HÚYÝË\ÛH‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÙÙÛQÜ›Ý\
+Ü›Ý\Ù^J_Bˆ\šXKY^[™Y^ÙÜ›Ý\Ü[ŸBˆÛ\ÜÓ˜[YOH™›^ËY[][\ËXÙ[\ˆØ\LÈ™Ë\Û]KMLÎMKLËH^[Y˜[œÚ][ÛˆÝ™\Ž˜™ËXœ˜[™MLÍŒÛNœMH‚ˆ‚ˆÙÜ›Ý\Ü[ˆÈÚ]œ›Û‘ÝÛˆÛ\ÜÓ˜[YOHšMHËMH^Xœ˜[™MÌˆÏˆˆÚ]œ›Û”šYÚÛ\ÜÓ˜[YOHšMHËMH^Xœ˜[™MÌˆÏŸBˆ]˜]\ˆ[š]X[Ï^Ú[š]X[Ñœ›ÛS˜[YJÜ›Ý\]J_HÛ\ÜÓ˜[YOHšNHËNH^^ÈˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈžÙÜ›Ý\œÝX]_OÜ‚ˆÈÛ\ÜÓ˜[YOH[˜Ø]H^X˜\ÙH›ÛX›Û^\Û]KNMLžÙÜ›Ý\]_OÚÏ‚ˆÙ]‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™LLL‹HKLH^^È›ÛX›Û^Xœ˜[™NžÙÜ›Ý\š][\Ë›[™ÝOÜÜ[‚ˆØ]Û‚ˆÙÜ›Ý\Ü[ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÙÜ›Ý\š][\Ë›X\
+
+][JHOˆ™[™\XÝ[Û”Ú[Ø\™
+][JJ_BˆÙ]‚ˆ
+_BˆÜÙXÝ[Û‚ˆ
+NÂˆJ_BˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\XÝ[Û”Ú[Ø\™
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆÛÛœÝØÛÜSX™[H
+XÝ[Û”Ú[ØÛÜRÙ^J][KœØÛÜJJNÂˆÛÛœÝÝ]\ÈH][KœÝ]\ÈÏÈ
+][K˜XÝ]™HÈ›Ü[ˆˆˆ˜Y™Ù\ÛÝ[ˆŠNÂˆÛÛœÝY]HHXÝ[Û”Ú[Y]T\Ê][JKš›Ú[Šˆ0­ÈŠNÂˆ™]\›ˆ
+ˆ]Û‚ˆÙ^O^Ú][KšYBˆ\OH˜]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÙ]]Z[XÝ[ÛŠ][J_BˆÛ\ÜÓ˜[YOH™›^Z[‹ZVÍÌœHËY[][\ËXÙ[\ˆØ\LÈMKLÈ^[Y˜[œÚ][ÛˆÝ™\Ž˜™Ë\Û]KMLÛNœMH‚ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYNHËNHÚš[šËLXÙKZ][\ËXÙ[\ˆ›Ý[™Y[È™ËXœ˜[™ML^Xœ˜[™MÌ‚ˆ\™Ù]Û\ÜÓ˜[YOHšMËMˆÏ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆÛ\ÜÓ˜[YOH›Z[‹]ËL[˜Ø]H^\ÛH›ÛX›Û^\Û]KNMLžÚ][K]_OÚ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^Úš[šËL›^]Ü˜\][\ËXÙ[\ˆØ\LKH‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È›ÛX›Û	ÜØÛÜP˜YÙUÛ™J][KœØÛÜJ_XOžÜØÛÜSX™[OÜÜ[‚ˆÝ]\Ð˜YÙHÝ]\Ï^ÜÝ]\ßHÏ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È›ÛX›Û	Üš[Üš]UÛ™J][Kœš[Üš]J_XOžÝ
+XÝ[Û”Ú[š[Üš]RÙ^J][Kœš[Üš]JJ_OÜÜ[‚ˆÙ]‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH›]LH[˜Ø]H^^ÈXY[™ËM^\Û]KMLžÛY]_OÜ‚ˆÙ]‚ˆÚ][K\™Ù]˜[YHOOH[™Yš[™Y	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOHšY[ˆ›Ý[™YY[™ËXœ˜[™MLL‹HKLH^^È›ÛX›Û^Xœ˜[™NÛNš[›[™KY›^‚ˆÝ
+˜XÝ[Û”Ú[Ë\™Ù]˜[YHŠ_HÚ][K\™Ù]˜[Y_BˆÜÜ[‚ˆ
+_BˆØ]Û‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\‘]Z[[Ù[
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆÛÛœÝØ[“X[˜YÙU\ÈH][KœÛÝ\˜ÙHOOHÛÜšÙ›ÝÈˆ	‰ˆØ[“X[˜YÙTØÛÜYXÝ[Û‘Yš[š][ÛŠ\Ù\‹][JNÂˆÛÛœÝØ[ÛÜÙU\ÈH][KœÛÝ\˜ÙHOOHÛÜšÙ›ÝÈˆ	‰‚ˆØ[ÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[
+\Ù\ŠH	‰‚ˆ][K˜ÛÛ˜Ü™]PXÝ[Û”Ú[Y	‰‚ˆVÈ˜Y™Ù\›Û™‹˜™ZX[‹›šY]Ø™ZX[‹™ÙX[›[Y\™—Kš[˜ÛY\Ê][KœÝ]\ÈÏÈˆŠNÂˆÛÛœÝ›ÙHH][K\Ð[™šXÚÜÈ][K™\ØÜš\[ÛŽÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹MLÜšYXÙKZ][\ËXÙ[\ˆ™Ë\Û]KNMLÍLM‚ˆ]ˆÛ\ÜÓ˜[YOH›X^ZVÎLšHËY[X^]ËLžÝ™\™›ÝË^KX]]È›Ý[™YLž™Ë]Ú]HÚYÝËLž‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\M›Ü™\‹Xˆ›Ü™\‹\Û]KLLMH‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžØXÝ[Û”Ú[ÛÝ\˜ÙSX™[
+][J_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÚ][K]_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžØXÝ[Û”Ú[ØÛÜQ]Z[
+][J_OÜ‚ˆÙ]‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOHœ›Ý[™Y[ÈLˆ^\Û]KMÝ™\Ž˜™Ë\Û]KLLÝ™\Ž^\Û]KMÌˆÛÛXÚÏ^Ê
+HOˆÙ]]Z[XÝ[ÛŠ[™Yš[™Y
+_H\šXK[X™[^Ý
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË˜Ø[˜Ù[Š_O‚ˆÛ\ÜÓ˜[YOHšMHËMHˆÏ‚ˆØ]Û‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMHMH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\Lˆ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È›ÛX›Û	ÜØÛÜP˜YÙUÛ™J][KœØÛÜJ_XOžÝ
+XÝ[Û”Ú[ØÛÜRÙ^J][KœØÛÜJJ_OÜÜ[‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ÈÏÈ
+][K˜XÝ]™HÈ›Ü[ˆˆˆ˜Y™Ù\ÛÝ[ˆŠ_HÏ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø›Ý[™YY[L‹HKLH^^È›ÛX›Û	Üš[Üš]UÛ™J][Kœš[Üš]J_XOžÝ
+XÝ[Û”Ú[š[Üš]RÙ^J][Kœš[Üš]JJ_OÜÜ[‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\LÈÛN™ÜšYXÛÛËLˆ‚ˆ™XYÛ›QšY[X™[^Ý
+˜XÝ[Û”Ú[Ë\™Ù]Š_H˜[YO^ØXÝ[Û”Ú[ØÛÜQ]Z[
+][J_HÏ‚ˆ™XYÛ›QšY[X™[^Ý
+˜XÝ[Û”Ú[Ë™]Qœ›ÛHŠ_H˜[YO^ØXÝ[Û”Ú[]SX™[
+][J_HÏ‚ˆ™XYÛ›QšY[X™[^Ý
+˜XÝ[Û”Ú[Ë›ÝÛ™\ˆŠ_H˜[YO^Ú][K›ÝÛ™\“˜[YH
+˜XÝ[Û”Ú[Ë[˜\ÜÚYÛ™YŠ_HÏ‚ˆ™XYÛ›QšY[X™[^Ý
+˜XÝ[Û”Ú[Ë\™Ù]˜[YHŠ_H˜[YO^Ú][K\™Ù]˜[YHOOH[™Yš[™YÈ
+˜XÝ[Û”Ú[Ë››Õ\™Ù]ŠHˆÝš[™Ê][K\™Ù]˜[YJ_HÏ‚ˆÚ][K˜ÛÜÙY]	‰ˆ™XYÛ›QšY[X™[^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙY]Š_H˜[YO^Ù›Ü›X]]U[YJ][K˜ÛÜÙY]
+_HÏŸBˆÚ][K˜ÛÜÙYžS˜[YH	‰ˆ™XYÛ›QšY[X™[^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙYžHŠ_H˜[YO^Ú][K˜ÛÜÙYžS˜[Y_HÏŸBˆÚ][K˜ÛÜÙY™X\ÛÛˆ	‰ˆ™XYÛ›QšY[X™[^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙY™X\ÛÛˆŠ_H˜[YO^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙKXÝ[Û”Ú[ÛÜÙT™X\ÛÛ’Ù^J][K˜ÛÜÙY™X\ÛÛŠJ_HÏŸBˆÚ][K˜ÛÜÙY™X\ÛÛ‘^[˜][Ûˆ	‰ˆ™XYÛ›QšY[X™[^Ý˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜ÛÜÙY™X\ÛÛ‘^[˜][ÛˆŠ_H˜[YO^Ú][K˜ÛÜÙY™X\ÛÛ‘^[˜][ÛŸHÏŸBˆÙ]‚‚ˆ]‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒM™[WH^\Û]KMžÝ
+˜XÝ[Û”Ú[Ëœ›ÙXÝÈŠ_OÜ‚ˆ]ˆÛ\ÜÓ˜[YOH›]Lˆ›^›^]Ü˜\Ø\Lˆ‚ˆÊ][Kœ›ÙXÝÈÏÈ×JK›[™ÝˆˆÈ][Kœ›ÙXÝÏË›X\
+
+›ÙXÝ
+HOˆÜ[ˆÙ^O^Ü›ÙXÝšYHÛ\ÜÓ˜[YOHœ›Ý[™YY[™ËXœ˜[™MLL‹HKLH^^È›ÛX›Û^Xœ˜[™NžÜ›ÙXÝ›˜[Y_OÜÜ[ŠBˆˆÜ[ˆÛ\ÜÓ˜[YOH^\ÛH^\Û]KMLžÝ
+˜XÝ[Û”Ú[Ë››Ô›ÙXÝÈŠ_OÜÜ[ŸBˆÙ]‚ˆÙ]‚‚ˆÈZ\Ð›[šÔšXÚ^
+›ÙJH	‰ˆ
+ˆ]‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒM™[WH^\Û]KMžÝ
+˜XÝ[Û”Ú[Ë™\ØÜš\[ÛˆŠ_OÜ‚ˆšXÚ^™[™\™\ˆ˜[YO^Ø›Ù_HÛ\ÜÓ˜[YOH›]Lˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLM^\ÛHXY[™ËMˆ^\Û]KMÌˆÏ‚ˆÙ]‚ˆ
+_BˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\\ÝYžKY[™Ø\Lˆ›Ü™\‹]›Ü™\‹\Û]KLLMH‚ˆØØ[“X[˜YÙU\È	‰ˆ
+ˆ‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^Ê
+HOˆÜ[‘Y]X[ÙÊ][J_H\ØX›Y^ÜØ]š[™ßOžÝ
+˜XÝ[Û”Ú[Ë™Y]Š_OØ]Û‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YO^Ú][K˜XÝ]™HÈ˜‹\ÙXÛÛ™\žH^\›ÜÙKMÌˆˆ˜‹\š[X\žHŸBˆÛÛXÚÏ^Ê
+HOˆ›ÚYÙ]Yš[š][ÛXÝ]™J][KZ][K˜XÝ]™J_Bˆ\ØX›Y^ÜØ]š[™ßBˆ‚ˆÚ][K˜XÝ]™HÈ’[˜XÝYYˆ™][ˆˆˆXÝ]™\™[ˆŸBˆØ]Û‚ˆÏ‚ˆ
+_BˆØØ[ÛÜÙU\È	‰ˆ
+ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆÛÛXÚÏ^Ê
+HOˆÈÙ]\œ›ÜŠ[™Yš[™Y
+NÈÙ]ÛÜÙPØ[™Y]J][JNÈ_H\ØX›Y^ÜØ]š[™ßO‚ˆÝ˜[œÛ]J\Ù\‹›[™ÝXYÙK˜XÝ[Û”Ú[Ë˜XÝ[ÛœË˜ÛÜÙHŠ_BˆØ]Û‚ˆ
+_Bˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^Ê
+HOˆÙ]]Z[XÝ[ÛŠ[™Yš[™Y
+_OžÝ
+˜XÝ[Û”Ú[Ë˜ÛÜÙQX[ÙË˜Ø[˜Ù[Š_OØ]Û‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\ÛÜÙQX[ÙÊ][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆ™]\›ˆ
+ˆXÝ[Û”Ú[ÛÜÙQX[ÙÂˆ][U]O^Ú][K]_Bˆ\œ›Ü^Ù\œ›ÜŸBˆØ]š[™Ï^ÜØ]š[™ßBˆÛØ[˜Ù[^Ê
+HOˆÙ]ÛÜÙPØ[™Y]J[™Yš[™Y
+_BˆÛÛÛ™š\›O^ÊÛÜÙY™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŠHOˆ›ÚYÛÜÙPÛÛ˜Ü™]PXÝ[Û”Ú[
+][KÛÜÙY™X\ÛÛ‹ÛÜÙY™X\ÛÛ‘^[˜][ÛŠ_BˆÏ‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\XÝ[Û‘Yš[š][Û‘X[ÙÊ
+HÂˆYˆ
+Y˜Y
+H™]\›ˆ[ÂˆÛÛœÝØÛÜSÜ[ÛœÈH[ÝÙY\™Ù]\\Ê
+NÂˆÛÛœÝÛÝ[šY\ÈHÛÝ[žSÜ[ÛœÊ
+NÂˆÛÛœÝX[\ÈHX[SÜ[ÛœÊ˜Y˜ÛÝ[žJNÂˆÛÛœÝ\Ù\œÈH\Ù\“Ü[ÛœÊ˜Y˜ÛÝ[žK˜YX[RY
+NÂˆÛÛœÝš\ÚX›T›ÙXÝÈH›ÙXÝÂˆ™š[\Š
+›ÙXÝ
+HOˆ›ÙXÝ˜XÝ]™JBˆ™š[\Š
+›ÙXÝ
+HOˆ˜Yœ›ÙXÝYËš[˜ÛY\Ê›ÙXÝšY
+HX]Ú\Õ^
+›ÙXÝ›˜[YK›ÙXÝÙX\˜Ú
+JBˆœÛÜ
+
+YšYÚ
+HO‚ˆ[X™\Š˜Yœ›ÙXÝYËš[˜ÛY\ÊšYÚšY
+JHH[X™\Š˜Yœ›ÙXÝYËš[˜ÛY\ÊYšY
+JHˆYœÛÜÜ™\ˆHšYÚœÛÜÜ™\ˆˆY›˜[YK›ØØ[PÛÛ\\™JšYÚ›˜[YK››P‘HŠBˆ
+NÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™š^Y[œÙ]L‹MLÜšYXÙKZ][\ËXÙ[\ˆ™Ë\Û]KNMLÍLM‚ˆ›Ü›BˆÛ\ÜÓ˜[YOH›X^ZVÎLšHËY[X^]ËLÞÝ™\™›ÝË^KX]]È›Ý[™YLž™Ë]Ú]HÚYÝËLž‚ˆÛ”ÝX›Z]^Ê]™[
+HOˆÂˆ]™[œ™]™[Y˜][
+
+NÂˆ›ÚYØ]™Q˜Y
+
+NÂˆ_Bˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\M›Ü™\‹Xˆ›Ü™\‹\Û]KLLMH‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›ÝÈX‹LHžÝ
+˜XÝ[Û”Ú[ËœYÙU]HŠ_OÜ‚ˆˆÛ\ÜÓ˜[YOH^^›ÛX›Û^\Û]KNMLžÙ˜YšYÈ	Ý
+˜XÝ[Û”Ú[Ë™Y]Š_H	Ý
+˜XÝ[Û”Ú[ËœYÙU]HŠKÓÝÙ\Ø\ÙJ
+_Xˆ
+˜XÝ[Û”Ú[Ë˜YŠ_OÚ‚ˆÙ]‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOHœ›Ý[™Y[ÈLˆ^\Û]KMÝ™\Ž˜™Ë\Û]KLLÝ™\Ž^\Û]KMÌˆÛÛXÚÏ^Ê
+HOˆÙ]˜Y
+[™Yš[™Y
+_H\šXK[X™[H”ÛZ][ˆ‚ˆÛ\ÜÓ˜[YOHšMHËMHˆÏ‚ˆØ]Û‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMHMH‚ˆÙ›Ü›Q\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\›ÜÙKLŒ™Ë\›ÜÙKMLLÈ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKNžÙ›Ü›Q\œ›ÜŸOÜŸBˆÜØÛÜSÜ[ÛœË›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹X[X™\‹LŒ™ËX[X™\‹MLLÈ^\ÛH›Û\Ù[ZX›Û^X[X™\‹NLžÝ
+˜XÝ[Û”Ú[Ë››Õ\\Ð]˜Z[X›HŠ_OÜŸB‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËLˆ‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë›˜[YHŠ_OÜÜ[‚ˆ[œ]Û\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜Y]_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+È]Nˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßH™\]Z\™YÏ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë\™Ù]\HŠ_OÜÜ[‚ˆÙ[XÝˆÛ\ÜÓ˜[YOH™šY[‚ˆ˜[YO^Ù˜YœØÛÜ_BˆÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈØÛÜNˆ]™[\™Ù]˜[YH\ÈØÛÜYXÝ[Û‘Yš[š][Û–ÈœØÛÜH—HJ_Bˆ\ØX›Y^ÜØ]š[™ÈØÛÜSÜ[ÛœË›[™ÝOOHBˆ‚ˆÜØÛÜSÜ[ÛœË›X\
+
+\™Ù]\JHOˆ
+ˆÜ[ÛˆÙ^O^Ý\™Ù]\KšYH˜[YO^Ý\™Ù]\K˜ÛÙ_OžÝ
+XÝ[Û”Ú[ØÛÜRÙ^J\™Ù]\K˜ÛÙJJ_OÛÜ[Û‚ˆ
+J_BˆÜÙ[XÝ‚ˆÛX™[‚ˆÙ]‚‚ˆÜ™[™\•\™Ù]šY[ÊÛÝ[šY\ËX[\Ë\Ù\œÊ_B‚ˆšXÚ^Y]ÜˆX™[^Ý
+˜XÝ[Û”Ú[Ë™\ØÜš\[ÛˆŠ_H˜[YO^Ù˜Y\Ð[™šXÚÜßH\ØX›Y^ÜØ]š[™ßHÛÚ[™ÙO^Ê˜[YJHOˆ\]Q˜Y
+È\Ð[™šXÚÜÎˆ˜[YHJ_HÏ‚‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËLˆ‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë™]Qœ›ÛHŠ_OÜÜ[‚ˆ[œ]Û\ÜÓ˜[YOH™šY[ˆ\OH™]Hˆ˜[YO^Ù˜Y˜[Yœ›Û_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+È˜[Yœ›ÛNˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßH™\]Z\™YÏ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë™]U[[Š_OÜÜ[‚ˆ[œ]Û\ÜÓ˜[YOH™šY[ˆ\OH™]Hˆ˜[YO^Ù˜Y˜[Y[[HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+È˜[Y[[ˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßHÏ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë\™Ù]˜[YHŠ_OÜÜ[‚ˆ[œ]Û\ÜÓ˜[YOH™šY[ˆ\OH›[X™\ˆˆZ[HŒˆÝ\HŒŒHˆ˜[YO^Ù˜Y\™Ù]˜[Y_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+È\™Ù]˜[YNˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßHXÙZÛ\^Ý
+˜XÝ[Û”Ú[Ë›Ü[Û˜[Š_HÏ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ëœš[Üš]HŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜Yœš[Üš]_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+Èš[Üš]Nˆ]™[\™Ù]˜[YH\ÈØÛÜYXÝ[Û‘Yš[š][Û–Èœš[Üš]H—HJ_H\ØX›Y^ÜØ]š[™ßO‚ˆÜ[Ûˆ˜[YOH›XYÈžÝ
+˜XÝ[Û”Ú[Ëœš[Üš]SÝÈŠ_OÛÜ[Û‚ˆÜ[Ûˆ˜[YOH››Ü›XX[žÝ
+˜XÝ[Û”Ú[Ëœš[Üš]S›Ü›X[Š_OÛÜ[Û‚ˆÜ[Ûˆ˜[YOHšÛÙÈžÝ
+˜XÝ[Û”Ú[Ëœš[Üš]RYÚŠ_OÛÜ[Û‚ˆÜÙ[XÝ‚ˆÛX™[‚ˆÙ]‚‚ˆX™[Û\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌ‚ˆ[œ]\OH˜ÚXÚØ›ÞˆÚXÚÙY^Ù˜Y˜XÝ]™_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈXÝ]™Nˆ]™[\™Ù]˜ÚXÚÙYJ_H\ØX›Y^ÜØ]š[™ßHÏ‚ˆÝ
+˜XÝ[Û”Ú[Ë˜XÝ]™HŠ_BˆÛX™[‚‚ˆ]‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ëœ›ÙXÝÈŠ_OÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOHœ™[]]™H›ØÚÈ‚ˆÙX\˜ÚÛ\ÜÓ˜[YOH˜XœÛÛ]HYLÈÜLËHMËM^\Û]KMˆÏ‚ˆ[œ]Û\ÜÓ˜[YOH™šY[LLˆ˜[YO^Ü›ÙXÝÙX\˜ÚHÛÚ[™ÙO^Ê]™[
+HOˆÙ]›ÙXÝÙX\˜Ú
+]™[\™Ù]˜[YJ_HXÙZÛ\^Ý
+˜XÝ[Û”Ú[ËœÙX\˜Ú›ÙXÝÈŠ_H\ØX›Y^ÜØ]š[™ßHÏ‚ˆÜÜ[‚ˆÛX™[‚ˆ]ˆÛ\ÜÓ˜[YOH›]LˆX^ZMÝ™\™›ÝË^KX]]È›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ‚ˆÝš\ÚX›T›ÙXÝË›X\
+
+›ÙXÝ
+HOˆ
+ˆX™[Ù^O^Ü›ÙXÝšYHÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ›Ü™\‹Xˆ›Ü™\‹\Û]KLLMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌ\Ý˜›Ü™\‹X‹LÝ™\Ž˜™Ë\Û]KML‚ˆ[œ]ˆ\OH˜ÚXÚØ›Þ‚ˆÚXÚÙY^Ù˜Yœ›ÙXÝYËš[˜ÛY\Ê›ÙXÝšY
+_BˆÛÚ[™ÙO^Ê]™[
+HOˆÂˆÛÛœÝ›ÙXÝYÈH]™[\™Ù]˜ÚXÚÙYˆÈË‹‹™˜Yœ›ÙXÝYË›ÙXÝšYBˆˆ˜Yœ›ÙXÝYË™š[\Š
+Y
+HOˆYOOH›ÙXÝšY
+NÂˆ\]Q˜Y
+È›ÙXÝYÎˆË‹‹›™]ÈÙ]
+›ÙXÝYÊWHJNÂˆ_Bˆ\ØX›Y^ÜØ]š[™ßBˆÏ‚ˆÜ[žÜ›ÙXÝ›˜[Y_OÜÜ[‚ˆÛX™[‚ˆ
+J_BˆÝš\ÚX›T›ÙXÝË›[™ÝOOH	‰ˆÛ\ÜÓ˜[YOHœMKMˆ^XÙ[\ˆ^\ÛH^\Û]KMLžÝ
+˜XÝ[Û”Ú[Ë››Ô›ÙXÝÑ›Ý[™Š_OÜŸBˆÙ]‚ˆÙ]‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\\ÝYžKY[™Ø\Lˆ›Ü™\‹]›Ü™\‹\Û]KLLMH‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žHˆÛÛXÚÏ^Ê
+HOˆÙ]˜Y
+[™Yš[™Y
+_H\ØX›Y^ÜØ]š[™ßOžÝ
+˜XÝ[Û”Ú[Ë˜Ø[˜Ù[Š_OØ]Û‚ˆ]Ûˆ\OHœÝX›Z]ˆÛ\ÜÓ˜[YOH˜‹\š[X\žHˆ\ØX›Y^ÜØ]š[™ÈØÛÜSÜ[ÛœË›[™ÝOOHO‚ˆÜØ]š[™È	‰ˆØY\Ú\˜ÛHÛ\ÜÓ˜[YOHšMËM[š[X]K\Ü[ˆˆÏŸHÝ
+˜XÝ[Û”Ú[ËœØ]™HŠ_BˆØ]Û‚ˆÙ]‚ˆÙ›Ü›O‚ˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[Ûˆ™[™\•\™Ù]šY[ÊˆÛÝ[šY\ÎˆÝš[™Ö×KˆX[\ÎˆÈYˆÝš[™ÎÈ˜[YNˆÝš[™ÎÈÛÝ[žNˆÝš[™ÈV×Kˆ\Ù\œÎˆ\[ÙˆX[˜YÙY\Ù\œËˆ
+HÂˆYˆ
+Y˜Y
+H™]\›ˆ[ÂˆYˆ
+˜YœØÛÜHOOH‘ÓÐSŠHÂˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLM^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë™ÛØ˜[\ØÜš\[ÛˆŠ_OÙ]ŽÂˆBˆYˆ
+˜YœØÛÜHOOHÓÕS•–HŠHÂˆ™]\›ˆ
+ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë˜ÛÝ[žHŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜Y˜ÛÝ[ž_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈÛÝ[žNˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßO‚ˆØÛÝ[šY\Ë›X\
+
+ÛÝ[žJHOˆÜ[ÛˆÙ^O^ØÛÝ[ž_H˜[YO^ØÛÝ[ž_OžØÛÝ[žS˜[YJÛÝ[žJ_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆ
+NÂˆBˆYˆ
+˜YœØÛÜHOOH•PSHŠHÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËLˆ‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë˜ÛÝ[žHŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜Y˜ÛÝ[ž_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈÛÝ[žNˆ]™[\™Ù]˜[YKX[RYˆˆˆJ_H\ØX›Y^ÜØ]š[™ßO‚ˆØÛÝ[šY\Ë›X\
+
+ÛÝ[žJHOˆÜ[ÛˆÙ^O^ØÛÝ[ž_H˜[YO^ØÛÝ[ž_OžØÛÝ[žS˜[YJÛÝ[žJ_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[ËX[HŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜YX[RYHÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈX[RYˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßH™\]Z\™Y‚ˆÝX[\Ë›X\
+
+X[JHOˆÜ[ÛˆÙ^O^ÝX[KšYH˜[YO^ÝX[KšYOžÝX[K›˜[Y_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆÙ]‚ˆ
+NÂˆBˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËLÈ‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë˜ÛÝ[žHŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜Y˜ÛÝ[ž_HÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈÛÝ[žNˆ]™[\™Ù]˜[YKX[RYˆˆ‹\Ù\’YˆˆˆJ_H\ØX›Y^ÜØ]š[™È\Ù\‹œ›ÛHOOH”ÐST×ÓPQTˆŸO‚ˆØÛÝ[šY\Ë›X\
+
+ÛÝ[žJHOˆÜ[ÛˆÙ^O^ØÛÝ[ž_H˜[YO^ØÛÝ[ž_OžØÛÝ[žS˜[YJÛÝ[žJ_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[ËX[HŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜YX[RYHÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+ÈX[RYˆ]™[\™Ù]˜[YK\Ù\’YˆˆˆJ_H\ØX›Y^ÜØ]š[™È\Ù\‹œ›ÛHOOH”ÐST×ÓPQTˆŸO‚ˆÜ[Ûˆ˜[YOHˆžÝ
+˜XÝ]š]R\ÝÜžK˜[X[\ÈŠ_OÛÜ[Û‚ˆÝX[\Ë›X\
+
+X[JHOˆÜ[ÛˆÙ^O^ÝX[KšYH˜[YO^ÝX[KšYOžÝX[K›˜[Y_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜›ØÚÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›X‹LH›ØÚÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌžÝ
+˜XÝ[Û”Ú[Ë\Ù\ˆŠ_OÜÜ[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ˆ˜[YO^Ù˜Y\Ù\’YHÛÚ[™ÙO^Ê]™[
+HOˆ\]Q˜Y
+È\Ù\’Yˆ]™[\™Ù]˜[YHJ_H\ØX›Y^ÜØ]š[™ßH™\]Z\™Y‚ˆÝ\Ù\œË›X\
+
+Y[X™\ŠHOˆÜ[ÛˆÙ^O^ÛY[X™\‹šYH˜[YO^ÛY[X™\‹šYOžÛY[X™\‹™š\œÝ˜[Y_HÛY[X™\‹›\Ý˜[Y_OÛÜ[ÛŠ_BˆÜÙ[XÝ‚ˆÛX™[‚ˆÙ]‚ˆ
+NÂˆB‚ˆ[˜Ý[ÛˆXÝ[Û”Ú[ØÛÜQ]Z[
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆYˆ
+][KœØÛÜHOOH‘ÓÐSŠH™]\›ˆ
+˜XÝ[Û”Ú[Ë˜[[ÝÙY\Ù\œÈŠNÂˆYˆ
+][KœØÛÜHOOHÓÕS•–HŠH™]\›ˆ][K˜ÛÝ[žHÈÛÝ[žS˜[YJ][K˜ÛÝ[žJHˆ
+˜XÝ[Û”Ú[Ë˜ÛÝ[žSZ\ÜÚ[™ÈŠNÂˆYˆ
+][KœØÛÜHOOH•PSHŠHÂˆ™]\›ˆX[˜YÙY\Ù\œË™š[™
+
+Y[X™\ŠHOˆY[X™\‹X[RYOOH][KX[RY
+OËX[S˜[YHÏÈ][KX[RYÏÈ
+˜XÝ[Û”Ú[ËX[SZ\ÜÚ[™ÈŠNÂˆBˆYˆ
+][Kœ™\™\Ù[]]™S˜[YJH™]\›ˆ][Kœ™\™\Ù[]]™S˜[YNÂˆÛÛœÝ\œÛÛˆHX[˜YÙY\Ù\œË™š[™
+
+Y[X™\ŠHOˆY[X™\‹šYOOH][K\Ù\’YY[X™\‹œ™\™\Ù[]]™RYOOH][K\Ù\’Y
+NÂˆ™]\›ˆ\œÛÛˆÈ	Ü\œÛÛ‹™š\œÝ˜[Y_H	Ü\œÛÛ‹›\Ý˜[Y_Xˆ][K\Ù\’YÏÈ
+˜XÝ[Û”Ú[Ë\Ù\“Z\ÜÚ[™ÈŠNÂˆB‚ˆ[˜Ý[ÛˆXÝ[Û”Ú[]SX™[
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆYˆ
+][KœÛÝ\˜ÙHOOHÛÜšÙ›ÝÈŠH™]\›ˆ][K™YHÈ›Ü›X]ÚÜ]J][K™YJHˆ
+˜XÝ[Û”Ú[Ë››ÑXY[™HŠNÂˆ™]\›ˆ	Ù›Ü›X]ÚÜ]J][K˜[Yœ›ÛJ_H	Ý
+˜XÝ[Û”Ú[Ë[[Š_H	Ú][K˜[Y[[È›Ü›X]ÚÜ]J][K˜[Y[[
+Hˆ
+˜XÝ[Û”Ú[Ë[™]\›Z[™YŠ_XÂˆB‚ˆ[˜Ý[ÛˆXÝ[Û”Ú[ÛÝ\˜ÙSX™[
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆYˆ
+][KœÛÝ\˜ÙHOOHÛÜšÙ›ÝÈŠH™]\›ˆ
+˜XÝ[Û”Ú[Ë›[šÙYÜšYÚ[ˆŠNÂˆ™]\›ˆ
+˜XÝ[Û”Ú[ËœØÛÜSÜšYÚ[ˆŠNÂˆB‚ˆ[˜Ý[ÛˆXÝ[Û”Ú[Y]T\Ê][NˆXÝ[Û”Ú[Ý™\šY]Ò][JHÂˆ™]\›ˆÂˆXÝ[Û”Ú[ÛÝ\˜ÙSX™[
+][JKˆXÝ[Û”Ú[ØÛÜQ]Z[
+][JKˆ][KœÛÝ\˜ÙHOOHÛÜšÙ›ÝÈˆÈ	Ý
+˜XÝ[Û”Ú[Ë™XY[™HŠ_H	ØXÝ[Û”Ú[]SX™[
+][J_XˆXÝ[Û”Ú[]SX™[
+][JKˆ][K›ÝÛ™\“˜[YHÈ	Ý
+˜XÝ[Û”Ú[Ë›ÝÛ™\ˆŠ_H	Ú][K›ÝÛ™\“˜[Y_Xˆ[™Yš[™YˆšXÚ^ÔZ[•^
+][K™\ØÜš\[ÛŠKš[J
+H[™Yš[™YˆK™š[\Š›ÛÛX[ŠH\ÈÝš[™Ö×NÂˆB‚ˆ[˜Ý[ÛˆX]Ú\ÐXÝ[Û”Ú[ÙX\˜Ú
+][NˆXÝ[Û”Ú[Ý™\šY]Ò][K]Y\žNˆÝš[™ÊHÂˆ™]\›ˆX]Ú\Õ^
+Âˆ][K]KˆšXÚ^ÔZ[•^
+][K™\ØÜš\[ÛŠKˆ][Kœš[Üš]Kˆ][KœÝ]\ËˆXÝ[Û”Ú[ØÛÜSX™[
+][KœØÛÜJKˆXÝ[Û”Ú[ØÛÜQ]Z[
+][JKˆXÝ[Û”Ú[]SX™[
+][JKˆXÝ[Û”Ú[ÛÝ\˜ÙSX™[
+][JKˆ][K›ÝÛ™\“˜[YKˆ][Kœ™\™\Ù[]]™S˜[YKˆ][K˜ÛÝ[žHÈÛÝ[žS˜[YJ][K˜ÛÝ[žJHˆˆ‹ˆ][KX[RYˆK™š[\Š›ÛÛX[ŠKš›Ú[ŠˆŠK]Y\žJNÂˆB‚ˆ[˜Ý[ÛˆX]Ú\Õ^
+˜[YNˆÝš[™Ë]Y\žNˆÝš[™ÊHÂˆÛÛœÝ›Ü›X[^™Y]Y\žHH]Y\žKš[J
+KÓØØ[SÝÙ\Ø\ÙJ››P‘HŠNÂˆYˆ
+[›Ü›X[^™Y]Y\žJH™]\›ˆYNÂˆ™]\›ˆ˜[YKÓØØ[SÝÙ\Ø\ÙJ››P‘HŠKš[˜ÛY\Ê›Ü›X[^™Y]Y\žJNÂˆB‚ˆ[˜Ý[Ûˆ[š]X[Ñœ›ÛS˜[YJ˜[YNˆÝš[™ÊHÂˆ™]\›ˆ˜[YBˆœÜ]
+×ÊËÊBˆ™š[\Š›ÛÛX[ŠBˆœÛXÙJŠBˆ›X\
+
+\
+HOˆ\ÌJBˆš›Ú[ŠˆŠBˆÕ\\Ø\ÙJ
+NÂˆBŸB‚™[˜Ý[ÛˆØÛÜP˜YÙUÛ™JØÛÜNˆØÛÜYXÝ[Û‘Yš[š][Û–ÈœØÛÜH—JHÂˆYˆ
+ØÛÜHOOH‘ÓÐSŠH™]\›ˆ˜™Ë\Û]KLL^\Û]KMÌŽÂˆYˆ
+ØÛÜHOOHÓÕS•–HŠH™]\›ˆ˜™ËX›YKLL^X›YKNŽÂˆYˆ
+ØÛÜHOOH•PSHŠH™]\›ˆ˜™ËXœ˜[™ML^Xœ˜[™NŽÂˆ™]\›ˆ˜™ËX[X™\‹LL^X[X™\‹NŽÂŸB‚™[˜Ý[Ûˆš[Üš]UÛ™Jš[Üš]NˆØÛÜYXÝ[Û‘Yš[š][Û–Èœš[Üš]H—JHÂˆYˆ
+š[Üš]HOOHšÛÙÈŠH™]\›ˆ˜™Ë\›ÜÙKLL^\›ÜÙKNŽÂˆYˆ
+š[Üš]HOOH›XYÈŠH™]\›ˆ˜™Ë\Û]KLL^\Û]KMÌŽÂˆ™]\›ˆ˜™ËX[X™\‹LL^X[X™\‹NŽÂŸB‚™[˜Ý[Ûˆš[Üš]SX™[
+š[Üš]NˆØÛÜYXÝ[Û‘Yš[š][Û–Èœš[Üš]H—JHÂˆYˆ
+š[Üš]HOOHšÛÙÈŠH™]\›ˆ’ÛÙÈŽÂˆYˆ
+š[Üš]HOOH›XYÈŠH™]\›ˆ“XYÈŽÂˆ™]\›ˆ“›Ü›XX[ŽÂŸB‚™[˜Ý[ÛˆXÝ[Û”Ú[š[Üš]RÙ^Jš[Üš]NˆØÛÜYXÝ[Û‘Yš[š][Û–Èœš[Üš]H—JNˆ˜[œÛ][Û’Ù^HÂˆYˆ
+š[Üš]HOOHšÛÙÈŠH™]\›ˆ˜XÝ[Û”Ú[Ëœš[Üš]RYÚŽÂˆYˆ
+š[Üš]HOOH›XYÈŠH™]\›ˆ˜XÝ[Û”Ú[Ëœš[Üš]SÝÈŽÂˆ™]\›ˆ˜XÝ[Û”Ú[Ëœš[Üš]S›Ü›X[ŽÂŸB‚™[˜Ý[ÛˆXÝ[Û”Ú[ØÛÜRÙ^JØÛÜNˆØÛÜYXÝ[Û‘Yš[š][Û–ÈœØÛÜH—JNˆ˜[œÛ][Û’Ù^HÂˆYˆ
+ØÛÜHOOH‘ÓÐSŠH™]\›ˆ˜XÝ[Û”Ú[Ë™ÛØ˜[ŽÂˆYˆ
+ØÛÜHOOHÓÕS•–HŠH™]\›ˆ˜XÝ[Û”Ú[Ë˜ÛÝ[žHŽÂˆYˆ
+ØÛÜHOOH•PSHŠH™]\›ˆ˜XÝ[Û”Ú[ËX[HŽÂˆ™]\›ˆ˜XÝ[Û”Ú[Ë\Ù\ˆŽÂŸB‚‹ËÈYØXÞHXÝ[Û‹\Ú[ØÜ™Y[ˆ™]Z[™Y[[Hš[˜[XÝ[Û‹\Ú[Y™XÞXÛH\ÈYš[™Y‚‹ËÈ\Û[Y\ØX›K[™^[[™H\\ØÜš\Y\Û[Û›Ë][\ÙY]˜\œÂ™[˜Ý[ÛˆYØXÞPXÝ[Û”Ú[Ê
+HÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝÈš\ÚX›R[\™[[ÛœËš\ÚX›PÛÛXÝ[ÛY[Ëš\ÚX›T™]˜Z[š[™ÜËš\ÚX›TØ[\Õ˜Z[š[™ÜÈHH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÈ]\Ù]ˆ\™›Ü›X[˜ÙQ]\Ù]HH\ÙT\™›Ü›X[˜ÙJ
+NÂˆÛÛœÝÜÝ]\ËÙ]Ý]\×HH\ÙTÝ]J˜[ŠNÂˆÛÛœÝÙYYYXÝ[ÛœÈH\™›Ü›X[˜ÙQ]\Ù]š\ÝÜšXØ[XÝ[Û”Ú[Ë™›]X\
+
+XÝ[ÛŠHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOHXÝ[Û‹œ™\™\Ù[]]™RY
+NÂˆYˆ
+\™\™\Ù[]]™HXØ[XØÙ\ÜÔ™\™\Ù[]]™J\Ù\‹™\™\Ù[]]™JJH™]\›ˆ×NÂˆ™]\›ˆÞÂˆYˆXÝ[Û‹šYˆ\œÛÛŽˆ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ]NˆXÝ[Û‹]Kˆ\NˆXÝ[Û‹\Kˆš[Üš]NˆXÝ[Û‹œÝ]\ÈOOH˜XÚ\œÝ[YÈˆÈšÛÙÈˆˆ››Ü›XX[‹ˆÝ]\ÎˆXÝ[Û‹œÝ]\ËˆYNˆ›Ü›X]ÚÜ]JXÝ[Û‹™YJKˆ›ÙÜ™\ÜÎˆXÝ[Û‹œ›ÙÜ™\ÜËˆWNÂˆJNÂˆÛÛœÝÛÜšÙ›ÝÐXÝ[ÛœÈHš\ÚX›R[\™[[ÛœÊ\Ù\ŠK™›]X\
+
+[\™[[ÛŠHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOH[\™[[Û‹œ™\™\Ù[]]™RY
+NÂˆ™]\›ˆ[\™[[Û‹˜XÝ[Û”Ú[Ë›X\
+
+XÝ[ÛŠHOˆ
+ÂˆYˆXÝ[Û‹šYˆ\œÛÛŽˆ™\™\Ù[]]™HÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ“Û˜™ZÙ[™‹ˆ]NˆXÝ[Û‹]Kˆ\NˆXÝ[Û‹\Kˆš[Üš]Nˆ››Ü›XX[‹ˆÝ]\ÎˆXÝ[Û‹œÝ]\ËˆYNˆXÝ[Û‹™YH‘ÙY[ˆ][H‹ˆ›ÙÜ™\ÜÎˆXÝ[Û‹œÝ]\ÈOOH˜™ZX[ˆÈLˆXÝ[Û‹œÝ]\ÈOOHš[—ÝZ]›Ù\š[™ÈˆÈLˆLˆJJNÂˆJNÂˆÛÛœÝÛÛXÝXÝ[ÛœÈHš\ÚX›PÛÛXÝ[ÛY[Ê\Ù\ŠK™›]X\
+
+ÛÛXÝ
+HOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOHÛÛXÝœ™\™\Ù[]]™RY
+NÂˆ™]\›ˆÛÛXÝ˜XÝ[Û”Ú[Ë›X\
+
+XÝ[ÛŠHOˆ
+ÂˆYˆXÝ[Û‹šYˆ\œÛÛŽˆ™\™\Ù[]]™HÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ“Û˜™ZÙ[™‹ˆ]NˆXÝ[Û‹]Kˆ\NˆXÝ[Û‹\Kˆš[Üš]Nˆ››Ü›XX[‹ˆÝ]\ÎˆXÝ[Û‹œÝ]\ËˆYNˆXÝ[Û‹™YH‘ÙY[ˆ][H‹ˆ›ÙÜ™\ÜÎˆXÝ[Û‹œÝ]\ÈOOH˜™ZX[ˆÈLˆXÝ[Û‹œÝ]\ÈOOHš[—ÝZ]›Ù\š[™ÈˆÈLˆLˆJJNÂˆJNÂˆÛÛœÝ™]˜Z[š[™ÐXÝ[ÛœÈHš\ÚX›T™]˜Z[š[™ÜÊ\Ù\ŠK™›]X\
+
+™]˜Z[š[™ÊHOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOH™]˜Z[š[™Ëœ™\™\Ù[]]™RY
+NÂˆ™]\›ˆ™]˜Z[š[™Ë˜XÝ[Û”Ú[Ë›X\
+
+XÝ[ÛŠHOˆ
+ÂˆYˆXÝ[Û‹šYˆ\œÛÛŽˆ™\™\Ù[]]™HÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ“Û˜™ZÙ[™‹ˆ]NˆXÝ[Û‹]Kˆ\NˆXÝ[Û‹\Kˆš[Üš]Nˆ››Ü›XX[‹ˆÝ]\ÎˆXÝ[Û‹œÝ]\ËˆYNˆXÝ[Û‹™YH‘ÙY[ˆ][H‹ˆ›ÙÜ™\ÜÎˆXÝ[Û‹œÝ]\ÈOOH˜™ZX[ˆÈLˆXÝ[Û‹œÝ]\ÈOOHš[—ÝZ]›Ù\š[™ÈˆÈLˆLˆJJNÂˆJNÂˆÛÛœÝ˜Z[š[™ÐXÝ[ÛœÈHš\ÚX›TØ[\Õ˜Z[š[™ÜÊ\Ù\ŠK™›]X\
+
+˜Z[š[™ÊHO‚ˆ˜Z[š[™Ë˜XÝ[Û”Ú[Ë›X\
+
+XÝ[ÛŠHOˆ
+ÂˆYˆXÝ[Û‹šYˆ\œÛÛŽˆXÝ[Û‹œØÛÜHOOH™Ü›Ý\‚ˆÈ	ØXÝ[Û‹œ™\™\Ù[]]™RYË›[™ÝHY[™[Y\œØˆˆ
+
+
+HOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOHXÝ[Û‹œ™\™\Ù[]]™RYÖÌJNÂˆ™]\›ˆ™\™\Ù[]]™HÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ“Û˜™ZÙ[™ŽÂˆJJ
+Kˆ]NˆXÝ[Û‹]Kˆ\NˆXÝ[Û‹\Kˆš[Üš]Nˆ››Ü›XX[‹ˆÝ]\ÎˆXÝ[Û‹œÝ]\ËˆYNˆXÝ[Û‹™YH‘ÙY[ˆ][H‹ˆ›ÙÜ™\ÜÎˆXÝ[Û‹œÝ]\ÈOOH˜™ZX[ˆÈLˆXÝ[Û‹œÝ]\ÈOOHš[—ÝZ]›Ù\š[™ÈˆÈLˆLˆJJBˆ
+NÂˆÛÛœÝš\ÚX›HHË‹‹ÛÜšÙ›ÝÐXÝ[ÛœË‹‹˜ÛÛXÝXÝ[ÛœË‹‹œ™]˜Z[š[™ÐXÝ[ÛœË‹‹˜Z[š[™ÐXÝ[ÛœË‹‹œÙYYYXÝ[Ûœ×K™š[\Š
+][JHOˆÝ]\ÈOOH˜[ˆ][KœÝ]\ÈOOHÝ]\ÊNÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆYÙRXY\ˆ^YXœ›ÝÏH“Ü›ÛÚ[™Èˆ]OHXÝY\[[ˆˆ\ØÜš\[ÛHÛÛ˜Ü™]HÔKK˜X\™YÚZYËH[ˆÙY˜YÜØYœÜ˜ZÙ[ˆY]ZY[ZšÙHZYÙ[˜X\œÈ[ˆXY[™\ËˆˆXÝ[ÛœÏ^Ï]ÛˆÛ\ÜÓ˜[YOH˜‹\š[X\žH\ÈÛ\ÜÓ˜[YOHšMËMˆÏˆXÝY\[Ø]ÛŸHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™›^›^XÛÛØ\LÈMÛN™›^\›ÝÈ‚ˆX™[Û\ÜÓ˜[YOHœ™[]]™H›^LHÙX\˜ÚÛ\ÜÓ˜[YOH˜XœÛÛ]HYLÈÜLËHMËM^\Û]KMˆÏ[œ]Û\ÜÓ˜[YOH™šY[LLˆXÙZÛ\H–›ÙZÈXÝY\[Ùˆ™\YÙ[ÛÛÜ™YÙ\‹‹‹ˆˆÏÛX™[‚ˆÙ[XÝÛ\ÜÓ˜[YOH™šY[ÛN›X^]ËMLˆˆ˜[YO^ÜÝ]\ßHÛÚ[™ÙO^Ê]™[
+HOˆÙ]Ý]\Ê]™[\™Ù]˜[YJ_OÜ[Ûˆ˜[YOH˜[[HÝ]\ÜÙ[ÛÜ[ÛÜ[Ûˆ˜[YOH›šY]]È“šY]]ÏÛÜ[ÛÜ[Ûˆ˜[YOHš[—ÝZ]›Ù\š[™È’[ˆZ]›Ù\š[™ÏÛÜ[ÛÜ[Ûˆ˜[YOH˜™ZX[™ZX[ÛÜ[ÛÜ[Ûˆ˜[YOH›šY]Ø™ZX[“šY]™ZX[ÛÜ[ÛÜ[Ûˆ˜[YOH˜XÚ\œÝ[YÈXÚ\œÝ[YÏÛÜ[ÛÜÙ[XÝ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÎ™ÜšYXÛÛËLˆ‚ˆÝš\ÚX›K›X\
+
+][JHOˆ
+ˆ\XÛHÙ^O^Ú][KšYHÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\\ÝYžKX™]ÙY[ˆØ\LÈ]Û\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^Xœ˜[™MÌžÚ][K\_H0­ÈÚ][Kœš[Üš]_OÜˆÛ\ÜÓ˜[YOH›]Lˆ›ÛX›Û^\Û]KNMLžÚ][K]_OÚÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÚ][Kœ\œÛÛŸH0­ÈYÙ[ˆÚ][K™Y_OÜÙ]Ý]\Ð˜YÙHÝ]\Ï^Ú][KœÝ]\ßHÏÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›]MH]ˆÛ\ÜÓ˜[YOH›X‹Lˆ›^\ÝYžKX™]ÙY[ˆ^^È›Û\Ù[ZX›Û^\Û]KMLÜ[•›ÛÜØ[™ÏÜÜ[Ü[žÚ][Kœ›ÙÜ™\ÜßIOÜÜ[Ù]]ˆÛ\ÜÓ˜[YOHšL‹H›Ý[™YY[™Ë\Û]KLL]ˆÛ\ÜÓ˜[YOHšY[›Ý[™YY[™ËXœ˜[™MÌ˜[œÚ][Û‹X[ˆÝ[O^ÞÈÚYˆ	Ú][Kœ›ÙÜ™\ÜßIX_HÏÙ]Ù]‚ˆØ\XÛO‚ˆ
+J_BˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ[›š[™Ê
+HÂˆ™]\›ˆ[›š[™ÐØ[[™\ˆÏŽÂŸB‚™[˜Ý[Ûˆ^T›Ùš[TYÙJ
+HÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œÈHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝ›Ùš[HHX[˜YÙY\Ù\œË™š[™
+
+][JHOˆ][KšYOOH\Ù\‹šY
+NÂˆÛÛœÝ[š]X[ÈH	Ý\Ù\‹›˜[YKœÜ]
+ˆŠVÌOË–ÌHÏÈˆŸIÝ\Ù\‹›˜[YKœÜ]
+ˆŠVÌWOË–ÌHÏÈˆŸXÕ\\Ø\ÙJ
+NÂˆÛÛœÝ]Z[ÈHÂˆÈX™[ˆ‘K[XZ[Y™\È‹˜[YNˆ\Ù\‹™[XZ[›Ùš[OË™[XZ[“Û˜™ZÙ[™ˆKˆÈX™[ˆ”›Û‹˜[YNˆ›ÛSX™[ÖÝ\Ù\‹œ›ÛWHKˆÈX™[ˆ“[™‹˜[YNˆ\Ù\‹˜ÛÝ[žHKˆÈX™[ˆ•X[H‹˜[YNˆ›Ùš[OËX[S˜[YH‘ÙY[ˆX[HˆKˆÈX™[ˆ•™\YÙ[ÛÛÜ™YÙ\ˆ‹˜[YNˆ›Ùš[OËœ™\™\Ù[]]™RYÈ‘ÙZÛÜ[ˆˆ“šY]ÙZÛÜ[ˆKˆÈX™[ˆ•X[‹˜[YNˆ\Ù\‹›[™ÝXYÙKÕ\\Ø\ÙJ
+HKˆNÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆYÙRXY\‚ˆ^YXœ›ÝÏH‘ÙXœZZÙ\ˆ‚ˆ]OH“ZZ›ˆÙYÙ]™[œÈ‚ˆ\ØÜš\[ÛH’™H\œÛÛÛ›ZšÙH›ÙšY[[ˆXØÛÝ[ÙYÙ]™[œÈ[ˆšY[›Ü˜ÙKˆ‚ˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\M™ÜšYXÛÛËVÛZ[›X^
+YœŠWÌÍH‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\Ý\Ø\M‚ˆ]˜]\ˆ[š]X[Ï^Ú[š]X[ßHÛ\ÜÓ˜[YOHšLMˆËLMˆ^[ÈˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒN[WH^\Û]KM”›ÙšY[Ü‚ˆˆÛ\ÜÓ˜[YOH›]LH^Lž›ÛX›Û^\Û]KNMLžÝ\Ù\‹›˜[Y_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÜ›ÛSX™[ÖÝ\Ù\‹œ›ÛW_H0­ÈÝ\Ù\‹˜ÛÝ[ž_OÜ‚ˆ]ˆÛ\ÜÓ˜[YOH›]LÈ›^›^]Ü˜\Ø\Lˆ‚ˆÝ]\Ð˜YÙHÝ]\ÏH›Ü[ˆˆX™[^Ü›ÛSX™[ÖÝ\Ù\‹œ›ÛW_HÏ‚ˆÝ]\Ð˜YÙHÝ]\Ï^Ü›Ùš[OË˜XÝ]™HÈ›Ü[ˆˆˆ™ÙX[›[Y\™ŸHX™[^Ü›Ùš[OË˜XÝ]™HÈXÝYYˆˆˆ“šY]XXÝYYˆŸHÏ‚ˆÙ]‚ˆÙ]‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH›]MHÜšYØ\LÈÛN™ÜšYXÛÛËLˆ‚ˆÙ]Z[Ë›X\
+
+]Z[
+HOˆ
+ˆ]ˆÙ^O^Ù]Z[›X™[HÛ\ÜÓ˜[YOHœ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë\Û]KMLM‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒM™[WH^\Û]KMžÙ]Z[›X™[OÜ‚ˆÛ\ÜÓ˜[YOH›]Lˆœ™XZË]ÛÜ™È^\ÛH›Û\Ù[ZX›Û^\Û]KNLžÙ]Z[˜[Y_OÜ‚ˆÙ]‚ˆ
+J_BˆÙ]‚ˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒN[WH^\Û]KM”Û™[HXÝY\ÏÜ‚ˆ]ˆÛ\ÜÓ˜[YOH›]LÈÜXÙK^KLˆ‚ˆ[šÈ™YH‹Ù\Ú›Ø\™ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌÝ™\Ž˜›Ü™\‹Xœ˜[™LŒÝ™\Ž˜™ËXœ˜[™MLÝ™\Ž^Xœ˜[™N‚ˆ˜X\ˆ\Ú›Ø\™ˆ\œ›ÝÔšYÚÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÓ[šÏ‚ˆ[šÈ™YH‹ÛZZ›‹]X[HˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌÝ™\Ž˜›Ü™\‹Xœ˜[™LŒÝ™\Ž˜™ËXœ˜[™MLÝ™\Ž^Xœ˜[™N‚ˆZZ›ˆX[Bˆ\œ›ÝÔšYÚÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÓ[šÏ‚ˆ[šÈ™YH‹Ø™YÙ[ZY[™Ù[ˆˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆ›Ý[™YLž›Ü™\ˆ›Ü™\‹\Û]KLŒMKLÈ^\ÛH›Û\Ù[ZX›Û^\Û]KMÌÝ™\Ž˜›Ü™\‹Xœ˜[™LŒÝ™\Ž˜™ËXœ˜[™MLÝ™\Ž^Xœ˜[™N‚ˆ™YÙ[ZY[™Ù[‚ˆ\œ›ÝÔšYÚÛ\ÜÓ˜[YOHšMËMˆÏ‚ˆÓ[šÏ‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆÙ^U\ÚÜÔYÙJ
+HÂˆÛÛœÝÈ\Ù\‹X[˜YÙY\Ù\œË[™ÝXYÙHHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆÛÛœÝH\ÙPØ[˜XÚÊ
+Ù^Nˆ˜[œÛ][Û’Ù^JHOˆ˜[œÛ]J[™ÝXYÙKÙ^JKÛ[™ÝXYÙWJNÂˆÛÛœÝÈ\Ó[Ù[Q[˜X›YHH\ÙS[Ù[\Ê
+NÂˆÛÛœÝÂˆš\ÚX›R[\™[[ÛœËˆš\ÚX›PÛÛXÝ[ÛY[Ëˆš\ÚX›R[™\]Y\ÝËˆš\ÚX›T™]˜Z[š[™ÜËˆš\ÚX›TØ[\Õ˜Z[š[™ÜËˆHH\ÙUÛÜšÙ›ÝÊ
+NÂˆÛÛœÝÈ™\™\Ù[]]™\ÈHH\ÙT™\™\Ù[]]™\Ê
+NÂˆÛÛœÝÙ^HHØØ[]RÙ^J
+NÂˆÛÛœÝ][[Û”ÙXÝ[ÛœÈH\ÙSY[[Êˆ
+
+HOˆZ[\Ú›Ø\™][[Û”ÙXÝ[ÛœÊÂˆÝ\œ™[\Ù\Žˆ\Ù\‹ˆÙ^Kˆ[\™[[ÛœÎˆ\Ó[Ù[Q[˜X›Y
+‘QÑSRQS‘ÑSˆŠHÈY\PžRY
+š\ÚX›R[\™[[ÛœÊ\Ù\ŠJHˆ×KˆÛÛXÝ[ÛY[Îˆ\Ó[Ù[Q[˜X›Y
+ÓÓ•PÕSÓQS•SˆŠHÈš\ÚX›PÛÛXÝ[ÛY[Ê\Ù\ŠHˆ×Kˆ[™\]Y\ÝÎˆ\Ó[Ù[Q[˜X›Y
+’SPS•”QÑSˆŠHÈš\ÚX›R[™\]Y\ÝÊ\Ù\ŠHˆ×Kˆ™]˜Z[š[™ÜÎˆ\Ó[Ù[Q[˜X›Y
+”‘URS’S‘ÑSˆŠHÈš\ÚX›T™]˜Z[š[™ÜÊ\Ù\ŠHˆ×KˆØ[\Õ˜Z[š[™ÜÎˆ\Ó[Ù[Q[˜X›Y
+”ÐSTÕRS’S‘ÑSˆŠHÈš\ÚX›TØ[\Õ˜Z[š[™ÜÊ\Ù\ŠHˆ×Kˆ™\™\Ù[]]™S˜[YNˆ
+Y
+HOˆÂˆÛÛœÝ™\™\Ù[]]™HH™\™\Ù[]]™\Ë™š[™
+
+][JHOˆ][KšYOOHY
+NÂˆ™]\›ˆ™\™\Ù[]]™HÈ	Ü™\™\Ù[]]™K™š\œÝ˜[Y_H	Ü™\™\Ù[]]™K›\Ý˜[Y_Xˆ“Û˜™ZÙ[™ŽÂˆKˆÝÛ™\“˜[YNˆ
+Y
+HOˆYÈ™\Ü[™Õ\Ù\“˜[YJYX[˜YÙY\Ù\œÊHˆ[™Yš[™YˆJKˆÂˆ\Ó[Ù[Q[˜X›YˆX[˜YÙY\Ù\œËˆ™\™\Ù[]]™\ËˆÙ^Kˆ\Ù\‹ˆš\ÚX›PÛÛXÝ[ÛY[Ëˆš\ÚX›R[™\]Y\ÝËˆš\ÚX›R[\™[[ÛœËˆš\ÚX›T™]˜Z[š[™ÜËˆš\ÚX›TØ[\Õ˜Z[š[™ÜËˆKˆ
+NÂˆÛÛœÝÙ^R][PÛÝ[H][[Û”ÙXÝ[ÛœËÙË›[™Ý
+È][[Û”ÙXÝ[ÛœË™Û™K›[™ÝÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆYÙRXY\‚ˆ^YXœ›ÝÏ^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™Ù^UÛÜšÙ^HŠ_Bˆ]O^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™Ù^U\ÚÜÈŠ_Bˆ\ØÜš\[Û^Ý
+˜ÛØXÚ[™Ë™\Ú›Ø\™Ù^U\ÚÜÑ\ØÜš\[ÛˆŠ_BˆÏ‚‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MY™ÜšYXÛÛËLˆ™ÜšYXÛÛËM‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒN[WH^\Û]KMžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™œØÚY[YÙ^HŠ_OÜ‚ˆÛ\ÜÓ˜[YOH›]LÈ^LÞ›ÛX›Û^\Û]KNMLžÝÙ^R][PÛÝ[OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™š][\ÓÛˆŠ_HÛ™]È]J	ÝÙ^_ULŽŒŒ
+KÓØØ[Q]TÝš[™Ê[™ÝXYÙHOOH™œˆˆÈ™œ‹P‘Hˆˆ[™ÝXYÙHOOH™HˆÈ™KQHˆˆ››P‘HŠ_OÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒN[WH^\Û]KMžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™ÑÈŠ_OÜ‚ˆÛ\ÜÓ˜[YOH›]LÈ^LÞ›ÛX›Û^\Û]KNMLžØ][[Û”ÙXÝ[ÛœËÙË›[™ÝOÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™››ÝÛÛ\]Y][\ÈŠ_OÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒN[WH^\Û]KMžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™™Û™HŠ_OÜ‚ˆÛ\ÜÓ˜[YOH›]LÈ^LÞ›ÛX›Û^\Û]KNMLžØ][[Û”ÙXÝ[ÛœË™Û™K›[™ÝOÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™˜ÛÛ\]YÜ”ÝX›Z]YŠ_OÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™MH‚ˆÛ\ÜÓ˜[YOH^^È›ÛX›Û\\˜Ø\ÙH˜XÚÚ[™ËVÌŒN[WH^\Û]KMžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™Ý[ØÛÜHŠ_OÜ‚ˆÛ\ÜÓ˜[YOH›]LÈ^LÞ›ÛX›Û^\Û]KNMLžÝÙ^R][PÛÝ[OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KMLžÝ
+˜ÛØXÚ[™Ë™\Ú›Ø\™š\ÚX›R][\ÕÙ^HŠ_OÜ‚ˆÙ]‚ˆÙ]‚‚ˆ\Ú›Ø\™][[ÛØ\™ÙXÝ[ÛœÏ^Ø][[Û”ÙXÝ[ÛœßH[šÏ^Û[H^ÝHÏ‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆXÙZÛ\•ÛÜšÜÜXÙJÈ]K\ØÜš\[ÛˆNˆÈ]NˆÝš[™ÎÈ\ØÜš\[ÛŽˆÝš[™ÈJHÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆYÙRXY\ˆ^YXœ›ÝÏH•›ÛÜ˜™\™ZY[™Èˆ]O^Ý]_H\ØÜš\[Û^Ù\ØÜš\[ÛŸHÏ‚ˆ[\TÝ]H]OH“›ÙÈÙY[ˆ[šÝY™\ØÚZØ˜X\ˆˆ\ØÜš\[ÛH‘^™H›Ý]H\È[ÙZÛÜ[X[ˆ]Y[KXX\ˆH[šÝYÛÜ™]\ˆ™\™\ˆ[™Ù][ˆˆÏ‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆX[˜YÙ[Y[
+ÈÙXÝ[Û‹Ù][™ÜÔYÙHNˆÈÙXÝ[ÛÎˆÝš[™ÎÈÙ][™ÜÔYÙOÎˆÝš[™ÈJHÂˆÛÛœÝÈ\Ù\ˆHH\ÙTÙ\ÜÚ[ÛŠ
+NÂˆYˆ
+ÙXÝ[ÛˆOOHš[œÝ[[™Ù[ˆˆ	‰ˆ\Ù][™ÜÔYÙJHÂˆ™]\›ˆX[˜YÙ[Y[™Y\™XÝ™YH‹Ø™ZY\‹Ú[œÝ[[™Ù[‹ÛXZ[ˆÏŽÂˆBˆÛÛœÝ›Ü›X[^™YÙXÝ[ÛˆHÙXÝ[ÛˆOOHš[œÝ[[™Ù[ˆ‚ˆÈÙ][™ÜÔYÙHOOHœ›ÙšY[‚ˆÈœ›ÙšY[‚ˆˆÙ][™ÜÔYÙHOOH›XZ[Ý[\]\È‚ˆÈ›XZ[[\]\È‚ˆˆÙ][™ÜÔYÙHOOH›XZ[‚ˆÈ›XZ[‚ˆˆ[™Yš[™YˆˆÙXÝ[ÛŽÂˆÛÛœÝ™\ÛÛ™YÙXÝ[ÛˆHÙXÝ[Û‚ˆÈ›Ü›X[^™YÙXÝ[Ûˆ	‰ˆØ[XØÙ\ÜÓX[˜YÙ[Y[ÙXÝ[ÛŠ\Ù\‹›Ü›X[^™YÙXÝ[ÛŠBˆÈ›Ü›X[^™YÙXÝ[Û‚ˆˆ[™Yš[™YˆˆÙ]Y˜][X[˜YÙ[Y[ÙXÝ[ÛŠ\Ù\ŠNÂˆYˆ
+\™\ÛÛ™YÙXÝ[ÛŠH™]\›ˆX[˜YÙ[Y[™Y\™XÝÏŽÂ‚ˆYˆ
+™\ÛÛ™YÙXÝ[ÛˆOOH™ÙXœZZÙ\œÈŠH™]\›ˆ\Ù\œÓX[˜YÙ[Y[YÙHÏŽÂˆYˆ
+™\ÛÛ™YÙXÝ[ÛˆOOH›[Ù[\ÈŠH™]\›ˆ[Ù[SX[˜YÙ[Y[ÏŽÂˆYˆ
+™\ÛÛ™YÙXÝ[ÛˆOOH›ÙÈŠH™]\›ˆX[˜YÙ[Y[ÙÈÏŽÂˆYˆ
+™\ÛÛ™YÙXÝ[ÛˆOOH›XZ[ŠH™]\›ˆÙ][™ÜÓX[˜YÙ[Y[YÙOH›XZ[ˆÏŽÂˆYˆ
+™\ÛÛ™YÙXÝ[ÛˆOOH›XZ[[\]\ÈŠH™]\›ˆ˜[œØXÝ[Û˜[XZ[X[˜YÙ[Y[ÏŽÂˆYˆ
+™\ÛÛ™YÙXÝ[ÛˆOOHœ›ÙšY[ŠH™]\›ˆÙ][™ÜÓX[˜YÙ[Y[YÙOHœ›Ùš[HˆÏŽÂˆYˆ
+ÈX[\È‹œ›Û[ˆ‹šÜ\È‹šØ\ÝÚÈ‹œÝ\\‘]˜[X][ÛœÈ—Kš[˜ÛY\Ê™\ÛÛ™YÙXÝ[ÛŠJHÂˆ™]\›ˆÛÛ™šYÝ\˜][Û“X[˜YÙ[Y[ÙXÝ[Û^Ü™\ÛÛ™YÙXÝ[Ûˆ\ÈX[\Èˆœ›Û[ˆˆšÜ\ÈˆšØ\ÝÚÈˆœÝ\\‘]˜[X][ÛœÈŸHÏŽÂˆBˆ™]\›ˆX[˜YÙ[Y[™Y\™XÝÏŽÂŸB‚™[˜Ý[ÛˆX[˜YÙ[Y[ÙÊ
+HÂˆÛÛœÝÈ\Ù\‹[™ÝXYÙKX[˜YÙY\Ù\œÈHH\ÙTÙ\ÜÚ[ÛŠ
+NÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMˆ‚ˆYÙRXY\‚ˆ^YXœ›ÝÏH™ZY\ˆ‚ˆ]OH“ÙÈ‚ˆ\ØÜš\[ÛHXÝYZ\ÝÜšYZÈš[›™[ˆ™HÙYÙ[][ˆØÛÜKY]^™[™Hš[\œÈ[ˆYÚ[˜]YH[ÈHœ›ÙYÙ\™H\Ú›Ø\™ÙY\™Ø]™Kˆ‚ˆÏ‚ˆXÝ]š]R\ÝÜžPØ\™\Ù\^Ý\Ù\ŸHÏ‚ˆØØ[Š\Ù\‹˜]Y]š[\\œÛÛ˜][Û‹œ™XYŠH	‰ˆ[\\œÛÛ˜][Û’\ÝÜžH[™ÝXYÙO^Û[™ÝXYÙ_H\Ù\œÏ^ÛX[˜YÙY\Ù\œßHÏŸBˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[ÛˆX[˜YÙ[Y[™Y\™XÝ
+È™YˆH‹Ù\Ú›Ø\™ˆNˆÈ™YÎˆÝš[™ÈJHÂˆÛÛœÝ›Ý]\ˆH\ÙT›Ý]\Š
+NÂ‚ˆ\ÙQY™™XÝ
+
+
+HOˆÂˆ›Ý]\‹œ™\XÙJ™YŠNÂˆKÚ™Y‹›Ý]\—JNÂ‚ˆ™]\›ˆ[ÂŸB‚‹ËÈYØXÞHX[˜YÙ[Y[›ÝÝ\H™]Z[™YÚ[H™ZY\ˆÙXÝ[ÛœÈ\™HÛÛœÛÛY]Y‚‹ËÈ\Û[Y\ØX›K[™^[[™H\\ØÜš\Y\Û[Û›Ë][\ÙY]˜\œÂ™[˜Ý[ÛˆÚ[\SX[˜YÙ[Y[\Ý
+È][\ËXÛÛŽˆXÛÛˆNˆÈ][\ÎˆÝš[™Ö×NÈXÛÛŽˆ\[Ùˆ\Ù\œÈJHÂˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYØ\MÛN™ÜšYXÛÛËLˆ™ÜšYXÛÛËLÈžÚ][\Ë›X\
+
+][K[™^
+HOˆ]ˆÙ^O^Ú][_HÛ\ÜÓ˜[YOH˜Ø\™›^][\ËXÙ[\ˆØ\MMH]ˆÛ\ÜÓ˜[YOH™ÜšYLLHËLLHXÙKZ][\ËXÙ[\ˆ›Ý[™Y^™ËXœ˜[™ML^Xœ˜[™MÌXÛÛˆÛ\ÜÓ˜[YOHšMHËMHˆÏÙ]]ˆÛ\ÜÓ˜[YOH™›^LHÛ\ÜÓ˜[YOH™›Û\Ù[ZX›ÛžÚ][_OÜÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMLXÝYYˆ0­È›ÛÛÜ™HÚ[™^
+È_OÜÙ]]ÛˆÛ\ÜÓ˜[YOHœ›Ý[™Y[ÈLˆ^\Û]KMÝ™\Ž˜™Ë\Û]KLL[Ü™RÜš^›Û[Û\ÜÓ˜[YOHšMHËMHˆÏØ]ÛÙ]Š_OÙ]ŽÂŸB‚‹ËÈYØXÞHX[˜YÙ[Y[›ÝÝ\H™]Z[™YÚ[HØ\ÝÚÈ™ZY\ˆ]™\È[ˆÛÛ™šYÝ\˜][Û“X[˜YÙ[Y[‚‹ËÈ\Û[Y\ØX›K[™^[[™H\\ØÜš\Y\Û[Û›Ë][\ÙY]˜\œÂ™[˜Ý[Ûˆœ˜[Y]ÛÜšÓX[˜YÙ[Y[
+ÈÛØXÚ[™Ñœ˜[Y]ÛÜšÈNˆÈÛØXÚ[™Ñœ˜[Y]ÛÜšÎˆ™]\›•\O\[Ùˆ\ÙPÛÛ™šYÝ\˜][Û–È˜ÛØXÚ[™Ñœ˜[Y]ÛÜšÈ—HJHÂˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMžØÛØXÚ[™Ñœ˜[Y]ÛÜšË›X\
+
+›ØÝ\ÊHOˆ]ˆÙ^O^Ù›ØÝ\Ë›˜[Y_HÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈMH]ˆÛ\ÜÓ˜[YO^ØLLËLˆ›Ý[™YY[	Ù›ØÝ\Ë˜ÛÛÜŸXHÏ]ˆÛ\ÜÓ˜[YOH™›^LHÛ\ÜÓ˜[YOH™›ÛX›ÛžÙ›ØÝ\Ë›˜[Y_OÜÛ\ÜÓ˜[YOH^\ÛH^\Û]KMLžÙ›ØÝ\Ë˜Üš]\šXK›[™ÝHÜš]\šXOÜÙ]]ÛˆÛ\ÜÓ˜[YOH˜‹\ÙXÛÛ™\žH™]Ù\šÙ[Ø]ÛÙ]]ˆÛ\ÜÓ˜[YOH™ÜšYØ\Lˆ›Ü™\‹]›Ü™\‹\Û]KLL™Ë\Û]KMLMÛN™ÜšYXÛÛËLˆžÙ›ØÝ\Ë˜Üš]\šXK›X\
+
+Üš]\š[Û‹[™^
+HOˆ]ˆÙ^O^ØÜš]\š[ÛŸHÛ\ÜÓ˜[YOHœ›Ý[™Y^›Ü™\ˆ›Ü™\‹\Û]KLŒ™Ë]Ú]HLÈ^\ÛH^\Û]KMÌÜ[ˆÛ\ÜÓ˜[YOH›\‹Lˆ›ÛX›Û^\Û]KMžÚ[™^
+È_KÜÜ[žØÜš]\š[ÛŸOÙ]Š_OÙ]Ù]Š_OÙ]ŽÂŸB‚™[˜Ý[Ûˆ[Ù[SX[˜YÙ[Y[
+
+HÂˆÛÛœÝÈ\œ›Ü‹ØY[™Ë[Ù[\ËÙ][Ù[Q[˜X›YHH\ÙS[Ù[\Ê
+NÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™Ý™\™›ÝËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹\Û]KLL™Ë\Û]KMLMHKM‚ˆÛ\ÜÓ˜[YOH™›ÛX›Û^\Û]KNML‘ÙY˜\ÙY\™HXÝ]˜]YOÜ‚ˆÛ\ÜÓ˜[YOH›]LH^\ÛH^\Û]KML‚ˆØÚZÙ[[Ù[\ÈX[ˆÙˆZ]›Û™\ˆÛÙ]ÚZžšYÚ[™Ëˆ[˜XÝY]™H[Ù[\È™\™ÚZ›™[ˆZ]Y[K\Ú›Ø\™[ˆ›Ý]\Ë‚ˆÜ‚ˆÛØY[™È	‰ˆÛ\ÜÓ˜[YOH›]Lˆ^\ÛH^\Û]KML“[Ù[\ÈY[‹‹‹ÜŸBˆÙ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOH›]Lˆ^\ÛH›Û\Ù[ZX›Û^\›ÜÙKMÌžÙ\œ›ÜŸOÜŸBˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYK\Û]KLL‚ˆÛ[Ù[\Ë›X\
+
+[Ù[JHOˆ
+ˆ]ˆÙ^O^Û[Ù[K˜ÛÙ_HÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LÈMHÛN™›^\›ÝÈÛNš][\ËXÙ[\ˆÛNš\ÝYžKX™]ÙY[ˆ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›Û^\Û]KNMLžÛ[Ù[K›˜[Y_OÜ‚ˆÛ\ÜÓ˜[YOH›]LH^^È›Û\Ù[ZX›Û\\˜Ø\ÙH˜XÚÚ[™Ë]ÚY\ˆ^\Û]KMžÛ[Ù[K˜ÛÙ_OÜ‚ˆÙ]‚ˆ[Ù[UÙÙÛBˆÚXÚÙY^Û[Ù[K™[˜X›YBˆÛÚ[™ÙO^ÊÚXÚÙY
+HOˆÙ][Ù[Q[˜X›Y
+[Ù[K˜ÛÙKÚXÚÙY
+_BˆX™[^Û[Ù[K›˜[Y_BˆÏ‚ˆÙ]‚ˆ
+J_BˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ[Ù[UÙÙÛJÂˆÚXÚÙYˆÛÚ[™ÙKˆX™[ŸNˆÂˆÚXÚÙYˆ›ÛÛX[ŽÂˆÛÚ[™ÙNˆ
+ÚXÚÙYˆ›ÛÛX[ŠHOˆ›ÚYÂˆX™[ˆÝš[™ÎÂŸJHÂˆ™]\›ˆ
+ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆ›ÛOHœÝÚ]Ú‚ˆ\šXKXÚXÚÙY^ØÚXÚÙYBˆ\šXK[X™[^Ø	ÛX™[H	ØÚXÚÙYÈ™XXÝ]™\™[ˆˆˆ˜XÝ]™\™[ˆŸXBˆÛÛXÚÏ^Ê
+HOˆÛÚ[™ÙJXÚXÚÙY
+_BˆÛ\ÜÓ˜[YO^Ø›^ËYš]][\ËXÙ[\ˆØ\LÈ›Ý[™YY[›Ü™\ˆLˆKLH˜[œÚ][Ûˆ	ÂˆÚXÚÙYÈ˜›Ü™\‹Y[Y\˜[LŒ™ËY[Y\˜[MLˆˆ˜›Ü™\‹\Û]KLŒ™Ë\Û]KLL‚ˆXBˆ‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø™[]]™HMÈËLLˆ›Ý[™YY[˜[œÚ][Ûˆ	ØÚXÚÙYÈ˜™ËY[Y\˜[MŒˆˆ˜™Ë\Û]KLÌŸXO‚ˆÜ[ˆÛ\ÜÓ˜[YO^ØXœÛÛ]HÜLHMHËMH›Ý[™YY[™Ë]Ú]HÚYÝÈ˜[œÚ][Ûˆ	ØÚXÚÙYÈ›YMˆˆˆ›YLHŸXHÏ‚ˆÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø‹Lˆ^\ÛH›ÛX›Û	ØÚXÚÙYÈ^Y[Y\˜[MÌˆˆ^\Û]KMLŸXO‚ˆØÚXÚÙYÈXÝYYˆˆˆ’[˜XÝYYˆŸBˆÜÜ[‚ˆØ]Û‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ[Ù[R[˜XÝ]™JÈ[Ù[S˜[YK[™ÝXYÙHNˆÈ[Ù[S˜[YNˆÝš[™ÎÈ[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—HJHÂˆ™]\›ˆ
+ˆ[\TÝ]Bˆ]O^Ý˜[œÛ]J[™ÝXYÙK˜\˜XØÙ\ÜË›[Ù[R[˜XÝ]™U]HŠ_Bˆ\ØÜš\[Û^Ý˜[œÛ]J[™ÝXYÙK˜\˜XØÙ\ÜË›[Ù[R[˜XÝ]™Q\ØÜš\[ÛˆŠKœ™\XÙJžÛ[Ù[_H‹[Ù[S˜[YJ_BˆÏ‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ\™›Ü›X[˜ÙU™[™X™[
+È˜[YHNˆÈ˜[YNˆLHHJHÂˆÛÛœÝX™[H˜[YHˆÈ”ÝZ™Ù[™ˆˆ˜[YHÈ‘[[™ˆˆ”ÝXšY[ŽÂˆÛÛœÝÝ[HH˜[YHˆˆÈ˜™ËY[Y\˜[ML^Y[Y\˜[MÌ‚ˆˆ˜[YHˆÈ˜™Ë\›ÜÙKML^\›ÜÙKMÌ‚ˆˆ˜™Ë\Û]KLL^\Û]KMŒŽÂˆ™]\›ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YO^Ø[›[™KY›^ËYš]][\ËXÙ[\ˆØ\LKH›Ý[™YY[L‹HKLH^^È›Û\Ù[ZX›Û	ÜÝ[_XO‚ˆ™[™˜[YO^Ý˜[Y_HÏˆÛX™[BˆÜÜ[‚ˆ
+NÂŸB‚™[˜Ý[Ûˆ›Ü›X]ÚÜ]J˜[YOÎˆÝš[™Ë[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—HH››ŠHÂˆYˆ
+]˜[YJH™]\›ˆ“›ÙÈšY]ŽÂˆ™]\›ˆ™]È]J	Ý˜[Y_ULŽŒŒ
+KÓØØ[Q]TÝš[™ÊØØ[Q›Ü“[™ÝXYÙJ[™ÝXYÙJKÂˆ^Nˆ›[Y\šXÈ‹ˆ[ÛˆœÚÜ‹ˆYX\Žˆ›[Y\šXÈ‹ˆJNÂŸB‚™[˜Ý[Ûˆ^XÝ][Û•[Y\Ý[\
+˜[YOÎˆÝš[™ÊHÂˆYˆ
+]˜[YJH™]\›ˆ[X™\‹“PVÔÐQ‘WÒS•QÑTŽÂˆYˆ
+˜[YKÓÝÙ\Ø\ÙJ
+HOOH˜[™XYÈŠH™]\›ˆ™]È]JŒ‹KMKLŠK™Ù][YJ
+NÂ‚ˆÛÛœÝ\™XÝ]HH™]È]J˜[YJNÂˆYˆ
+S[X™\‹š\Ó˜SŠ\™XÝ]K™Ù][YJ
+JJH™]\›ˆ\™XÝ]K™Ù][YJ
+NÂ‚ˆÛÛœÝX]ÚH˜[YKÓÝÙ\Ø\ÙJ
+K›X]Ú
+ˆ×ŠÌKŸJWÊÊ˜[Ÿ™XŸ\\ŸYZ_[Ÿ[]YßÙ\ÚÝ›ÝŸXÊWÊÊÍJIÂˆ
+NÂˆYˆ
+[X]Ú
+H™]\›ˆ[X™\‹“PVÔÐQ‘WÒS•QÑTŽÂ‚ˆÛÛœÝ[Û[™^ˆ™XÛÜ™Ýš[™Ë[X™\ˆHÂˆ˜[Žˆˆ™XŽˆKˆ\ˆ‹ˆ\ŽˆËˆYZNˆˆ[ŽˆKˆ[ˆ‹ˆ]YÎˆËˆÙ\ˆˆÚÝˆKˆ›ÝŽˆLˆXÎˆLKˆNÂˆ™]\›ˆ™]È]J[X™\ŠX]ÚÌ×JK[Û[™^ÛX]ÚÌ—WK[X™\ŠX]ÚÌWJKLŠK™Ù][YJ
+NÂŸB‚™[˜Ý[Ûˆ›Ü›X]ÜU˜[YJ˜[YNˆ[X™\‹[š]ˆ‰Hˆ‘UTˆˆ˜ÛÝ[ˆ›Z[]\ÈˆšÝ\œÈˆšÛHˆ›[X™\ˆ‹[™ÝXYÙNˆ[ØÚÕ\Ù\–È›[™ÝXYÙH—HH››ŠHÂˆÛÛœÝØØ[HHØØ[Q›Ü“[™ÝXYÙJ[™ÝXYÙJNÂˆÛÛœÝ›Ü›X]YH˜[YKÓØØ[TÝš[™ÊØØ[KÈX^[][Qœ˜XÝ[Û‘YÚ]Îˆ[š]OOH‰HˆÈHˆ[š]OOH‘UTˆˆÈˆˆJNÂˆYˆ
+[š]OOH‰HŠH™]\›ˆ	Ù›Ü›X]YIXÂˆYˆ
+[š]OOH‘UTˆŠH™]\›ˆ8 «	Ù›Ü›X]YXÂˆYˆ
+[š]OOH›Z[]\ÈŠH™]\›ˆ	Ù›Ü›X]YH	Ý˜[œÛ]J[™ÝXYÙK›^UX[KšÜK[š]Z[]\ÈŠ_XÂˆYˆ
+[š]OOHšÝ\œÈŠH™]\›ˆ	Ù›Ü›X]YH	Ý˜[œÛ]J[™ÝXYÙK›^UX[KšÜK[š]Ý\œÈŠ_XÂˆYˆ
+[š]OOHšÛHŠH™]\›ˆ	Ù›Ü›X]YH	Ý˜[œÛ]J[™ÝXYÙK›^UX[KšÜK[š]ÛHŠ_XÂˆ™]\›ˆ›Ü›X]YÂŸB‚™[˜Ý[ÛˆÙXÝ[Û•]JÈ]KÝX]K[šË[šÓX™[H[\ÈˆNˆÈ]NˆÝš[™ÎÈÝX]NˆÝš[™ÎÈ[šÏÎˆÝš[™ÎÈ[šÓX™[ÎˆÝš[™ÈJHÂˆ™]\›ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\ÝYžKX™]ÙY[ˆØ\M›Ü™\‹Xˆ›Ü™\‹\Û]KLLMHKM]ˆÛ\ÜÓ˜[YOH™›ÛX›Û^\Û]KNLžÝ]_OÚÛ\ÜÓ˜[YOH›]LH^^È^\Û]KMLžÜÝX]_OÜÙ]žÛ[šÈ	‰ˆ[šÈ™Y^Û[šßHÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LH^\ÛH›Û\Ù[ZX›Û^Xœ˜[™MÌžÛ[šÓX™[H\œ›ÝÔšYÚÛ\ÜÓ˜[YOHšMËMˆÏÓ[šÏŸOÙ]ŽÂŸB

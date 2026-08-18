@@ -384,7 +384,10 @@ function shouldNotifyCoachingPlanning(
     previousPlannedDate !== coaching.plannedDate ||
     previous.startTime !== coaching.startTime ||
     previous.endTime !== coaching.endTime ||
-    Boolean(previous.notifyRepresentative) !== Boolean(coaching.notifyRepresentative)
+    Boolean(previous.notifyRepresentative) !== Boolean(coaching.notifyRepresentative) ||
+    Boolean(previous.notifyCoachedRepresentative) !== Boolean(coaching.notifyCoachedRepresentative) ||
+    Boolean(previous.notifyCoachedTeamLeaders) !== Boolean(coaching.notifyCoachedTeamLeaders) ||
+    Boolean(previous.notifyExecutorTeamLeaders) !== Boolean(coaching.notifyExecutorTeamLeaders)
   );
 }
 
@@ -527,6 +530,7 @@ async function requireExistingCoachingsMutable(
       id: true, status: true, representativeId: true, initiatorId: true, ownerId: true, teamId: true, country: true, plannedAt: true,
       representative: { select: { representativeId: true, role: true } },
       startTime: true, endTime: true, notifyRepresentative: true,
+      notifyCoachedRepresentative: true, notifyCoachedTeamLeaders: true, notifyExecutorTeamLeaders: true,
       scores: { select: { id: true, score: true, comment: true } },
       coachingDetail: { select: { id: true, arrivalTime: true, departureTime: true, kilometers: true, area: true, sector: true, groupAttentionPoints: true, individualAttentionPoint: true, appointments: { select: { id: true, remarks: true, scoreRows: { select: { score: true, comment: true } } } } } },
     },
@@ -554,7 +558,10 @@ async function requireExistingCoachingsMutable(
     const planningChanged = storedParticipantId !== next.representativeId ||
       stored.plannedAt?.toISOString().slice(0, 10) !== next.plannedDate ||
       stored.startTime !== next.startTime || stored.endTime !== next.endTime ||
-      stored.notifyRepresentative !== Boolean(next.notifyRepresentative);
+      stored.notifyRepresentative !== Boolean(next.notifyRepresentative) ||
+      stored.notifyCoachedRepresentative !== Boolean(next.notifyCoachedRepresentative) ||
+      stored.notifyCoachedTeamLeaders !== Boolean(next.notifyCoachedTeamLeaders) ||
+      stored.notifyExecutorTeamLeaders !== Boolean(next.notifyExecutorTeamLeaders);
     if ((next.status === "geannuleerd" || planningChanged) && (stored.status !== "GEPLAND" || hasData)) {
       forbidden("Alleen een lege, geplande begeleiding kan gewijzigd of verwijderd worden.");
     }
@@ -644,7 +651,7 @@ async function writeCoachingChangeLogs(
   interventions: NonNullable<WorkflowPersistencePatch["interventions"]>,
   before: Map<string, Record<string, unknown>>
 ) {
-  const tracked = ["status", "representativeId", "ownerId", "plannedDate", "startTime", "endTime", "notifyRepresentative", "preparationReferenceCoachingId", "deletedAt"] as const;
+  const tracked = ["status", "representativeId", "ownerId", "plannedDate", "startTime", "endTime", "notifyRepresentative", "notifyCoachedRepresentative", "notifyCoachedTeamLeaders", "notifyExecutorTeamLeaders", "preparationReferenceCoachingId", "deletedAt"] as const;
   const rows = interventions.flatMap((item) => {
     const old = before.get(item.id) ?? {};
     return tracked.flatMap((field) => {
@@ -675,6 +682,9 @@ async function loadCoachingSnapshots(ids: string[]) {
       startTime: true,
       endTime: true,
       notifyRepresentative: true,
+      notifyCoachedRepresentative: true,
+      notifyCoachedTeamLeaders: true,
+      notifyExecutorTeamLeaders: true,
       deletedAt: true,
       representativeId: true,
       representative: { select: { representativeId: true } },
@@ -699,6 +709,9 @@ async function loadCoachingSnapshots(ids: string[]) {
     startTime: item.startTime,
     endTime: item.endTime,
     notifyRepresentative: item.notifyRepresentative,
+    notifyCoachedRepresentative: item.notifyCoachedRepresentative,
+    notifyCoachedTeamLeaders: item.notifyCoachedTeamLeaders,
+    notifyExecutorTeamLeaders: item.notifyExecutorTeamLeaders,
     deletedAt: item.deletedAt?.toISOString(),
     representativeId: item.representative.representativeId ?? item.representativeId,
     ownerId: item.ownerId,

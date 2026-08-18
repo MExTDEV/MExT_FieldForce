@@ -10,6 +10,7 @@ import {
   visibleCoachings,
 } from "@/lib/coaching/visibility";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
+import { isPendingCoachingApprovalStatus } from "@/lib/coaching/approval-actions";
 
 export type VisibleUserScope = {
   representativeIds: Set<string>;
@@ -182,7 +183,7 @@ function maskPendingApprovalReport(
 ) {
   if (
     currentUser.role !== "REPRESENTATIVE" ||
-    !["verzonden_ter_akkoord", "wacht_op_akkoord"].includes(intervention.status) ||
+    !isPendingCoachingApprovalStatus(intervention.status) ||
     approvalHasCompletedReflection(approval)
   ) {
     return intervention;
