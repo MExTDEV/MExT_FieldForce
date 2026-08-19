@@ -183,6 +183,7 @@ import {
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
 import { coachingAppointmentIssues } from "@/lib/coaching/appointment-validation";
+import { isCoachingOutlookSyncRelevant } from "@/lib/coaching/outlook-sync";
 import {
   calculateAverageScorePercentage,
   calculateCoachingDossierScore,
@@ -4599,6 +4600,7 @@ const ActionTipsEditor = memo(function ActionTipsEditor({ actionId, value, disab
 });
 
 function CoachingOutlookSyncStatus({ intervention }: { intervention: CoachingWorkflowItem }) {
+  if (!isCoachingOutlookSyncRelevant(intervention.status)) return null;
   const label = intervention.outlookSyncStatus === "SYNCED"
     ? "Gesynchroniseerd met Outlook"
     : intervention.outlookSyncStatus === "ERROR"
@@ -5338,7 +5340,7 @@ function InterventionList({ kind }: { kind: string }) {
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StatusBadge status={item.status} />
-            {item.outlookSyncStatus && (
+            {item.outlookSyncStatus && isCoachingOutlookSyncRelevant(item.status) && (
               <InlineOutlookSyncStatus status={item.outlookSyncStatus} error={item.syncError} />
             )}
           </div>

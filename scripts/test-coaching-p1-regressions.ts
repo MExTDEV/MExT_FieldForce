@@ -16,6 +16,7 @@ import {
 } from "@/lib/coaching/score";
 import { coachingAppointmentIssues } from "@/lib/coaching/appointment-validation";
 import {
+  isCoachingOutlookSyncRelevant,
   nextCoachingOutlookSyncState,
   shouldSyncCoachingOutlook,
 } from "@/lib/coaching/outlook-sync";
@@ -173,9 +174,21 @@ const storedPlanning = {
   endTime: plannedCoaching.endTime,
   notifyRepresentative: true,
 };
+assert.equal(isCoachingOutlookSyncRelevant("gepland"), true);
+assert.equal(isCoachingOutlookSyncRelevant("GEPLAND"), true);
+assert.equal(isCoachingOutlookSyncRelevant("in_uitvoering"), false);
+assert.equal(isCoachingOutlookSyncRelevant("voltooid"), false);
 assert.equal(shouldSyncCoachingOutlook(plannedCoaching), true);
+assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "in_uitvoering" }), false);
 assert.equal(shouldSyncCoachingOutlook(plannedCoaching, storedPlanning), false);
 assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "in_uitvoering" }, storedPlanning), false);
+assert.equal(
+  shouldSyncCoachingOutlook(
+    { ...plannedCoaching, status: "in_uitvoering", plannedDate: "2026-08-27" },
+    storedPlanning,
+  ),
+  false,
+);
 assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, plannedDate: "2026-08-27" }, storedPlanning), true);
 assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "geannuleerd" }, storedPlanning), true);
 
@@ -206,6 +219,14 @@ assert.equal(roleCanAccessManagement("SUPER_ADMIN"), true);
 assert.match(workspaceSource, /scores: appointmentCriteria\.map\(\(criterion\) => \(\{ criterion, score: null/);
 assert.match(workspaceSource, /const options = \[0, 1, 2, 3, 4, 5, "nvt"\] as const/);
 assert.match(workspaceSource, /coachingAppointmentIssues\(newAppointmentDraft\)/);
+assert.match(
+  workspaceSource,
+  /if \(!isCoachingOutlookSyncRelevant\(intervention\.status\)\) return null/
+);
+assert.match(
+  workspaceSource,
+  /item\.outlookSyncStatus && isCoachingOutlookSyncRelevant\(item\.status\)/
+);
 const persistenceSource = readFileSync("app/api/workflows/persist-route.ts", "utf8");
 assert.match(persistenceSource, /shouldSyncCoachingOutlook\(item, coachingBefore\.get\(item\.id\)\)/);
 assert.match(persistenceSource, /requireValidCoachingAppointments\(selectedPatch\.interventions\)/);

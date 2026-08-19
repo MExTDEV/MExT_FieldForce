@@ -14,26 +14,33 @@ type OutlookCoachingCandidate = {
   deletedAt?: string;
 };
 
+export function isCoachingOutlookSyncRelevant(status: unknown) {
+  return text(status).toLowerCase() === "gepland";
+}
+
 export function shouldSyncCoachingOutlook(
   current: OutlookCoachingCandidate,
   previous?: OutlookCoachingSnapshot
 ) {
-  if (!previous) return true;
+  if (!previous) return isCoachingOutlookSyncRelevant(current.status);
 
-  const fieldsChanged =
+  const previousCancelled = Boolean(previous.deletedAt) || isCancelled(previous.status);
+  const currentCancelled = Boolean(current.deletedAt) || isCancelled(current.status);
+  if (!previousCancelled && currentCancelled) return true;
+
+  const currentRelevant = isCoachingOutlookSyncRelevant(current.status);
+  if (!currentRelevant) return false;
+  if (!isCoachingOutlookSyncRelevant(previous.status)) return true;
+
+  return (
     text(previous.title) !== text(current.title) ||
     text(previous.representativeId) !== text(current.representativeId) ||
     text(previous.ownerId) !== text(current.ownerId) ||
     date(previous.plannedAt) !== date(current.plannedDate) ||
     text(previous.startTime) !== text(current.startTime) ||
     text(previous.endTime) !== text(current.endTime) ||
-    Boolean(previous.notifyRepresentative) !== Boolean(current.notifyRepresentative);
-
-  if (fieldsChanged) return true;
-
-  const previousDeleted = Boolean(previous.deletedAt) || isCancelled(previous.status);
-  const currentDeleted = Boolean(current.deletedAt) || isCancelled(current.status);
-  return previousDeleted !== currentDeleted;
+    Boolean(previous.notifyRepresentative) !== Boolean(current.notifyRepresentative)
+  );
 }
 
 export function nextCoachingOutlookSyncState(
