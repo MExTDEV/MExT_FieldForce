@@ -75,6 +75,7 @@ const normalized = normalizeHistoricalActionPoints!(
         representativeId: "user-yoni",
         representative: { representativeId: "rep-yoni" },
       },
+      assignments: [],
     },
     {
       id: "legacy-closed",
@@ -90,6 +91,7 @@ const normalized = normalizeHistoricalActionPoints!(
         representativeId: "user-yoni",
         representative: { representativeId: "rep-yoni" },
       },
+      assignments: [],
     },
   ],
   [
