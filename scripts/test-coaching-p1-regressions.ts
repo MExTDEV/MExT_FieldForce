@@ -221,6 +221,17 @@ assert.match(workspaceSource, /const options = \[0, 1, 2, 3, 4, 5, "nvt"\] as co
 assert.match(workspaceSource, /coachingAppointmentIssues\(newAppointmentDraft\)/);
 assert.match(
   workspaceSource,
+  /optionalTargetDate"\)} type="date" value=\{action\.due\}/
+);
+assert.doesNotMatch(
+  workspaceSource,
+  /ReadOnlyField label=\{t\("coaching\.report\.target"\)\} value=\{action\.targetValue/
+);
+const nlTranslations = JSON.parse(readFileSync("locales/nl.json", "utf8"));
+assert.equal(nlTranslations["coaching.report.optionalTargetDate"], "Targetdatum (optioneel)");
+assert.equal(nlTranslations["coaching.report.optionalTarget"], "Doelwaarde (optioneel)");
+assert.match(
+  workspaceSource,
   /if \(!isCoachingOutlookSyncRelevant\(intervention\.status\)\) return null/
 );
 assert.match(
