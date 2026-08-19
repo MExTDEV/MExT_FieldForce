@@ -195,6 +195,8 @@ export function MyReportsPage({ id }: { id?: string }) {
   const { user, language } = useSession();
   const { state, pendingApprovals, confirmApproval, saveApprovalReflection } = useWorkflow();
   const [confirmed, setConfirmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string>();
   const t = (key: TranslationKey) => translate(language, key);
 
   if (user.role !== "REPRESENTATIVE") {
@@ -272,10 +274,20 @@ export function MyReportsPage({ id }: { id?: string }) {
     <ReportDetail
       intervention={intervention}
       approval={approval}
-      onConfirm={(status, comment) => {
-        confirmApproval(approval.id, status, comment);
-        setConfirmed(true);
+      onConfirm={async (status, comment) => {
+        setConfirmError(undefined);
+        setConfirming(true);
+        try {
+          await confirmApproval(approval.id, status, comment);
+          setConfirmed(true);
+        } catch (error) {
+          setConfirmError(error instanceof Error ? error.message : t("coaching.report.transitionError"));
+        } finally {
+          setConfirming(false);
+        }
       }}
+      confirming={confirming}
+      confirmError={confirmError}
     />
   );
 }
@@ -395,10 +407,14 @@ function ReportDetail({
   intervention,
   approval,
   onConfirm,
+  confirming,
+  confirmError,
 }: {
   intervention: ReturnType<typeof useWorkflow>["state"]["interventions"][number];
   approval: WorkflowApproval;
-  onConfirm: (status: ApprovalStatus, comment: string) => void;
+  onConfirm: (status: ApprovalStatus, comment: string) => Promise<void>;
+  confirming: boolean;
+  confirmError?: string;
 }) {
   const { language } = useSession();
   const t = (key: TranslationKey) => translate(language, key);
@@ -523,8 +539,9 @@ function ReportDetail({
             />
           </label>
         )}
-        <button type="button" disabled={!valid} onClick={() => onConfirm(choice, comment)} className="btn-primary mt-4">
-          <CheckCircle2 className="h-4 w-4" /> {t("representativeReport.confirmAndClose")}
+        {confirmError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{confirmError}</p>}
+        <button type="button" disabled={!valid || confirming} onClick={() => void onConfirm(choice, comment)} className="btn-primary mt-4">
+          <CheckCircle2 className="h-4 w-4" /> {confirming ? t("coaching.report.saving") : t("representativeReport.confirmAndClose")}
         </button>
       </section>
     </div>
