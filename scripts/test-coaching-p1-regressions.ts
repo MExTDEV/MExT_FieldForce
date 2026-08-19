@@ -15,7 +15,10 @@ import {
   formatCoachingScorePercentage,
 } from "@/lib/coaching/score";
 import { coachingAppointmentIssues } from "@/lib/coaching/appointment-validation";
-import { shouldSyncCoachingOutlook } from "@/lib/coaching/outlook-sync";
+import {
+  nextCoachingOutlookSyncState,
+  shouldSyncCoachingOutlook,
+} from "@/lib/coaching/outlook-sync";
 import { roleCanAccessManagement } from "@/lib/management-access";
 import type { AppModuleConfig, CoachingAppointment, WorkflowState } from "@/lib/types";
 
@@ -176,6 +179,24 @@ assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "in_uitvoer
 assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, plannedDate: "2026-08-27" }, storedPlanning), true);
 assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "geannuleerd" }, storedPlanning), true);
 
+assert.deepEqual(
+  nextCoachingOutlookSyncState(plannedCoaching, {
+    ...storedPlanning,
+    outlookSyncStatus: "NOT_SYNCED",
+    outlookEventId: "event-1",
+    lastSyncedAt: "2026-08-19T14:42:43.000Z",
+    syncError: null,
+  }),
+  { outlookSyncStatus: "SYNCED" },
+);
+assert.deepEqual(
+  nextCoachingOutlookSyncState(
+    { ...plannedCoaching, plannedDate: "2026-08-27" },
+    { ...storedPlanning, outlookSyncStatus: "SYNCED" },
+  ),
+  { outlookSyncStatus: "NOT_SYNCED" },
+);
+
 assert.equal(roleCanAccessManagement("SALES_LEADER"), false);
 assert.equal(roleCanAccessManagement("REPRESENTATIVE"), false);
 assert.equal(roleCanAccessManagement("SERVICE_OPERATOR"), false);
@@ -191,6 +212,20 @@ assert.match(persistenceSource, /requireValidCoachingAppointments\(selectedPatch
 const microsoftGraphSource = readFileSync("lib/server/microsoft-graph.ts", "utf8");
 assert.match(microsoftGraphSource, /routeMailThroughMailTest\(/);
 assert.match(microsoftGraphSource, /\[MAIL TEST\]/);
+
+const workflowStorageSource = readFileSync("lib/server/workflows.ts", "utf8");
+const coachingStorageBody = workflowStorageSource.match(
+  /async function upsertCoaching[\s\S]*?async function syncCoachingActions/
+)?.[0];
+assert.ok(coachingStorageBody, "upsertCoaching moet bestaan");
+assert.doesNotMatch(coachingStorageBody, /outlookSyncStatus: "NOT_SYNCED"/);
+assert.match(coachingStorageBody, /nextCoachingOutlookSyncState\(/);
+const workflowEngineSource = readFileSync("lib/workflow-engine.ts", "utf8");
+assert.match(
+  workflowEngineSource,
+  /outlookSyncStatus: previous\?\.outlookSyncStatus \?\? "NOT_SYNCED"/
+);
+assert.match(workflowEngineSource, /nextCoachingOutlookSyncState\(intervention, previous\)/);
 
 const wizardSource = readFileSync("components/coaching-wizard.tsx", "utf8");
 assert.match(wizardSource, /formatCoachingScorePercentage\(row\.score, "-"\)/);

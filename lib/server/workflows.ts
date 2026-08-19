@@ -38,6 +38,7 @@ import {
 import { richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
 import { loadContactMomentPhotosByInterventionIds } from "@/lib/server/contact-moment-photos";
 import { defaultCoachingDate } from "@/lib/coaching/business-days";
+import { nextCoachingOutlookSyncState } from "@/lib/coaching/outlook-sync";
 
 type JsonArray = string[];
 
@@ -468,14 +469,44 @@ type Transaction = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 async function upsertCoaching(tx: Transaction, item: CoachingIntervention) {
   const representative = await findRepresentativeUser(tx, item.representativeId);
+  const existing = await tx.intervention.findUnique({
+    where: { id: item.id },
+    select: {
+      title: true,
+      status: true,
+      plannedAt: true,
+      startTime: true,
+      endTime: true,
+      notifyRepresentative: true,
+      deletedAt: true,
+      ownerId: true,
+      outlookEventId: true,
+      outlookSyncStatus: true,
+      lastSyncedAt: true,
+      syncError: true,
+      representative: { select: { id: true, representativeId: true } },
+    },
+  });
+  const outlookSyncState = nextCoachingOutlookSyncState(
+    item,
+    existing
+      ? {
+          ...existing,
+          plannedAt: existing.plannedAt?.toISOString(),
+          deletedAt: existing.deletedAt?.toISOString(),
+          lastSyncedAt: existing.lastSyncedAt?.toISOString(),
+          representativeId: publicRepresentativeId(existing.representative),
+        }
+      : undefined
+  );
   const data = interventionData(item.id, "BEGELEIDING", item, representative.id);
   await tx.intervention.upsert({
     where: { id: item.id },
     create: data,
     update: {
       ...interventionUpdateData(data),
-      outlookSyncStatus: "NOT_SYNCED",
-      syncError: null,
+      outlookSyncStatus: outlookSyncState.outlookSyncStatus,
+      syncError: outlookSyncState.syncError ?? null,
     },
   });
   await ensureCriterionSnapshotsForIntervention(tx, item.id, representative.id);

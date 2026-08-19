@@ -1,5 +1,7 @@
 type OutlookCoachingSnapshot = Record<string, unknown>;
 
+export type CoachingOutlookSyncStatus = "NOT_SYNCED" | "SYNCED" | "ERROR";
+
 type OutlookCoachingCandidate = {
   title?: string;
   status?: string;
@@ -32,6 +34,36 @@ export function shouldSyncCoachingOutlook(
   const previousDeleted = Boolean(previous.deletedAt) || isCancelled(previous.status);
   const currentDeleted = Boolean(current.deletedAt) || isCancelled(current.status);
   return previousDeleted !== currentDeleted;
+}
+
+export function nextCoachingOutlookSyncState(
+  current: OutlookCoachingCandidate,
+  previous?: OutlookCoachingSnapshot
+): { outlookSyncStatus: CoachingOutlookSyncStatus; syncError?: string } {
+  if (shouldSyncCoachingOutlook(current, previous)) {
+    return { outlookSyncStatus: "NOT_SYNCED" };
+  }
+
+  const previousStatus = normalizeSyncStatus(previous?.outlookSyncStatus);
+  const canHealInterruptedStatus =
+    previousStatus === "NOT_SYNCED" &&
+    Boolean(previous?.outlookEventId) &&
+    Boolean(previous?.lastSyncedAt) &&
+    !previous?.syncError;
+  if (canHealInterruptedStatus) {
+    return { outlookSyncStatus: "SYNCED" };
+  }
+
+  return {
+    outlookSyncStatus: previousStatus ?? "NOT_SYNCED",
+    syncError: text(previous?.syncError) || undefined,
+  };
+}
+
+function normalizeSyncStatus(value: unknown): CoachingOutlookSyncStatus | undefined {
+  return value === "NOT_SYNCED" || value === "SYNCED" || value === "ERROR"
+    ? value
+    : undefined;
 }
 
 function text(value: unknown) {
