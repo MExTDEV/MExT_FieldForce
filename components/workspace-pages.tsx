@@ -182,6 +182,7 @@ import {
   type CoachingReportIssue,
   type CoachingReportStepId,
 } from "@/lib/coaching/report-form";
+import { coachingAppointmentIssues } from "@/lib/coaching/appointment-validation";
 import {
   calculateAverageScorePercentage,
   calculateCoachingDossierScore,
@@ -2979,7 +2980,7 @@ function emptyAppointment(appointmentCriteria: string[]) {
     arrivalTime: "",
     departureTime: "",
     activity: "",
-    scores: appointmentCriteria.map((criterion) => ({ criterion, score: "nvt" as const, comment: "" })),
+    scores: appointmentCriteria.map((criterion) => ({ criterion, score: null, comment: "" })),
     remarks: "",
   };
 }
@@ -3019,6 +3020,7 @@ function CoachingDossierDetail({
   const [message, setMessage] = useState<string>();
   const [openAppointmentId, setOpenAppointmentId] = useState<string>();
   const [newAppointmentDraft, setNewAppointmentDraft] = useState<CoachingAppointment>();
+  const [appointmentValidationAttempted, setAppointmentValidationAttempted] = useState(false);
   const [isExportingReport, setIsExportingReport] = useState(false);
   const [reportMessage, setReportMessage] = useState<{ type: "success" | "error"; text: string }>();
   const [transitioning, setTransitioning] = useState(false);
@@ -3447,17 +3449,25 @@ function CoachingDossierDetail({
   }
 
   function addAppointment() {
+    setAppointmentValidationAttempted(false);
     setNewAppointmentDraft((current) => current ?? emptyAppointment(appointmentCriteria));
   }
 
   function confirmNewAppointment() {
     if (!newAppointmentDraft) return;
+    setAppointmentValidationAttempted(true);
+    if (coachingAppointmentIssues(newAppointmentDraft).length > 0) {
+      setMessage(t("coaching.report.appointmentValidation"));
+      return;
+    }
     setLocal((current) => ({
       ...current,
       appointments: [...(current.appointments ?? []), newAppointmentDraft],
     }));
     setOpenAppointmentId(newAppointmentDraft.id);
     setNewAppointmentDraft(undefined);
+    setAppointmentValidationAttempted(false);
+    setMessage(undefined);
   }
 
   function updateNewAppointmentScore(index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) {
@@ -3676,6 +3686,7 @@ function CoachingDossierDetail({
               <AppointmentEditor
                 appointment={newAppointmentDraft}
                 readOnly={false}
+                validationAttempted={appointmentValidationAttempted}
                 historicalScores={historicalScoreLookup}
                 t={t}
                 onChange={(patch) => setNewAppointmentDraft((current) => current ? { ...current, ...patch } : current)}
@@ -4532,8 +4543,8 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("nl-BE", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
-function TextField({ label, value, onChange, type = "text", disabled = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean }) {
-  return <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span><input type={type} className="field" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></label>;
+function TextField({ label, value, onChange, type = "text", disabled = false, required = false, error }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean; required?: boolean; error?: string }) {
+  return <label><span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{label}{required ? " *" : ""}</span><input type={type} className={`field ${error ? "border-rose-400 bg-rose-50" : ""}`} aria-invalid={Boolean(error)} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />{error && <span className="mt-1 block text-xs font-bold text-rose-700">{error}</span>}</label>;
 }
 
 function coachingSubjectAsRepresentative(subject: NonNullable<CoachingWorkflowItem["subject"]>): Representative {
@@ -4773,6 +4784,7 @@ function ScoreSection({ title, scores, readOnly, idPrefix, comparisonCategory, h
 function AppointmentEditor({
   appointment,
   readOnly,
+  validationAttempted = false,
   historicalScores,
   t,
   onChange,
@@ -4780,21 +4792,23 @@ function AppointmentEditor({
 }: {
   appointment: CoachingAppointment;
   readOnly: boolean;
+  validationAttempted?: boolean;
   historicalScores?: ReadonlyMap<string, HistoricalScoreReference>;
   t: (key: TranslationKey) => string;
   onChange: (patch: Partial<CoachingAppointment>) => void;
   onScoreChange: (index: number, patch: { score?: 0 | 1 | 2 | 3 | 4 | 5 | "nvt"; comment?: string }) => void;
 }) {
-  const options = [1, 2, 3, 4, 5, "nvt"] as const;
+  const options = [0, 1, 2, 3, 4, 5, "nvt"] as const;
   const showComparison = Boolean(historicalScores?.size);
+  const validationIssues = validationAttempted ? new Set(coachingAppointmentIssues(appointment)) : new Set();
   return (
     <div className="mb-4 rounded-2xl border border-brand-100 bg-white p-4">
       <div className="grid gap-3 md:grid-cols-5">
-        <TextField label="Klantnaam" value={appointment.customer} disabled={readOnly} onChange={(customer) => onChange({ customer })} />
-        <TextField label="Klantnummer" value={appointment.customerNumber ?? ""} disabled={readOnly} onChange={(customerNumber) => onChange({ customerNumber })} />
-        <TextField label="Plaats" value={appointment.place ?? ""} disabled={readOnly} onChange={(place) => onChange({ place })} />
-        <TextField label="Startuur" type="time" value={appointment.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => onChange({ arrivalTime })} />
-        <TextField label="Einduur" type="time" value={appointment.departureTime} disabled={readOnly} onChange={(departureTime) => onChange({ departureTime })} />
+        <TextField label="Klantnaam" required error={validationIssues.has("customer_required") ? t("coaching.report.requiredField") : undefined} value={appointment.customer} disabled={readOnly} onChange={(customer) => onChange({ customer })} />
+        <TextField label="Klantnummer" required error={validationIssues.has("customer_number_required") ? t("coaching.report.requiredField") : undefined} value={appointment.customerNumber ?? ""} disabled={readOnly} onChange={(customerNumber) => onChange({ customerNumber })} />
+        <TextField label="Plaats" required error={validationIssues.has("place_required") ? t("coaching.report.requiredField") : undefined} value={appointment.place ?? ""} disabled={readOnly} onChange={(place) => onChange({ place })} />
+        <TextField label="Startuur" required error={validationIssues.has("arrival_time_required") ? t("coaching.report.requiredField") : undefined} type="time" value={appointment.arrivalTime} disabled={readOnly} onChange={(arrivalTime) => onChange({ arrivalTime })} />
+        <TextField label="Einduur" required error={validationIssues.has("departure_time_required") ? t("coaching.report.requiredField") : validationIssues.has("time_range_invalid") ? t("coaching.report.invalidTimeRange") : undefined} type="time" value={appointment.departureTime} disabled={readOnly} onChange={(departureTime) => onChange({ departureTime })} />
       </div>
       <div className="mt-4 grid gap-3">
         <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Beoordeling afspraak</p>
@@ -4802,8 +4816,8 @@ function AppointmentEditor({
           const { group, detail } = splitScoreCriterion(score.criterion);
           const previousScore = historicalScores?.get(historicalScoreKey(group, detail))?.score;
           return (
-          <div key={`${score.criterion}-${index}`} className={`grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:items-center ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_90px_260px_90px_minmax(220px,1fr)]" : "lg:grid-cols-[minmax(180px,1fr)_260px_minmax(220px,1fr)]"}`}>
-            <p className="text-sm font-semibold text-slate-900">{score.criterion}</p>
+          <div key={`${score.criterion}-${index}`} aria-invalid={validationAttempted && score.score === null} className={`grid gap-3 rounded-xl border p-3 lg:items-center ${validationAttempted && score.score === null ? "border-rose-300 bg-rose-50/70" : "border-slate-200 bg-slate-50"} ${showComparison ? "lg:grid-cols-[minmax(180px,1fr)_90px_260px_90px_minmax(220px,1fr)]" : "lg:grid-cols-[minmax(180px,1fr)_260px_minmax(220px,1fr)]"}`}>
+            <div><p className="text-sm font-semibold text-slate-900">{score.criterion}</p>{validationAttempted && score.score === null && <p className="mt-1 text-xs font-bold text-rose-700">{t("coaching.report.scoreRequired")}</p>}</div>
             {showComparison && <HistoricalScoreCell score={previousScore} t={t} />}
             <div className="flex flex-wrap gap-1.5">
               {options.map((option) => (

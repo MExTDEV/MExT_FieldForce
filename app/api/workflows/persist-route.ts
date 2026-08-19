@@ -2,7 +2,7 @@ import {
   saveWorkflowPatchToDatabase,
   type WorkflowPersistencePatch,
 } from "@/lib/server/workflows";
-import { forbidden, handleApi } from "@/lib/server/api";
+import { badRequest, forbidden, handleApi } from "@/lib/server/api";
 import { writeAuditLogs } from "@/lib/server/audit";
 import { buildVisibleCoachingWhere, canManageStoredCoaching } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
@@ -42,6 +42,8 @@ import { historicalStatuses } from "@/lib/server/coaching-historical-comparison"
 import { coachingReportIssues } from "@/lib/coaching/report-form";
 import { moduleForWorkflowRoute } from "@/lib/coaching/workflow-module-access";
 import { requireAppModuleEnabled } from "@/lib/server/modules";
+import { coachingAppointmentIssues } from "@/lib/coaching/appointment-validation";
+import { shouldSyncCoachingOutlook } from "@/lib/coaching/outlook-sync";
 
 export async function persistWorkflowPatch(
   request: Request,
@@ -74,6 +76,7 @@ export async function persistWorkflowPatch(
     if (selectedPatch.interventions?.length) {
       await requireExistingCoachingsMutable(actor, selectedPatch.interventions);
       await requireValidPreparationReferences(actor, selectedPatch.interventions);
+      requireValidCoachingAppointments(selectedPatch.interventions);
     }
     if (selectedPatch.contactMoments?.length) {
       await requireExistingContactMomentsMutable(actor, selectedPatch.contactMoments);
@@ -97,24 +100,28 @@ export async function persistWorkflowPatch(
       await writeCoachingChangeLogs(actor.id, patch.interventions ?? [], coachingBefore);
     }
     await writeAuditLogs(auditEntriesFromWorkflowPatch(routeName, patch, actor.id, coachingBefore));
+    const coachingsForOutlookSync = (patch.interventions ?? []).filter((item) =>
+      shouldSyncCoachingOutlook(item, coachingBefore.get(item.id))
+    );
+    const contactMomentsForOutlookSync = patch.contactMoments ?? [];
     let outlookSync = undefined;
-    if (patch.interventions?.length || patch.contactMoments?.length) {
+    if (coachingsForOutlookSync.length || contactMomentsForOutlookSync.length) {
       try {
         const accessToken = await requireMicrosoftAccessToken(request);
-        await transferCoachingsBetweenOwners(accessToken, actor.id, (patch.interventions ?? []).flatMap((item) => {
+        await transferCoachingsBetweenOwners(accessToken, actor.id, coachingsForOutlookSync.flatMap((item) => {
           const old = coachingBefore.get(item.id);
           const oldOwnerId = typeof old?.ownerId === "string" ? old.ownerId : item.ownerId;
           return oldOwnerId !== item.ownerId ? [{ interventionId: item.id, oldOwnerId, newOwnerId: item.ownerId, outlookEventId: typeof old?.outlookEventId === "string" ? old.outlookEventId : undefined }] : [];
         }));
         outlookSync = [
-          ...await syncCoachingsToOutlook(accessToken, actor.id, patch.interventions ?? []),
-          ...await syncContactMomentsToOutlook(accessToken, actor.id, patch.contactMoments ?? []),
+          ...await syncCoachingsToOutlook(accessToken, actor.id, coachingsForOutlookSync),
+          ...await syncContactMomentsToOutlook(accessToken, actor.id, contactMomentsForOutlookSync),
         ];
       } catch (error) {
         console.error("[outlook-sync] Fieldforce-opslag is behouden.", error);
         outlookSync = [
-          ...await recordOutlookSyncFailure(actor.id, patch.interventions ?? [], error),
-          ...await recordOutlookSyncFailure(actor.id, patch.contactMoments ?? [], error, "CONTACTMOMENT"),
+          ...await recordOutlookSyncFailure(actor.id, coachingsForOutlookSync, error),
+          ...await recordOutlookSyncFailure(actor.id, contactMomentsForOutlookSync, error, "CONTACTMOMENT"),
         ];
       }
     }
@@ -651,6 +658,22 @@ async function requireValidPreparationReferences(
   }
 }
 
+function requireValidCoachingAppointments(
+  interventions: NonNullable<WorkflowPersistencePatch["interventions"]>
+) {
+  for (const intervention of interventions) {
+    for (const appointment of intervention.appointments ?? []) {
+      if (appointment.isDeleted) continue;
+      const issues = coachingAppointmentIssues(appointment);
+      if (issues.length > 0) {
+        badRequest(
+          `Afspraak ${appointment.customer.trim() || appointment.id} is onvolledig: ${issues.join(", ")}.`
+        );
+      }
+    }
+  }
+}
+
 async function writeCoachingChangeLogs(
   actorId: string,
   interventions: NonNullable<WorkflowPersistencePatch["interventions"]>,
@@ -682,6 +705,7 @@ async function loadCoachingSnapshots(ids: string[]) {
     where: { id: { in: [...new Set(ids)] }, type: "BEGELEIDING" },
     select: {
       id: true,
+      title: true,
       status: true,
       plannedAt: true,
       startTime: true,
@@ -709,6 +733,7 @@ async function loadCoachingSnapshots(ids: string[]) {
     },
   });
   return new Map(rows.map((item) => [item.id, {
+    title: item.title,
     status: item.status,
     plannedAt: item.plannedAt?.toISOString(),
     startTime: item.startTime,

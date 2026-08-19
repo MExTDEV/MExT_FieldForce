@@ -14,7 +14,10 @@ import {
   formatCoachingScoreDifference,
   formatCoachingScorePercentage,
 } from "@/lib/coaching/score";
-import type { AppModuleConfig, WorkflowState } from "@/lib/types";
+import { coachingAppointmentIssues } from "@/lib/coaching/appointment-validation";
+import { shouldSyncCoachingOutlook } from "@/lib/coaching/outlook-sync";
+import { roleCanAccessManagement } from "@/lib/management-access";
+import type { AppModuleConfig, CoachingAppointment, WorkflowState } from "@/lib/types";
 
 assert.equal(moduleForWorkflowRoute("coaching"), "BEGELEIDINGEN");
 assert.equal(moduleForWorkflowRoute("contact-moments"), "CONTACTMOMENTEN");
@@ -114,8 +117,83 @@ const addAppointmentBody = workspaceSource.match(/function addAppointment\(\) \{
 assert.match(addAppointmentBody, /setNewAppointmentDraft/);
 assert.doesNotMatch(addAppointmentBody, /setLocal/);
 
+const emptyAppointment = {
+  customer: "",
+  customerNumber: "",
+  place: "",
+  arrivalTime: "",
+  departureTime: "",
+  scores: [{ criterion: "Testcriterium", score: null, comment: "" }],
+} satisfies Pick<CoachingAppointment, "customer" | "customerNumber" | "place" | "arrivalTime" | "departureTime" | "scores">;
+assert.deepEqual(coachingAppointmentIssues(emptyAppointment), [
+  "customer_required",
+  "customer_number_required",
+  "place_required",
+  "arrival_time_required",
+  "departure_time_required",
+  "score_required",
+]);
+const validAppointment = {
+  customer: "TEST KLANT",
+  customerNumber: "UAT-1",
+  place: "Roeselare",
+  arrivalTime: "09:00",
+  departureTime: "10:00",
+  scores: [
+    { criterion: "Nulscore", score: 0, comment: "" },
+    { criterion: "Niet van toepassing", score: "nvt", comment: "" },
+  ],
+} satisfies Pick<CoachingAppointment, "customer" | "customerNumber" | "place" | "arrivalTime" | "departureTime" | "scores">;
+assert.deepEqual(coachingAppointmentIssues(validAppointment), []);
+assert.deepEqual(
+  coachingAppointmentIssues({ ...validAppointment, departureTime: "08:59" }),
+  ["time_range_invalid"],
+);
+
+const plannedCoaching = {
+  title: "Begeleiding Test",
+  status: "gepland",
+  representativeId: "rep-1",
+  ownerId: "leader-1",
+  plannedDate: "2026-08-26",
+  startTime: "09:00",
+  endTime: "11:00",
+  notifyRepresentative: true,
+};
+const storedPlanning = {
+  title: plannedCoaching.title,
+  status: "GEPLAND",
+  representativeId: plannedCoaching.representativeId,
+  ownerId: plannedCoaching.ownerId,
+  plannedAt: "2026-08-26T09:00:00.000Z",
+  startTime: plannedCoaching.startTime,
+  endTime: plannedCoaching.endTime,
+  notifyRepresentative: true,
+};
+assert.equal(shouldSyncCoachingOutlook(plannedCoaching), true);
+assert.equal(shouldSyncCoachingOutlook(plannedCoaching, storedPlanning), false);
+assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "in_uitvoering" }, storedPlanning), false);
+assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, plannedDate: "2026-08-27" }, storedPlanning), true);
+assert.equal(shouldSyncCoachingOutlook({ ...plannedCoaching, status: "geannuleerd" }, storedPlanning), true);
+
+assert.equal(roleCanAccessManagement("SALES_LEADER"), false);
+assert.equal(roleCanAccessManagement("REPRESENTATIVE"), false);
+assert.equal(roleCanAccessManagement("SERVICE_OPERATOR"), false);
+assert.equal(roleCanAccessManagement("ADMIN"), true);
+assert.equal(roleCanAccessManagement("SUPER_ADMIN"), true);
+
+assert.match(workspaceSource, /scores: appointmentCriteria\.map\(\(criterion\) => \(\{ criterion, score: null/);
+assert.match(workspaceSource, /const options = \[0, 1, 2, 3, 4, 5, "nvt"\] as const/);
+assert.match(workspaceSource, /coachingAppointmentIssues\(newAppointmentDraft\)/);
+const persistenceSource = readFileSync("app/api/workflows/persist-route.ts", "utf8");
+assert.match(persistenceSource, /shouldSyncCoachingOutlook\(item, coachingBefore\.get\(item\.id\)\)/);
+assert.match(persistenceSource, /requireValidCoachingAppointments\(selectedPatch\.interventions\)/);
+const microsoftGraphSource = readFileSync("lib/server/microsoft-graph.ts", "utf8");
+assert.match(microsoftGraphSource, /routeMailThroughMailTest\(/);
+assert.match(microsoftGraphSource, /\[MAIL TEST\]/);
+
 const wizardSource = readFileSync("components/coaching-wizard.tsx", "utf8");
 assert.match(wizardSource, /formatCoachingScorePercentage\(row\.score, "-"\)/);
 assert.doesNotMatch(wizardSource, /row\.score <= 5/);
 
-console.log("P1-regressies voor modules, filters, scores, PDF-inzichten en afspraakbevestiging getest.");
+console.log("P1-regressies voor modules, filters, scores, beheerrechten, Outlook-veiligheid en afspraakvalidatie getest.");
