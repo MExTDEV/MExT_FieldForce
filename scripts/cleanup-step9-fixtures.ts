@@ -5,6 +5,8 @@ import { PrismaClient } from "@prisma/client";
 loadEnvFile();
 
 const prisma = new PrismaClient();
+const allStep9 = process.argv.includes("--all-step9");
+const confirmed = process.argv.includes("--confirm");
 
 const runIds = [
   "step9-20260820073906",
@@ -13,39 +15,53 @@ const runIds = [
   "step9-20260820082725",
 ];
 
-if (!process.argv.includes("--confirm")) {
+if (!confirmed) {
   console.error("Geen data verwijderd. Voer opnieuw uit met --confirm.");
+  process.exitCode = 2;
+} else if (allStep9 && process.env.NODE_ENV === "production") {
+  console.error("Veiligheidsstop: all-step9 cleanup is geblokkeerd in production.");
   process.exitCode = 2;
 } else {
   async function main() {
-    const interventions = await prisma.intervention.findMany({
-      where: {
-        OR: runIds.map((runId) => ({ id: { startsWith: `${runId}-` } })),
-      },
-      select: {
-        id: true,
-        actionPoints: { select: { id: true } },
-      },
-    });
+    const interventionWhere = allStep9
+      ? { id: { startsWith: "step9-" } }
+      : { OR: runIds.map((runId) => ({ id: { startsWith: `${runId}-` } })) };
+    const criterionWhere = allStep9
+      ? { id: { startsWith: "step9-" } }
+      : { OR: runIds.map((runId) => ({ id: { startsWith: `${runId}-` } })) };
+    const helpWhere = allStep9
+      ? { subject: { startsWith: "STEP9" } }
+      : { OR: runIds.map((runId) => ({ subject: { contains: runId } })) };
+    const actionPointWhere = allStep9
+      ? { title: { startsWith: "STEP9 actiepunt" } }
+      : { OR: runIds.map((runId) => ({ title: { contains: runId } })) };
 
-    const criteria = await prisma.personalCoachingCriterion.findMany({
-      where: {
-        OR: runIds.map((runId) => ({ id: { startsWith: `${runId}-` } })),
-      },
-      select: { id: true },
-    });
-
-    const helpRequests = await prisma.helpRequest.findMany({
-      where: {
-        OR: runIds.map((runId) => ({ subject: { contains: runId } })),
-      },
-      select: { id: true },
-    });
+    const [interventions, criteria, helpRequests, detachedActionPoints] = await Promise.all([
+      prisma.intervention.findMany({
+        where: interventionWhere,
+        select: { id: true, actionPoints: { select: { id: true } } },
+      }),
+      prisma.personalCoachingCriterion.findMany({
+        where: criterionWhere,
+        select: { id: true },
+      }),
+      prisma.helpRequest.findMany({
+        where: helpWhere,
+        select: { id: true },
+      }),
+      prisma.actionPoint.findMany({
+        where: actionPointWhere,
+        select: { id: true },
+      }),
+    ]);
 
     const interventionIds = interventions.map((item) => item.id);
-    const actionPointIds = interventions.flatMap((item) =>
-      item.actionPoints.map((actionPoint) => actionPoint.id)
-    );
+    const actionPointIds = [
+      ...new Set([
+        ...interventions.flatMap((item) => item.actionPoints.map((actionPoint) => actionPoint.id)),
+        ...detachedActionPoints.map((item) => item.id),
+      ]),
+    ];
     const criterionIds = criteria.map((item) => item.id);
     const helpRequestIds = helpRequests.map((item) => item.id);
     const auditEntityIds = [
@@ -56,7 +72,7 @@ if (!process.argv.includes("--confirm")) {
     ];
 
     assert.ok(
-      interventionIds.length > 0 || criterionIds.length > 0 || helpRequestIds.length > 0,
+      auditEntityIds.length > 0,
       "Geen STEP9-testfixtures gevonden; er is niets verwijderd."
     );
 
@@ -86,7 +102,12 @@ if (!process.argv.includes("--confirm")) {
       };
     });
 
-    console.log(JSON.stringify({ result: "STEP9_FIXTURES_CLEANED", runIds, deleted }, null, 2));
+    console.log(JSON.stringify({
+      result: "STEP9_FIXTURES_CLEANED",
+      scope: allStep9 ? "all-step9" : "known-runs",
+      runIds: allStep9 ? "all step9-* fixtures" : runIds,
+      deleted,
+    }, null, 2));
   }
 
   void main()
