@@ -47,19 +47,22 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function main() {
-  const [{ representatives }, { users }] = await Promise.all([
-    json<{ representatives: Representative[] }>("/api/representatives"),
-    json<{ users: ManagedUser[] }>("/api/users"),
-  ]);
+  // The API smoke test uses the same explicit actorId mechanism as demo-mode
+  // requests. This keeps the test deterministic and avoids borrowing a browser
+  // session cookie. Start the dev server with NEXT_PUBLIC_AUTH_MODE=demo.
+  const { users } = await json<{ users: ManagedUser[] }>("/api/users");
+  const actor =
+    users.find((user) => user.role === "SUPER_ADMIN" && user.active) ??
+    users.find((user) => user.role === "ADMIN" && user.active);
+  assert.ok(actor, "No admin actor available.");
+  const { representatives } = await json<{ representatives: Representative[] }>(
+    `/api/representatives?actorId=${encodeURIComponent(actor.id)}`
+  );
   const representative = representatives[0];
   const secondRepresentative =
     representatives.find((item) => item.country === representative.country && item.id !== representative.id) ??
     representative;
-  const actor =
-    users.find((user) => user.role === "SUPER_ADMIN" && user.active) ??
-    users.find((user) => user.role === "ADMIN" && user.active);
   assert.ok(representative, "No representative available.");
-  assert.ok(actor, "No admin actor available.");
 
   const coaching = saveCoaching(emptyState, {
     id: `${runId}-coaching`,
@@ -273,7 +276,7 @@ async function main() {
   });
 
   const [{ state }, { criteria }] = await Promise.all([
-    json<{ state: WorkflowState }>("/api/workflows"),
+    json<{ state: WorkflowState }>(`/api/workflows?actorId=${encodeURIComponent(actor.id)}`),
     json<{ criteria: PersonalCoachingCriterion[] }>("/api/personal-criteria"),
   ]);
   assert.equal(state.interventions.find((item) => item.id === coaching.intervention.id)?.status, "gepland");
