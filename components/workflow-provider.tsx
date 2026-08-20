@@ -28,7 +28,6 @@ import type {
   WorkflowState,
 } from "@/lib/types";
 import {
-  confirmWorkflowApproval,
   saveCoaching,
   saveContactMoment,
   saveRetraining,
@@ -83,7 +82,7 @@ type WorkflowContextValue = {
     reflectionId: string,
     answers: Pick<WorkflowReflection, "learnedText" | "workOnText" | "concreteGoalText">
   ) => void;
-  confirmApproval: (approvalId: string, status: ApprovalStatus, comment: string) => void;
+  confirmApproval: (approvalId: string, status: ApprovalStatus, comment: string) => Promise<void>;
   visibleInterventions: (user: MockUser) => CoachingIntervention[];
   openReflections: (user: MockUser) => WorkflowReflection[];
   pendingApprovals: (user: MockUser) => WorkflowState["approvals"];
@@ -322,19 +321,45 @@ export function WorkflowProvider({ children }: { children: React.ReactNode }) {
     return payload.approval;
   }, [user.id]);
 
-  const confirmApproval = useCallback((approvalId: string, status: ApprovalStatus, comment: string) => {
-    updateState(
-      (current) => confirmWorkflowApproval(current, approvalId, status, comment),
-      "/api/workflows/approvals",
-      (next) => {
-        const approval = next.approvals.find((item) => item.id === approvalId);
-        return {
-          approvals: approval ? [approval] : [],
-          interventions: approval ? next.interventions.filter((item) => item.id === approval.interventionId) : [],
-        };
+  const confirmApproval = useCallback(async (
+    approvalId: string,
+    status: ApprovalStatus,
+    comment: string
+  ) => {
+    const approval = state.approvals.find((item) => item.id === approvalId);
+    if (!approval) throw new Error("Approval niet gevonden.");
+    const response = await fetch(
+      `/api/workflows/coaching/${encodeURIComponent(approval.interventionId)}/transition?actorId=${encodeURIComponent(user.id)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: status === "gelezen_akkoord" ? "approve" : "reject",
+          comment,
+        }),
       }
     );
-  }, [updateState]);
+    const payload = await response.json() as {
+      intervention?: CoachingIntervention;
+      approval?: WorkflowApproval;
+      error?: string;
+    };
+    if (!response.ok || !payload.intervention || !payload.approval) {
+      throw new Error(payload.error ?? "Het akkoord kon niet worden opgeslagen.");
+    }
+    setState((current) => dedupeWorkflowState({
+      ...current,
+      interventions: [
+        ...current.interventions.filter((item) => item.id !== payload.intervention!.id),
+        payload.intervention!,
+      ],
+      approvals: [
+        ...current.approvals.filter((item) => item.id !== payload.approval!.id),
+        payload.approval!,
+      ],
+    }));
+    window.dispatchEvent(new Event(notificationRefreshEventName));
+  }, [state.approvals, user.id]);
 
   const visibleInterventions = useCallback(
     (user: MockUser) => getVisibleWorkflowState(user, state, representatives).interventions,

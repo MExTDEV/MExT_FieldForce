@@ -3,6 +3,11 @@ import { unauthorized } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
 import { getValidMicrosoftAccessToken } from "@/lib/server/microsoft-token-store";
 import type { CoachingIntervention, ContactMoment } from "@/lib/types";
+import {
+  getMailTestRecipient,
+  isMailTestActive,
+  routeMailThroughMailTest,
+} from "@/lib/server/mail-test";
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const GRAPH_SCOPES = "User.Read Calendars.ReadWrite";
@@ -150,6 +155,10 @@ async function syncPlanningItemsToOutlook(
   items: PlanningOutlookItem[]
 ): Promise<OutlookSyncResult[]> {
   const results: OutlookSyncResult[] = [];
+  const [mailTestActive, mailTestRecipient] = await Promise.all([
+    isMailTestActive(),
+    getMailTestRecipient(),
+  ]);
   for (const item of items) {
     const stored = await prisma.intervention.findUnique({
       where: { id: item.id },
@@ -197,7 +206,40 @@ async function syncPlanningItemsToOutlook(
         continue;
       }
 
-      const payload = buildPlanningOutlookEventPayload(item, stored.representative);
+      const routedAttendee = item.notifyRepresentative
+        ? routeMailThroughMailTest({
+            mailTestActive,
+            mailTestRecipient,
+            envelope: { to: [stored.representative.email] },
+            context: {
+              sourceModule: item.kind === "BEGELEIDING" ? "BEGELEIDINGEN" : "CONTACTMOMENTEN",
+              entityType: "Intervention",
+              entityId: item.id,
+              eventKey: `OUTLOOK_CALENDAR:${item.kind}:${item.id}:${item.plannedDate ?? ""}:${item.startTime ?? ""}:${item.endTime ?? ""}`,
+              reason: "Outlook-agenda-uitnodiging",
+            },
+          })
+        : undefined;
+      const routedAttendeeAddress = routedAttendee?.envelope.to[0];
+      if (routedAttendee?.routingError || (item.notifyRepresentative && !routedAttendeeAddress)) {
+        throw new Error(routedAttendee?.routingError ?? "Outlook-uitnodiging geblokkeerd: geen geldige ontvanger.");
+      }
+      const mailTestOriginalRecipient = routedAttendee?.mailTestActive
+        ? stored.representative.email
+        : undefined;
+      const calendarParticipant = routedAttendee?.mailTestActive && routedAttendeeAddress
+        ? {
+            ...stored.representative,
+            email: routedAttendeeAddress,
+            firstName: "MAIL",
+            lastName: "TEST",
+          }
+        : stored.representative;
+      const payload = buildPlanningOutlookEventPayload(
+        item,
+        calendarParticipant,
+        mailTestOriginalRecipient
+      );
       let event: GraphEvent;
       if (stored.outlookEventId) {
         try {
@@ -300,17 +342,21 @@ const syncSelection = {
 
 export function buildPlanningOutlookEventPayload(
   item: PlanningOutlookItem,
-  participant: { email: string; firstName: string; lastName: string }
+  participant: { email: string; firstName: string; lastName: string },
+  mailTestOriginalRecipient?: string
 ) {
   const timeZone = process.env.OUTLOOK_TIME_ZONE || "Romance Standard Time";
   const bodySentence = item.kind === "CONTACTMOMENT"
     ? "Beheer dit contactmoment uitsluitend in Fieldforce."
     : "Beheer deze begeleiding uitsluitend in Fieldforce.";
+  const mailTestNotice = mailTestOriginalRecipient
+    ? `<p><strong>MAIL TEST:</strong> oorspronkelijke agenda-ontvanger ${escapeHtml(mailTestOriginalRecipient)} werd vervangen door het testadres.</p>`
+    : "";
   return {
-    subject: `Fieldforce: ${item.title}`,
+    subject: `${mailTestOriginalRecipient ? "[MAIL TEST] " : ""}Fieldforce: ${item.title}`,
     body: {
       contentType: "HTML",
-      content: `<p>${escapeHtml(item.title)}</p><p>${bodySentence}</p>`,
+      content: `${mailTestNotice}<p>${escapeHtml(item.title)}</p><p>${bodySentence}</p>`,
     },
     start: { dateTime: `${item.plannedDate}T${item.startTime}:00`, timeZone },
     end: { dateTime: `${item.plannedDate}T${item.endTime}:00`, timeZone },

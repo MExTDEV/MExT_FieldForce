@@ -633,6 +633,7 @@ model User {
   actionTargetOverrides               ActionTargetOverride[]
   criterionScopeLinks                 CriterionScopeLink[]                     @relation("CriterionScopeLinkUser")
   coachingActions                     CoachingAction[]
+  closedCoachingActions               CoachingAction[]                          @relation("ClosedCoachingActions")
   coachingChangeLogs                  CoachingChangeLog[]
   representativeLevelHistory          RepresentativeLevelHistory[]
   starterEvaluations                  StarterEvaluation[]                      @relation("StarterEvaluationRepresentative")
@@ -1927,6 +1928,11 @@ model CoachingAction {
   priority              Priority
   isNew                 Boolean                    @default(false)
   reviewStatus          CoachingActionReviewStatus @default(PROPOSED)
+  status                ActionPointStatus           @default(OPEN)
+  closedAt              DateTime?
+  closedByUserId        String?
+  closedReason          String?                     @db.VarChar(191)
+  closedReasonExplanation String?                   @db.Text
   originalTitle         String?                    @db.Text
   originalDescription   String?                    @db.Text
   originalTipsAndTricks String?                    @db.LongText
@@ -1938,12 +1944,15 @@ model CoachingAction {
   intervention          Intervention               @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   actionDefinition      ActionDefinition?          @relation(fields: [actionDefinitionId], references: [id], onDelete: SetNull)
   user                  User                       @relation(fields: [userId], references: [id])
+  closedBy              User?                      @relation("ClosedCoachingActions", fields: [closedByUserId], references: [id], onDelete: SetNull)
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
 
   @@unique([interventionId, actionDefinitionId])
   @@index([userId])
   @@index([reviewStatus])
+  @@index([status, closedAt])
+  @@index([closedByUserId])
   @@index([reviewedById])
 }
 

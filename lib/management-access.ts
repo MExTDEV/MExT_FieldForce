@@ -14,6 +14,18 @@ export type ManagementSection =
   | "profiel"
   | "log";
 
+const managementRoles = new Set<MockUser["role"]>([
+  "ADMIN",
+  "SUPER_ADMIN",
+  "COUNTRY_MANAGER",
+  "SALES_MANAGER",
+  "GROUP_MANAGER",
+]);
+
+export function roleCanAccessManagement(role: MockUser["role"]) {
+  return managementRoles.has(role);
+}
+
 export type ManagementSectionDefinition = {
   section: ManagementSection;
   href: string;
@@ -103,6 +115,7 @@ export function canAccessManagementSection(
   user: MockUser,
   section: string
 ) {
+  if (!roleCanAccessManagement(user.role)) return false;
   const definition = getManagementSection(section);
   if (
     !definition ||

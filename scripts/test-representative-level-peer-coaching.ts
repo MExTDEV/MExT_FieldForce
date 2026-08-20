@@ -5,7 +5,10 @@ import {
   assertPeerCoachCanStart,
   canExecutePeerCoaching,
 } from "@/lib/coaching/peer-execution";
-import { routeMailThroughMailTest } from "@/lib/server/mail-test";
+import {
+  defaultMailTestRecipient,
+  routeMailThroughMailTest,
+} from "@/lib/server/mail-test";
 import {
   defaultRepresentativeLevelForNewUser,
   defaultRepresentativeLevelForRoleReturn,
@@ -91,6 +94,7 @@ assert.equal(deadline.toISOString().slice(0, 10), "2026-07-15");
 
 const routed = routeMailThroughMailTest({
   mailTestActive: true,
+  mailTestRecipient: defaultMailTestRecipient,
   envelope: { to: ["yoni@mext.be"], cc: ["leader@mext.be"], bcc: ["audit@mext.be"] },
   context: {
     sourceModule: "Coaching",

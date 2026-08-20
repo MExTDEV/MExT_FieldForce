@@ -34,6 +34,7 @@ import {
 } from "@/lib/coaching/preparation-reference";
 import { canEditFutureCoachingPlanning } from "@/lib/coaching/access";
 import { defaultCoachingDate } from "@/lib/coaching/business-days";
+import { formatCoachingScorePercentage } from "@/lib/coaching/score";
 import { canCreateCoachingIntervention } from "@/lib/permissions";
 import { translate } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n";
@@ -93,7 +94,7 @@ export function CoachingWizard() {
   const { user, managedUsers, language } = useSession();
   const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
   const { hydrated, state, saveCoachingStatus, scheduleHelpRequestCoaching } = useWorkflow();
-  const { isModuleEnabled } = useModules();
+  const { isModuleEnabled, loading: modulesLoading } = useModules();
   const { representatives } = useRepresentatives();
   const [participants, setParticipants] = useState<CoachingParticipant[]>([]);
   const existing = editId ? state.interventions.find((item) => item.id === editId && item.status === "gepland") : undefined;
@@ -215,6 +216,10 @@ export function CoachingWizard() {
     }, 600);
     return () => window.clearTimeout(timer);
   }, [draft]);
+
+  if (modulesLoading) {
+    return <EmptyState title={t("coaching.wizard.loading")} description={t("coaching.wizard.loadingDescription")} />;
+  }
 
   if (!isModuleEnabled("BEGELEIDINGEN")) {
     return <EmptyState title={t("coaching.wizard.moduleInactive")} description={t("coaching.wizard.moduleInactiveDescription")} />;
@@ -1362,8 +1367,7 @@ function preparationPdfSectionTitle(
 
 function formatPreparationScore(row: PreparationScoreRow, language: Language) {
   if (row.notApplicable) return translate(language, "coaching.preparation.notApplicable");
-  if (row.score === undefined) return "-";
-  return row.score <= 5 ? `${row.score} / 5` : `${row.score}%`;
+  return formatCoachingScorePercentage(row.score, "-");
 }
 
 function preparationRowCategory(row: PreparationScoreRow, language: Language) {
@@ -1513,7 +1517,7 @@ function ScoreStep({
                 {item.description && <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>}
               </div>
               <p className="text-xs text-slate-400">
-                {t("coaching.wizard.previousScore")}: <span className="font-bold text-slate-600">{item.previousScore}%</span>
+                {t("coaching.wizard.previousScore")}: <span className="font-bold text-slate-600">{formatCoachingScorePercentage(item.previousScore)}</span>
               </p>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">

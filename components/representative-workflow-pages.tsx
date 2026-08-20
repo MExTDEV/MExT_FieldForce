@@ -20,6 +20,7 @@ import { translate, type TranslationKey } from "@/lib/i18n";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { isBlankRichText } from "@/lib/rich-text";
 import type { ApprovalStatus, WorkflowApproval } from "@/lib/types";
+import { formatCoachingScorePercentage } from "@/lib/coaching/score";
 
 export function MyReflectionsPage({ id }: { id?: string }) {
   const { user, language } = useSession();
@@ -194,6 +195,8 @@ export function MyReportsPage({ id }: { id?: string }) {
   const { user, language } = useSession();
   const { state, pendingApprovals, confirmApproval, saveApprovalReflection } = useWorkflow();
   const [confirmed, setConfirmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string>();
   const t = (key: TranslationKey) => translate(language, key);
 
   if (user.role !== "REPRESENTATIVE") {
@@ -271,10 +274,20 @@ export function MyReportsPage({ id }: { id?: string }) {
     <ReportDetail
       intervention={intervention}
       approval={approval}
-      onConfirm={(status, comment) => {
-        confirmApproval(approval.id, status, comment);
-        setConfirmed(true);
+      onConfirm={async (status, comment) => {
+        setConfirmError(undefined);
+        setConfirming(true);
+        try {
+          await confirmApproval(approval.id, status, comment);
+          setConfirmed(true);
+        } catch (error) {
+          setConfirmError(error instanceof Error ? error.message : t("coaching.report.transitionError"));
+        } finally {
+          setConfirming(false);
+        }
       }}
+      confirming={confirming}
+      confirmError={confirmError}
     />
   );
 }
@@ -394,10 +407,14 @@ function ReportDetail({
   intervention,
   approval,
   onConfirm,
+  confirming,
+  confirmError,
 }: {
   intervention: ReturnType<typeof useWorkflow>["state"]["interventions"][number];
   approval: WorkflowApproval;
-  onConfirm: (status: ApprovalStatus, comment: string) => void;
+  onConfirm: (status: ApprovalStatus, comment: string) => Promise<void>;
+  confirming: boolean;
+  confirmError?: string;
 }) {
   const { language } = useSession();
   const t = (key: TranslationKey) => translate(language, key);
@@ -429,16 +446,16 @@ function ReportDetail({
             <CompactScoreGroup title={t("representativeReport.generalScores")} scores={intervention.dossier!.generalScores.map((score) => ({
               key: score.criterion,
               label: score.criterion,
-              value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
-              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+              value: score.score === "nvt" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.score),
+              previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
             }))} />
           )}
           {(intervention.dossier?.personalityScores.length ?? 0) > 0 && (
             <CompactScoreGroup title={t("representativeReport.personalityScores")} scores={intervention.dossier!.personalityScores.map((score) => ({
               key: score.criterion,
               label: score.criterion,
-              value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
-              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+              value: score.score === "nvt" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.score),
+              previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
             }))} />
           )}
           {intervention.scores.length > 0 && (
@@ -446,8 +463,8 @@ function ReportDetail({
               key: `${score.focus}:${score.criterion}:${score.criterionId ?? "vast"}`,
               label: score.criterion,
               context: score.focus,
-              value: score.value === "NVT" ? t("representativeReport.notApplicable") : `${score.value}%`,
-              previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore}%`),
+              value: score.value === "NVT" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.value),
+              previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
             }))} />
           )}
           {(intervention.appointments ?? []).filter((appointment) => !appointment.isDeleted).map((appointment, index) => (
@@ -457,8 +474,8 @@ function ReportDetail({
               scores={appointment.scores.map((score) => ({
                 key: score.criterion,
                 label: score.criterion,
-                value: score.score === "nvt" ? t("representativeReport.notApplicable") : `${score.score} / 5`,
-                previous: score.previousScore === undefined ? undefined : previousScore(`${score.previousScore} / 5`),
+                value: score.score === "nvt" ? t("representativeReport.notApplicable") : formatCoachingScorePercentage(score.score),
+                previous: score.previousScore === undefined ? undefined : previousScore(formatCoachingScorePercentage(score.previousScore)),
               }))}
             />
           ))}
@@ -522,8 +539,9 @@ function ReportDetail({
             />
           </label>
         )}
-        <button type="button" disabled={!valid} onClick={() => onConfirm(choice, comment)} className="btn-primary mt-4">
-          <CheckCircle2 className="h-4 w-4" /> {t("representativeReport.confirmAndClose")}
+        {confirmError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{confirmError}</p>}
+        <button type="button" disabled={!valid || confirming} onClick={() => void onConfirm(choice, comment)} className="btn-primary mt-4">
+          <CheckCircle2 className="h-4 w-4" /> {confirming ? t("coaching.report.saving") : t("representativeReport.confirmAndClose")}
         </button>
       </section>
     </div>

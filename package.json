@@ -40,6 +40,7 @@
     "test:coaching-appointment-scores": "tsx scripts/test-coaching-appointment-scores.ts",
     "test:coaching-action-persistence": "tsx scripts/test-coaching-action-persistence.ts",
     "test:coaching-empty-remarks": "tsx scripts/test-coaching-empty-remarks.ts",
+    "test:coaching-p1": "tsx scripts/test-coaching-p1-regressions.ts",
     "test:contact-moments": "tsx scripts/test-contact-moments.ts",
     "test:contact-moment-filters": "tsx scripts/test-contact-moment-filters.ts",
     "test:contact-moment-photos": "tsx scripts/test-contact-moment-photos.ts",

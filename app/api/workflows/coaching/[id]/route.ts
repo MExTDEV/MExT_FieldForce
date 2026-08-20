@@ -6,6 +6,7 @@ import {
 import { buildOpenableCoachingWhere } from "@/lib/server/coaching-visibility";
 import { prisma } from "@/lib/server/db";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export async function GET(
   request: Request,
@@ -15,6 +16,7 @@ export async function GET(
     const { id } = await context.params;
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
     const where = buildOpenableCoachingWhere(actor, { id });
 

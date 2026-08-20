@@ -1,5 +1,6 @@
 import { badRequest, handleApi } from "@/lib/server/api";
 import { uploadContactMomentPhotos } from "@/lib/server/contact-moment-photos";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   return handleApi("api/workflows/contact-moments/photos:post", async () => {
+    await requireAppModuleEnabled("CONTACTMOMENTEN");
     const formData = await request.formData();
     const files = formData.getAll("file").filter((file): file is File => file instanceof File);
     if (!files.length) {
