@@ -62,6 +62,7 @@
     "test:menu-rights": "tsx scripts/test-menu-rights.ts",
     "test:module-boundaries": "tsx scripts/test-module-boundaries.ts",
     "test:sales-agenda": "tsx scripts/test-sales-agenda.ts",
+    "test:offline-contracts": "tsx scripts/test-offline-contracts.ts",
     "test:country-manager-coaching-access": "tsx scripts/test-country-manager-coaching-access.ts",
     "test:management-log": "tsx scripts/test-management-log.ts",
     "test:management-import-export": "tsx scripts/test-management-import-export.ts",
