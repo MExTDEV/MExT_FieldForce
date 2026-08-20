@@ -183,3 +183,99 @@ export type ModuleAuditPort = {
     metadata?: Record<string, string | number | boolean | null>;
   }): Promise<void>;
 };
+
+
+export type SourceSystem =
+  | "FIELD_FORCE"
+  | "BUSINESS_CENTRAL_140"
+  | "ODOO";
+
+export type SyncState =
+  | "LOCAL_ONLY"
+  | "PENDING_SYNC"
+  | "SYNCED"
+  | "REJECTED"
+  | "CONFLICT";
+
+export type DataFreshness = {
+  sourceSystem: SourceSystem;
+  capturedAt: string;
+  sourceVersion?: string | null;
+  validUntil?: string | null;
+};
+
+export type OfflineRecord<TPayload> = {
+  entity: EntityRef;
+  payload: TPayload;
+  syncState: SyncState;
+  source: DataFreshness;
+  localRevision: number;
+  localUpdatedAt: string;
+  remoteUpdatedAt?: string | null;
+  idempotencyKey: string;
+  lastSyncError?: string | null;
+};
+
+export type OfflineMutation<
+  TType extends string = string,
+  TPayload = unknown,
+> = IntegrationCommand<TType, TPayload> & {
+  sourceSystem: "FIELD_FORCE";
+  operation: "CREATE" | "UPDATE" | "CANCEL" | "COMPLETE";
+  expectedRemoteVersion?: string | null;
+};
+
+export type SyncReceipt = {
+  commandId: string;
+  accepted: boolean;
+  state: SyncState;
+  remoteEntity?: EntityRef | null;
+  remoteVersion?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+export type SyncConflict = {
+  entity: EntityRef;
+  localRevision: number;
+  remoteVersion?: string | null;
+  detectedAt: string;
+  reasonCode:
+    | "REMOTE_CHANGED"
+    | "STALE_REFERENCE_DATA"
+    | "DUPLICATE_IDEMPOTENCY_KEY"
+    | "VALIDATION_REJECTED";
+  resolution:
+    | "KEEP_LOCAL"
+    | "KEEP_REMOTE"
+    | "MERGE"
+    | "MANUAL_REVIEW";
+};
+
+export type OfflineDataPolicy = {
+  entityType: string;
+  canReadOffline: boolean;
+  canCreateOffline: boolean;
+  canUpdateOffline: boolean;
+  requiresRemoteConfirmation: boolean;
+  maxReferenceAgeHours?: number | null;
+};
+
+export type ErpAdapterPort = {
+  system: Exclude<SourceSystem, "FIELD_FORCE">;
+  pullReferenceData(input: {
+    actor: ModuleActorContext;
+    entityTypes: string[];
+    changedSince?: string | null;
+    cursor?: string | null;
+  }): Promise<{
+    records: Array<OfflineRecord<unknown>>;
+    nextCursor?: string | null;
+  }>;
+  pushMutations(input: {
+    actor: ModuleActorContext;
+    mutations: Array<OfflineMutation>;
+  }): Promise<{
+    receipts: SyncReceipt[];
+  }>;
+};
