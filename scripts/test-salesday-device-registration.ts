@@ -194,7 +194,7 @@ async function main() {
   const schema = readFileSync("prisma/schema.prisma", "utf8");
   const migration = readFileSync("prisma/migrations/0042_salesday_device_registration/migration.sql", "utf8");
   assert(schema.includes("model DeviceRegistration"));
-  assert(schema.includes("activeUserKey          String?                  @unique"));
+  assert(/activeUserKey\\s+String\\?\\s+@unique/.test(schema));
   assert(migration.includes("CREATE TABLE `DeviceRegistration`"));
   assert(migration.includes("DeviceRegistration_activeUserKey_key"));
   assert.equal(/\bDROP\s+(TABLE|COLUMN|INDEX)\b/i.test(migration), false);
