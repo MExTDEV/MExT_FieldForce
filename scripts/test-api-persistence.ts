@@ -8,6 +8,7 @@ import {
   saveSalesTraining,
 } from "../lib/workflow-engine";
 import type {
+  AppModuleConfig,
   ManagedUser,
   PersonalCoachingCriterion,
   Representative,
@@ -50,7 +51,14 @@ async function main() {
   // The API smoke test uses the same explicit actorId mechanism as demo-mode
   // requests. This keeps the test deterministic and avoids borrowing a browser
   // session cookie. Start the dev server with NEXT_PUBLIC_AUTH_MODE=demo.
-  const { users } = await json<{ users: ManagedUser[] }>("/api/users");
+  const [{ users }, { modules }] = await Promise.all([
+    json<{ users: ManagedUser[] }>("/api/users"),
+    json<{ modules: AppModuleConfig[] }>("/api/modules"),
+  ]);
+  const enabledModules = new Set(
+    modules.filter((module) => module.enabled).map((module) => module.code)
+  );
+  assert.ok(enabledModules.has("BEGELEIDINGEN"), "Begeleidingen must be active for this smoke test.");
   const actor =
     users.find((user) => user.role === "SUPER_ADMIN" && user.active) ??
     users.find((user) => user.role === "ADMIN" && user.active);
@@ -59,10 +67,10 @@ async function main() {
     `/api/representatives?actorId=${encodeURIComponent(actor.id)}`
   );
   const representative = representatives[0];
+  assert.ok(representative, "No representative available.");
   const secondRepresentative =
     representatives.find((item) => item.country === representative.country && item.id !== representative.id) ??
     representative;
-  assert.ok(representative, "No representative available.");
 
   const coaching = saveCoaching(emptyState, {
     id: `${runId}-coaching`,
@@ -72,7 +80,7 @@ async function main() {
     plannedDate: "2026-07-15",
     startTime: "09:00",
     endTime: "11:00",
-    notifyRepresentative: false,
+    notifyRepresentative: true,
     focusNames: ["Introductie"],
     scores: [{
       focus: "Introductie",
@@ -100,7 +108,7 @@ async function main() {
     plannedDate: "2026-07-15",
     startTime: "09:00",
     endTime: "11:00",
-    notifyRepresentative: false,
+    notifyRepresentative: true,
     focusNames: ["Introductie"],
     scores: coaching.intervention.scores,
     actionPoints: [{
@@ -129,10 +137,12 @@ async function main() {
     conclusion: "Aangemaakt",
     actionPoints: [],
   }, "concept", representatives);
-  await json("/api/workflows/contact-moments", {
-    method: "POST",
-    body: JSON.stringify({ contactMoments: [contact.contactMoment] }),
-  });
+  if (enabledModules.has("CONTACTMOMENTEN")) {
+    await json("/api/workflows/contact-moments", {
+      method: "POST",
+      body: JSON.stringify({ contactMoments: [contact.contactMoment] }),
+    });
+  }
   const updatedContact = saveContactMoment(contact.state, {
     id: contact.contactMoment.id,
     representativeId: representative.id,
@@ -146,35 +156,43 @@ async function main() {
     conclusion: "Bijgewerkt",
     actionPoints: [],
   }, "afgesloten", representatives);
-  await json("/api/workflows/contact-moments", {
-    method: "POST",
-    body: JSON.stringify({ contactMoments: [updatedContact.contactMoment] }),
-  });
+  if (enabledModules.has("CONTACTMOMENTEN")) {
+    await json("/api/workflows/contact-moments", {
+      method: "POST",
+      body: JSON.stringify({ contactMoments: [updatedContact.contactMoment] }),
+    });
+  }
 
   const help = createHelpRequest(emptyState, {
     representativeId: representative.id,
-    requesterId: actor.id,
+    requesterId: representative.id,
     subject: `STEP9 hulp ${runId}`,
     difficulty: "Integratietest",
     desiredResult: "Persistente opvolging",
     urgency: "normaal",
     explanation: "Aangemaakt via API-smoketest.",
   }, representatives);
-  await json("/api/workflows/help-requests", {
-    method: "POST",
-    body: JSON.stringify({ helpRequests: [help.helpRequest] }),
-  });
+  if (enabledModules.has("HULPAANVRAGEN")) {
+    await json("/api/workflows/help-requests", {
+      method: "POST",
+      body: JSON.stringify({ helpRequests: [help.helpRequest] }),
+    });
+  }
   const updatedHelp = {
     ...help.helpRequest,
     subject: `STEP9 hulp bijgewerkt ${runId}`,
     urgency: "hoog" as const,
     status: "in_behandeling" as const,
+    firstHandledByUserId: actor.id,
+    firstHandledAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  await json("/api/workflows/help-requests", {
-    method: "POST",
-    body: JSON.stringify({ helpRequests: [updatedHelp] }),
-  });
+  if (enabledModules.has("HULPAANVRAGEN")) {
+    await json("/api/workflows/help-requests", {
+      method: "POST",
+      body: JSON.stringify({ helpRequests: [updatedHelp] }),
+    });
+  }
 
   const retraining = saveRetraining(emptyState, {
     id: `${runId}-retraining`,
@@ -189,10 +207,12 @@ async function main() {
     trainer: actor.firstName,
     actionPoints: [],
   }, "concept", representatives);
-  await json("/api/workflows/retrainings", {
-    method: "POST",
-    body: JSON.stringify({ retrainings: [retraining.retraining] }),
-  });
+  if (enabledModules.has("RETRAININGEN")) {
+    await json("/api/workflows/retrainings", {
+      method: "POST",
+      body: JSON.stringify({ retrainings: [retraining.retraining] }),
+    });
+  }
   const updatedRetraining = saveRetraining(retraining.state, {
     id: retraining.retraining.id,
     representativeId: representative.id,
@@ -206,10 +226,12 @@ async function main() {
     trainer: actor.firstName,
     actionPoints: [],
   }, "gepland", representatives);
-  await json("/api/workflows/retrainings", {
-    method: "POST",
-    body: JSON.stringify({ retrainings: [updatedRetraining.retraining] }),
-  });
+  if (enabledModules.has("RETRAININGEN")) {
+    await json("/api/workflows/retrainings", {
+      method: "POST",
+      body: JSON.stringify({ retrainings: [updatedRetraining.retraining] }),
+    });
+  }
 
   const salesTraining = saveSalesTraining(emptyState, {
     id: `${runId}-sales-training`,
@@ -225,10 +247,12 @@ async function main() {
     conclusion: "",
     followUpAction: "",
   }, "concept", representatives);
-  await json("/api/workflows/sales-trainings", {
-    method: "POST",
-    body: JSON.stringify({ salesTrainings: [salesTraining.salesTraining] }),
-  });
+  if (enabledModules.has("SALESTRAININGEN")) {
+    await json("/api/workflows/sales-trainings", {
+      method: "POST",
+      body: JSON.stringify({ salesTrainings: [salesTraining.salesTraining] }),
+    });
+  }
   const updatedSalesTraining = saveSalesTraining(salesTraining.state, {
     id: salesTraining.salesTraining.id,
     initiatorId: actor.id,
@@ -243,10 +267,12 @@ async function main() {
     conclusion: "Bijgewerkt",
     followUpAction: "Opvolgen",
   }, "gepland", representatives);
-  await json("/api/workflows/sales-trainings", {
-    method: "POST",
-    body: JSON.stringify({ salesTrainings: [updatedSalesTraining.salesTraining] }),
-  });
+  if (enabledModules.has("SALESTRAININGEN")) {
+    await json("/api/workflows/sales-trainings", {
+      method: "POST",
+      body: JSON.stringify({ salesTrainings: [updatedSalesTraining.salesTraining] }),
+    });
+  }
 
   const now = new Date().toISOString();
   const criterion: PersonalCoachingCriterion = {
@@ -286,13 +312,21 @@ async function main() {
     state.interventions.find((item) => item.id === coaching.intervention.id)?.actionPoints[0]?.title ?? "",
     /bijgewerkt/
   );
-  assert.equal(state.contactMoments.find((item) => item.id === contact.contactMoment.id)?.status, "afgesloten");
-  assert.equal(state.helpRequests.find((item) => item.id === help.helpRequest.id)?.status, "in_behandeling");
-  assert.equal(state.retrainings.find((item) => item.id === retraining.retraining.id)?.status, "gepland");
-  assert.equal(state.salesTrainings.find((item) => item.id === salesTraining.salesTraining.id)?.status, "gepland");
+  if (enabledModules.has("CONTACTMOMENTEN")) {
+    assert.equal(state.contactMoments.find((item) => item.id === contact.contactMoment.id)?.status, "afgesloten");
+  }
+  if (enabledModules.has("HULPAANVRAGEN")) {
+    assert.equal(state.helpRequests.find((item) => item.id === help.helpRequest.id)?.status, "in_behandeling");
+  }
+  if (enabledModules.has("RETRAININGEN")) {
+    assert.equal(state.retrainings.find((item) => item.id === retraining.retraining.id)?.status, "gepland");
+  }
+  if (enabledModules.has("SALESTRAININGEN")) {
+    assert.equal(state.salesTrainings.find((item) => item.id === salesTraining.salesTraining.id)?.status, "gepland");
+  }
   assert.match(criteria.find((item) => item.id === criterion.id)?.title ?? "", /bijgewerkt/);
 
-  console.log(`STEP9 API persistence smoke test passed: ${runId}`);
+  console.log(`STEP9 API persistence smoke test passed: ${runId} (${[...enabledModules].join(", ")})`);
 }
 
 void main().catch((error) => {
