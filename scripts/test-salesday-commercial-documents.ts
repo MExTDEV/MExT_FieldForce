@@ -120,7 +120,13 @@ expectText("app/api/salesday/appointments/[appointmentId]/documents/route.ts", [
 expectText("app/api/salesday/documents/[documentId]/print/route.ts", ["getSalesDocumentPrintShareDescriptor"]);
 expectText("app/api/salesday/appointments/[appointmentId]/contract-context/route.ts", ["getSalesDayContractContext"]);
 expectText("app/api/salesday/settings/commercial-documents/route.ts", ["upsertSalesDocumentReason", "createSalesDocumentNumberBlock", "reconcileSalesDocumentNumberBlock"]);
-expectText("components/salesday/salesday-workspace.tsx", [\n  "section === \"documenten\"",\n  "DocumentSummary",\n  "/api/salesday/appointments/",\n  "/api/salesday/documents/${document.id}/print",\n  "salesday.documents.printShare",\n]);
+expectText("components/salesday/salesday-workspace.tsx", [
+  "section === \"documenten\"",
+  "DocumentSummary",
+  "/api/salesday/appointments/",
+  "/api/salesday/documents/${document.id}/print",
+  "salesday.documents.printShare",
+]);
 expectText("docs/ai/modules/Salesday/MILESTONE-3-COMMERCIAL-DOCUMENTS.md", ["Implemented in source", "0053_salesday_commercial_documents", "standard Android print/share"]);
 expectText("docs/ai/modules/Salesday/IMPLEMENTATION-PLAN.md", ["Milestone 3", "IMPLEMENTED IN SOURCE", "Migration `0053`"]);
 expectText("docs/ai/modules/Salesday/ERP-CONTRACT.md", ["localRelationId", "representativeStockImpactQuantity"]);
