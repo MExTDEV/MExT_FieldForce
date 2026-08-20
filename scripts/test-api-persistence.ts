@@ -128,6 +128,9 @@ async function main() {
     id: `${runId}-contact`,
     representativeId: representative.id,
     initiatorId: actor.id,
+    plannedDate: "2026-07-17",
+    startTime: "09:00",
+    endTime: "10:00",
     reason: `STEP9 contact ${runId}`,
     reportedProblems: "Initiële smoketest",
     leaderThemes: ["KPI-opvolging"],
@@ -136,7 +139,7 @@ async function main() {
     discussedThemes: ["KPI-opvolging"],
     conclusion: "Aangemaakt",
     actionPoints: [],
-  }, "concept", representatives);
+  }, "gepland", representatives);
   if (enabledModules.has("CONTACTMOMENTEN")) {
     await json("/api/workflows/contact-moments", {
       method: "POST",
