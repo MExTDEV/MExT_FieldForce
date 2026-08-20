@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/server/db";
 import { appModuleRegistry } from "@/lib/modules";
+import { forbidden } from "@/lib/server/api";
 import type { AppModuleCode, AppModuleConfig } from "@/lib/types";
 
 function toAppModuleConfig(appModule: {
@@ -51,6 +52,13 @@ export async function setAppModuleEnabled(
 export async function isAppModuleEnabled(code: AppModuleCode) {
   const modules = await listAppModules();
   return modules.some((module) => module.code === code && module.enabled);
+}
+
+export async function requireAppModuleEnabled(code: AppModuleCode) {
+  if (!(await isAppModuleEnabled(code))) {
+    const moduleEntry = appModuleRegistry.find((item) => item.code === code);
+    forbidden(`${moduleEntry?.name ?? "Deze module"} is niet actief.`);
+  }
 }
 
 async function ensureAppModules() {

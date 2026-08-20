@@ -119,7 +119,7 @@ export async function exportPerformancePdf({
     import("jspdf"),
     import("svg2pdf.js"),
   ]);
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", putOnlyUsedFonts: true });
   const exportDate = new Date();
   const exportDateLabel = formatDate(exportDate);
   const effectiveLabels = { ...defaultLabels, ...labels };
@@ -134,6 +134,7 @@ export async function exportPerformancePdf({
 
   const svgClone = svgElement.cloneNode(true) as SVGSVGElement;
   svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  svgClone.setAttribute("font-family", "Helvetica");
   svgClone.setAttribute("width", "1000");
   svgClone.setAttribute("height", "1000");
   await pdf.svg(svgClone, { x: 18, y: 53, width: 174, height: 174 });

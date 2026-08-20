@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/db";
 import { sanitizeApprovalReflection, approvalReflectionErrors } from "@/lib/coaching/approval-reflection";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
 import { buildVisibleCoachingWhere } from "@/lib/server/coaching-visibility";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
 export async function POST(
   request: Request,
@@ -13,6 +14,7 @@ export async function POST(
     const { id } = await context.params;
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
 
     const payload = await request.json() as {

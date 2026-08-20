@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import { normalizeHistoricalActionPoints } from "../lib/server/performance";
 
@@ -58,3 +59,17 @@ assert.equal(actions[0].closedReasonExplanation, "Doelstelling is behaald.", "To
 assert.equal(actions.filter((item) => item.status === "open").length, 1, "Dashboard- en overzichttellingen tellen alleen open toewijzingen.");
 
 console.log("Actiepunt sluiten lifecycle-normalisatie is correct.");
+
+
+const closeServiceSource = fs.readFileSync("lib/server/action-points.ts", "utf8");
+assert.match(closeServiceSource, /prisma\.coachingAction\.findUnique/);
+assert.match(closeServiceSource, /tx\.coachingAction\.updateMany/);
+assert.match(closeServiceSource, /serializeClosedCoachingAction/);
+
+const workflowSource = fs.readFileSync("lib/server/workflows.ts", "utf8");
+assert.match(workflowSource, /status: fromActionStatus\(item\.status\)/);
+assert.match(workflowSource, /closedReasonExplanation: item\.closedReasonExplanation/);
+
+const schemaSource = fs.readFileSync("prisma/schema.prisma", "utf8");
+assert.match(schemaSource, /model CoachingAction[\s\S]*status\s+ActionPointStatus/);
+assert.match(schemaSource, /model CoachingAction[\s\S]*closedReasonExplanation\s+String\?/);

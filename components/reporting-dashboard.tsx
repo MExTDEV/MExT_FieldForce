@@ -38,6 +38,7 @@ import { canViewTeamDashboard } from "@/lib/permissions";
 import { buildSmartCoaching } from "@/lib/smart-coaching";
 import type { Representative } from "@/lib/types";
 import { translate, type TranslationKey } from "@/lib/i18n";
+import { isPendingCoachingApprovalStatus } from "@/lib/coaching/approval-actions";
 
 type ReportSection =
   | "overzicht"
@@ -267,7 +268,7 @@ function OverviewReport({ dataset, state }: { dataset: ReportingDataset; state: 
     { label: t("coaching.reporting.openActions"), value: openActions.length, icon: Target },
     { label: t("coaching.reporting.overdueActions"), value: openActions.filter((item) => isOverdue(item.due, item.status)).length, icon: CircleHelp },
     { label: t("coaching.reporting.missingReflections"), value: state.reflections.filter((item) => scopedIds.has(item.representativeId) && item.status === "niet_gestart").length, icon: Clock3 },
-    { label: t("coaching.reporting.waitingApproval"), value: dataset.interventions.filter((item) => item.status === "wacht_op_akkoord").length, icon: ClipboardCheck },
+    { label: t("coaching.reporting.waitingApproval"), value: dataset.interventions.filter((item) => isPendingCoachingApprovalStatus(item.status)).length, icon: ClipboardCheck },
     { label: t("coaching.reporting.readNotAgreed"), value: dataset.interventions.filter((item) => item.approvalStatus === "gelezen_niet_akkoord").length, icon: CircleHelp },
   ];
   return (

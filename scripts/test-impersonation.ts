@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { canImpersonateUser, validateImpersonationReason } from "@/lib/server/impersonation";
-import { roleTemplates } from "@/lib/user-management";
+import { assertSameOrigin, canImpersonateUser, validateImpersonationReason } from "@/lib/server/impersonation";
+import { fieldForcePermissionKeys, roleTemplates } from "@/lib/user-management";
 import type { Country, MockUser, Role } from "@/lib/types";
 import { readFileSync } from "node:fs";
 
@@ -52,6 +52,33 @@ assert.equal(canImpersonateUser(superAdmin, user("REPRESENTATIVE", "inactive", {
 assert.deepEqual(validateImpersonationReason("USER_SUPPORT"), { reasonType: "USER_SUPPORT", reasonText: null });
 assert.throws(() => validateImpersonationReason("OTHER"), /omschrijving/);
 assert.throws(() => validateImpersonationReason("UNKNOWN"), /geldige reden/);
+assert.equal(
+  fieldForcePermissionKeys.length,
+  new Set(fieldForcePermissionKeys).size,
+  "Permissionkeys moeten uniek zijn voordat UserPermission-records worden aangemaakt."
+);
+
+assert.doesNotThrow(() => assertSameOrigin(new Request("http://app:3000/api/impersonation/start", {
+  headers: {
+    origin: "https://fieldforce.mext.group",
+    "x-forwarded-host": "fieldforce.mext.group",
+    "x-forwarded-proto": "https",
+  },
+})));
+assert.throws(() => assertSameOrigin(new Request("http://app:3000/api/impersonation/start", {
+  headers: {
+    origin: "https://attacker.example",
+    "x-forwarded-host": "fieldforce.mext.group",
+    "x-forwarded-proto": "https",
+  },
+})), /Ongeldige aanvraagbron/);
+assert.throws(() => assertSameOrigin(new Request("http://app:3000/api/impersonation/start", {
+  headers: {
+    origin: "http://fieldforce.mext.group",
+    "x-forwarded-host": "fieldforce.mext.group",
+    "x-forwarded-proto": "https",
+  },
+})), /Ongeldige aanvraagbron/);
 
 assert.equal(roleTemplates.REPRESENTATIVE.permissions["users.impersonate"], false);
 assert.equal(roleTemplates.SERVICE_OPERATOR.permissions["users.impersonate"], false);

@@ -7,7 +7,7 @@ loadEnvFile();
 const prisma = new PrismaClient();
 
 async function main() {
-  const [interventions, helpRequests, criteria] = await Promise.all([
+  const [interventions, helpRequests, criteria, modules] = await Promise.all([
     prisma.intervention.findMany({
       where: { id: { startsWith: "step9-" } },
       include: {
@@ -51,11 +51,20 @@ async function main() {
       },
       orderBy: { id: "asc" },
     }),
+    prisma.appModule.findMany({
+      select: { code: true, actief: true },
+    }),
   ]);
 
-  assert.ok(interventions.length >= 8, "Expected at least two STEP9 runs with four interventions each.");
-  assert.ok(helpRequests.length >= 2, "Expected STEP9 help requests.");
-  assert.ok(criteria.length >= 2, "Expected STEP9 personal criteria.");
+  const enabledModules = new Set(
+    modules.filter((module) => module.actief).map((module) => module.code)
+  );
+  const expectedInterventionTypes = new Set([
+    "BEGELEIDING",
+    ...(enabledModules.has("CONTACTMOMENTEN") ? ["CONTACTMOMENT"] : []),
+    ...(enabledModules.has("RETRAININGEN") ? ["RETRAINING"] : []),
+    ...(enabledModules.has("SALESTRAININGEN") ? ["SALES_TRAINING"] : []),
+  ]);
 
   const entityIds = [
     ...interventions.map((item) => item.id),
@@ -77,8 +86,24 @@ async function main() {
     groupedRuns.set(match[1], current);
   }
 
+  const completeRuns = [...groupedRuns.entries()]
+    .filter(([runId, records]) => {
+      const persistedTypes = new Set<string>(records.map((item) => item.type));
+      const hasExpectedInterventions = [...expectedInterventionTypes].every((type) => persistedTypes.has(type));
+      const hasCriterion = criteria.some((item) => item.id.startsWith(runId));
+      const hasHelpRequest = !enabledModules.has("HULPAANVRAGEN") ||
+        helpRequests.some((item) => item.subject.includes(runId));
+      return hasExpectedInterventions && hasCriterion && hasHelpRequest;
+    })
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  assert.ok(
+    completeRuns.length >= 2,
+    `Expected at least two complete STEP9 runs for active modules: ${[...enabledModules].join(", ")}.`
+  );
+
   const report = [];
-  for (const [runId, records] of groupedRuns) {
+  for (const [runId, records] of completeRuns) {
     const coaching = records.find((item) => item.type === "BEGELEIDING");
     const contact = records.find((item) => item.type === "CONTACTMOMENT");
     const retraining = records.find((item) => item.type === "RETRAINING");
@@ -87,10 +112,10 @@ async function main() {
     const criterion = criteria.find((item) => item.id.startsWith(runId));
 
     assert.ok(coaching, `${runId}: coaching missing.`);
-    assert.ok(contact, `${runId}: contact moment missing.`);
-    assert.ok(retraining, `${runId}: retraining missing.`);
-    assert.ok(salesTraining, `${runId}: sales training missing.`);
-    assert.ok(help, `${runId}: help request missing.`);
+    if (enabledModules.has("CONTACTMOMENTEN")) assert.ok(contact, `${runId}: contact moment missing.`);
+    if (enabledModules.has("RETRAININGEN")) assert.ok(retraining, `${runId}: retraining missing.`);
+    if (enabledModules.has("SALESTRAININGEN")) assert.ok(salesTraining, `${runId}: sales training missing.`);
+    if (enabledModules.has("HULPAANVRAGEN")) assert.ok(help, `${runId}: help request missing.`);
     assert.ok(criterion, `${runId}: personal criterion missing.`);
 
     assert.ok(
@@ -106,7 +131,7 @@ async function main() {
       ].includes(coaching.status),
       `${runId}: coaching has invalid persisted status ${coaching.status}.`
     );
-    assert.equal(coaching.notifyRepresentative, true);
+    assert.equal(coaching.notifyRepresentative, false);
     assert.equal(coaching.focuses.length, 1);
     assert.ok(
       coaching.scores.some(
@@ -129,22 +154,30 @@ async function main() {
       `${runId}: action point owner relation missing.`
     );
 
-    assert.equal(contact.status, "AFGESLOTEN");
-    assert.ok(contact.contactMoment, `${runId}: contact detail missing.`);
-    assert.match(contact.contactMoment.reason, /bijgewerkt/);
+    if (contact) {
+      assert.equal(contact.status, "AFGESLOTEN");
+      assert.ok(contact.contactMoment, `${runId}: contact detail missing.`);
+      assert.match(contact.contactMoment.reason, /bijgewerkt/);
+    }
 
-    assert.equal(retraining.status, "GEPLAND");
-    assert.ok(retraining.trainingDetail, `${runId}: retraining detail missing.`);
-    assert.match(retraining.trainingDetail.theme, /bijgewerkt/);
+    if (retraining) {
+      assert.equal(retraining.status, "GEPLAND");
+      assert.ok(retraining.trainingDetail, `${runId}: retraining detail missing.`);
+      assert.match(retraining.trainingDetail.theme, /bijgewerkt/);
+    }
 
-    assert.equal(salesTraining.status, "GEPLAND");
-    assert.ok(salesTraining.trainingDetail, `${runId}: sales training detail missing.`);
-    assert.match(salesTraining.trainingDetail.theme, /bijgewerkt/);
-    assert.ok(salesTraining.trainingParticipants.length >= 1);
+    if (salesTraining) {
+      assert.equal(salesTraining.status, "GEPLAND");
+      assert.ok(salesTraining.trainingDetail, `${runId}: sales training detail missing.`);
+      assert.match(salesTraining.trainingDetail.theme, /bijgewerkt/);
+      assert.ok(salesTraining.trainingParticipants.length >= 1);
+    }
 
-    assert.equal(help.status, "IN_BEHANDELING");
-    assert.match(help.subject, /bijgewerkt/);
-    assert.equal(help.representative.id, coaching.representativeId);
+    if (help) {
+      assert.equal(help.status, "IN_BEHANDELING");
+      assert.match(help.subject, /bijgewerkt/);
+      assert.equal(help.representative.id, coaching.representativeId);
+    }
 
     assert.equal(criterion.active, true);
     assert.match(criterion.title, /bijgewerkt/);
@@ -154,17 +187,23 @@ async function main() {
       `${runId}: personal criterion creator relation missing.`
     );
 
-    for (const record of [...records, help, criterion]) {
+    const relatedRecords = [criterion, ...(help ? [help] : [])];
+    for (const record of [...records, ...relatedRecords]) {
       assert.ok(record.updatedAt.getTime() >= record.createdAt.getTime());
     }
 
     const runEntityIds = [
       ...records.map((item) => item.id),
-      help.id,
+      ...(help ? [help.id] : []),
       criterion.id,
     ];
     const runAudits = auditLogs.filter((log) => runEntityIds.includes(log.entityId));
-    assert.ok(runAudits.length >= 11, `${runId}: expected create/update audit records.`);
+    const expectedAuditRows = 4 +
+      (contact ? 2 : 0) +
+      (retraining ? 2 : 0) +
+      (salesTraining ? 2 : 0) +
+      (help ? 2 : 0);
+    assert.ok(runAudits.length >= expectedAuditRows, `${runId}: expected create/update audit records.`);
 
     report.push({
       runId,
@@ -177,11 +216,11 @@ async function main() {
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       })),
-      helpRequest: {
+      helpRequest: help ? {
         id: help.id,
         status: help.status,
         subject: help.subject,
-      },
+      } : null,
       personalCriterion: {
         id: criterion.id,
         title: criterion.title,

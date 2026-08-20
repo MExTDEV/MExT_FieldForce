@@ -144,3 +144,17 @@ for (const locale of ["nl", "fr", "de"]) {
 }
 
 console.log("Coaching approval visibility en Porren-regels zijn correct.");
+
+
+const transitionRoute = fs.readFileSync("app/api/workflows/coaching/[id]/transition/route.ts", "utf8");
+assert.match(transitionRoute, /"approve" \| "reject"/);
+assert.match(transitionRoute, /GELEZEN_NIET_AKKOORD/);
+assert.match(transitionRoute, /comment\.length < 3/);
+
+const workflowProvider = fs.readFileSync("components/workflow-provider.tsx", "utf8");
+assert.match(workflowProvider, /action: status === "gelezen_akkoord" \? "approve" : "reject"/);
+assert.doesNotMatch(workflowProvider, /confirmWorkflowApproval/);
+
+const representativeWorkflow = fs.readFileSync("components/representative-workflow-pages.tsx", "utf8");
+assert.match(representativeWorkflow, /await confirmApproval\(approval\.id, status, comment\)/);
+assert.match(representativeWorkflow, /disabled=\{!valid \|\| confirming\}/);

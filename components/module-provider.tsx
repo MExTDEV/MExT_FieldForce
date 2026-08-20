@@ -67,11 +67,11 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ModuleContextValue>(() => ({
     modules,
-    enabledModules: modules.filter((module) => module.enabled),
+    enabledModules: loading ? [] : modules.filter((module) => module.enabled),
     error,
     loading,
     isModuleEnabled: (code) =>
-      modules.some((module) => module.code === code && module.enabled),
+      !loading && modules.some((module) => module.code === code && module.enabled),
     setModuleEnabled: async (code, enabled) => {
       const now = new Date().toISOString();
       const knownCodes = new Set(appModuleRegistry.map((module) => module.code));

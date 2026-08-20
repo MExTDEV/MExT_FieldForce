@@ -9,7 +9,6 @@ import { sendWorkflowEventMail } from "@/lib/server/mail-service";
 import {
   createInAppNotification,
   createCoachingApprovalNotification,
-  markCoachingApprovalNotificationHandled,
 } from "@/lib/server/notifications";
 import { loadWorkflowStateFromDatabase } from "@/lib/server/workflows";
 import {
@@ -20,8 +19,9 @@ import {
 } from "@/lib/coaching/approval-notifications";
 import { approvalHasCompletedReflection } from "@/lib/coaching/approval-reflection";
 import { coachingReportIssues } from "@/lib/coaching/report-form";
+import { requireAppModuleEnabled } from "@/lib/server/modules";
 
-type CoachingTransition = "reopen" | "send_for_approval" | "approve";
+type CoachingTransition = "reopen" | "send_for_approval" | "approve" | "reject";
 
 const completedStatuses = ["VOLTOOID", "GEFINALISEERD", "GESLOTEN", "AFGESLOTEN"] as const;
 
@@ -33,9 +33,10 @@ export async function POST(
     const { id } = await context.params;
     const actorId = new URL(request.url).searchParams.get("actorId");
     const actor = await requireAuthenticatedUser(actorId);
+    await requireAppModuleEnabled("BEGELEIDINGEN");
     requirePermission(actor, "moduleVisitRecord");
-    const payload = await request.json() as { action?: CoachingTransition };
-    if (!payload.action || !["reopen", "send_for_approval", "approve"].includes(payload.action)) {
+    const payload = await request.json() as { action?: CoachingTransition; comment?: string };
+    if (!payload.action || !["reopen", "send_for_approval", "approve", "reject"].includes(payload.action)) {
       badRequest("Ongeldige statusovergang.");
     }
 
@@ -121,27 +122,40 @@ export async function POST(
       });
     } else {
       if (!["REPRESENTATIVE", "SALES_LEADER"].includes(actor.role) || coaching.representativeId !== actor.id) {
-        forbidden("Alleen de betrokken begeleide gebruiker kan voor akkoord bevestigen.");
+        forbidden("Alleen de betrokken begeleide gebruiker kan akkoord of niet-akkoord indienen.");
       }
       if (coaching.status !== "VERZONDEN_TER_AKKOORD") {
         badRequest("Deze begeleiding staat niet klaar voor akkoord.");
       }
       if (!approvalHasCompletedReflection(coaching.approval)) {
-        badRequest("Vul eerst de drie verplichte reflectievragen in voordat je akkoord geeft.");
+        badRequest("Vul eerst de drie verplichte reflectievragen in voordat je akkoord of niet-akkoord indient.");
       }
+
+      const approved = payload.action === "approve";
+      const comment = payload.comment?.trim() ?? "";
+      if (!approved && comment.length < 3) {
+        badRequest("Commentaar is verplicht bij niet akkoord.");
+      }
+
       let handledApprovalId: string | undefined;
+      const nextStatus = approved ? "AKKOORD_DOOR_VERTEGENWOORDIGER" : "AFGESLOTEN";
       await prisma.$transaction(async (tx) => {
         await tx.intervention.update({
           where: { id },
           data: {
-            status: "AKKOORD_DOOR_VERTEGENWOORDIGER",
-            approvedByRepAt: now,
-            approvedByRepId: actor.id,
+            status: nextStatus,
+            approvedByRepAt: approved ? now : null,
+            approvedByRepId: approved ? actor.id : null,
           },
         });
-        const handledApproval = await markCoachingApprovalNotificationHandled(tx, {
-          interventionId: id,
-          handledAt: now,
+        const handledApproval = await tx.approval.update({
+          where: { interventionId: id },
+          data: {
+            status: approved ? "GELEZEN_AKKOORD" : "GELEZEN_NIET_AKKOORD",
+            comment: approved ? null : comment,
+            openedAt: now,
+            confirmedAt: now,
+          },
         });
         handledApprovalId = handledApproval.id;
         await tx.auditLog.create({
@@ -149,34 +163,43 @@ export async function POST(
             userId: actor.id,
             entityType: "Intervention",
             entityId: id,
-            action: "coaching.approved_by_representative",
+            action: approved ? "coaching.approved_by_representative" : "coaching.rejected_by_representative",
             oldValue: JSON.stringify(oldValue),
-            newValue: JSON.stringify({ status: "AKKOORD_DOOR_VERTEGENWOORDIGER", approvedByRepAt: now.toISOString() }),
+            newValue: JSON.stringify({
+              status: nextStatus,
+              approvalStatus: approved ? "GELEZEN_AKKOORD" : "GELEZEN_NIET_AKKOORD",
+              comment: approved ? undefined : comment,
+              confirmedAt: now.toISOString(),
+            }),
           },
         });
       });
-      await sendCoachingApprovalConfirmedNotifications({
-        actorId: actor.id,
-        approvalId: handledApprovalId,
-        confirmedAt: now,
-        intervention: {
-          id: coaching.id,
-          title: coaching.title,
-          ownerId: coaching.ownerId,
-          initiatorId: coaching.initiatorId,
-          sentForApprovalById: coaching.sentForApprovalById ?? undefined,
-          plannedDate: coaching.plannedAt?.toISOString().slice(0, 10),
-          representativeName: `${coaching.representative.firstName} ${coaching.representative.lastName}`.trim(),
-        },
-      });
+
+      if (approved) {
+        await sendCoachingApprovalConfirmedNotifications({
+          actorId: actor.id,
+          approvalId: handledApprovalId,
+          confirmedAt: now,
+          intervention: {
+            id: coaching.id,
+            title: coaching.title,
+            ownerId: coaching.ownerId,
+            initiatorId: coaching.initiatorId,
+            sentForApprovalById: coaching.sentForApprovalById ?? undefined,
+            plannedDate: coaching.plannedAt?.toISOString().slice(0, 10),
+            representativeName: `${coaching.representative.firstName} ${coaching.representative.lastName}`.trim(),
+          },
+        });
+      }
     }
 
     const state = await loadWorkflowStateFromDatabase({
       interventionWhere: buildVisibleCoachingWhere(actor, { id }),
     });
     const intervention = state.interventions.find((item) => item.id === id);
+    const approval = state.approvals.find((item) => item.interventionId === id);
     if (!intervention) notFound("Begeleiding niet gevonden.");
-    return { intervention };
+    return { intervention, approval };
   }, "De status van de begeleiding kon niet worden aangepast.");
 }
 

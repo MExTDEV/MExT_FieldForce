@@ -17,6 +17,7 @@ import type {
   Retraining,
   SalesTraining,
 } from "@/lib/types";
+import { isPendingCoachingApprovalStatus } from "@/lib/coaching/approval-actions";
 
 export type DashboardAttentionType =
   | "begeleiding"
@@ -77,8 +78,6 @@ const completedHelpRequestStatuses = new Set([
   "vervolgactie_gepland",
 ]);
 const completedTrainingStatuses = new Set(["afgerond"]);
-const pendingApprovalCoachingStatuses = new Set(["wacht_op_akkoord", "verzonden_ter_akkoord"]);
-
 const typeLabels: Record<DashboardAttentionType, string> = {
   begeleiding: "Begeleiding",
   contactmoment: "Contactmoment",
@@ -237,7 +236,7 @@ export function buildHeaderTodoItems(input: BuildDashboardAttentionInput): Heade
       item.deletedAt ||
       item.approvedByRepAt ||
       item.approvedByRepId ||
-      !pendingApprovalCoachingStatuses.has(item.status)
+      !isPendingCoachingApprovalStatus(item.status)
     ) {
       return [];
     }

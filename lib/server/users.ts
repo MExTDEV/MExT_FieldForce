@@ -18,6 +18,7 @@ import type {
   Role,
 } from "@/lib/types";
 import { normalizeRepresentativeLevel } from "@/lib/representative-levels";
+import type { Prisma } from "@prisma/client";
 
 type UserWithAccess = Awaited<ReturnType<typeof fetchUsersWithAccess>>[number];
 
@@ -41,30 +42,47 @@ export async function createManagedUserInDatabase(
   const prepared = prepareManagedUserSave(actor, users, draft);
   await assertRoleAssignable(prepared.role);
   if (newTeamName?.trim()) {
-    return createSalesLeaderWithTeam(prepared, newTeamName.trim());
+    return createSalesLeaderWithTeam(prepared, newTeamName.trim(), actor.id);
   }
   await validateManagedUserTeam(prepared);
-  const created = await prisma.user.create({
-    data: userDataFromManagedUser(prepared),
-  });
-  await recordRepresentativeLevelHistory(
-    created.id,
-    null,
-    created.representativeLevel,
-    actor.id,
-    "user.created"
+  const permissionOverrides = await preparePermissionOverrides(
+    prepared.permissions,
+    prepared.role
   );
-  await replaceUserCountryAccess(created.id, prepared.countryAccess);
-  await replaceUserPermissions(created.id, prepared.permissions, prepared.role);
+  const createdId = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: userDataFromManagedUser(prepared),
+    });
+    await recordRepresentativeLevelHistoryInTransaction(
+      tx,
+      created.id,
+      null,
+      created.representativeLevel,
+      actor.id,
+      "user.created"
+    );
+    await replaceUserCountryAccessInTransaction(
+      tx,
+      created.id,
+      prepared.countryAccess
+    );
+    await replaceUserPermissionsInTransaction(
+      tx,
+      created.id,
+      permissionOverrides
+    );
+    return created.id;
+  });
   return toManagedUser(
-    await fetchUserWithAccess(created.id),
+    await fetchUserWithAccess(createdId),
     await fetchRolePermissions()
   );
 }
 
 async function createSalesLeaderWithTeam(
   prepared: ManagedUser,
-  teamName: string
+  teamName: string,
+  actorId: string
 ) {
   if (prepared.role !== "SALES_LEADER" && !prepared.teamSupervisor) {
     throw new Error(
@@ -72,16 +90,9 @@ async function createSalesLeaderWithTeam(
     );
   }
 
-  const [permissionRecords, rolePermissions] = await Promise.all([
-    prisma.permission.findMany(),
-    fetchRolePermissions(),
-  ]);
-  const missing = missingPermissionKeys(permissionRecords.map(({ key }) => key));
-  if (missing.length) throw new Error(`Ontbrekende rechten in de database: ${missing.join(", ")}.`);
-  const roleDefaults = resolveRolePermissions(prepared.role, rolePermissions);
-  const overrides = listPermissionOverrides(prepared.permissions, roleDefaults);
-  const permissionByKey = new Map(
-    permissionRecords.map((permission) => [permission.key, permission])
+  const permissionOverrides = await preparePermissionOverrides(
+    prepared.permissions,
+    prepared.role
   );
   const createdId = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
@@ -109,16 +120,20 @@ async function createSalesLeaderWithTeam(
       where: { id: created.id },
       data: { teamId: team.id },
     });
+    await recordRepresentativeLevelHistoryInTransaction(
+      tx,
+      created.id,
+      null,
+      created.representativeLevel,
+      actorId,
+      "user.created"
+    );
     await replaceUserCountryAccessInTransaction(tx, created.id, prepared.countryAccess);
-    if (overrides.length) {
-      await tx.userPermission.createMany({
-        data: overrides.map(({ key, enabled }) => ({
-          userId: created.id,
-          permissionId: permissionByKey.get(key)!.id,
-          enabled,
-        })),
-      });
-    }
+    await replaceUserPermissionsInTransaction(
+      tx,
+      created.id,
+      permissionOverrides
+    );
     return created.id;
   });
 
@@ -282,6 +297,25 @@ async function recordRepresentativeLevelHistory(
   });
 }
 
+async function recordRepresentativeLevelHistoryInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  oldValue: ManagedUser["representativeLevel"] | null,
+  newValue: ManagedUser["representativeLevel"],
+  changedById: string,
+  reason: string
+) {
+  await tx.representativeLevelHistory.create({
+    data: {
+      userId,
+      oldValue,
+      newValue,
+      changedById,
+      reason,
+    },
+  });
+}
+
 async function validateManagedUserTeam(user: ManagedUser) {
   const teamRequired = ["REPRESENTATIVE", "SALES_LEADER", "SERVICE_OPERATOR"].includes(
     user.role
@@ -311,6 +345,17 @@ async function replaceUserPermissions(
   permissions: ManagedUser["permissions"],
   role: Role
 ) {
+  const overrides = await preparePermissionOverrides(permissions, role);
+
+  await prisma.$transaction(async (tx) => {
+    await replaceUserPermissionsInTransaction(tx, userId, overrides);
+  });
+}
+
+async function preparePermissionOverrides(
+  permissions: ManagedUser["permissions"],
+  role: Role
+) {
   const [permissionRecords, rolePermissions] = await Promise.all([
     prisma.permission.findMany(),
     fetchRolePermissions(),
@@ -322,19 +367,27 @@ async function replaceUserPermissions(
   const permissionByKey = new Map(
     permissionRecords.map((permission) => [permission.key, permission])
   );
+  return [...new Map(overrides.map(({ key, enabled }) => [
+    permissionByKey.get(key)!.id,
+    { permissionId: permissionByKey.get(key)!.id, enabled },
+  ])).values()];
+}
 
-  await prisma.$transaction(async (tx) => {
-    await tx.userPermission.deleteMany({ where: { userId } });
-    if (overrides.length) {
-      await tx.userPermission.createMany({
-        data: overrides.map(({ key, enabled }) => ({
-          userId,
-          permissionId: permissionByKey.get(key)!.id,
-          enabled,
-        })),
-      });
-    }
-  });
+async function replaceUserPermissionsInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  overrides: Array<{ permissionId: string; enabled: boolean }>
+) {
+  await tx.userPermission.deleteMany({ where: { userId } });
+  if (overrides.length) {
+    await tx.userPermission.createMany({
+      data: overrides.map(({ permissionId, enabled }) => ({
+        userId,
+        permissionId,
+        enabled,
+      })),
+    });
+  }
 }
 
 async function replaceUserCountryAccess(userId: string, countries: Country[]) {
@@ -344,7 +397,7 @@ async function replaceUserCountryAccess(userId: string, countries: Country[]) {
 }
 
 async function replaceUserCountryAccessInTransaction(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  tx: Prisma.TransactionClient,
   userId: string,
   countries: Country[]
 ) {

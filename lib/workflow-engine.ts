@@ -20,6 +20,7 @@ import type {
   Representative,
 } from "@/lib/types";
 import { isBlankRichText, richTextToPlainText, sanitizeRichText } from "@/lib/rich-text";
+import { nextCoachingOutlookSyncState } from "@/lib/coaching/outlook-sync";
 
 export type CoachingWorkflowInput = {
   id?: string;
@@ -30,6 +31,13 @@ export type CoachingWorkflowInput = {
   startTime?: string;
   endTime?: string;
   notifyRepresentative?: boolean;
+  notifyCoachedRepresentative?: boolean;
+  notifyCoachedTeamLeaders?: boolean;
+  notifyExecutorTeamLeaders?: boolean;
+  peerCoach?: boolean;
+  teamDeviation?: boolean;
+  countryDeviation?: boolean;
+  deviationReason?: string;
   subject?: CoachingParticipant;
   internalNotes?: string;
   preparationReferenceCoachingId?: string;
@@ -635,6 +643,7 @@ export function saveCoaching(
   status: Status,
   representatives: Representative[]
 ): { state: WorkflowState; intervention: CoachingIntervention } {
+  if (status === "gepland") assertValidCoachingPlanning(input);
   const representative =
     representatives.find((item) => item.id === input.representativeId) ??
     (input.subject ? coachingParticipantAsRepresentative(input.subject) : undefined);
@@ -657,11 +666,18 @@ export function saveCoaching(
     startTime: input.startTime ?? previous?.startTime ?? "09:00",
     endTime: input.endTime ?? previous?.endTime ?? "11:00",
     notifyRepresentative: input.notifyRepresentative ?? previous?.notifyRepresentative ?? false,
+    notifyCoachedRepresentative: input.notifyCoachedRepresentative ?? previous?.notifyCoachedRepresentative ?? false,
+    notifyCoachedTeamLeaders: input.notifyCoachedTeamLeaders ?? previous?.notifyCoachedTeamLeaders ?? false,
+    notifyExecutorTeamLeaders: input.notifyExecutorTeamLeaders ?? previous?.notifyExecutorTeamLeaders ?? false,
+    peerCoach: input.peerCoach ?? previous?.peerCoach ?? false,
+    teamDeviation: input.teamDeviation ?? previous?.teamDeviation ?? false,
+    countryDeviation: input.countryDeviation ?? previous?.countryDeviation ?? false,
+    deviationReason: input.deviationReason ?? previous?.deviationReason,
     outlookEventId: previous?.outlookEventId,
     outlookICalUId: previous?.outlookICalUId,
-    outlookSyncStatus: "NOT_SYNCED",
+    outlookSyncStatus: previous?.outlookSyncStatus ?? "NOT_SYNCED",
     lastSyncedAt: previous?.lastSyncedAt,
-    syncError: undefined,
+    syncError: previous?.syncError,
     internalNotes: input.internalNotes ?? previous?.internalNotes,
     preparationReferenceCoachingId: input.preparationReferenceCoachingId ?? previous?.preparationReferenceCoachingId,
     sentForApprovalAt: previous?.sentForApprovalAt,
@@ -690,6 +706,9 @@ export function saveCoaching(
     updatedAt: now,
     finalizedAt: ["wacht_op_vt", "gefinaliseerd", "voltooid"].includes(status) ? now : previous?.finalizedAt,
   };
+  const outlookSyncState = nextCoachingOutlookSyncState(intervention, previous);
+  intervention.outlookSyncStatus = outlookSyncState.outlookSyncStatus;
+  intervention.syncError = outlookSyncState.syncError;
   const interventions = [
     ...current.interventions.filter((item) => item.id !== id),
     intervention,

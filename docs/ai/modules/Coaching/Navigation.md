@@ -37,6 +37,16 @@ Opening the same business object from different pages must reuse:
 
 Visibility is controlled by module activation and effective permissions.
 
+Module activation is enforced consistently at every entry point:
+
+- inactive modules are omitted from navigation, dashboard entry points and planning choices;
+- direct client routes show the inactive-module state only after module configuration has loaded;
+- workflow API mutations reject requests for an inactive owning module server-side;
+- the shared workflow response removes records belonging to inactive modules, including linked follow-up records;
+- permission and scope checks remain required after the module check succeeds.
+
+Client-side hiding is never the security boundary.
+
 ---
 
 # Dashboard Entry Points
