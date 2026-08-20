@@ -117,7 +117,7 @@ assert.ok(
 );
 assert.match(workspaceSource, /newAppointmentDraft/);
 assert.match(workspaceSource, /confirmNewAppointment/);
-const addAppointmentBody = workspaceSource.match(/function addAppointment\(\) \{([\s\S]*?)\n  \}\n\n  function confirmNewAppointment/)?.[1] ?? "";
+const addAppointmentBody = workspaceSource.match(/function addAppointment\(\) \{([\s\S]*?)\r?\n  \}\r?\n\r?\n  function confirmNewAppointment/)?.[1] ?? "";
 assert.match(addAppointmentBody, /setNewAppointmentDraft/);
 assert.doesNotMatch(addAppointmentBody, /setLocal/);
 
