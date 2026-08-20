@@ -78,7 +78,41 @@ type ActionPointForClose = Prisma.ActionPointGetPayload<{
   select: typeof actionPointCloseSelect;
 }>;
 
-type TargetUser = ActionPointForClose["representative"];
+const coachingActionCloseSelect = {
+  id: true,
+  interventionId: true,
+  userId: true,
+  status: true,
+  closedAt: true,
+  closedByUserId: true,
+  closedReason: true,
+  closedReasonExplanation: true,
+  updatedAt: true,
+  user: {
+    select: {
+      id: true,
+      representativeId: true,
+      role: true,
+      country: true,
+      teamId: true,
+      firstName: true,
+      lastName: true,
+    },
+  },
+  closedBy: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+    },
+  },
+} satisfies Prisma.CoachingActionSelect;
+
+type CoachingActionForClose = Prisma.CoachingActionGetPayload<{
+  select: typeof coachingActionCloseSelect;
+}>;
+
+type TargetUser = ActionPointForClose["representative"] | CoachingActionForClose["user"];
 
 export type ClosedActionPointResult = {
   actionPointId: string;
@@ -101,7 +135,9 @@ export async function closeActionPoint(
     where: { id: input.actionPointId },
     select: actionPointCloseSelect,
   });
-  if (!actionPoint) notFound("Actiepunt niet gevonden.");
+  if (!actionPoint) {
+    return closeCoachingAction(actor, input, closedReason);
+  }
 
   const assignment = findTargetAssignment(actionPoint, input.representativeId);
   const target = assignment?.representative ?? actionPoint.representative;
@@ -173,6 +209,89 @@ export async function closeActionPoint(
   });
   if (closed.changed) await notifyActionPointClosed(actionPoint.id, target.id, actor.id);
   return closed.result;
+}
+
+async function closeCoachingAction(
+  actor: MockUser,
+  input: { actionPointId: string; representativeId?: string },
+  closedReason: { value: ActionPointCloseReason; explanation: string }
+): Promise<ClosedActionPointResult> {
+  const action = await prisma.coachingAction.findUnique({
+    where: { id: input.actionPointId },
+    select: coachingActionCloseSelect,
+  });
+  if (!action) notFound("Actiepunt niet gevonden.");
+  const target = action.user;
+  if (
+    input.representativeId &&
+    ![target.id, target.representativeId].filter(Boolean).includes(input.representativeId)
+  ) {
+    notFound("Actiepunt niet gevonden.");
+  }
+  assertCanCloseTarget(actor, target);
+  if (isClosed(action.status, action.closedAt)) {
+    return serializeClosedCoachingAction(action);
+  }
+
+  const closedAt = new Date();
+  const closed = await prisma.$transaction(async (tx) => {
+    const updated = await tx.coachingAction.updateMany({
+      where: {
+        id: action.id,
+        closedAt: null,
+        status: { notIn: [...closedStatuses] },
+      },
+      data: {
+        status: "AFGEROND",
+        closedAt,
+        closedByUserId: actor.id,
+        closedReason: closedReason.value,
+        closedReasonExplanation: closedReason.explanation || null,
+      },
+    });
+    const current = await tx.coachingAction.findUniqueOrThrow({
+      where: { id: action.id },
+      select: coachingActionCloseSelect,
+    });
+    if (updated.count === 1) {
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          entityType: "CoachingAction",
+          entityId: action.id,
+          action: "actionPoint.closed",
+          oldValue: JSON.stringify({
+            status: action.status,
+            representativeId: target.id,
+            closedReason: closedReason.value,
+            closedReasonExplanation: closedReason.explanation || undefined,
+          }),
+          newValue: JSON.stringify({
+            status: "AFGEROND",
+            representativeId: target.id,
+            interventionId: action.interventionId,
+            scope: { country: target.country, teamId: target.teamId },
+          }),
+        },
+      });
+    }
+    return { result: serializeClosedCoachingAction(current), changed: updated.count === 1 };
+  });
+  if (closed.changed) await notifyActionPointClosed(action.id, target.id, actor.id);
+  return closed.result;
+}
+
+function serializeClosedCoachingAction(action: CoachingActionForClose): ClosedActionPointResult {
+  return {
+    actionPointId: action.id,
+    representativeId: action.user.representativeId ?? action.user.id,
+    status: "afgerond",
+    closedAt: (action.closedAt ?? action.updatedAt ?? new Date()).toISOString(),
+    closedByUserId: action.closedByUserId ?? "",
+    closedByName: fullName(action.closedBy),
+    closedReason: isActionPointCloseReason(action.closedReason) ? action.closedReason : undefined,
+    closedReasonExplanation: action.closedReasonExplanation ?? undefined,
+  };
 }
 
 function findTargetAssignment(actionPoint: ActionPointForClose, representativeId?: string) {

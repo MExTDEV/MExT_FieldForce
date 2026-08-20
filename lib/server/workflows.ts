@@ -1238,7 +1238,9 @@ function parseChangeLogValue(value: string | null) {
 function toCoachingWorkflowAction(item: {
   id: string; actionDefinitionId: string | null; title: string; description: string; tipsAndTricks: string;
   targetValue: { toString(): string } | null; achievedScore: { toString(): string } | null;
-  priority: DbPriority; isNew: boolean; reviewStatus: string; originalTitle: string | null;
+  priority: DbPriority; isNew: boolean; reviewStatus: string; status: string; closedAt: Date | null;
+  closedByUserId: string | null; closedReason: string | null; closedReasonExplanation: string | null;
+  originalTitle: string | null;
   originalDescription: string | null; originalTipsAndTricks: string | null; rejectionReason: string | null;
   reviewComment: string | null; reviewedById: string | null; reviewedAt: Date | null; activatedAt: Date | null;
 }): WorkflowActionPoint {
@@ -1247,7 +1249,11 @@ function toCoachingWorkflowAction(item: {
     description: item.description, tipsAndTricks: item.tipsAndTricks,
     targetValue: item.targetValue === null ? undefined : Number(item.targetValue),
     achievedScore: item.achievedScore === null ? undefined : Number(item.achievedScore),
-    type: "vaardigheid", due: "", status: "open", priority: fromPriority(item.priority), isNew: item.isNew,
+    type: "vaardigheid", due: "", status: fromActionStatus(item.status), priority: fromPriority(item.priority), isNew: item.isNew,
+    closedAt: item.closedAt?.toISOString(),
+    closedByUserId: item.closedByUserId ?? undefined,
+    closedReason: isActionPointCloseReason(item.closedReason) ? item.closedReason : undefined,
+    closedReasonExplanation: item.closedReasonExplanation ?? undefined,
     reviewStatus: fromCoachingActionReviewStatus(item.reviewStatus),
     originalTitle: item.originalTitle ?? undefined,
     originalDescription: item.originalDescription ?? undefined,
