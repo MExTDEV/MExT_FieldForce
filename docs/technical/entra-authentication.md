@@ -128,6 +128,12 @@ revalidates the real user's `users.impersonate` right and the target's active
 state. Logout closes the impersonation before the login session is considered
 finished.
 
+If the optional impersonation tables from migration `0056_user_impersonation` are
+not present yet during a deployment window, normal session loading must continue
+as the real authenticated user while the server logs that the migration still
+needs to be applied. Starting or managing impersonation remains dependent on the
+migration.
+
 MAIL TEST continues to replace all provider recipients. When mail is generated
 during impersonation, the MAIL TEST warning additionally identifies both the
 real and effective user and the impersonation session. Personal notifications

@@ -1,6 +1,7 @@
 import { auth, authMode } from "@/auth";
 import { unauthorized } from "@/lib/server/api";
 import { forbidden } from "@/lib/server/api";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { can } from "@/lib/permissions";
 import { fieldForcePermissionKeys } from "@/lib/user-management";
@@ -123,11 +124,20 @@ export async function requireAuthenticatedRealUserContext() {
 }
 
 async function resolveActiveImpersonation(realActor: MockUser, loginSessionDatabaseId: string) {
-  const active = await prisma.impersonationSession.findFirst({
-    where: { loginSessionId: loginSessionDatabaseId, endedAt: null },
-    orderBy: { startedAt: "desc" },
-    select: { id: true, expiresAt: true, impersonatedUserId: true },
-  });
+  let active: { id: string; expiresAt: Date; impersonatedUserId: string } | null = null;
+  try {
+    active = await prisma.impersonationSession.findFirst({
+      where: { loginSessionId: loginSessionDatabaseId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+      select: { id: true, expiresAt: true, impersonatedUserId: true },
+    });
+  } catch (error) {
+    if (isOptionalImpersonationSchemaUnavailable(error)) {
+      console.error("[auth:impersonation] Impersonatiecontrole overgeslagen omdat de databasestructuur ontbreekt. Voer migration 0056_user_impersonation uit.", error);
+      return null;
+    }
+    throw error;
+  }
   if (!active) return null;
   const now = new Date();
   if (active.expiresAt <= now) {
@@ -163,6 +173,11 @@ async function endInvalidImpersonation(
       await tx.impersonationEvent.create({ data: { sessionId, actorUserId, impersonatedUserId, type: eventType, reason } });
     }
   });
+}
+
+function isOptionalImpersonationSchemaUnavailable(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError
+    && (error.code === "P2021" || error.code === "P2022");
 }
 
 export async function requireAuthenticatedRead() {

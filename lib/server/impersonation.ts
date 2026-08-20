@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { badRequest, forbidden } from "@/lib/server/api";
 import { prisma } from "@/lib/server/db";
 import { can } from "@/lib/permissions";
@@ -235,19 +236,33 @@ export async function stopImpersonation(loginSessionDatabaseId: string, actorUse
 }
 
 export async function getImpersonationStatus(loginSessionDatabaseId: string) {
-  const session = await prisma.impersonationSession.findFirst({
-    where: { loginSessionId: loginSessionDatabaseId, endedAt: null, expiresAt: { gt: new Date() } },
-    orderBy: { startedAt: "desc" },
-    include: {
-      actor: { select: { id: true, firstName: true, lastName: true, role: true } },
-      impersonatedUser: { include: { team: { select: { name: true } } } },
-    },
-  });
+  let session;
+  try {
+    session = await prisma.impersonationSession.findFirst({
+      where: { loginSessionId: loginSessionDatabaseId, endedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { startedAt: "desc" },
+      include: {
+        actor: { select: { id: true, firstName: true, lastName: true, role: true } },
+        impersonatedUser: { include: { team: { select: { name: true } } } },
+      },
+    });
+  } catch (error) {
+    if (isOptionalImpersonationSchemaUnavailable(error)) {
+      console.error("[auth:impersonation] Impersonatiestatus niet beschikbaar omdat de databasestructuur ontbreekt. Voer migration 0056_user_impersonation uit.", error);
+      return { active: false } as const;
+    }
+    throw error;
+  }
   if (!session) return { active: false } as const;
   return { active: true, sessionId: session.id, startedAt: session.startedAt.toISOString(), expiresAt: session.expiresAt.toISOString(), reasonType: session.reasonType, reasonText: session.reasonText,
     realUser: session.actor,
     impersonatedUser: { id: session.impersonatedUser.id, firstName: session.impersonatedUser.firstName, lastName: session.impersonatedUser.lastName, role: session.impersonatedUser.role, country: session.impersonatedUser.country, teamId: session.impersonatedUser.teamId ?? "", teamName: session.impersonatedUser.team?.name ?? "", avatarUrl: session.impersonatedUser.avatarUrl ?? "" },
   };
+}
+
+function isOptionalImpersonationSchemaUnavailable(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError
+    && (error.code === "P2021" || error.code === "P2022");
 }
 
 export async function getCurrentImpersonationMailContext() {
