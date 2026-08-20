@@ -60,6 +60,7 @@
     "test:criterion-scopes": "tsx scripts/test-configurable-criterion-scopes.ts",
     "test:role-permission-save": "tsx scripts/test-role-permission-save.ts",
     "test:menu-rights": "tsx scripts/test-menu-rights.ts",
+    "test:module-boundaries": "tsx scripts/test-module-boundaries.ts",
     "test:country-manager-coaching-access": "tsx scripts/test-country-manager-coaching-access.ts",
     "test:management-log": "tsx scripts/test-management-log.ts",
     "test:management-import-export": "tsx scripts/test-management-import-export.ts",
