@@ -43,6 +43,7 @@ import { useModules } from "@/components/module-provider";
 import { useSalesDayFeatures } from "@/components/salesday/feature-provider";
 import { useSalesDayDeviceRuntime } from "@/components/salesday/device-runtime-provider";
 import { SalesDayWorkspace } from "@/components/salesday/salesday-workspace";
+import { InventoryWorkspace } from "@/components/inventory/inventory-workspace";
 import { useRepresentatives } from "@/components/representatives-provider";
 import { MyReflectionsPage, MyReportsPage } from "@/components/representative-workflow-pages";
 import { ContactMomentsPage, HelpRequestsWorkflowPage } from "@/components/contact-help-workflows";
@@ -64,6 +65,7 @@ import { RichTextRenderer } from "@/components/rich-text-renderer";
 import {
   can,
   canAccessRepresentative,
+  canAccessInventory,
   canViewTeamDashboard,
   roleLabels,
 } from "@/lib/permissions";
@@ -273,7 +275,17 @@ export function WorkspacePage({ segments }: { segments: string[] }) {
   if (segments[0] === "salesday" && segments[1] === "mijn-voorraad" && !salesDayFeatures.isEnabled("INVENTORY")) {
     return <EmptyState title={translate(user.language, "salesday.access.inventoryDisabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
   }
+  if (segments[0] === "inventory" && !canAccessInventory(user)) {
+    return <EmptyState title={translate(user.language, "app.access.deniedTitle")} description={translate(user.language, "salesday.access.inventoryDisabled")} />;
+  }
+  if (segments[0] === "inventory" && salesDayFeatures.loading) {
+    return <EmptyState title={translate(user.language, "salesday.access.loading")} description={translate(user.language, "salesday.access.loadingDescription")} />;
+  }
+  if (segments[0] === "inventory" && !salesDayFeatures.isEnabled("INVENTORY")) {
+    return <EmptyState title={translate(user.language, "salesday.access.inventoryDisabled")} description={translate(user.language, "salesday.access.disabledDescription")} />;
+  }
   if (segments[0] === "salesday") return <SalesDayWorkspace section={segments[1]} appointmentId={segments[2]} />;
+  if (segments[0] === "inventory") return <InventoryWorkspace section={segments[1]} />;
   if (segments[0] === "pst") return <PlaceholderWorkspace title="PST" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "contract") return <PlaceholderWorkspace title="Contract" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;
   if (segments[0] === "service") return <PlaceholderWorkspace title="Service" description="Deze module wordt later geïntegreerd in FieldForce. De menu-link is al voorbereid als tijdelijke route." />;

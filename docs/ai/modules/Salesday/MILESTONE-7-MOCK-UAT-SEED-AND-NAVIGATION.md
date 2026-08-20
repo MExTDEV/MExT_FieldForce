@@ -14,6 +14,8 @@ Milestone 7 started as non-production enablement. On 22 July 2026 it gained a se
 - The seed applies ERP-originated business records through the SalesDay replica event path instead of inventing a parallel write path.
 - The SalesDay app switcher and blue left navigation now use the same permission-filtered domain definition.
 - SalesDay workspace routes for `Mijn voorraad` and `Kasblad` were connected to their existing APIs so the menu items open meaningful screens.
+- The separate Inventory domain now has its own permission- and feature-gated workspace for `Mijn voorraad`, `Bevoorrading` and `Verbruiksgoederen`, backed by the existing server-side APIs.
+- `Mijn agenda` now follows the original SalesApp structure more closely: open and closed appointment sections, status-specific accents, closed counters and API-backed outcome/duplicate actions.
 
 ## Seed safety rules
 
@@ -102,6 +104,7 @@ For the SalesDay domain this means:
 - SalesDay routes open the SalesDay domain sidebar instead of falling back to Coaching navigation;
 - representative SalesDay navigation includes overview, preparation, agenda, stock, cash sheet and day closure;
 - team navigation remains permission-driven and is not shown to representatives by default.
+- Inventory routes use the same runtime feature gate and server-side scope checks; PST and Service remain unavailable until their persistent domain models and APIs are defined.
 
 Clicking a top-level application in the app switcher navigates immediately to its dashboard or designated domain start page. If that landing link is not available through the user's menu permissions, the first permitted submenu link is used instead.
 

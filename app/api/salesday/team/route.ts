@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const { actor } = await requireAuthenticatedUserContext(parameters.get("actorId"));
     try {
       await assertSalesDayFeatureEnabled(actor, "SALESDAY");
-      return getSalesDayTeam({ actor });
+      return getSalesDayTeam({ actor, businessDate: parameters.get("businessDate") ?? undefined });
     } catch (error) {
       rethrowSalesDaySyncError(error);
     }
