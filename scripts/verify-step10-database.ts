@@ -131,7 +131,7 @@ async function main() {
       ].includes(coaching.status),
       `${runId}: coaching has invalid persisted status ${coaching.status}.`
     );
-    assert.equal(coaching.notifyRepresentative, true);
+    assert.equal(coaching.notifyRepresentative, false);
     assert.equal(coaching.focuses.length, 1);
     assert.ok(
       coaching.scores.some(

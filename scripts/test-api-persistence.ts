@@ -80,7 +80,7 @@ async function main() {
     plannedDate: "2026-07-15",
     startTime: "09:00",
     endTime: "11:00",
-    notifyRepresentative: true,
+    notifyRepresentative: false,
     focusNames: ["Introductie"],
     scores: [{
       focus: "Introductie",
@@ -108,7 +108,7 @@ async function main() {
     plannedDate: "2026-07-15",
     startTime: "09:00",
     endTime: "11:00",
-    notifyRepresentative: true,
+    notifyRepresentative: false,
     focusNames: ["Introductie"],
     scores: coaching.intervention.scores,
     actionPoints: [{
