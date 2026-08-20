@@ -15,7 +15,10 @@ const contracts = fs.readFileSync(contractsPath, "utf8");
 const architecture = fs.readFileSync(architecturePath, "utf8");
 
 assert(!/^\s*import\s/m.test(contracts), "Contractlaag mag geen imports bevatten.");
-assert(!/\b(prisma|PrismaClient|components\/|app\/|lib\/)/.test(contracts), "Contractlaag mag geen runtime-internals kennen.");
+assert(
+  !/\b(prisma|PrismaClient|components\/|app\/|lib\/)/.test(contracts),
+  "Contractlaag mag geen runtime-internals kennen."
+);
 
 const facadePaths = [
   "coaching",
@@ -29,12 +32,22 @@ const facadePaths = [
 for (const facadePath of facadePaths) {
   assert(fs.existsSync(facadePath), `Modulefacade ontbreekt: ${facadePath}`);
   const facade = fs.readFileSync(facadePath, "utf8");
+  const forbiddenImports = [
+    'from "@/app/',
+    'from "@/components/',
+    'from "@/lib/',
+    'from "@/prisma/',
+    'from "../app/',
+    'from "../components/',
+    'from "../lib/',
+    'from "../prisma/',
+  ];
   assert(
-    !/from ["'](?:@\\/)?(?:app|components|lib|prisma)\\//.test(facade),
+    !forbiddenImports.some((pattern) => facade.includes(pattern)),
     `Modulefacade kent runtime-internals: ${facadePath}`
   );
   assert(
-    !/\\bexport\\s+(?:const|let|var|function|class)\\b/.test(facade),
+    !/\bexport\s+(?:const|let|var|function|class)\b/.test(facade),
     `Modulefacade moet type-only blijven: ${facadePath}`
   );
 }
