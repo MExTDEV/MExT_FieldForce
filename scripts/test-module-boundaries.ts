@@ -17,6 +17,28 @@ const architecture = fs.readFileSync(architecturePath, "utf8");
 assert(!/^\s*import\s/m.test(contracts), "Contractlaag mag geen imports bevatten.");
 assert(!/\b(prisma|PrismaClient|components\/|app\/|lib\/)/.test(contracts), "Contractlaag mag geen runtime-internals kennen.");
 
+const facadePaths = [
+  "coaching",
+  "sales",
+  "inventory",
+  "service",
+  "pst",
+  "contract",
+].map((moduleId) => path.join(root, "modules", moduleId, "index.ts"));
+
+for (const facadePath of facadePaths) {
+  assert(fs.existsSync(facadePath), `Modulefacade ontbreekt: ${facadePath}`);
+  const facade = fs.readFileSync(facadePath, "utf8");
+  assert(
+    !/from ["'](?:@\\/)?(?:app|components|lib|prisma)\\//.test(facade),
+    `Modulefacade kent runtime-internals: ${facadePath}`
+  );
+  assert(
+    !/\\bexport\\s+(?:const|let|var|function|class)\\b/.test(facade),
+    `Modulefacade moet type-only blijven: ${facadePath}`
+  );
+}
+
 for (const moduleId of ["coaching", "sales", "inventory", "service", "pst", "contract"]) {
   assert(
     contracts.includes(`"${moduleId}"`),
