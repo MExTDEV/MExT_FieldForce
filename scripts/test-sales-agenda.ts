@@ -13,9 +13,9 @@ const result = buildSalesAgendaSections([
 assert.deepEqual(result.open.map((item) => item.id), ["open-early", "open-late"]);
 assert.deepEqual(result.closed.map((item) => item.id), [
   "closed-late",
-  "closed-early",
   "absent",
   "no-time",
+  "closed-early",
 ]);
 assert.deepEqual(result.counters, {
   total: 6,
